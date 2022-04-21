@@ -49,22 +49,6 @@ namespace onnxruntime {
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
 
-static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
-  bool is_latest_opset = false;
-  auto onnx_opset = opset_versions.find(kOnnxDomain);
-
-  if (onnx_opset != opset_versions.cend()) {
-    static int latest_onnx_version = model_load_utils::IsAllowReleasedONNXOpsetsOnlySet()
-                                         ? ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().LastReleaseVersionMap().at(ONNX_NAMESPACE::ONNX_DOMAIN)
-                                         : ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
-    if (onnx_opset->second == latest_onnx_version) {
-      is_latest_opset = true;
-    }
-  }
-
-  return is_latest_opset;
-}
-
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
@@ -1076,14 +1060,16 @@ Graph::Graph(const Model& owning_model,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-             const logging::Logger& logger)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {}
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger, strict_shape_type_inference) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1094,10 +1080,10 @@ Graph::Graph(const Model& owning_model,
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
-      using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),
+      strict_shape_type_inference_(strict_shape_type_inference),
       is_loaded_from_model_file_(GraphLoadedFromModelFile(graph_proto_)) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
@@ -1256,7 +1242,8 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
             &parent_node, {},
-            parent_graph.logger_) {
+            parent_graph.logger_,
+            parent_graph.strict_shape_type_inference_) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -2366,7 +2353,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
 #endif
-        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, using_latest_onnx_opset_, logger_);
+        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, strict_shape_type_inference_, logger_);
         if (!status.IsOK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
         }
@@ -4242,7 +4229,9 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 #if !defined(ORT_MINIMAL_BUILD)
                                   schema_registry,
 #endif
-                                  nullptr, nullptr, logger);
+                                  nullptr, nullptr, logger,
+                                  // Assume anything in ORT format has already been validated.
+                                  false);
 
   ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
 
@@ -4267,7 +4256,9 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   parent_graph.schema_registry_,
 #endif
                                   &parent_graph, &parent_node,
-                                  logger);
+                                  logger,
+                                  // Assume anything in ORT format has already been validated.
+                                  false);
 
   return graph->LoadFromOrtFormat(fbs_graph);
 }
@@ -4278,7 +4269,8 @@ Graph::Graph(const Model& owning_model,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
              Graph* parent_graph, const Node* parent_node,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -4293,6 +4285,7 @@ Graph::Graph(const Model& owning_model,
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),
+      strict_shape_type_inference_(strict_shape_type_inference),
       is_loaded_from_model_file_(true) {  // true as the Graph isn't manually constructed from scratch
 }
 
