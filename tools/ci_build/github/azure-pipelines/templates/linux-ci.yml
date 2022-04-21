@@ -40,6 +40,13 @@ jobs:
     - template: run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: '${{ parameters.RunDockerBuildArgs }}'
+    - script: cp -R $(Build.SourcesDirectory)/build $(Build.ArtifactStagingDirectory)
+      displayName: 'Copy build folder'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish build Artifact'
+      inputs:
+        artifactName: 'Build Folder'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
       inputs:
