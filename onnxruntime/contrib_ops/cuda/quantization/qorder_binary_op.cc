@@ -111,44 +111,57 @@ QOrderedBiasGelu::QOrderedBiasGelu(const OpKernelInfo& info) : CudaKernel(info) 
 }
 
 Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
-  int64_t tmp_shape[16];
-  BinaryElementwisePreparation prepare;
-  auto lhs_tensor = context->Input<Tensor>(0);
-  gsl::span<int64_t> ordered_lhs_dims(tmp_shape, 16);
-  ORT_RETURN_IF_ERROR(ShapeReordered32C(lhs_tensor->Shape().GetDims(), ordered_lhs_dims));
-  TensorShape lhs_shape(ordered_lhs_dims);
-  auto rhs_tensor = context->Input<Tensor>(2);
-  gsl::span<int64_t> ordered_rhs_dims(tmp_shape, 16);
-  ORT_RETURN_IF_ERROR(ShapeReordered32C(lhs_tensor->Shape().GetDims(), ordered_rhs_dims));
-  TensorShape rhs_shape(ordered_rhs_dims);
+  const auto* input_tensor = context->Input<Tensor>(0);
+  const auto& input_shape = input_tensor->Shape();
+  auto input_rank = input_shape.NumDimensions();
 
-  TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), lhs_tensor->Shape(), rhs_tensor->Shape(), output_shape));
-  if (!(output_shape == lhs_tensor->Shape())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Shape only broadcast from bias to input! InputShape=",
-                           lhs_tensor->Shape(), ", BiasShape=", rhs_tensor->Shape());
+  const auto* bias_tensor = context->Input<Tensor>(2);
+  const auto& bias_shape = bias_tensor->Shape();
+  auto bias_rank = bias_shape.NumDimensions();
+  ORT_ENFORCE(bias_rank == 1);
+
+  if (bias_rank != 1 || input_rank < 1 || input_shape[input_rank - 1] != bias_shape[0]) {
+    // TODO: Make the error message more verbose
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input shapes don't meet the requirements");
   }
-  auto output_tensor = context->Output(0, output_shape);
-  ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(lhs_tensor, rhs_tensor, output_tensor, &prepare, &lhs_shape, &rhs_shape));
 
-  float scaleA = *(context->Input<Tensor>(1)->Data<float>());
-  float scaleB = *(context->Input<Tensor>(3)->Data<float>());
-  float scaleY = *(context->Input<Tensor>(4)->Data<float>());
-  QOrdered_Impl_BiasGelu(
+  // TODO: Bit-wise op ?
+  if (bias_shape[0] % 32 != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias of shape in multiples of 32 are only supported");
+  }
+
+  auto* output_tensor = context->Output(0, input_shape);
+
+  float input_scale = *(context->Input<Tensor>(1)->Data<float>());
+  float bias_scale = *(context->Input<Tensor>(3)->Data<float>());
+  float output_scale = *(context->Input<Tensor>(4)->Data<float>());
+
+  int64_t cols = input_shape[input_rank - 1];
+  int64_t rows = (input_rank > 1 ? input_shape[input_rank - 2] : 1);
+  int64_t batches = 1;
+
+  if (input_rank > 2) {
+    for (size_t i = 0; i < input_rank - 2; ++i) {
+      batches *= input_shape[i];
+    }
+  }
+
+  fast_divmod batch_size(static_cast<int>(rows) * static_cast<int>(cols));
+  fast_divmod rows_times_thirty_two(static_cast<int>(rows) * 32);
+  fast_divmod thirty_two(32);
+
+  QOrdered_Col32OrderImpl_BiasGelu(
       Stream(),
-      prepare.output_rank_or_simple_broadcast,
-      &prepare.lhs_padded_strides,
-      prepare.lhs_tensor->template Data<int8_t>(),
-      scaleA,
-      &prepare.rhs_padded_strides,
-      prepare.rhs_tensor->template Data<int8_t>(),
-      scaleB,
-      &prepare.fdm_output_strides,
-      prepare.fdm_H,
-      prepare.fdm_C,
-      scaleY,
-      prepare.output_tensor->template MutableData<int8_t>(),
-      (size_t)prepare.output_tensor->Shape().Size());
+      input_tensor->Data<int8_t>(),
+      input_scale,
+      bias_tensor->Data<int8_t>(),
+      bias_scale,
+      output_tensor->MutableData<int8_t>(),
+      output_scale,
+      batch_size,
+      rows_times_thirty_two,
+      thirty_two,
+      input_shape.Size());
 
   return Status::OK();
 }

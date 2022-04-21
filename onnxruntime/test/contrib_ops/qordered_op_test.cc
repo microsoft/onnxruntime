@@ -539,8 +539,7 @@ TEST(QOrderedTest, LayerNorm_OrderCol32_NoBias_3x11x96) {
   RunQOrdered_LayerNorm_Test({3, 11, 96}, -1, false, ORDER_COL32);
 }
 
-static void
-RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float scale_Y, OrderCublasLt order) {
+static void RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float scale_Y, OrderCublasLt order) {
   float sqrt_of_2 = std::sqrt(2.0f);
 
   int64_t N = std::accumulate(shape.begin(), shape.end(), int64_t{1LL}, std::multiplies<int64_t>());
@@ -573,11 +572,60 @@ RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float sc
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(QOrderedTest, Gelu_3x11x12) {
+TEST(QOrderedTest, Gelu_3x11x32) {
   RunQOrdered_Gelu_Test({3, 11, 32}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_COL32);
   RunQOrdered_Gelu_Test({3, 11, 32}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_ROW);
 }
 
+static void RunQOrdered_BiasGelu_Test(std::vector<int64_t> const& shape, float input_scale,
+                                      std::vector<int64_t> const& bias_shape, float bias_scale,
+                                      float output_scale, OrderCublasLt order) {
+  float sqrt_of_2 = std::sqrt(2.0f);
+
+  int64_t N = std::accumulate(shape.begin(), shape.end(), int64_t{1LL}, std::multiplies<int64_t>());
+  std::vector<int8_t> vecX = GenData<int8_t>(shape, 1.0f);
+  std::vector<int8_t> vecBias = GenData<int8_t>(bias_shape, 1.0f);
+  std::vector<int8_t> vecY(N);
+  int64_t cols = bias_shape[0];
+  if (order != ORDER_COL32) {
+    throw std::runtime_error("Only COL32 order supported currently");
+  }
+
+  if ((shape.size() < 1) || (cols != shape[shape.size() - 1]) || (cols % 32 != 0)) {
+    throw std::runtime_error("Shape requirements unmet");
+  }
+  for (int64_t i = 0; i < N; i++) {
+    auto bias_id = i % cols;
+    float x = input_scale * (float)vecX[i] + bias_scale * (float)vecBias[bias_id];
+    float r = (x * (0.5f * (1.0f + std::erff(x / sqrt_of_2)))) / output_scale;
+    int8_t q = static_cast<int8_t>((int)std::nearbyintf(std::min(127.0f, std::max(-128.0f, r))));
+    vecY[i] = q;
+  }
+
+  vecX = Reorder(shape, vecX, ORDER_ROW, order);
+  vecY = Reorder(shape, vecY, ORDER_ROW, order);
+  vecBias = Reorder(bias_shape, vecBias, ORDER_ROW, order);
+
+  OpTester test_qorder("QOrderedBiasGelu", 1, onnxruntime::kMSDomain);
+  test_qorder.AddAttribute("order_A", (int64_t)order);
+  test_qorder.AddAttribute("order_B", (int64_t)order);
+  test_qorder.AddAttribute("order_Y", (int64_t)order);
+  test_qorder.AddInput<int8_t>("A", shape, vecX);
+  test_qorder.AddInput<float>("scale_A", {}, {input_scale});
+  test_qorder.AddInput<int8_t>("B", bias_shape, vecBias);
+  test_qorder.AddInput<float>("scale_B", {}, {bias_scale});
+  test_qorder.AddInput<float>("scale_Y", {}, {output_scale});
+  test_qorder.AddOutput<int8_t>("Y", shape, vecY, false, 0.0f, 1.0f /* abs error */);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(QOrderedTest, BiasGelu_3x11x64) {
+  RunQOrdered_BiasGelu_Test(
+      {1, 1, 64}, 1.0f / 32.0f, {64}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_COL32);
+}
 }  // namespace test
 }  // namespace onnxruntime
 
