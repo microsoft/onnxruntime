@@ -21,7 +21,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpAttr,
 }
 
 ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr*) {
-  ORT_THROW("ReleaseOpAttr is not implemented for minimal build.");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOp,
@@ -53,7 +52,6 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 }
 
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp*) {
-  ORT_THROW("ReleaseOp is not implemented for minimal build.");
 }
 
 #else
@@ -70,178 +68,150 @@ class StandAloneKernelContext : public OpKernelContext {
                           int output_count,
                           AllocatorPtr allocator,
                           onnxruntime::concurrency::ThreadPool* threadpool,
-                          const logging::Logger& logger);
+                          const logging::Logger& logger) : OpKernelContext(threadpool, logger),
+                                                           input_values_(input_values),
+                                                           input_count_(input_count),
+                                                           output_values_(output_values),
+                                                           output_count_(output_count),
+                                                           allocator_(allocator) {}
 
-  int NumVariadicInputs(size_t arg_num) const override;
-  MLDataType InputType(int index) const override;
-  MLDataType OutputType(int index) const override;
-  bool TryGetInferredInputShape(int index, TensorShape& shape) const override;
-  bool TryGetInferredOutputShape(int index, TensorShape& shape) const override;
-  int InputCount() const override;
-  int ImplicitInputCount() const override;
-  int OutputCount() const override;
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const override ORT_MUST_USE_RESULT;
-  Fence_t InputFence(int index) const override;
-  Fence_t ImplicitInputFence(int index) const override;
-  Fence_t OutputFence(int index) const override;
-  int GetDeviceId() const override;
-  void* GetComputeStream() const override;
+  int NumVariadicInputs(size_t arg_num) const override {
+    ORT_ENFORCE(arg_num < static_cast<size_t>(input_count_), "invalid arg_num.");
+    auto ort_value = input_values_[arg_num];
+    if (ort_value->IsTensor()) {
+      return static_cast<int>(ort_value->Get<Tensor>().Shape().Size());
+    } else if (ort_value->IsTensorSequence()) {
+      return static_cast<int>(ort_value->Get<TensorSeq>().Size());
+    } else if (ort_value->IsSparseTensor()) {
+#ifdef DISABLE_SPARSE_TENSORS
+      ORT_THROW("sparse tensor is not supported in this build.");
+#else
+      return static_cast<int>(ort_value->Get<SparseTensor>().Values().Shape().Size());
+#endif
+    } else {
+      return 0;
+    }
+  }
+
+  MLDataType InputType(int index) const override {
+    if (index >= input_count_) {
+      return nullptr;
+    } else {
+      return input_values_[index]->Type();
+    }
+  }
+
+  MLDataType OutputType(int index) const override {
+    if (index >= output_count_) {
+      return nullptr;
+    } else {
+      return output_values_[index]->Type();
+    }
+  }
+
+  bool TryGetInferredInputShape(int, TensorShape&) const override {
+    return false;
+  }
+
+  bool TryGetInferredOutputShape(int, TensorShape&) const override {
+    return false;
+  }
+
+  int InputCount() const override {
+    return input_count_;
+  }
+
+  int ImplicitInputCount() const override {
+    return 0;
+  }
+
+  int OutputCount() const override {
+    return static_cast<int>(output_count_);
+  }
+
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const override ORT_MUST_USE_RESULT {
+    *output = allocator_;
+    return Status::OK();
+  }
+
+  Fence_t InputFence(int index) const override {
+    if (index >= input_count_) {
+      return nullptr;
+    } else {
+      return input_values_[index]->Fence();
+    }
+  }
+
+  Fence_t ImplicitInputFence(int) const override {
+    return nullptr;
+  }
+
+  Fence_t OutputFence(int index) const override {
+    if (index >= output_count_) {
+      return nullptr;
+    } else {
+      return output_values_[index]->Fence();
+    }
+  }
+
+  int GetDeviceId() const override {
+    return 0;
+  }
+
+  void* GetComputeStream() const override {
+    return nullptr;
+  }
 
  protected:
-  const OrtValue* GetInputMLValue(int index) const override;
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) override;
-  OrtValue* GetOrCreateOutputMLValue(int index) override;
+  const OrtValue* GetInputMLValue(int index) const override {
+    if (index >= input_count_) {
+      return nullptr;
+    } else {
+      return input_values_[index];
+    }
+  }
+
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) override {
+    if (index >= output_count_) {
+      return nullptr;
+    }
+    OrtValue& ort_value = *output_values_[index];
+    if (!ort_value.IsAllocated()) {
+      if (ort_value.IsTensor()) {
+        Tensor::InitOrtValue(ort_value.Type(), shape, allocator_, ort_value);
+      } else if (ort_value.IsTensorSequence()) {
+        auto ml_type = ort_value.Type();
+        auto element_type = ml_type->AsSequenceTensorType()->GetElementType();
+        auto p_sequence = std::make_unique<TensorSeq>(element_type);
+        auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+        ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
+      } else if (ort_value.IsSparseTensor()) {
+#ifdef DISABLE_SPARSE_TENSORS
+        ORT_THROW("sparse tensor is not supported in this build.");
+#else
+        auto ml_type = ort_value.Type();
+        auto element_type = ml_type->AsSparseTensorType()->GetElementType();
+        SparseTensor::InitOrtValue(element_type, shape, allocator_, ort_value);
+#endif
+      }
+    }
+    return &ort_value;
+  }
+
+  OrtValue* GetOrCreateOutputMLValue(int index) override {
+    if (index >= output_count_) {
+      return nullptr;
+    } else {
+      return output_values_[index];
+    }
+  }
 
   const OrtValue* const* input_values_;
   const int input_count_;
   OrtValue* const* output_values_;
   const int output_count_;
   AllocatorPtr allocator_;
-};
-
-// StandAloneKernelContext
-StandAloneKernelContext::StandAloneKernelContext(const OrtValue* const* input_values,
-                                                 int input_count,
-                                                 OrtValue* const* output_values,
-                                                 int output_count,
-                                                 AllocatorPtr allocator,
-                                                 onnxruntime::concurrency::ThreadPool* threadpool,
-                                                 const logging::Logger& logger) : OpKernelContext(threadpool, logger),
-                                                                                  input_values_(input_values),
-                                                                                  input_count_(input_count),
-                                                                                  output_values_(output_values),
-                                                                                  output_count_(output_count),
-                                                                                  allocator_(allocator) {}
-
-int StandAloneKernelContext::NumVariadicInputs(size_t arg_num) const {
-  ORT_ENFORCE(arg_num < static_cast<size_t>(input_count_), "invalid arg_num.");
-  auto ort_value = input_values_[arg_num];
-  if (ort_value->IsTensor()) {
-    return static_cast<int>(ort_value->Get<Tensor>().Shape().Size());
-  } else if (ort_value->IsTensorSequence()) {
-    return static_cast<int>(ort_value->Get<TensorSeq>().Size());
-  } else if (ort_value->IsSparseTensor()) {
-#ifdef DISABLE_SPARSE_TENSORS
-    ORT_THROW("sparse tensor is not supported in this build.");
-#else
-    return static_cast<int>(ort_value->Get<SparseTensor>().Values().Shape().Size());
-#endif
-  } else {
-    return 0;
-  }
-}
-
-MLDataType StandAloneKernelContext::InputType(int index) const {
-  if (index >= input_count_) {
-    return nullptr;
-  } else {
-    return input_values_[index]->Type();
-  }
-}
-
-MLDataType StandAloneKernelContext::OutputType(int index) const {
-  if (index >= output_count_) {
-    return nullptr;
-  } else {
-    return output_values_[index]->Type();
-  }
-}
-
-const OrtValue* StandAloneKernelContext::GetInputMLValue(int index) const {
-  if (index >= input_count_) {
-    return nullptr;
-  } else {
-    return input_values_[index];
-  }
-}
-
-OrtValue* StandAloneKernelContext::OutputMLValue(int index, const TensorShape& shape) {
-  if (index >= output_count_) {
-    return nullptr;
-  }
-  OrtValue& ort_value = *output_values_[index];
-  if (!ort_value.IsAllocated()) {
-    if (ort_value.IsTensor()) {
-      Tensor::InitOrtValue(ort_value.Type(), shape, allocator_, ort_value);
-    } else if (ort_value.IsTensorSequence()) {
-      auto ml_type = ort_value.Type();
-      auto element_type = ml_type->AsSequenceTensorType()->GetElementType();
-      auto p_sequence = std::make_unique<TensorSeq>(element_type);
-      auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
-      ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
-    } else if (ort_value.IsSparseTensor()) {
-#ifdef DISABLE_SPARSE_TENSORS
-      ORT_THROW("sparse tensor is not supported in this build.");
-#else
-      auto ml_type = ort_value.Type();
-      auto element_type = ml_type->AsSparseTensorType()->GetElementType();
-      SparseTensor::InitOrtValue(element_type, shape, allocator_, ort_value);
-#endif
-    }
-  }
-  return &ort_value;
-}
-
-OrtValue* StandAloneKernelContext::GetOrCreateOutputMLValue(int index) {
-  if (index >= output_count_) {
-    return nullptr;
-  } else {
-    return output_values_[index];
-  }
-}
-
-bool StandAloneKernelContext::TryGetInferredInputShape(int /*index*/, TensorShape& /*shape*/) const {
-  return false;  // no shape inference in eager mode
-}
-
-bool StandAloneKernelContext::TryGetInferredOutputShape(int /*index*/, TensorShape& /*shape*/) const {
-  return false;  // no shape inference in eager mode
-}
-
-int StandAloneKernelContext::InputCount() const {
-  return input_count_;
-}
-
-int StandAloneKernelContext::ImplicitInputCount() const {
-  return 0;
-}
-
-int StandAloneKernelContext::OutputCount() const {
-  return static_cast<int>(output_count_);
-}
-
-Status StandAloneKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
-  *output = allocator_;
-  return Status::OK();
-}
-
-Fence_t StandAloneKernelContext::InputFence(int index) const {
-  if (index >= input_count_) {
-    return nullptr;
-  } else {
-    return input_values_[index]->Fence();
-  }
-}
-
-Fence_t StandAloneKernelContext::ImplicitInputFence(int /*index*/) const {
-  return nullptr;
-}
-
-Fence_t StandAloneKernelContext::OutputFence(int index) const {
-  if (index >= output_count_) {
-    return nullptr;
-  } else {
-    return output_values_[index]->Fence();
-  }
-}
-
-int StandAloneKernelContext::GetDeviceId() const {
-  return 0;
-}
-
-void* StandAloneKernelContext::GetComputeStream() const {
-  return nullptr;
-}
+};  // StandAloneKernelContext
 
 onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, OrtOpAttrType type, OrtOpAttr** op_attr) {
   auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>();
@@ -394,15 +364,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _Outptr_ OrtOp** ort_op) {
   API_IMPL_BEGIN
   auto status = onnxruntime::standalone::CreateOp(info,
-                                               op_name,
-                                               domain,
-                                               version,
-                                               type_constraint_names,
-                                               type_constraint_values,
-                                               type_constraint_count,
-                                               attr_values,
-                                               attr_count,
-                                               ort_op);
+                                                  op_name,
+                                                  domain,
+                                                  version,
+                                                  type_constraint_names,
+                                                  type_constraint_values,
+                                                  type_constraint_count,
+                                                  attr_values,
+                                                  attr_count,
+                                                  ort_op);
   if (status.IsOK()) {
     return nullptr;
   } else {
