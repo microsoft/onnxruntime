@@ -21,7 +21,7 @@ Accelerate ONNX models on Intel CPUs, GPUs and VPUs with ONNX Runtime and the In
 
 Pre-built packages and Docker images are published for  ONNX Runtime with OpenVINO by Intel for each release.
 * OpenVINO-EP Release page: [Latest v4.0 Release](https://github.com/intel/onnxruntime/releases) 
-* Python wheels: [intel/onnxruntime](https://github.com/intel/onnxruntime/releases)
+* Python wheels Ubuntu/Windows: [intel/onnxruntime](https://github.com/intel/onnxruntime/releases)
 * Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
 
 ## Requirements
