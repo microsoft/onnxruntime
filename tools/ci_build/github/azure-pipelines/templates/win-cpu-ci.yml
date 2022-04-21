@@ -93,9 +93,10 @@ jobs:
      $Env:USE_MSVC_STATIC_RUNTIME=1
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
-     python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
+     python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
      python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\requirements.txt
-    displayName: 'Install ONNX'
+     python $(Build.SourcesDirectory)\onnxruntime\test\python\generate_test_data.py generate-data -o $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
+    displayName: 'Install ONNX and Generate Test Data'
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
