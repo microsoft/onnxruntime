@@ -80,7 +80,7 @@ ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CD
 ### Supported Versions
 
 
-ONNX Runtime supports mainstream modern browsers/OS on Windows, Ubuntu, macOS, Android, and iOS. You can check the [compatibility](https://github.com/Microsoft/onnxjs#Compatibility) of ONNX Runtime with modern browsers and operating systems for your desktop and mobile platforms. In-browser inference is possible with [ONNX Runtime Web JavaScript](https://cloudblogs.microsoft.com/opensource/2021/09/02/onnx-runtime-web-running-your-machine-learning-model-in-browser/) that can enable cross-platform portability for web-applications. 
+ONNX Runtime supports mainstream modern browsers/OS on Windows, Ubuntu, macOS, Android, and iOS. You can check the [compatibility](https://github.com/Microsoft/onnxjs#Compatibility) of ONNX Runtime with modern browsers and operating systems for your desktop and mobile platforms. In-browser inference is possible with [ONNX Runtime Web JavaScript](https://cloudblogs.microsoft.com/opensource/2021/09/02/onnx-runtime-web-running-your-machine-learning-model-in-browser/) that can enable cross-platform portability for web-applications. Check out the [ONNX Runtime Web demos!](https://microsoft.github.io/onnxruntime-web-demo/#/) for image recognition, handwriting analysis, real-time emotion detection, object detection, and so on. 
 
 
 
