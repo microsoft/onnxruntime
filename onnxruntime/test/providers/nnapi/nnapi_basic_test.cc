@@ -459,7 +459,15 @@ TEST(NnapiExecutionProviderTest, TestQDQGemm) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-// TODO: add more test param settings for QDQGemm
+TEST(NnapiExecutionProviderTest, TestQDQGemm_2) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      true /* has_bias */,
+                      0 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_2",
+                  {ExpectedEPNodeAssignment::All});
+}
 
 TEST(NnapiExecutionProviderTest, TestQDQMatMul) {
   RunQDQModelTest(BuildQDQMatMulTestCase(

@@ -1617,6 +1617,8 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
       NodeAttrHelper helper(node_unit);
       const auto transB = helper.Get("transB", 0);
+      // For transB == 0, we need to transpose it and add transposed initializer later into nnapi model,
+      // not directly using it here, so add to skip list.
       if (transB == 0)
         model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
 
@@ -1677,7 +1679,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   uint32_t input_2_idx;
   if (transB == 0) {
     Type onnx_mat_b_type;
-    if (!is_quant_matmul)
+    if (!is_quant_matmul && !is_quant_gemm)
       onnx_mat_b_type = Type::TENSOR_FLOAT32;
     else
       onnx_mat_b_type = Type::TENSOR_QUANT8_ASYMM;
