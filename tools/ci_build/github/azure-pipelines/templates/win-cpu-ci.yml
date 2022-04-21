@@ -97,7 +97,7 @@ jobs:
      python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\requirements.txt
     displayName: 'Install ONNX'
 
-  - ${{ if eq(parameters.buildArch, 'x64') }}
+  - ${{ if eq(parameters.buildArch, 'x64') }}:
     - task: PythonScript@0
       displayName: 'Generate Test Data'
       inputs:
