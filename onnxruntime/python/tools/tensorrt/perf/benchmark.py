@@ -1393,9 +1393,9 @@ def output_specs(info, csv_filename):
     ep_option_overrides = json.dumps(info['ep_option_overrides'])
 
     table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6],
-                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'EPOptionOverrides'],
-                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version,
-                                    ep_option_overrides]})
+                          'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'EPOptionOverrides'],
+                          'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version,
+                                      ep_option_overrides]})
     table.to_csv(csv_filename, index=False)
 
 def output_session_creation(results, csv_filename):
