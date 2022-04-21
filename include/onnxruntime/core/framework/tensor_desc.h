@@ -4,9 +4,12 @@
 #pragma once
 
 #include "tensor_shape.h"
-#include "data_types.h"
 
 namespace onnxruntime {
+
+// data_types.h and provider_api.h have this
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
 
 struct TensorDesc {
   MLDataType dtype;

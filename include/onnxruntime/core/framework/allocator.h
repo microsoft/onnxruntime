@@ -63,7 +63,7 @@ class IAllocator {
   /**
    * Optional shape and data type aware Alloc interface.
    */
-  virtual void* Alloc(const TensorDesc& /*desc*/) { return nullptr; }
+  virtual void* AllocWithDesc(const TensorDesc& /*desc*/) { return nullptr; }
 
   virtual void Free(void* p) = 0;
 
