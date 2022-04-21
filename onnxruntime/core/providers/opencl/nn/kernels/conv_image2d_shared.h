@@ -60,8 +60,8 @@ typedef enum MLAS_ACTIVATION_KIND ActivationKind;
       out2 = clamp(out2, (FLOAT4)firstv, (FLOAT4)secondv);                                    \
       out3 = clamp(out3, (FLOAT4)firstv, (FLOAT4)secondv);                                    \
     } else if (activation_type == MlasLeakyReluActivation) {                                  \
-      FLOAT f1 = 0.5 * (1.0f + firstv);                                                       \
-      FLOAT f2 = 0.5 * (1.0f - firstv);                                                       \
+      FLOAT f1 = 0.5f * (1.0f + firstv);                                                       \
+      FLOAT f2 = 0.5f * (1.0f - firstv);                                                       \
       out0 = (FLOAT4)f1 * out0 + (FLOAT4)f2 * fabs(out0);                                     \
       out1 = (FLOAT4)f1 * out1 + (FLOAT4)f2 * fabs(out1);                                     \
       out2 = (FLOAT4)f1 * out2 + (FLOAT4)f2 * fabs(out2);                                     \

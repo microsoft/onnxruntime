@@ -286,9 +286,10 @@ OpenCLImage2DAllocator::OpenCLImage2DAllocator(OpenCLExecutionProvider& exec)
   }
 }
 
-void* OpenCLImage2DAllocator::Alloc(size_t) {
-  // not supported
-  return nullptr;
+void* OpenCLImage2DAllocator::Alloc(size_t n) {
+  TensorShape shape{int64_t(n) / 4, 1};
+  auto desc = Image2DDesc::PackFromTensor(shape);
+  return Alloc(desc);
 }
 
 void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {

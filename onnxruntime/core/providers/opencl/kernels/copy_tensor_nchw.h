@@ -30,6 +30,55 @@ __kernel void CopyBufferNCHWToImage2D(
   }
 }
 
+// launch a grid with total [X = RoundToMultiple(width, k), Y = height] threads,
+// height is not rounded up because threads only continuous in x dimension.
+__kernel void CopyBufferNHWPackHToImage2D(
+    const int width, const int height,  // width = W, height = N*ilDiv(H,4)
+    __global const float* data,
+    const int N, const int H, const int W,
+    __write_only image2d_t output) {
+  int x = get_global_id(0);
+  int y = get_global_id(1);
+
+  if (x < width && y < height) {
+    const int n = (y * 4) / H;
+    const int h = (y * 4) % H;
+    const int w = x;  // every thread handle 4 elements, gather read, vector write
+
+    // indexing into the NHW data
+    const int base_index = n * H * W + h * W + w;
+
+    float4 v = 0;  // NOTE: buffer r/w always assume fp32
+    SAFE_GATHER_LDG_VEC4(v, data, base_index, W, H-h);
+    WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
+  }
+}
+
+// usally H=1,2,3
+//  launch a grid with total [X = RoundToMultiple(width, k), Y = height] threads,
+//  height is not rounded up because threads only continuous in x dimension.
+__kernel void CopyBufferNHWPackWToImage2D(
+    const int width, const int height,  // width = CeilDiv(W,4), height = N*H
+    __global const float* data,
+    const int N, const int H, const int W,
+    __write_only image2d_t output) {
+  int x = get_global_id(0);
+  int y = get_global_id(1);
+
+  if (x < width && y < height) {
+    const int n = y / H;
+    const int h = y % H;
+    const int w = x*4;  // every thread handle 4 elements, gather read, vector write
+
+    // indexing into the NHW data
+    const int base_index = n * H * W + h * W + w;
+
+    float4 v = 0;  // NOTE: buffer r/w always assume fp32
+    SAFE_GATHER_LDG_VEC4(v, data, base_index, 1, W - w);
+    WI_F(output, (int2)(x, y), CONVERT_FLOAT4(v));
+  }
+}
+
 // launch a grid with total [X = RoundToMultiple(width, k), Y = height] threads
 __kernel void CopyImage2DToBufferNCHW(
     int width, int height,  // width = CeilDiv(C,4)*W, height = N*H
@@ -51,5 +100,49 @@ __kernel void CopyImage2DToBufferNCHW(
     // NOTE: buffer r/w always assume fp32
     const float4 v = convert_float4(RI_F(data, (int2)(x, y)));
     SAFE_SCATTER_STG_VEC4(output, base_index, HW, C - c, v);
+  }
+}
+
+//usally H=1,2,3
+// launch a grid with total [X = RoundToMultiple(width, k), Y = height] threads
+__kernel void CopyImage2DPackWToBufferNHW(
+    int width, int height,  // width = CeilDiv(W,4), height = N*H
+    __read_only image2d_t data,
+    __global float* output,
+    int N, int H, int W) {
+  int x = get_global_id(0);
+  int y = get_global_id(1);
+  const float4 v = convert_float4(RI_F(data, (int2)(x, y)));
+  if (x < width && y < height) {
+    const int n = y / H;
+    const int h = y % H ;  // every thread handle 4 elements, vector read, scatter write
+    const int w = x*4;
+
+    // indexing into the NHW data
+    const int base_index = n* H*W + h*W + w;
+    // NOTE: buffer r/w always assume fp32
+    SAFE_SCATTER_STG_VEC4(output, base_index, 1, W-w, v);
+  }
+}
+
+// launch a grid with total [X = RoundToMultiple(width, k), Y = height] threads
+__kernel void CopyImage2DPackHToBufferNHW(
+    int width, int height,  // width = W, height = N*CeilDiv(H,4)
+    __read_only image2d_t data,
+    __global float* output,
+    int N, int H, int W) {
+  int x = get_global_id(0);
+  int y = get_global_id(1);
+  const float4 v = convert_float4(RI_F(data, (int2)(x, y)));
+
+  if (x < width && y < height) {
+    const int n = (y * 4) / H;
+    const int h = (y * 4) % H;  // every thread handle 4 elements, vector read, scatter write
+    const int w = x;
+
+    // indexing into the NHW data
+    const int base_index = n * H * W + h * W + w;    
+    // NOTE: buffer r/w always assume fp32       
+    SAFE_SCATTER_STG_VEC4(output, base_index, W, H - h, v);
   }
 }

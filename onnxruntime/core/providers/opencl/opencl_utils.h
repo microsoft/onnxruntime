@@ -234,20 +234,27 @@ class Image2DDesc {
 
   static Image2DDesc PackFromTensor(const TensorShape& shape) {
     switch (shape.NumDimensions()) {
+      case 0:
       case 1:
         return PackFromTensor1D(shape);
       case 2:
         return PackFromTensor2D(shape);
+      case 3:
+        return PackFromTensor3D(shape);
       case 4:
         return PackFromTensorNCHW(shape);
       case 5:
         return PackFromTensorNCHWc(shape);
       default:
-        return {0, 0};
+        ORT_NOT_IMPLEMENTED("copy with this dimention =" + std::to_string(shape.NumDimensions()));
     }
   }
 
   static Image2DDesc PackFromTensor1D(const TensorShape& shape) {
+      //a scalar will be represented as zero-dimention
+    if (shape.NumDimensions() == 0) {
+      return {1, 1};
+    }
     ORT_ENFORCE(shape.NumDimensions() == 1);
     //
     return {1024, CeilDiv(shape[0], 4 * 1024)};
@@ -255,7 +262,11 @@ class Image2DDesc {
 
   static Image2DDesc PackFromTensor2D(const TensorShape& shape) {
     ORT_ENFORCE(shape.NumDimensions() == 2);
-    return {CeilDiv(shape[0], 4), shape[1]};
+    return {shape[1], CeilDiv(shape[0], 4)};
+  }
+  static Image2DDesc PackFromTensor3D(const TensorShape& shape) {
+    ORT_ENFORCE(shape.NumDimensions() == 3);
+    return {shape[2], CeilDiv(shape[1], 4) * shape[0]};
   }
 
   static Image2DDesc PackFromTensorNCHW(const TensorShape& shape) {
@@ -280,7 +291,18 @@ class Image2DDesc {
     ORT_ENFORCE(c == 4);
     return {Cc * W, N * H};
   }
-
+  static Image2DDesc PackFromMatMulWeight(const TensorShape& shape) {
+    int64_t dim = shape.NumDimensions();
+    ORT_ENFORCE(dim == 3 || dim == 2);
+    dim--;
+    int64_t n = shape[dim--];
+    int64_t k = shape[dim--];
+    int64_t batch = 1;
+    if (dim>=0) {
+      batch = shape[dim];
+    }
+    return {CeilDiv(n, 4), k*batch};
+  }
   static Image2DDesc PackFromConv2DWeight(const TensorShape& shape) {
     ORT_ENFORCE(shape.NumDimensions() == 4);
     int64_t C_o = shape[0];

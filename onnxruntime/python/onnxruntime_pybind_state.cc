@@ -650,13 +650,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kOpenCLExecutionProvider) {
 #if USE_OPENCL
     bool use_fp16 = false;
-    int auto_tuning_level = 1;
+    int auto_tuning_level = 0;
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       const auto& options = it->second;
       for (const auto& [key, value] : options) {
         if(key == "use_fp16" && value == "True") {
           use_fp16 = true;
+        } else if (key == "auto_tune" && value.size()== 1 && value[0] >= '0' && value[0] <= '9') {
+          auto_tuning_level = value[0] - '0';
         }
       }
     }

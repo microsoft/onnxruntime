@@ -18,13 +18,14 @@
 #include "core/providers/opencl/math/clip.h"
 #include "core/providers/opencl/math/elementwise.h"
 #include "core/providers/opencl/nn/conv.h"
+#include "core/providers/opencl/nn/matmul_gemm.h"
 #include "core/providers/opencl/nn/global_average_pool.h"
 #include "core/providers/opencl/nn/relu.h"
 #include "core/providers/opencl/nn/max_pool.h"
 #include "core/providers/opencl/nn/concat.h"
 #include "core/providers/opencl/tensor/shape.h"
 #include "core/providers/opencl/tensor/resize.h"
-
+#define opencl_in_debug_
 namespace onnxruntime {
 namespace opencl {
 
@@ -46,13 +47,17 @@ Status RegisterOpenCLKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 14, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, GlobalAveragePool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, 10, Conv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 1, 10, MatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 11, Conv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 11, MatMul)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 11, Gemm)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 8, 11, MaxPool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 12, MaxPool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 4, 10, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 11, 12, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 13, Concat)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kMSDomain, 1, FusedConv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kMSDomain, 1, FusedMatMul)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 11, 12, Resize)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kOpenCLExecutionProvider, kOnnxDomain, 13, Resize)>,
   };
@@ -354,6 +359,7 @@ Status OpenCLExecutionProvider::OnRunEnd(bool sync_stream) {
 }
 
 IAllocatorUniquePtrToClMem OpenCLExecutionProvider::GetScratchBuffer(size_t nbytes) const {
+  nbytes = std::max<size_t>(nbytes, 32);
   ZoneScopedN("OpenCLExecutionProvider::GetScratchBuffer");
   auto alloc = GetAllocator(0, (OrtMemType)opencl::CLMemType::OPENCL_BUFFER);
   return {
@@ -382,6 +388,11 @@ Status OpenCLExecutionProvider::AfterCLLaunch() const {
   if (flush_after_launch_) {
     ORT_RETURN_IF_CL_ERROR(clFlush(cmd_queue_), "command queue flush failure.");
   }
+#ifdef opencl_in_debug_
+  {
+    ORT_RETURN_IF_CL_ERROR(clFinish(cmd_queue_), "command queue flush failure.");
+  }
+#endif
   return Status::OK();
 }
 
@@ -413,7 +424,11 @@ void OpenCLExecutionProvider::InitCopyKernels() {
   copy_kernels_->LoadKernel("CopyBuffer2DToImage2D");
   copy_kernels_->LoadKernel("CopyImage2DToBuffer1D");
   copy_kernels_->LoadKernel("CopyBufferNCHWToImage2D");
+  copy_kernels_->LoadKernel("CopyBufferNHWPackHToImage2D");
+  copy_kernels_->LoadKernel("CopyBufferNHWPackWToImage2D");
   copy_kernels_->LoadKernel("CopyImage2DToBufferNCHW");
+  copy_kernels_->LoadKernel("CopyImage2DPackHToBufferNHW");
+  copy_kernels_->LoadKernel("CopyImage2DPackWToBufferNHW");
 }
 /*
 #pragma endregion
