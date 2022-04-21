@@ -599,6 +599,7 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
           "QLinearAdd",
           "QLinearMul",
           "Pow",
+          "PRelu",
       });
 }
 
@@ -620,7 +621,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else if (op_type == "Pow") {
     add_activation = false;  // ANEURALNETWORKS_POW does not have activation
     op_code = ANEURALNETWORKS_POW;
-  } else {
+  } else if (op_type == "PRelu") {
+    add_activation = false;  // ANEURALNETWORKS_PRELU does not have activation
+    op_code = ANEURALNETWORKS_PRELU;
+    } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
 
