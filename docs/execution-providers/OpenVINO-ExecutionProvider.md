@@ -20,7 +20,7 @@ Accelerate ONNX models on Intel CPUs, GPUs and VPUs with ONNX Runtime and the In
 ## Install
 
 Pre-built packages and Docker images are published for  ONNX Runtime with OpenVINO by Intel for each release.
-* OpenVINO-EP Release page: [Latest v4.0 Release](https://github.com/intel/onnxruntime/releases)
+* OpenVINO-EP Release page: [Latest v4.0 Release](https://github.com/intel/onnxruntime/releases) 
 * Python wheels: [intel/onnxruntime](https://github.com/intel/onnxruntime/releases)
 * Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
 
@@ -46,6 +46,29 @@ OpenVINO 2022.1.
 
 
 ## Usage
+
+**OpenVINO Environment**
+
+Before running any ort samples(Python/C++/C#) with the OpenVINOExecutionProvider it is must to set up the OpenVINO Environment Variables using the full installer package of OpenVINO.
+Initialize the OpenVINO environment by running the setupvars script as shown below. This is a required step:
+   * For Linux run till OpenVINO 2021.4 version:
+   ```
+      $ source <openvino_install_directory>/bin/setupvars.sh
+   ```
+   * For Linux run from OpenVINO 2022.1 version:
+   ```
+      $ source <openvino_install_directory>/setupvars.sh
+   ```
+   * For Windows run till OpenVINO 2021.4 version:
+   ```
+      C:\ <openvino_install_directory>\bin\setupvars.bat
+   ```
+   * For Windows run from OpenVINO 2022.1 version:
+   ```
+      C:\ <openvino_install_directory>\setupvars.bat
+   ```
+   **Note:** If you are using a dockerfile to use OpenVINO-EP, sourcing OpenVINO won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
+
 
 **C#**
 
