@@ -562,15 +562,6 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if (onnxruntime_USE_TVM)
-  file (GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/tvm/*.h"
-    "${TEST_SRC_DIR}/tvm/*.cc"
-  )
-
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tvm)
-endif()
-
 if(WIN32)
   if (onnxruntime_USE_NUPHAR_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
@@ -1084,6 +1075,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+      target_sources(onnxruntime_shared_lib_test PRIVATE
+        "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc"
+        "${TEST_SRC_DIR}/platform/android/cxa_demangle_test.cc"
+      )
+      target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+    endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
       add_custom_command(
         TARGET onnxruntime_shared_lib_test POST_BUILD

@@ -253,19 +253,21 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   const auto* B_data = reinterpret_cast<const HipT*>(B->template Data<T>());
   auto* Y_data = reinterpret_cast<HipT*>(Y->template MutableData<T>());
 
+  int X_num_dim = static_cast<int>(X_shape.NumDimensions());
+
   // binary elementise kernel requires input pitches
-  TArray<int64_t> lhs_padded_strides(X_shape.NumDimensions());
-  for (int i = -1, lhs_pitch = 1; i >= -(int)X_shape.NumDimensions(); i--) {
-    size_t positive_i = X_shape.NumDimensions() + i;
+  TArray<int64_t> lhs_padded_strides(X_num_dim);
+  for (int i = -1, lhs_pitch = 1; i >= -X_num_dim; i--) {
+    int positive_i = X_num_dim + i;
     lhs_padded_strides[positive_i] = lhs_pitch;
     lhs_pitch *= X_shape[positive_i];
   }
 
   // set pitches for bias so it broadcasts along relevant dimensions
-  TArray<int64_t> rhs_padded_strides(X_shape.NumDimensions());
-  for (int i = -1, rhs_pitch = 1; i >= -(int)X_shape.NumDimensions(); i--) {
-    size_t positive_ix = X_shape.NumDimensions() + i;
-    size_t positive_ib = B_shape.NumDimensions() + i;
+  TArray<int64_t> rhs_padded_strides(X_num_dim);
+  for (int i = -1, rhs_pitch = 1; i >= -X_num_dim; i--) {
+    int positive_ix = X_num_dim + i;
+    int positive_ib = static_cast<int>(B_shape.NumDimensions()) + i;
     if (broadcast_axis <= positive_ix && positive_ix < softmax_axis) {
       rhs_padded_strides[positive_ix] = 0;
       continue;
@@ -274,7 +276,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
     rhs_pitch *= B_shape[positive_ib];
   }
 
-  TArray<fast_divmod> fdm_output_strides(X_shape.NumDimensions());
+  TArray<fast_divmod> fdm_output_strides(X_num_dim);
   for (int i = 0; i < fdm_output_strides.Size(); i++)
     fdm_output_strides[i] = fast_divmod(lhs_padded_strides[i]);
   fast_divmod fdm_H, fdm_C;
@@ -282,7 +284,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   // invoke elementwise add with broadcast kernel
   ::onnxruntime::rocm::BinaryElementWiseImpl(
       stream,
-      (int32_t)X_shape.NumDimensions(),
+      (int32_t)X_num_dim,
       &lhs_padded_strides,
       X_data,
       &rhs_padded_strides,

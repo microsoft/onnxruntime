@@ -8,6 +8,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
@@ -709,7 +710,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
 
 std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
     const std::unordered_map<std::string, int>& extra_domain_to_version,
-    bool allow_released_onnx_opset_only) {
+    const ModelOptions& model_options) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
@@ -739,7 +740,8 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   auto p_model = std::make_unique<onnxruntime::Model>(
       "test", false, ModelMetaData(), PathString(), custom_schema_registries_,
       domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-      DefaultLoggingManager().DefaultLogger(), allow_released_onnx_opset_only);
+      DefaultLoggingManager().DefaultLogger(),
+      model_options);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
@@ -952,7 +954,11 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    auto p_model = !cache_enabled ? BuildGraph({}, allow_released_onnx_opset_only) : cached_model_;
+    const bool strict_shape_type_inference = so.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "1") == "1";
+    const ModelOptions model_options(allow_released_onnx_opset_only,
+                                     strict_shape_type_inference);
+    auto p_model = !cache_enabled ? BuildGraph({}, model_options) : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();

@@ -28,7 +28,8 @@ rocm::INcclService& GetINcclService();
 }
 #endif
 
-void Shutdown_DeleteRegistry();
+void InitializeRegistry();
+void DeleteRegistry();
 
 struct ROCMProviderFactory : IExecutionProviderFactory {
   ROCMProviderFactory(const ROCMExecutionProviderInfo& info)
@@ -179,8 +180,12 @@ struct ROCM_Provider : Provider {
     return std::make_shared<ROCMProviderFactory>(info);
   }
 
+  void Initialize() override {
+    InitializeRegistry();
+  }
+
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
+    DeleteRegistry();
   }
 
 } g_provider;

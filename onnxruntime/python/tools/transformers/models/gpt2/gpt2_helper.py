@@ -4,18 +4,22 @@
 # license information.
 # --------------------------------------------------------------------------
 # This script helps onnx conversion and validation for GPT2 model with past state.
-import os
 import logging
 import torch
 import shutil
 import random
 import numpy
 import time
-import re
 import pickle
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
+
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from float16 import float_to_float16_max_diff
 from onnx_model import OnnxModel
 from fusion_utils import FusionUtils
@@ -261,8 +265,9 @@ class Gpt2Helper:
             return numpy.amax(diff)
 
     @staticmethod
-    def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03):
+    def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03, **kwargs):
         """ Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
+            Note: need kwargs since Gpt2BeamSearchHelper.compare_outputs has an extra parameter model_class
         """
         is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol)
         logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')
@@ -444,6 +449,8 @@ class Gpt2Helper:
             if auto_mixed_precision:
                 Gpt2Helper.auto_mixed_precision(m)
             else:
+                if "keep_io_types" not in kwargs:
+                    kwargs["keep_io_types"] = False
                 m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
@@ -490,10 +497,9 @@ class Gpt2Helper:
         else:
             logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
 
-        if is_weight_fp16_precision:
-            keep_io_types = []
-            node_block_list = []
-        else:
+        keep_io_types = []
+        node_block_list = []
+        if (not is_weight_fp16_precision) and (last_matmul_node is not None):
             # When original weight is float32 precision, keep logits and last MatMul in float32 could get better precision.
             keep_io_types = [logits_output_name]
             node_block_list = [last_matmul_node.name]
