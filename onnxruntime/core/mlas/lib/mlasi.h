@@ -804,20 +804,21 @@ MlasConvDepthwiseKernelAvx2(
 
 #define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
 #define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
+#define MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE        0x00000004    // Only available on ARM64
 
 //
 // Define the post-processing parameters for conv sym: bias and re-quant params
 //
 
 struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
-    const int32_t* Bias;
-    const float* Scale;
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
     float MinimumValue;
     float MaximumValue;
     int32_t OutputZeroPoint;
-    const int32_t* Multiplier;
-    const int32_t* PreShift;
-    const int32_t* PostShift;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
 };
 
 //

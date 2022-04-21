@@ -111,6 +111,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
   std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
+  std::vector<MLAS_REQUANT_PARAM> requant_params(num_gemms);
   std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_procs;
   requant_procs.reserve(num_gemms);
 
@@ -133,12 +134,14 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
     gemm_params[i].PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
 
+    requant_params[i].RequantRoundKind = MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven;
+    requant_params[i].Scale = output_scales.data() + helper.RightScaleOffsets()[i];
+    requant_params[i].Size = output_scales.size();
+    requant_params[i].ZeroPoint = output_offset;
     requant_procs.emplace_back(static_cast<uint8_t*>(y->MutableDataRaw()) + helper.OutputOffsets()[i],
                                static_cast<size_t>(helper.N()),
                                nullptr,
-                               output_scales.data() + helper.RightScaleOffsets()[i],
-                               output_scales.size() > 1,
-                               output_offset,
+                               &requant_params[i],
                                is_output_signed);
     gemm_params[i].OutputProcessor = &(requant_procs[i]);
   }

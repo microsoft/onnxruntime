@@ -491,7 +491,18 @@ MlasConvSym(
 
     int32_t KernelFlags = 0;
 
-    if (Params.PerChannelScale) {
+    bool PerChannelScale;
+    int32_t OutputZeroPoint;
+    const MLAS_REQUANT_PARAM* RequantParam = Params.RequantParam;
+    MLAS_REQUANT_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
+    OutputZeroPoint = RequantParam->ZeroPoint;
+    PerChannelScale = RequantParam->Size > 1;
+
+    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+        KernelFlags |= MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE;
+    }
+
+    if (PerChannelScale) {
         KernelFlags |= MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE;
     }
 
@@ -500,8 +511,7 @@ MlasConvSym(
     }
 
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
-
-    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
+    MlasConvSymSetOutputZeroPoint(PostProcessParams, OutputZeroPoint, Params.InputIsSigned);
 
     const size_t KernelChannelCount = (ConvSymDispatch->KernelChannelCount == 0)
         ? std::numeric_limits<size_t>::max()
@@ -523,10 +533,14 @@ MlasConvSym(
             void* conv_out = static_cast<int8_t*>(Params.Output) + (oc_outside * OutputChannels) + co;
 
             PostProcessParams.Bias = Params.Bias + co;
-            PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? co : 0);
-            PostProcessParams.Multiplier = Params.Multiplier + (Params.PerChannelScale ? co : 0);
-            PostProcessParams.PreShift = Params.PreShift + (Params.PerChannelScale ? co : 0);
-            PostProcessParams.PostShift = Params.PostShift + (Params.PerChannelScale ? co : 0);
+
+            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+                PostProcessParams.Scale = RequantParam->Scale + (PerChannelScale ? co : 0);
+            } else {
+                PostProcessParams.Multiplier = RequantParam->Multiplier + (PerChannelScale ? co : 0);
+                PostProcessParams.PreShift = RequantParam->PreShift + (PerChannelScale ? co : 0);
+                PostProcessParams.PostShift = RequantParam->PostShift + (PerChannelScale ? co : 0);
+            }
 
             for (size_t oc = 0; oc < oc_outside_block_size;) {
 
@@ -570,26 +584,43 @@ MlasConvSymDepthwise(
 
     unsigned KernelFlags = 0;
 
-    if (Params.PerChannelScale) {
+    bool PerChannelScale;
+    int32_t OutputZeroPoint;
+    const MLAS_REQUANT_PARAM* RequantParam = Params.RequantParam;
+    MLAS_REQUANT_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
+    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+        OutputZeroPoint = RequantParam->ZeroPoint;
+        PerChannelScale = RequantParam->Size > 1;
+    } else {
+        OutputZeroPoint = RequantParam->ZeroPoint;
+        PerChannelScale = RequantParam->Size > 1;
+        KernelFlags |= MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE;
+    }
+
+    if (PerChannelScale) {
         KernelFlags |= MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE;
     }
 
     MLAS_CONV_SYM_POST_PROCESS_PARAMS PostProcessParams = {};
-
-    MlasConvSymSetOutputZeroPoint(PostProcessParams, Params.OutputZeroPoint, Params.InputIsSigned);
+    MlasConvSymSetOutputZeroPoint(PostProcessParams, OutputZeroPoint, Params.InputIsSigned);
 
     if ((Params.OutputChannels & 15) == 0) {
         PostProcessParams.Bias = Params.Bias;
-        PostProcessParams.Scale = Params.Scale;
-        PostProcessParams.Multiplier = Params.Multiplier ;
-        PostProcessParams.PreShift = Params.PreShift;
-        PostProcessParams.PostShift = Params.PostShift;
+        if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+            PostProcessParams.Scale = RequantParam->Scale;
+        } else {
+            PostProcessParams.Multiplier = RequantParam->Multiplier;
+            PostProcessParams.PreShift = RequantParam->PreShift;
+            PostProcessParams.PostShift = RequantParam->PostShift;
+        }
+
         if (ConvSymDispatch->Depthwise3x3Proc && Params.KernelSize == 9) {
             ConvSymDispatch->Depthwise3x3Proc(Params.InputIndirection, (int8_t const*)Params.Filter,
                                               Params.OutputChannels, Params.Output,
                                               Params.OutputCount, &PostProcessParams, KernelFlags);
             return;
         }
+
         if (ConvSymDispatch->Depthwise5x5Proc && Params.KernelSize == 25) {
             ConvSymDispatch->Depthwise5x5Proc(Params.InputIndirection, (int8_t const*)Params.Filter,
                                               Params.OutputChannels, Params.Output,
@@ -616,10 +647,13 @@ MlasConvSymDepthwise(
             const size_t ChannelCount = std::min(OutputChannels - ChannelOffset, KernelChannelCount);
 
             PostProcessParams.Bias = Params.Bias + ChannelOffset;
-            PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? ChannelOffset : 0);
-            PostProcessParams.Multiplier = Params.Multiplier + (Params.Multiplier ? ChannelOffset : 0);
-            PostProcessParams.PreShift = Params.PreShift + (Params.PreShift ? ChannelOffset : 0);
-            PostProcessParams.PostShift = Params.PostShift + (Params.PostShift ? ChannelOffset : 0);
+            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+                PostProcessParams.Scale = RequantParam->Scale + (PerChannelScale ? ChannelOffset : 0);
+            } else {
+                PostProcessParams.Multiplier = RequantParam->Multiplier + (PerChannelScale ? ChannelOffset : 0);
+                PostProcessParams.PreShift = RequantParam->PreShift + (PerChannelScale ? ChannelOffset : 0);
+                PostProcessParams.PostShift = RequantParam->PostShift + (PerChannelScale ? ChannelOffset : 0);
+            }
 
             ConvSymDispatch->DepthwiseKernel(
                 InputIndirection,

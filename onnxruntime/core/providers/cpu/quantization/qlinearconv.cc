@@ -740,6 +740,13 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         } else {
           conv_params.InputDirect = input_data + output_start * C;
         }
+
+#if defined(_M_ARM64) || defined(__aarch64__)
+        MLAS_REQUANT_PARAM RequantParam(multipliers.data(), pre_shifts.data(), post_shifts.data(),
+                                        output_scales.size(), Y_zero_point_value);
+#else
+        MLAS_REQUANT_PARAM RequantParam(output_scales.data(), output_scales.size(), Y_zero_point_value);
+#endif
         conv_params.Filter = packed_W_buffer_.get();
         conv_params.Output = worker_output;
         conv_params.InputChannels = static_cast<size_t>(C);
@@ -747,12 +754,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         conv_params.OutputCount = static_cast<size_t>(output_count);
         conv_params.KernelSize = static_cast<size_t>(kernel_size);
         conv_params.Bias = column_sums_.data();
-        conv_params.Scale = output_scales.data();
-        conv_params.Multiplier = multipliers.data();
-        conv_params.PreShift = pre_shifts.data();
-        conv_params.PostShift = post_shifts.data();
-        conv_params.PerChannelScale = output_scales.size() > 1;
-        conv_params.OutputZeroPoint = Y_zero_point_value;
+        conv_params.RequantParam = &RequantParam;
         conv_params.InputIsSigned = std::is_signed<ActType>::value;
 
         if (is_depthwise_conv) {
@@ -873,22 +875,24 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         }
       }
 
+#if defined(_M_ARM64) || defined(__aarch64__)
+      MLAS_REQUANT_PARAM RequantParam(multipliers.data(), pre_shifts.data(), post_shifts.data(),
+                                      output_scales.size(), Y_zero_point_value);
+#else
+      MLAS_REQUANT_PARAM RequantParam(output_scales.data(), output_scales.size(), Y_zero_point_value);
+#endif
+
       MlasRequantizeOutput(
           worker_gemm_output,
           static_cast<size_t>(M),
           worker_output,
           static_cast<size_t>(M),
           Bdata,
-          output_scales.data(),
-          output_scales.size() > 1,
-          Y_zero_point_value,
+          &RequantParam,
           0,
           0,
           static_cast<size_t>(output_count),
-          static_cast<size_t>(M),
-          multipliers.data(),
-          pre_shifts.data(),
-          post_shifts.data());
+          static_cast<size_t>(M));
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count, conv_worker);

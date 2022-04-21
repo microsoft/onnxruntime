@@ -829,6 +829,45 @@ MlasConvSymFixupInputZeroPoint(
     bool InputIsSigned
     );
 
+enum MLAS_REQUANT_ROUND_KIND {
+    MlasRequantRoundNearestEven,
+    MlasRequantRoundNearestUp,
+};
+
+
+/**
+ * @brief Supply parameters to requantize a tensor. It supports 2 modes:
+ **       RequantRoundKind == MlasRequantRoundNearestEven: Scale is used.
+ **       RequantRoundKind == MlasRequantRoundNearestUp: Multiplier, PreShift and PostShift are used.
+ *
+*/
+struct MLAS_REQUANT_PARAM {
+    MLAS_REQUANT_PARAM()=default;
+
+    MLAS_REQUANT_PARAM(const float* Scale,
+                       size_t Size,
+                       int32_t ZeroPoint):
+        RequantRoundKind(MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven),
+        Scale(Scale), Size(Size), ZeroPoint(ZeroPoint){}
+
+    MLAS_REQUANT_PARAM(const int32_t* Multiplier,
+                       const int32_t* PreShift,
+                       const int32_t* PostShift,
+                       size_t Size,
+                       int32_t ZeroPoint):
+        RequantRoundKind(MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp),
+        Multiplier(Multiplier), PreShift(PreShift), PostShift(PostShift),
+        Size(Size), ZeroPoint(ZeroPoint){}
+
+    MLAS_REQUANT_ROUND_KIND RequantRoundKind;
+    const float* Scale;
+    const int32_t* Multiplier;
+    const int32_t* PreShift;
+    const int32_t* PostShift;
+    size_t Size;
+    int32_t ZeroPoint;
+};
+
 struct MLAS_CONV_SYM_PARAMS {
     const void* InputDirect;
     const void* const* InputIndirection;
@@ -839,13 +878,8 @@ struct MLAS_CONV_SYM_PARAMS {
     size_t OutputCount;
     size_t KernelSize;
     const int32_t* Bias;
-    const float* Scale;
-    bool PerChannelScale;
-    int32_t OutputZeroPoint;
+    const MLAS_REQUANT_PARAM* RequantParam;
     bool InputIsSigned;
-    const int32_t* Multiplier;
-    const int32_t* PreShift;
-    const int32_t* PostShift;
 };
 
 void
@@ -1130,29 +1164,6 @@ MlasQuantizeLinear(
     OutputType ZeroPoint
     );
 
-enum MLAS_REQUANT_ROUND_KIND {
-    MlasRequantRoundNearestEven,
-    MlasRequantRoundNearestUp,
-};
-
-struct MLAS_REQUANT_PARAM {
-    MLAS_REQUANT_ROUND_KIND RequantRoundKind;
-    union {
-        struct {
-            const float* Scale;
-            size_t Size;
-            int32_t ZeroPoint;
-        } RoundNearestEven;
-        struct {
-            const const int32_t* Multiplier;
-            const const int32_t* PreShift;
-            const const int32_t* PostShift;
-            size_t Size;
-            int32_t ZeroPoint;
-        } RoundNearestUp;
-    } Params;
-};
-
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
  *        optionally adding the supplied bias
@@ -1193,7 +1204,7 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
         void* Output,
         size_t OutputLeadingDimension,
         const int32_t* Bias,
-        MLAS_REQUANT_PARAM* RequantParam;
+        const MLAS_REQUANT_PARAM* RequantParam,
         bool OutputIsSigned)
         : Output_(Output),
           OutputLeadingDimension_(OutputLeadingDimension),
@@ -1224,7 +1235,7 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
     void* Output_;
     size_t OutputLeadingDimension_;
     const int32_t* Bias_;
-    MLAS_REQUANT_PARAM* RequantParam_;
+    const MLAS_REQUANT_PARAM* RequantParam_;
     bool OutputIsSigned_;
 };
 

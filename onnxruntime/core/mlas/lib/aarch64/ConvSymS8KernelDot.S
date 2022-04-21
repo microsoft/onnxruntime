@@ -19,6 +19,7 @@ Abstract:
 #include "AssembleDotProduct.h"
 
         .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
+        .equ    .LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE, 4
 
 //
 // Stack frame layout for the symmetric convolution kernel.
@@ -96,13 +97,14 @@ Return Value:
         add     x17,x16,x5              // x17 -> C2
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         csel    x17,x16,x17,ls          // if OutputCount <= 2  x17/C2 -> C1
-        ldr     x19,[x8,#.LConvSymPostProcessParams_Multiplier]
         bic     x4,x4,3
         cmp     x7,4                    // OutputCount < 4 ?
         ldr     w10,[sp,#.LConvSymFrame_KernelFlags]
         add     x5,x17,x5               // x5 -> C3
-        ldr     x21,[x8,#.LConvSymPostProcessParams_PreShift]
+        ldr     x19,[x8,#.LConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
+        ldr     x20,[x8,#.LConvSymPostProcessParams_Multiplier]
+        ldr     x21,[x8,#.LConvSymPostProcessParams_PreShift]
         ldr     x22,[x8,#.LConvSymPostProcessParams_PostShift]
 
 
@@ -355,16 +357,15 @@ InChLoopEpilogue:
         b.hi    KernelSizeLoop
 
 Requantize:
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
+        beq     FixedPointScale
+FloatPointScale:
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValue
-        ldp     q0,q1,[x19],32          // load multiplier vector
+        ldp     q0,q1,[x19],32          // load scale vector
         ldp     q2,q3,[x19],32
-        ldp     q4,q5,[x20],32          // load multiplier vector
-        ldp     q6,q7,[x20],32
-        ldp     q8,q9,[x21],32          // load multiplier vector
-        ldp     q10,q11,[x21],32
-        b       AccumulatorsToFloat
+        b       ScaleWithFloatPoint
 
 BroadcastScaleValue:
         ld1r    {v0.4s},[x19]           // load scale Value
@@ -372,17 +373,86 @@ BroadcastScaleValue:
         mov     v2.16b, v0.16b
         mov     v3.16b, v0.16b
 
-        ld1r    {v4.4s},[x20]           // load scale Value
+ScaleWithFloatPoint:
+        scvtf   v16.4s,v16.4s           // convert to float
+        scvtf   v17.4s,v17.4s
+        scvtf   v18.4s,v18.4s
+        scvtf   v19.4s,v19.4s
+        scvtf   v20.4s,v20.4s
+        scvtf   v21.4s,v21.4s
+        scvtf   v22.4s,v22.4s
+        scvtf   v23.4s,v23.4s
+        scvtf   v24.4s,v24.4s
+        scvtf   v25.4s,v25.4s
+        scvtf   v26.4s,v26.4s
+        scvtf   v27.4s,v27.4s
+        scvtf   v28.4s,v28.4s
+        scvtf   v29.4s,v29.4s
+        scvtf   v30.4s,v30.4s
+        scvtf   v31.4s,v31.4s
+        fmul    v16.4s,v16.4s,v0.4s     // multiply by scale
+        fmul    v17.4s,v17.4s,v0.4s
+        fmul    v18.4s,v18.4s,v0.4s
+        fmul    v19.4s,v19.4s,v0.4s
+        fmul    v20.4s,v20.4s,v1.4s
+        fmul    v21.4s,v21.4s,v1.4s
+        fmul    v22.4s,v22.4s,v1.4s
+        fmul    v23.4s,v23.4s,v1.4s
+        fmul    v24.4s,v24.4s,v2.4s
+        fmul    v25.4s,v25.4s,v2.4s
+        fmul    v26.4s,v26.4s,v2.4s
+        fmul    v27.4s,v27.4s,v2.4s
+        fmul    v28.4s,v28.4s,v3.4s
+        fmul    v29.4s,v29.4s,v3.4s
+        fmul    v30.4s,v30.4s,v3.4s
+        fmul    v31.4s,v31.4s,v3.4s
+        fcvtns  v16.4s,v16.4s           // convert to int
+        fcvtns  v17.4s,v17.4s
+        fcvtns  v18.4s,v18.4s
+        fcvtns  v19.4s,v19.4s
+        fcvtns  v20.4s,v20.4s
+        fcvtns  v21.4s,v21.4s
+        fcvtns  v22.4s,v22.4s
+        fcvtns  v23.4s,v23.4s
+        fcvtns  v24.4s,v24.4s
+        fcvtns  v25.4s,v25.4s
+        fcvtns  v26.4s,v26.4s
+        fcvtns  v27.4s,v27.4s
+        fcvtns  v28.4s,v28.4s
+        fcvtns  v29.4s,v29.4s
+        fcvtns  v30.4s,v30.4s
+        fcvtns  v31.4s,v31.4s
+        b Quantize
+
+FixedPointScale:
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
+        beq     BroadcastFixedPointValue
+        ldp     q0,q1,[x20],32          // load multiplier vector
+        ldp     q2,q3,[x20],32
+        ldp     q4,q5,[x21],32          // load preshift vector
+        ldp     q6,q7,[x21],32
+        ldp     q8,q9,[x22],32          // load postshift vector
+        ldp     q10,q11,[x22],32
+        b       ScaleWithFixedPoint
+
+BroadcastFixedPointValue:
+        ld1r    {v0.4s},[x20]           // load multiplier Value
+        mov     v1.16b, v0.16b
+        mov     v2.16b, v0.16b
+        mov     v3.16b, v0.16b
+
+        ld1r    {v4.4s},[x21]           // load preshift Value
         mov     v5.16b, v4.16b
         mov     v6.16b, v4.16b
         mov     v7.16b, v4.16b
 
-        ld1r    {v8.4s},[x21]           // load scale Value
+        ld1r    {v8.4s},[x22]           // load postshift Value
         mov     v9.16b, v8.16b
         mov     v10.16b, v8.16b
         mov     v11.16b, v8.16b
 
-AccumulatorsToFloat:
+ScaleWithFixedPoint:
         sqshl   v16.4s, v16.4s, v0.4s          // preshift
         sqshl   v17.4s, v17.4s, v0.4s
         sqshl   v18.4s, v18.4s, v0.4s
@@ -432,6 +502,7 @@ AccumulatorsToFloat:
         srshl   v30.4s,v30.4s, v11.4s
         srshl   v31.4s,v31.4s, v11.4s
 
+Quantize:
         sqxtn   v16.4h,v16.4s
         sqxtn   v17.4h,v17.4s
         sqxtn   v18.4h,v18.4s

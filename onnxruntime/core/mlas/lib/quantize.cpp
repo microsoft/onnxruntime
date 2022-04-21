@@ -395,6 +395,7 @@ MlasRequantizeOutput(
     size_t InputLeadingDimension,
     OutputType* Output,
     size_t OutputLeadingDimension,
+    const int32_t* Bias,
     const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
@@ -412,9 +413,9 @@ MlasRequantRoundKind RequantRoundKind = RequantParam->RequantRoundKind;
 #endif
     }
 
-    const float* Scale = RequantParam->RoundNearestEven.Scale;
-    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
-    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
+    const float* Scale = RequantParam->Scale;
+    bool PerColumnScale = RequantParam->Size > 1;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->ZeroPoint);
 
     const __m128 PerMatrixScaleVector = PerColumnScale ? _mm_setzero_ps() : _mm_load1_ps(Scale);
     const __m128 MinimumValueVector = _mm_set1_ps(float(std::numeric_limits<OutputType>::lowest() - ZeroPoint));
@@ -647,22 +648,19 @@ MlasRequantizeOutputRoundNearestUp(
     size_t InputLeadingDimension,
     OutputType* Output,
     size_t OutputLeadingDimension,
-    const MLAS_REQUANT_RNDNU_PARAM* RequantParam,
+    const int32_t* Bias,
+    const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
-    size_t CountN,
+    size_t CountN
     )
 {
-    const float* Scale = RequantParam->RoundNearestEven.Scale;
-    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
-    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
-
-    bool PerColumnScale = RequantParam->RoundNearestUp.Size > 1;
-    const int32_t* Multiplier = RequantParam->RoundNearestUp.Multiplier;
-    const int32_t* PreShift = RequantParam->RoundNearestUp.PreShift;
-    const int32_t* PostShift = RequantParam->RoundNearestUp.PostShift;
-    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestUp.ZeroPoint);
+    bool PerColumnScale = RequantParam->Size > 1;
+    const int32_t* Multiplier = RequantParam->Multiplier;
+    const int32_t* PreShift = RequantParam->PreShift;
+    const int32_t* PostShift = RequantParam->PostShift;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->ZeroPoint);
 
     const int32x4_t PerTensorMultiplierVector = PerColumnScale ? vdupq_n_s32(0) : vld1q_dup_s32(Multiplier);
     const int32x4_t PerTensorPreShiftVector = PerColumnScale ? vdupq_n_s32(0) : vld1q_dup_s32(PreShift);
@@ -674,7 +672,9 @@ MlasRequantizeOutputRoundNearestUp(
         Bias += StartN;
     }
     if (PerColumnScale) {
-        Scale += StartN;
+        Multiplier += StartN;
+        PreShift += StartN;
+        PostShift += StartN;
     }
 
     Input += StartM * InputLeadingDimension + StartN;
@@ -687,7 +687,9 @@ MlasRequantizeOutputRoundNearestUp(
     while (CountM-- > 0) {
 
         const int32_t* bias = Bias;
-        const float* scale = PerColumnScale ? Scale : nullptr;
+        const int32_t* multiplier = PerColumnScale ? Multiplier : nullptr;
+        const int32_t* preShift = PerColumnScale ? PreShift : nullptr;
+        const int32_t* postShift = PerColumnScale ? PostShift : nullptr;
         size_t n = CountN;
 
         auto* RowInput = Input;
@@ -719,13 +721,13 @@ MlasRequantizeOutputRoundNearestUp(
                 bias += 16;
             }
 
-            if (scale != nullptr) {
+            if (PerColumnScale) {
                 int32x4x4_t PerColumnPreShiftVector;
-                PerColumnPreShiftVector.val[0] = vld1q_s32(&PreShift[0]);
-                PerColumnPreShiftVector.val[1] = vld1q_s32(&PreShift[4]);
-                PerColumnPreShiftVector.val[2] = vld1q_s32(&PreShift[8]);
-                PerColumnPreShiftVector.val[3] = vld1q_s32(&PreShift[12]);
-                PreShift += 16;
+                PerColumnPreShiftVector.val[0] = vld1q_s32(&preShift[0]);
+                PerColumnPreShiftVector.val[1] = vld1q_s32(&preShift[4]);
+                PerColumnPreShiftVector.val[2] = vld1q_s32(&preShift[8]);
+                PerColumnPreShiftVector.val[3] = vld1q_s32(&preShift[12]);
+                preShift += 16;
 
                 IntegerVector.val[0] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
                 IntegerVector.val[1] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
@@ -733,11 +735,11 @@ MlasRequantizeOutputRoundNearestUp(
                 IntegerVector.val[3] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
 
                 int32x4x4_t PerColumnMultiplierVector;
-                PerColumnMultiplierVector.val[0] = vld1q_s32(&Multiplier[0]);
-                PerColumnMultiplierVector.val[1] = vld1q_s32(&Multiplier[4]);
-                PerColumnMultiplierVector.val[2] = vld1q_s32(&Multiplier[8]);
-                PerColumnMultiplierVector.val[3] = vld1q_s32(&Multiplier[12]);
-                Multiplier += 16;
+                PerColumnMultiplierVector.val[0] = vld1q_s32(&multiplier[0]);
+                PerColumnMultiplierVector.val[1] = vld1q_s32(&multiplier[4]);
+                PerColumnMultiplierVector.val[2] = vld1q_s32(&multiplier[8]);
+                PerColumnMultiplierVector.val[3] = vld1q_s32(&multiplier[12]);
+                multiplier += 16;
 
                 IntegerVector.val[0] = vqdmulhq_s32(IntegerVector.val[0], PerColumnMultiplierVector.val[0]);
                 IntegerVector.val[1] = vqdmulhq_s32(IntegerVector.val[0], PerColumnMultiplierVector.val[0]);
@@ -746,11 +748,11 @@ MlasRequantizeOutputRoundNearestUp(
 
 
                 int32x4x4_t PerColumnPostShiftVector;
-                PerColumnPostShiftVector.val[0] = vld1q_s32(&PostShift[0]);
-                PerColumnPostShiftVector.val[1] = vld1q_s32(&PostShift[4]);
-                PerColumnPostShiftVector.val[2] = vld1q_s32(&PostShift[8]);
-                PerColumnPostShiftVector.val[3] = vld1q_s32(&PostShift[12]);
-                PostShift += 16;
+                PerColumnPostShiftVector.val[0] = vld1q_s32(&postShift[0]);
+                PerColumnPostShiftVector.val[1] = vld1q_s32(&postShift[4]);
+                PerColumnPostShiftVector.val[2] = vld1q_s32(&postShift[8]);
+                PerColumnPostShiftVector.val[3] = vld1q_s32(&postShift[12]);
+                postShift += 16;
 
                 IntegerVector.val[0] = vrshlq_s32(IntegerVector.val[0], PerColumnPostShiftVector.val[0]);
                 IntegerVector.val[1] = vrshlq_s32(IntegerVector.val[0], PerColumnPostShiftVector.val[0]);
@@ -840,22 +842,22 @@ MlasRequantizeOutputRoundNearestUp(
             int32x4_t PreShiftVector;
             int32x4_t PostShiftVector;
 
-            if (scale != nullptr) {
+            if (PerColumnScale) {
 
                 if (n >= 4) {
-                    MultiplierVector = vld1q_s32(Multiplier);
-                    PreShiftVector = vld1q_s32(PreShift);
-                    PostShiftVector = vld1q_s32(PostShift);
-                    Multiplier += 4;
-                    PreShift += 4;
-                    PostShift += 4;
+                    MultiplierVector = vld1q_s32(multiplier);
+                    PreShiftVector = vld1q_s32(preShift);
+                    PostShiftVector = vld1q_s32(postShift);
+                    multiplier += 4;
+                    preShift += 4;
+                    postShift += 4;
                 } else {
-                    MultiplierVector = vld1q_dup_s32(Multiplier);
-                    PreShiftVector = vld1q_dup_s32(PreShift);
-                    PostShiftVector = vld1q_dup_s32(PostShift);
-                    Multiplier += 1;
-                    PreShift += 1;
-                    PostShift += 1;
+                    MultiplierVector = vld1q_dup_s32(multiplier);
+                    PreShiftVector = vld1q_dup_s32(preShift);
+                    PostShiftVector = vld1q_dup_s32(postShift);
+                    multiplier += 1;
+                    preShift += 1;
+                    postShift += 1;
                 }
 
             } else {
@@ -920,16 +922,17 @@ MlasRequantizeOutputRoundNearestEven(
     size_t InputLeadingDimension,
     OutputType* Output,
     size_t OutputLeadingDimension,
-    MLAS_REQUANT_PARAM* RequantParam,
+    const int32_t* Bias,
+    const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN
     )
 {
-    const float* Scale = RequantParam->RoundNearestEven.Scale;
-    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
-    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
+    const float* Scale = RequantParam->Scale;
+    bool PerColumnScale = RequantParam->Size > 1;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->ZeroPoint);
     const float32x4_t PerMatrixScaleVector = PerColumnScale ? vdupq_n_f32(0) : vld1q_dup_f32(Scale);
     const int16x8_t ZeroPointVector = vdupq_n_s16(ZeroPoint);
 
@@ -1163,20 +1166,21 @@ MlasRequantizeOutput(
     size_t InputLeadingDimension,
     OutputType* Output,
     size_t OutputLeadingDimension,
-    const MLAS_REQUANT_RNDNU_PARAM* RequantParam,
+    const int32_t* Bias,
+    const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
-    size_t CountN,
+    size_t CountN
     )
 {
-    if(RequantParam.RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven)
+    if(RequantParam->RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven)
     {
-        return MlasRequantizeOutputRoundNearestEven(Input, InputLeadingDimension, Output, OutputLeadingDimension,
+        return MlasRequantizeOutputRoundNearestEven(Input, InputLeadingDimension, Output, OutputLeadingDimension, Bias,
                                                     RequantParam, StartM, StartN, CountM, CountN);
     } else {
-        return MlasRequantizeOutputRoundNearestUp(Input, InputLeadingDimension, Output, OutputLeadingDimension,
-                                                    RequantParam, StartM, StartN, CountM, CountN);
+        return MlasRequantizeOutputRoundNearestUp(Input, InputLeadingDimension, Output, OutputLeadingDimension, Bias,
+                                                  RequantParam, StartM, StartN, CountM, CountN);
     }
 }
 
@@ -1207,9 +1211,9 @@ MlasRequantizeOutput(
 #endif
     }
 
-    const float* Scale = RequantParam->RoundNearestEven.Scale;
-    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
-    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
+    const float* Scale = RequantParam->Scale;
+    bool PerColumnScale = RequantParam->Size > 1;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->ZeroPoint);
 
     const float PerMatrixScaleValue = PerColumnScale ? 0.0f : *Scale;
     const float MinimumValue = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
@@ -1286,7 +1290,7 @@ MlasRequantizeOutput<int8_t>(
     int8_t* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
-    MLAS_REQUANT_PARAM* RequantParam,
+    const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -1302,7 +1306,7 @@ MlasRequantizeOutput<uint8_t>(
     uint8_t* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
-    MLAS_REQUANT_PARAM* RequantParam,
+    const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
