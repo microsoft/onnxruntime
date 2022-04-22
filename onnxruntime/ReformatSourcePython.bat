@@ -2,11 +2,13 @@
 :: Licensed under the MIT License.
 
 :: Before running this, please make sure python.exe is in path, and black is installed like the following
-::    pip install --upgrade black
+::    pip install --upgrade black isort
 
 :: For more info about black, see https://github.com/psf/black
 
+python -m isort --profile black ./python
+python -m isort --profile black ./test
 python -m black ./python
 python -m black ./test
 
-if errorlevel 1 echo please install python, then pip install black
+if errorlevel 1 echo please install python, then pip install --upgrade black isort
