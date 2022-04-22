@@ -6,8 +6,8 @@
 
 :: For more info about black, see https://github.com/psf/black
 
-python -m isort --profile black ./python
-python -m isort --profile black ./test
+python -m isort ./python
+python -m isort ./test
 python -m black ./python
 python -m black ./test
 
