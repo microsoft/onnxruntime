@@ -185,7 +185,7 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
   const size_t N = static_cast<size_t>(shape[1]);
   const size_t K = static_cast<size_t>(shape[2]);
 
-  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_ * 4))) {
+  if ((shape[0] != num_directions_) || (N != static_cast<size_t>(hidden_size_) * 4)) {
     return Status::OK();
   }
 

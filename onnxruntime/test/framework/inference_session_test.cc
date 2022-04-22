@@ -99,7 +99,10 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         kFuseTest,
                         1,
                         kFuseExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder(),
+                        // there's no OpSchema so there's nothing to validate the type constraint against and it
+                        // will just be ignored
+                        // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
 Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
@@ -169,7 +172,7 @@ static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vecto
                           const std::vector<float>& expected_values);
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
-//static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
+// static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
@@ -178,7 +181,8 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
                                     IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                    model_specific_functions, DefaultLoggingManager().DefaultLogger());
+                                    model_specific_functions, DefaultLoggingManager().DefaultLogger(),
+                                    ModelOptions(true, true));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -212,8 +216,7 @@ template <typename T = float>
 void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
                    const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor.Shape()));
+  ASSERT_EQ(expected_shape, tensor.Shape());
   const std::vector<T> found(tensor.template Data<T>(),
                              tensor.template Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
@@ -573,7 +576,9 @@ TEST(InferenceSessionTests, ModelMetadata) {
   }
 }
 #endif
-TEST(InferenceSessionTests, CheckRunLogger) {
+
+// TODO: move it to a new executable file
+TEST(InferenceSessionTests, DISABLED_CheckRunLogger) {
   SessionOptions so;
 
   so.session_logid = "CheckRunLogger";
@@ -662,7 +667,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if defined(USE_CUDA) && !defined(ENABLE_TRAINING) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
@@ -771,7 +776,8 @@ TEST(InferenceSessionTests, PreAllocateOutputVector) {
   RunModel(session_object, run_options, is_preallocate_output_vec);
 }
 
-TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
+//TODO: move it to a new executable file
+TEST(InferenceSessionTests, DISABLED_ConfigureVerbosityLevel) {
   SessionOptions so;
 
   so.session_logid = "ConfigureVerbosityLevel";
@@ -1410,11 +1416,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_1};
         std::vector<onnxruntime::NodeArg*> outputs = {&node_2};
         auto& cast_node = graph.AddNode("cast_1", "Cast", "node 2", inputs, outputs);
-        ONNX_NAMESPACE::AttributeProto to;
-        to.set_name("to");
-        to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-        to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-        cast_node.AddAttribute("to", to);
+        cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
       }
       {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_2, &data_0};
@@ -1460,11 +1462,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_if_input};
     auto& cast_node = graph.AddNode("cast_9", "Cast", "node 2", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
 
   std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
@@ -1598,11 +1596,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_1};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_0__value_2};
     auto& cast_node = graph.AddNode("graph_0__cast_0", "Cast", "cast node in main graph", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
   {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_2, &input_0};
@@ -1773,8 +1767,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
+  ASSERT_EQ(expected_shape, rtensor.Shape());
   for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
@@ -1816,8 +1809,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     std::vector<int64_t> truncated_output_dims = Y_dims;
     truncated_output_dims[0] = truncated_len;
     TensorShape truncated_shape(truncated_output_dims);
-    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-    ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&truncated_shape), *reinterpret_cast<const std::vector<int64_t>*>(&truncated_rtensor.Shape()));
+    ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
     auto seq_output_stride = truncated_shape.SizeFromDimension(1);
     for (int i = 0; i < truncated_shape.Size(); ++i)
       EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
@@ -1932,23 +1924,13 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   }
 }
 
-// fallback to lenient merging of shape info if model opset is not the latest
-TEST(InferenceSessionTests, TestLenientShapeInferencing) {
-  // latest opset should fail
+TEST(InferenceSessionTests, TestStrictShapeInference) {
   std::vector<int64_t> input_shape{2, 2};
   std::vector<float> input_data{0.f, 1.f, 2.f, 3.f};
   std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
   std::vector<int64_t> output_data{2, 2};
 
-  OpTester latest_opset("Shape", -1);  // use latest opset for shape inference errors
-  latest_opset.AddInput("data", input_shape, input_data);
-  latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
-                   "Mismatch between number of source and target dimensions. Source=1 Target=2");
-
-  // older opset should allow the mismatch with a warning.
   // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
-  // This should result in a warning log message but successful run.
   class OpTesterWithReshape : public OpTester {
    public:
     OpTesterWithReshape() : OpTester("Shape", 7) {
@@ -1975,13 +1957,23 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
     }
   };
 
-  OpTesterWithReshape old_opset;
+  OpTesterWithReshape tester;
 
-  old_opset.AddInput("data", input_shape, input_data);
-  old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  // TensorRT doesn't handle Unsqueeze
-  // OpenVINO: Disabled temporarily
-  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  tester.AddInput("data", input_shape, input_data);
+  tester.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  const std::unordered_set<string> excluded_provider_types = {
+      kTensorrtExecutionProvider,   // Doesn't handle Unsqueeze.
+      kOpenVINOExecutionProvider};  // Disabled temporarily.
+
+  // This should result in a warning log message but successful run.
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "Mismatch between number of source and target dimensions. Source=1 Target=2",
+             excluded_provider_types);
 }
 
 #ifdef USE_CUDA
@@ -2375,8 +2367,9 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
   }
 };
 
+// TODO: move it
 // Test 1: env created WITHOUT global tp / use per session tp (default case): in this case per session tps should be in use
-TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
+TEST(InferenceSessionTests, DISABLED_CheckIfPerSessionThreadPoolsAreBeingUsed) {
   SessionOptions so;
   so.use_per_session_threads = true;
 
@@ -2415,7 +2408,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
 }
 
 // Test 2: env created with global tp / DONT use per session tp: in this case global tps should be in use
-TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
+TEST(InferenceSessionTests, DISABLED_CheckIfGlobalThreadPoolsAreBeingUsed) {
   SessionOptions so;
   so.use_per_session_threads = false;
 
@@ -2453,7 +2446,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
 }
 
 // Test 3: env created with global tp / use per session tp: in this case per session tps should be in use
-TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
+TEST(InferenceSessionTests, DISABLED_CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   SessionOptions so;
   so.use_per_session_threads = true;
 
@@ -2500,7 +2493,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
 }
 
 // Test 4: env created WITHOUT global tp / DONT use per session tp --> this should throw an exception
-TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
+TEST(InferenceSessionTests, DISABLED_InvalidSessionEnvCombination) {
   SessionOptions so;
   so.use_per_session_threads = false;
 
@@ -2537,7 +2530,7 @@ class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
 };
 
 // Ensure sessions use the same allocator. It uses ORT created allocator.
-TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
+TEST(InferenceSessionTests, DISABLED_AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2547,12 +2540,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2582,7 +2575,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
 }
 
 // Ensure sessions don't use the same allocator. It uses ORT created allocator.
-TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
+TEST(InferenceSessionTests, DISABLED_AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2592,12 +2585,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2634,7 +2627,7 @@ class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
   }
 };
 
-TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
+TEST(InferenceSessionTests, DISABLED_InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2653,7 +2646,7 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
 
   OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
-  CreateMLValue<float>({3, 2}, input_data_vec.data(), mem_info, &val_to_share);
+  CreateMLValue<float>(std::array<int64_t, 2>{3, 2}, input_data_vec.data(), mem_info, &val_to_share);
 
   // create sessions to share the allocator
   SessionOptions so1;
@@ -2709,7 +2702,7 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
 void RunModelWithDenormalAsZero(InferenceSession& session_object,
                                 const RunOptions& run_options,
                                 bool set_denormal_as_zero) {
-  const float denormal_float = 1e-38f;
+  constexpr float denormal_float = 1e-38f;
 
   // prepare input X
   std::vector<int64_t> dims_mul{3, 2};
@@ -2744,9 +2737,9 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
 
 void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp,
                                         bool set_denormal_as_zero) {
-  const int num_tasks = 4;
-  const float denormal_float = 1e-38f;
-  const double denormal_double = 1e-308;
+  constexpr int num_tasks = 4;
+  constexpr float denormal_float = 1e-38f;
+  constexpr double denormal_double = 1e-308;
 
   std::array<float, num_tasks> input_float;
   input_float.fill(denormal_float);
@@ -2766,7 +2759,7 @@ void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp
 }
 
 // test global thread pool with setting denormal as zero
-TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
+TEST(InferenceSessionTests, DISABLED_GlobalThreadPoolWithDenormalAsZero) {
   // test if denormal-as-zero mode is supported
   if (!SetDenormalAsZero(false)) {
     return;
@@ -2795,9 +2788,6 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session{so, *env};
@@ -2809,20 +2799,15 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(env->GetIntraOpThreadPool(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(env->GetInterOpThreadPool(), true);
 
   // Set back to default.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 }
 
 // test inter thread pool with setting denormal as zero
-TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
+TEST(InferenceSessionTests, DISABLED_InterThreadPoolWithDenormalAsZero) {
   // test if denormal-as-zero mode is supported
   if (!SetDenormalAsZero(false)) {
     return;
@@ -2845,9 +2830,6 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session1{so, *env};
@@ -2859,9 +2841,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session1, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session1.GetIntraOpThreadPoolToUse(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
 
   // inference session without denormal as zero.
@@ -2869,9 +2849,6 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 
   InferenceSessionTestGlobalThreadPools session2{so, *env};
@@ -2881,9 +2858,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // Since it's parallel, it runs on threads.
   RunModelWithDenormalAsZero(session2, run_options, false);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 

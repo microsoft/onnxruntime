@@ -9,10 +9,12 @@ import os
 import datetime
 # ingest from dataframe
 import pandas
-from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.data import (
+    DataFormat,
+    KustoConnectionStringBuilder,
+)
 from azure.kusto.ingest import (
     IngestionProperties,
-    DataFormat,
     ReportLevel,
     QueuedIngestClient,
 )

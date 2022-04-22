@@ -16,7 +16,7 @@ using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
 // TODO: update OrtMemoryInfo, use unordered_set instead
 using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
-const int DEFAULT_CPU_ALLOCATOR_DEVICE_ID = 0;
+constexpr int DEFAULT_CPU_ALLOCATOR_DEVICE_ID = 0;
 
 struct AllocatorCreationInfo {
   AllocatorCreationInfo(AllocatorFactory device_alloc_factory,

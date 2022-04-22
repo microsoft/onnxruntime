@@ -74,9 +74,9 @@ class TensorMemoryBufferReference : public winrt::implements<
   //                  successful creation of IMemoryBufferReferences in the closed state.
   TensorMemoryBufferReference(
       std::vector<int64_t> shape,
-      std::shared_ptr<TensorResources<T>> tensorResources) : m_tensorResources(tensorResources),
-                                                             m_handlers(),
-                                                             m_shape(shape) {}
+      std::shared_ptr<TensorResources<T>> tensorResources) : m_shape(shape),
+                                                             m_tensorResources(tensorResources),
+                                                             m_handlers() {}
 
   uint32_t Capacity() const try {
     uint32_t uCapacity = 0;

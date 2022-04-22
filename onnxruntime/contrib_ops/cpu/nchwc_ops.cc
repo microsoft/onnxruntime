@@ -5,11 +5,12 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
+using ConvPadVector = ConvAttributes::ConvPadVector;
 namespace contrib {
 
 Status ReorderInput::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
-  const auto& X_shape = X->Shape().GetDims();
+  const auto X_shape = X->Shape().GetDims();
   const auto X_rank = X_shape.size();
   ORT_ENFORCE(X_rank == 4);
 
@@ -24,7 +25,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
   const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
   const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
 
-  std::vector<int64_t> Y_shape(X_rank);
+  TensorShapeVector Y_shape(X_rank);
   Y_shape[0] = batch_count;
   Y_shape[1] = nchwc_channels;
   int64_t spatial_size = 1;
@@ -68,7 +69,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
 
     if (channels_last_) {
       int64_t work_index = static_cast<int64_t>(work.start);
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start);
+      int64_t work_remaining = static_cast<int64_t>(work.end) - work.start;
 
       while (work_remaining > 0) {
         const int64_t batch_index = work_index / spatial_size;
@@ -87,7 +88,7 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
       }
     } else {
       int64_t work_index = static_cast<int64_t>(work.start) * nchwc_block_size;
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start) * nchwc_block_size;
+      int64_t work_remaining = (static_cast<int64_t>(work.end) - work.start) * nchwc_block_size;
 
       while (work_remaining > 0) {
         const int64_t batch_index = work_index / nchwc_channels;
@@ -127,7 +128,7 @@ Status ReorderOutput::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(channels_ <= X_shape[1]);
 
   // Build the output shape in NCHW or NHWC order.
-  std::vector<int64_t> Y_shape(X_rank);
+  TensorShapeVector Y_shape(X_rank);
   Y_shape[0] = X_shape[0];
   Y_shape[channels_last_ ? X_rank - 1 : 1] = channels_;
   auto* Y_spatial_dims = Y_shape.data() + (channels_last_ ? 1 : 2);
@@ -162,26 +163,26 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
   ORT_ENFORCE((static_cast<size_t>(X_shape[1]) < nchwc_block_size) || ((X_shape[1] % nchwc_block_size) == 0));
 
-  std::vector<int64_t> kernel_shape;
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
   if (kernel_shape.size() != 2) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unsupported convolution size.");
   }
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims;
+  TensorShapeVector Y_dims;
   Y_dims.insert(Y_dims.begin(), {X_shape[0], W_shape[0]});
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
@@ -224,8 +225,8 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
   ORT_ENFORCE(X_shape.NumDimensions() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
+  TensorShapeVector pads = pool_attrs_.pads;
+  TensorShapeVector output_dims = pool_attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
   auto* Y = context->Output(0, output_dims);
 
   MlasNchwcPool(
@@ -285,7 +286,7 @@ std::vector<float> NchwcUpsample::ComputeInterpolation(int64_t input_length,
 
 Status NchwcUpsample::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
-  const auto& X_shape = X->Shape().GetDims();
+  const auto X_shape = X->Shape().GetDims();
   ORT_ENFORCE(X_shape.size() == 4);
   ORT_ENFORCE((X_shape[1] % MlasNchwcGetBlockSize()) == 0);
 
@@ -331,7 +332,7 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
     auto upsample_worker = [&](ptrdiff_t batch) {
       auto work = concurrency::ThreadPool::PartitionWork(batch, worker_count, total_work);
       int64_t work_index = static_cast<int64_t>(work.start);
-      int64_t work_remaining = static_cast<int64_t>(work.end - work.start);
+      int64_t work_remaining = static_cast<int64_t>(work.end) - work.start;
 
       while (work_remaining > 0) {
         // Limit the current loop iteration to the same source image.

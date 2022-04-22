@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -17,7 +18,8 @@ static void RunOnnxOpsetTypedTest(
     const std::vector<T>& output,
     std::string mode = "constant",
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-    const std::string& error_msg = "") {
+    const std::string& error_msg = "",
+    const std::unordered_set<std::string>& excluded_provider_types = {}) {
   // ONNX domain opset
   OpTester test("Pad", opset);
   if (mode != "constant")
@@ -31,15 +33,22 @@ static void RunOnnxOpsetTypedTest(
     test.AddAttribute("value", static_cast<float>(value));
   }
   test.AddOutput<T>("output", output_dims, output);
+  std::unordered_set<std::string> provider_types(excluded_provider_types.begin(), excluded_provider_types.end());
+  if (std::is_same<T, int8_t>::value) {
+    provider_types.insert(kTensorrtExecutionProvider);
+  }
+  SessionOptions so;
+  // Don't fail early on shape inference so that we can test the op's error handling.
+  if (expect != OpTester::ExpectResult::kExpectSuccess) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  }
   if constexpr (opset >= 11) {
-    // TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
-    test.Run(expect, error_msg, {kTensorrtExecutionProvider});
+    test.Run(so, expect, error_msg, provider_types);
   } else {
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-    test.Run(expect, error_msg, {kOpenVINOExecutionProvider});
-#else
-    test.Run(expect, error_msg);
+    provider_types.insert(kOpenVINOExecutionProvider);
 #endif
+    test.Run(so, expect, error_msg, provider_types);
   }
 }
 
@@ -53,7 +62,8 @@ static void RunAllOpsetAllDomainPadTests(
     const std::vector<T>& output,
     std::string mode = "constant",
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-    const std::string& error_msg = "") {
+    const std::string& error_msg = "",
+    const std::unordered_set<std::string>& excluded_provider_types = {}) {
   // Test opset-11 and opset-13 kernels of Pad
   RunOnnxOpsetTypedTest<T, 11>(input_dims,
                                input,
@@ -61,7 +71,7 @@ static void RunAllOpsetAllDomainPadTests(
                                value,
                                output_dims,
                                output,
-                               mode, expect, error_msg);
+                               mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<T, 13>(input_dims,
                                input,
@@ -69,8 +79,9 @@ static void RunAllOpsetAllDomainPadTests(
                                value,
                                output_dims,
                                output,
-                               mode, expect, error_msg);
+                               mode, expect, error_msg, excluded_provider_types);
 }
+
 template <>
 void RunAllOpsetAllDomainPadTests<>(
     const std::vector<int64_t>& input_dims,
@@ -81,7 +92,8 @@ void RunAllOpsetAllDomainPadTests<>(
     const std::vector<double>& output,
     std::string mode,
     OpTester::ExpectResult expect,
-    const std::string& error_msg) {
+    const std::string& error_msg,
+    const std::unordered_set<std::string>& excluded_provider_types) {
   // Test opset-10, opset-11 and opset-13 kernels of Pad (for double type)
   RunOnnxOpsetTypedTest<double, 10>(input_dims,
                                     input,
@@ -89,7 +101,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                     value,
                                     output_dims,
                                     output,
-                                    mode, expect, error_msg);
+                                    mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<double, 11>(input_dims,
                                     input,
@@ -97,7 +109,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                     value,
                                     output_dims,
                                     output,
-                                    mode, expect, error_msg);
+                                    mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<double, 13>(input_dims,
                                     input,
@@ -105,7 +117,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                     value,
                                     output_dims,
                                     output,
-                                    mode, expect, error_msg);
+                                    mode, expect, error_msg, excluded_provider_types);
 }
 
 // There is only support for float type for MSDomain kernel in ORT
@@ -119,7 +131,8 @@ void RunAllOpsetAllDomainPadTests<>(
     const std::vector<float>& output,
     std::string mode,
     OpTester::ExpectResult expect,
-    const std::string& error_msg) {
+    const std::string& error_msg,
+    const std::unordered_set<std::string>& excluded_provider_types) {
   // Test opset-10, opset-11 and opset-13 kernels of Pad (for float type)
   RunOnnxOpsetTypedTest<float, 10>(input_dims,
                                    input,
@@ -127,7 +140,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                    value,
                                    output_dims,
                                    output,
-                                   mode, expect, error_msg);
+                                   mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<float, 11>(input_dims,
                                    input,
@@ -135,7 +148,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                    value,
                                    output_dims,
                                    output,
-                                   mode, expect, error_msg);
+                                   mode, expect, error_msg, excluded_provider_types);
 
   RunOnnxOpsetTypedTest<float, 13>(input_dims,
                                    input,
@@ -143,7 +156,7 @@ void RunAllOpsetAllDomainPadTests<>(
                                    value,
                                    output_dims,
                                    output,
-                                   mode, expect, error_msg);
+                                   mode, expect, error_msg, excluded_provider_types);
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -154,7 +167,7 @@ void RunAllOpsetAllDomainPadTests<>(
   test3.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
-  //TensorRT does not support pads as an input
+  // TensorRT does not support pads as an input
   test3.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 
 #endif
@@ -725,15 +738,27 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
   using T = TypeParam;
   RunAllOpsetAllDomainPadTests<T>({0},  // 1D
                                   {},
-                                  {1, 1},
+                                  {1, 1},  // not allowed if it pads the empty dim
                                   T(1),
                                   {0},
                                   {},
-                                  "edge");
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{0}", {kTensorrtExecutionProvider});
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
-                                  {1, 1, 1, 1},  // ignore pad for dims with value of 0 as there's no edge value to pad with
+                                  {1, 1, 1, 1},  // not allowed if it pads the empty dim
+                                  T(1),
+                                  {4, 0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,0}", {kTensorrtExecutionProvider});
+
+  RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
+                                  {},
+                                  {1, 0, 1, 0},
                                   T(1),
                                   {4, 0},
                                   {},
@@ -741,7 +766,17 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
 
   RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
                                   {},
-                                  {0, 1, 1, 0, 1, 1},
+                                  {0, 1, 1, 0, 1, 1},  // not allowed if it pads the empty dim
+                                  T(1),
+                                  {2, 4, 0},
+                                  {},
+                                  "edge",
+                                  OpTester::ExpectResult::kExpectFailure,
+                                  "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:{2,2,0}", {kTensorrtExecutionProvider});
+
+  RunAllOpsetAllDomainPadTests<T>({2, 2, 0},  // 3D
+                                  {},
+                                  {0, 1, 0, 0, 1, 0},
                                   T(1),
                                   {2, 4, 0},
                                   {},
@@ -766,7 +801,7 @@ TYPED_TEST(PadOpTest, Pad_Reflect_DimWithZeroInput) {
                                   {},
                                   "reflect",
                                   OpTester::ExpectResult::kExpectFailure,
-                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}");
+                                  "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:{0,2,1}", {kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, BoolType) {

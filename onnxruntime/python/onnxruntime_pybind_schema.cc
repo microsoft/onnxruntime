@@ -54,7 +54,11 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
                 }()),
 #endif
 #ifdef USE_MIGRAPHX
-            onnxruntime::CreateExecutionProviderFactory_MIGraphX(0),
+             onnxruntime::CreateExecutionProviderFactory_MIGraphX(
+                [&]() {
+                  MIGraphXExecutionProviderInfo info{};
+                  return info;
+                }()),
 #endif
 #ifdef USE_VITISAI
             onnxruntime::CreateExecutionProviderFactory_VITISAI("DPUCADX8G", 0, "", ""),

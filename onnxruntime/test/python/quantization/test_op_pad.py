@@ -10,8 +10,8 @@ import unittest
 import onnx
 import numpy as np
 from onnx import helper, TensorProto
-from onnxruntime.quantization import quantize_static, quantize_dynamic
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
+from onnxruntime.quantization import quantize_static, quantize_dynamic, QuantType, QuantFormat
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 
 class TestOpQuatizerPad(unittest.TestCase):
@@ -51,7 +51,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         graph = helper.make_graph([pad_node], 'TestOpQuantizerPad_test_model',
                                   [input_tensor], [output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = 7 # use stable onnx ir version
+        model.ir_version = 7  # use stable onnx ir version
 
         onnx.save(model, output_model_path)
 
@@ -91,14 +91,17 @@ class TestOpQuatizerPad(unittest.TestCase):
         graph = helper.make_graph([conv_node, identity_node, pad_node], 'TestOpQuantizerPad_test_model',
                                   [input_tensor], [identity_out, output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = 7 # use stable onnx ir version
+        model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def quantize_model(self, model_fp32_path, model_i8_path, data_reader=None):
+    def quantize_model(self, model_fp32_path, model_i8_path, data_reader=None,
+                       activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8, extra_options={}):
         if data_reader is not None:
-            quantize_static(model_fp32_path, model_i8_path, data_reader, reduce_range=True)
+            quantize_static(model_fp32_path, model_i8_path, data_reader, reduce_range=True, quant_format=QuantFormat.QOperator,
+                            activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
         else:
-            quantize_dynamic(model_fp32_path, model_i8_path, reduce_range=True)
+            quantize_dynamic(model_fp32_path, model_i8_path, reduce_range=True,
+                             weight_type=weight_type, extra_options=extra_options)
 
     def verify_should_not_trigger(self, quantize_mode='static'):
         np.random.seed(108)
@@ -118,23 +121,39 @@ class TestOpQuatizerPad(unittest.TestCase):
     def test_dynamic_quantize_no_trigger(self):
         self.verify_should_not_trigger(quantize_mode='dynamic')
 
-    def verify_quantize_with_pad_mode(self, pad_mode, constant_value=None, quantize_mode='static'):
+    def verify_quantize_with_pad_mode(self, pad_mode, constant_value=None, quantize_mode='static', rtol=0.01, atol=0.05,
+                                      activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8, extra_options={}):
         np.random.seed(108)
         tag_pad_mode = pad_mode if pad_mode is not None else 'none'
         tag_constant_value = '' if constant_value is None else '_value'
         model_fp32_path = 'qop_pad_{}_fp32_{}{}.onnx'.format(quantize_mode, tag_pad_mode, tag_constant_value)
-        model_i8_path = 'qop_pad_{}_i8_{}{}.onnx'.format(quantize_mode, tag_pad_mode, tag_constant_value)
         data_reader = self.input_feeds(1, {'input': [1, 8, 33, 33]})
         self.construct_model_conv_pad(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31],
                                       pad_mode, [0, 0, 1, 2, 0, 0, 3, 4], constant_value=constant_value)
-        self.quantize_model(model_fp32_path, model_i8_path, None if quantize_mode != 'static' else data_reader)
+
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
+        activation_type_str = 'u8' if (activation_type == QuantType.QUInt8) else 's8'
+        weight_type_str = 'u8' if (weight_type == QuantType.QUInt8) else 's8'
+        model_i8_path = 'qop_pad_{}_i8_{}{}_{}{}.onnx'.format(
+            quantize_mode, tag_pad_mode, tag_constant_value, activation_type_str, weight_type_str)
         data_reader.rewind()
+        self.quantize_model(model_fp32_path, model_i8_path, None if quantize_mode != 'static' else data_reader,
+                            activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
         # DequantizeLinear=2 means there are one DequantizeLinear Node aftr both conv and pad,
         # which means pad node is running in quantized semantic.
         # In dynamic quantize mode, pad operator in fact not quantized as input is fp32.
-        kwargs = {'DynamicQuantizeLinear': 1} if quantize_mode != 'static' else {'DequantizeLinear': 2, 'QuantizeLinear': 1}
+        if quantize_mode != 'static':
+            kwargs = {'DynamicQuantizeLinear': 1} if activation_type == QuantType.QUInt8 else {'QuantizeLinear': 1}
+        else:
+            kwargs = {'DequantizeLinear': 2, 'QuantizeLinear': 1}
         check_op_type_count(self, model_i8_path, **kwargs)
-        check_model_correctness(self, model_fp32_path, model_i8_path, data_reader.get_next())
+        # check node input/output type if such node exists in the graph
+        qnode_io_qtypes = {'QuantizeLinear': [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
+        qnode_io_qtypes.update({'DequantizeLinear': [['i', 2, activation_proto_qtype]]})
+        qnode_io_qtypes.update({'ConvInteger': [['i', 2, activation_proto_qtype]]})
+        check_qtype_by_node_type(self, model_i8_path, qnode_io_qtypes)
+        data_reader.rewind()
+        check_model_correctness(self, model_fp32_path, model_i8_path, data_reader.get_next(), rtol=rtol, atol=atol)
 
     def test_static_mode_edge(self):
         self.verify_quantize_with_pad_mode('edge', constant_value=None)
@@ -148,6 +167,22 @@ class TestOpQuatizerPad(unittest.TestCase):
     def test_static_mode_constant_value(self):
         self.verify_quantize_with_pad_mode('constant', constant_value=3.75)
 
+    def test_static_mode_edge_s8s8(self):
+        self.verify_quantize_with_pad_mode('edge', constant_value=None, rtol=0.1, atol=0.1, activation_type=QuantType.QInt8,
+                                           weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
+    def test_static_mode_reflect_s8s8(self):
+        self.verify_quantize_with_pad_mode('reflect', constant_value=None, rtol=0.1, atol=0.1, activation_type=QuantType.QInt8,
+                                           weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
+    def test_static_mode_constant_default_s8s8(self):
+        self.verify_quantize_with_pad_mode('constant', constant_value=None, rtol=0.1, atol=0.1, activation_type=QuantType.QInt8,
+                                           weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
+    def test_static_mode_constant_value_s8s8(self):
+        self.verify_quantize_with_pad_mode('constant', constant_value=3.75, rtol=0.1, atol=0.1, activation_type=QuantType.QInt8,
+                                           weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
     def test_dynamic_mode_edge(self):
         self.verify_quantize_with_pad_mode('edge', constant_value=None, quantize_mode='dynamic')
 
@@ -159,6 +194,23 @@ class TestOpQuatizerPad(unittest.TestCase):
 
     def test_dynamic_mode_constant_value(self):
         self.verify_quantize_with_pad_mode('constant', constant_value=3.75, quantize_mode='dynamic')
+
+    # TODO: uncomment following after ConvInteger s8 supported
+    # def test_dynamic_mode_edge_s8s8(self):
+    #     self.verify_quantize_with_pad_mode('edge', constant_value=None, quantize_mode='dynamic', activation_type=QuantType.QInt8,
+    #                                        weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
+    # def test_dynamic_mode_reflect_s8s8(self):
+    #     self.verify_quantize_with_pad_mode('reflect', constant_value=None, quantize_mode='dynamic', activation_type=QuantType.QInt8,
+    #                                        weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
+    # def test_dynamic_mode_constant_default_s8s8(self):
+    #     self.verify_quantize_with_pad_mode('constant', constant_value=None, quantize_mode='dynamic', activation_type=QuantType.QInt8,
+    #                                        weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
+    # def test_dynamic_mode_constant_value_s8s8(self):
+    #     self.verify_quantize_with_pad_mode('constant', constant_value=3.75, quantize_mode='dynamic', activation_type=QuantType.QInt8,
+    #                                        weight_type=QuantType.QInt8, extra_options={'ActivationSymmetric': True})
 
 
 if __name__ == '__main__':

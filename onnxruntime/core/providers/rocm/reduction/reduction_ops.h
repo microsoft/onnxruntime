@@ -17,7 +17,7 @@ namespace ReductionOps {
 
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices = MIOPEN_REDUCE_TENSOR_NO_INDICES>
 std::unique_ptr<Tensor> ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
-                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
                                       bool fast_reduction, const TensorShape* input_shape_override = nullptr);
 
@@ -28,11 +28,11 @@ struct PrepareReduceMetadata {
   int64_t input_count;
   int64_t output_count;
   // This holds the output dims without any reduced dims squeezed (even if keep_dims == 1)
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   // This holds the output dims with with reduced dims squeezed (if keep_dims == 1)
-  std::vector<int64_t> squeezed_output_dims;
-  std::vector<int64_t> input_dims_miopen;
-  std::vector<int64_t> output_dims_miopen;
+  TensorShapeVector squeezed_output_dims;
+  TensorShapeVector input_dims_miopen;
+  TensorShapeVector output_dims_miopen;
 };
 
 template <bool allow_multi_axes>
@@ -68,7 +68,7 @@ class ReduceKernel : public RocmKernel, public ReduceKernelBase<allow_multi_axes
       OutT* Y,
       const TensorShape& output_shape,
       miopenReduceTensorOp_t miopen_reduce_op,
-      std::vector<int64_t>& output_dims) const;
+      TensorShapeVector& output_dims) const;
 
   using ReduceKernelBase<allow_multi_axes>::axes_;
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
@@ -221,14 +221,14 @@ class ReduceLogSumExp final : public ReduceKernel<true> {
 
 Status PrepareForReduce(const Tensor* X,
                         bool keepdims,
-                        const std::vector<int64_t>& axes,
+                        const gsl::span<const int64_t>& axes,
                         PrepareReduceMetadata& prepare_reduce_metadata,
                         const TensorShape* input_shape_override = nullptr);
 
 template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
-                         const std::vector<int64_t>& axes,
+                         const gsl::span<const int64_t>& axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
                          const TensorShape* input_shape_override = nullptr);
 

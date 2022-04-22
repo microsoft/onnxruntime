@@ -7,7 +7,7 @@ ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exc
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
-__version__ = "1.10.0"
+__version__ = "1.12.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -23,7 +23,8 @@ try:
     from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
         RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
         NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, SessionIOBinding, \
-        OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator,  OrtSparseFormat
+        OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator,  OrtSparseFormat, \
+        set_default_logger_verbosity
     import_capi_exception = None
 except Exception as e:
     import_capi_exception = e

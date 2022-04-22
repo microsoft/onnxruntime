@@ -75,6 +75,11 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+// Given a tensor proto with external data obtain a pointer to the data and its length.
+// The ext_data_deleter argument is updated with a callback that owns/releases the data.
+Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter);
+
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
 // the data location is external. i.e. it does not load the external data.
@@ -123,6 +128,41 @@ inline bool HasTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+inline bool HasOptionalTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType &&
+         type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
+}
+
+inline bool HasOptionalTensorSequenceType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (type_proto.value_case() != ONNX_NAMESPACE::TypeProto::kOptionalType) {
+    return false;
+  }
+
+  const auto& tp = type_proto.optional_type().elem_type();
+
+  if (tp.value_case() != ONNX_NAMESPACE::TypeProto::kSequenceType) {
+    return false;
+  }
+
+  return tp.sequence_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
+}
+
+// Does not check if the TypeProto contains an optional - the caller must validate that
+inline const ONNX_NAMESPACE::TypeProto& GetOptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.optional_type().elem_type();
+}
+
+// Does not check if the TypeProto contains an optional - the caller must validate that
+inline ONNX_NAMESPACE::TypeProto* GetMutableOptionalTypeProto(ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.mutable_optional_type()->mutable_elem_type();
+}
+
+inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Optional& opt_proto) {
+  return opt_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
+}
+#endif
+
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
@@ -151,11 +191,47 @@ inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
     return true;
   }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type())) {
     return true;
   }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) &&
+      HasElemType(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return true;
+  }
+#endif
+
+  return false;
+}
+
+// Try to get the element data type.
+// The element data type value corresponds to TensorProto_DataType. It is applicable to types with shapes.
+inline bool TryGetElementDataType(const ONNX_NAMESPACE::TypeProto& type_proto, int32_t& element_data_type) {
+  if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
+    element_data_type = type_proto.tensor_type().elem_type();
+    return true;
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type())) {
+    element_data_type = type_proto.sparse_tensor_type().elem_type();
+    return true;
+  }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) &&
+      HasElemType(GetOptionalTypeProto(type_proto).tensor_type())) {
+    element_data_type = GetOptionalTypeProto(type_proto).tensor_type().elem_type();
+    return true;
+  }
+#endif
+
+  element_data_type = ONNX_NAMESPACE::TensorProto::UNDEFINED;
   return false;
 }
 
@@ -163,24 +239,46 @@ inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
     return true;
   }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
     return true;
   }
 #endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) && HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return true;
+  }
+#endif
+
   return false;
 }
 
-inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
+inline const ONNX_NAMESPACE::TensorShapeProto* TryGetShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
-    return type_proto.tensor_type().shape();
+    return &type_proto.tensor_type().shape();
   }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
-    return type_proto.sparse_tensor_type().shape();
+    return &type_proto.sparse_tensor_type().shape();
   }
 #endif
-  ORT_THROW("TypeProto must have shape for this to run");
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) && HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return &GetOptionalTypeProto(type_proto).tensor_type().shape();
+  }
+#endif
+
+  return nullptr;
+}
+
+inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  const auto* shape = TryGetShape(type_proto);
+  ORT_ENFORCE(shape != nullptr, "TypeProto must have shape for this to run");
+  return *shape;
 }
 
 inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
@@ -199,6 +297,10 @@ inline bool HasExternalData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
 
 inline bool HasDataType(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
+}
+
+inline bool HasString(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  return ten_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING;
 }
 
 #ifndef SHARED_PROVIDER
@@ -239,6 +341,7 @@ inline bool HasDomain(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
 inline bool HasName(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
   return !op_proto.name().empty();
 }
+
 #endif
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {

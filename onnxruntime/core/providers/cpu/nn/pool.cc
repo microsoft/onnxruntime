@@ -4,10 +4,10 @@
 #include "core/providers/cpu/nn/pool.h"
 
 #include "core/framework/data_types_internal.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/nn/pool_functors.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
 
@@ -53,8 +53,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+  auto pads = pool_attrs_.pads;
+  auto kernel_shape = pool_attrs_.kernel_shape;
 
   if (pool_attrs_.global_pooling) {
     const auto& input_dims = x_shape.GetDims();
@@ -62,7 +62,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     pads.assign(kernel_shape.size(), 0);
   }
 
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, output_dims);
 
   const auto* X_data = X->template Data<T>();
@@ -127,8 +127,8 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
                       "kernel_shape num_dims is not compatible with X num_dims.");
   }
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto pads = pool_attrs_.pads;
+  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   TensorShape output_shape(output_dims);
   Tensor* Y = context->Output(0, output_shape);
 
@@ -189,10 +189,10 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+  auto pads = pool_attrs_.pads;
+  auto kernel_shape = pool_attrs_.kernel_shape;
 
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, output_dims);
   Tensor* I = context->Output(1, output_dims);
 

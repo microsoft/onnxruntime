@@ -22,8 +22,8 @@ bool ConfigOptions::TryGetConfigEntry(const std::string& config_key, std::string
   return found;
 }
 
-const std::string ConfigOptions::GetConfigOrDefault(const std::string& config_key,
-                                                    const std::string& default_value) const noexcept {
+std::string ConfigOptions::GetConfigOrDefault(const std::string& config_key,
+                                              const std::string& default_value) const noexcept {
   return GetConfigEntry(config_key).value_or(default_value);
 }
 

@@ -67,6 +67,10 @@ DLDataType GetDlpackDataType(const OrtValue& ort_value) {
       dtype.code = DLDataTypeCode::kDLUInt;
       dtype.bits = sizeof(uint64_t);
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      dtype.code = DLDataTypeCode::kDLBfloat;
+      dtype.bits = sizeof(BFloat16);
+      break;
     default:
       ORT_THROW("Unexpected data type of ", tensor.GetElementType());
   }
@@ -74,37 +78,6 @@ DLDataType GetDlpackDataType(const OrtValue& ort_value) {
   dtype.bits *= 8;  // bits.
   return dtype;
 }
-
-DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
-  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
-  DLDevice device;
-  device.device_id = static_cast<int>(device_id);
-  const Tensor& tensor = ort_value.Get<Tensor>();
-  const auto& location = tensor.Location();
-  switch (location.device.Type()) {
-    case OrtDevice::CPU:
-      device.device_type = DLDeviceType::kDLCPU;
-      break;
-    case OrtDevice::GPU:
-#ifdef USE_ROCM
-      device.device_type = DLDeviceType::kDLROCM;
-#else
-      device.device_type = DLDeviceType::kDLCUDA;
-#endif
-      break;
-    default:
-      ORT_THROW("Cannot pack tensors on this device.");
-  }
-
-  return device;
-}
-
-struct OrtDLManagedTensor {
-  OrtValue handle;
-  DLManagedTensor tensor;
-};
-
-void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
 
 OrtDevice GetOrtDevice(const DLDevice& device) {
   switch (device.device_type) {
@@ -158,6 +131,13 @@ MLDataType GetOrtValueDataType(const DLDataType& dtype, bool is_bool_tensor) {
         default:
           ORT_THROW("Unsupported kFloat bits " + std::to_string(dtype.bits));
       }
+    case DLDataTypeCode::kDLBfloat:
+      switch (dtype.bits) {
+        case 16:
+          return DataTypeImpl::GetType<BFloat16>();
+        default:
+          ORT_THROW("Unsupported kBFloat bits " + std::to_string(dtype.bits));
+      }
     default:
       ORT_THROW("Unsupported code " + std::to_string(dtype.code));
   }
@@ -197,12 +177,50 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
+DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
+  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
+  DLDevice device;
+  device.device_id = static_cast<int>(device_id);
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  const auto& location = tensor.Location();
+  switch (location.device.Type()) {
+    case OrtDevice::CPU:
+      device.device_type = DLDeviceType::kDLCPU;
+      break;
+    case OrtDevice::GPU:
+#ifdef USE_ROCM
+      device.device_type = DLDeviceType::kDLROCM;
+#else
+      device.device_type = DLDeviceType::kDLCUDA;
+#endif
+      break;
+    default:
+      ORT_THROW("Cannot pack tensors on this device.");
+  }
+
+  return device;
+}
+
+struct OrtDLManagedTensor {
+  OrtValue handle;
+  DLManagedTensor tensor;
+};
+
+static void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
+
+//This function should use smart pointers inside
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#pragma warning(disable : 26400)
+#endif
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
   OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
+
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
@@ -212,12 +230,14 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = GetDlpackDataType(ort_value);
   ort_dlmanaged_tensor->tensor.dl_tensor.shape =
-      tensor.Shape().NumDimensions() > 0 ? const_cast<int64_t*>(&tensor.Shape()[0]) : nullptr;
+      tensor.Shape().NumDimensions() > 0 ? &const_cast<TensorShape&>(tensor.Shape())[0] : nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
@@ -230,8 +250,11 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
 
   OrtValue ort_value;
   std::function<void(void*)> deleter = [dlpack](void* p) {
+    ORT_ENFORCE(dlpack->deleter != NULL, "A dlpack structure must have a deleter.");
     dlpack->deleter(dlpack);
-    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()(p);
+    auto deleter = DataTypeImpl::GetType<Tensor>()->GetDeleteFunc();
+    if (deleter != NULL)
+      deleter(p);
   };
 
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);

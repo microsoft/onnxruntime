@@ -62,7 +62,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 // intermediate tensor shapes are:
 // (batch, blocksize, blocksize, input_depth / (blocksize * blocksize), input_height, input_width) for DepthToSpace
 // (batch, input_depth, input_height / blocksize, blocksize, input_width / blocksize, blocksize) for SpaceToDepth
-const int IntermediateTensorRank = 6;
+constexpr int IntermediateTensorRank = 6;
 
 template <typename T>
 using EigenTensorMap = Eigen::TensorMap<Eigen::Tensor<T, IntermediateTensorRank, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>;

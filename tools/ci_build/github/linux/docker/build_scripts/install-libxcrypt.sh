@@ -10,6 +10,11 @@ MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 # Get build utilities
 source $MY_DIR/build_utils.sh
 
+if [ "$BASE_POLICY" == "musllinux" ]; then
+	echo "Skip libxcrypt installation on musllinux"
+	exit 0
+fi
+
 # We need perl 5.14+
 if ! perl -e 'use 5.14.0' &> /dev/null; then
 	check_var ${PERL_ROOT}

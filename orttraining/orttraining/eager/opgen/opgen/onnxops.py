@@ -1,5 +1,5 @@
 # AUTO-GENERATED CODE! - DO NOT EDIT!
-# $ python opgen/onnxgen.py
+# $ python onnxgen.py
 
 from opgen.generator import ONNXAttr, ONNXOp, AttrType
 
@@ -11,7 +11,9 @@ class Abs(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Abs', 1, X)
+    super().__init__('Abs', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      X)
 
 class Acos(ONNXOp):
   """
@@ -19,7 +21,9 @@ class Acos(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Acos', 1, input)
+    super().__init__('Acos', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Acosh(ONNXOp):
   """
@@ -27,7 +31,9 @@ class Acosh(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Acosh', 1, input)
+    super().__init__('Acosh', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Adagrad(ONNXOp):
   """
@@ -36,12 +42,12 @@ class Adagrad(ONNXOp):
   
       Let's define the behavior of this operator. As you can imagine, ADAGRAD requires
       some parameters:
-       
+  
        - The initial learning-rate "R".
        - The update count "T". That is, the number of training iterations conducted.
        - A L2-norm regularization coefficient "norm_coefficient".
        - A learning-rate decay factor "decay_factor".
-       - A small constant "epsilon" to avoid dividing-by-zero. 
+       - A small constant "epsilon" to avoid dividing-by-zero.
   
       At each ADAGRAD iteration, the optimized tensors are moved along a direction
       computed based on their estimated gradient and accumulated squared gradient. Assume
@@ -87,7 +93,9 @@ class Adagrad(ONNXOp):
     decay_factor=None, 
     epsilon=None, 
     norm_coefficient=None):
-    super().__init__('Adagrad', 1, R, T, inputs,
+    super().__init__('Adagrad', 1,
+      [{'at::kDouble', 'at::kFloat'}, {'at::kLong'}, {'at::kDouble', 'at::kFloat'}],
+      R,T,inputs,
       decay_factor=ONNXAttr(decay_factor, AttrType.FLOAT), 
       epsilon=ONNXAttr(epsilon, AttrType.FLOAT), 
       norm_coefficient=ONNXAttr(norm_coefficient, AttrType.FLOAT))
@@ -99,18 +107,18 @@ class Adam(ONNXOp):
   
       Let's define the behavior of this operator. First of all, Adam requires
       some parameters:
-       
+  
        - The learning-rate "R".
        - The update count "T". That is, the number of training iterations conducted.
        - A L2-norm regularization coefficient "norm_coefficient".
-       - A small constant "epsilon" to avoid dividing-by-zero. 
+       - A small constant "epsilon" to avoid dividing-by-zero.
        - Two coefficients, "alpha" and "beta".
   
       At each Adam iteration, the optimized tensors are moved along a direction
       computed based on their exponentially-averaged historical gradient and
       exponentially-averaged historical squared gradient. Assume that only a tensor
       "X" is being optimized. The rest of required information is
-      
+  
        - the value of "X",
        - "X"'s gradient (denoted by "G"),
        - "X"'s exponentially-averaged historical gradient (denoted by "V"), and
@@ -120,8 +128,8 @@ class Adam(ONNXOp):
       are stored as this operator's attributes. Specifically, this operator's input tensor
       list is ["R", "T", "X", "G", "V", "H"]. That is, "R" is the first input, "T" is
       the second input, and so on. Other parameters are given as attributes because they
-      are constants. Moreover, the corresponding output tensors are 
-      
+      are constants. Moreover, the corresponding output tensors are
+  
        - the new value of "X" (called "X_new"),
        - the new exponentially-averaged historical gradient (denoted by "V_new"), and
        - the new exponentially-averaged historical squared gradient (denoted by "H_new").
@@ -151,7 +159,7 @@ class Adam(ONNXOp):
         X_new = X - R_adjusted * V_new / H_sqrt
   
         // Post-update regularization.
-        X_final = (1 - norm_coefficient_post) * X_new 
+        X_final = (1 - norm_coefficient_post) * X_new
   
       If there are multiple inputs to be optimized, the pseudo code will be applied
       independently to each of them.
@@ -163,7 +171,9 @@ class Adam(ONNXOp):
     epsilon=None, 
     norm_coefficient=None, 
     norm_coefficient_post=None):
-    super().__init__('Adam', 1, R, T, inputs,
+    super().__init__('Adam', 1,
+      [{'at::kDouble', 'at::kFloat'}, {'at::kLong'}, {'at::kDouble', 'at::kFloat'}],
+      R,T,inputs,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       beta=ONNXAttr(beta, AttrType.FLOAT), 
       epsilon=ONNXAttr(epsilon, AttrType.FLOAT), 
@@ -175,10 +185,14 @@ class Add(ONNXOp):
   Performs element-wise binary addition (with Numpy-style broadcasting support).
   
   This operator supports **multidirectional (i.e., Numpy-style) broadcasting**; for more details please check [the doc](Broadcasting.md).
+  
+  (Opset 14 change): Extend supported types to include uint8, int8, uint16, and int16.
   """
 
   def __init__(self, A, B):
-    super().__init__('Add', 1, A, B)
+    super().__init__('Add', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class And(ONNXOp):
   """
@@ -189,15 +203,17 @@ class And(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('And', 1, A, B)
+    super().__init__('And', 1,
+      [{'at::kBool'}, {'at::kBool'}],
+      A,B)
 
 class ArgMax(ONNXOp):
   """
-  Computes the indices of the max elements of the input tensor's element along the 
-  provided axis. The resulting tensor has the same rank as the input if keepdims equal 1. 
-  If keepdims equal 0, then the resulting tensor have the reduced dimension pruned. 
-  If select_last_index is True (default False), the index of the last occurrence of the max 
-  is selected if the max appears more than once in the input. Otherwise the index of the 
+  Computes the indices of the max elements of the input tensor's element along the
+  provided axis. The resulting tensor has the same rank as the input if keepdims equal 1.
+  If keepdims equal 0, then the resulting tensor have the reduced dimension pruned.
+  If select_last_index is True (default False), the index of the last occurrence of the max
+  is selected if the max appears more than once in the input. Otherwise the index of the
   first occurrence is selected.
   The type of the output tensor is integer.
   """
@@ -206,18 +222,20 @@ class ArgMax(ONNXOp):
     axis=None, 
     keepdims=None, 
     select_last_index=None):
-    super().__init__('ArgMax', 1, data,
+    super().__init__('ArgMax', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axis=ONNXAttr(axis, AttrType.INT), 
       keepdims=ONNXAttr(keepdims, AttrType.INT), 
       select_last_index=ONNXAttr(select_last_index, AttrType.INT))
 
 class ArgMin(ONNXOp):
   """
-  Computes the indices of the min elements of the input tensor's element along the 
-  provided axis. The resulting tensor has the same rank as the input if keepdims equal 1. 
-  If keepdims equal 0, then the resulting tensor have the reduced dimension pruned. 
-  If select_last_index is True (default False), the index of the last occurrence of the min 
-  is selected if the min appears more than once in the input. Otherwise the index of the 
+  Computes the indices of the min elements of the input tensor's element along the
+  provided axis. The resulting tensor has the same rank as the input if keepdims equal 1.
+  If keepdims equal 0, then the resulting tensor have the reduced dimension pruned.
+  If select_last_index is True (default False), the index of the last occurrence of the min
+  is selected if the min appears more than once in the input. Otherwise the index of the
   first occurrence is selected.
   The type of the output tensor is integer.
   """
@@ -226,7 +244,9 @@ class ArgMin(ONNXOp):
     axis=None, 
     keepdims=None, 
     select_last_index=None):
-    super().__init__('ArgMin', 1, data,
+    super().__init__('ArgMin', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axis=ONNXAttr(axis, AttrType.INT), 
       keepdims=ONNXAttr(keepdims, AttrType.INT), 
       select_last_index=ONNXAttr(select_last_index, AttrType.INT))
@@ -238,7 +258,9 @@ class ArrayFeatureExtractor(ONNXOp):
   """
 
   def __init__(self, X, Y):
-    super().__init__('ArrayFeatureExtractor', 1, X, Y)
+    super().__init__('ArrayFeatureExtractor', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}, {'at::kLong'}],
+      X,Y)
 
 class Asin(ONNXOp):
   """
@@ -246,7 +268,9 @@ class Asin(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Asin', 1, input)
+    super().__init__('Asin', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Asinh(ONNXOp):
   """
@@ -254,7 +278,9 @@ class Asinh(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Asinh', 1, input)
+    super().__init__('Asinh', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Atan(ONNXOp):
   """
@@ -262,7 +288,9 @@ class Atan(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Atan', 1, input)
+    super().__init__('Atan', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Atanh(ONNXOp):
   """
@@ -270,7 +298,9 @@ class Atanh(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Atanh', 1, input)
+    super().__init__('Atanh', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class AveragePool(ONNXOp):
   """
@@ -312,7 +342,9 @@ class AveragePool(ONNXOp):
     kernel_shape=None, 
     pads=None, 
     strides=None):
-    super().__init__('AveragePool', 1, X,
+    super().__init__('AveragePool', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       ceil_mode=ONNXAttr(ceil_mode, AttrType.INT), 
       count_include_pad=ONNXAttr(count_include_pad, AttrType.INT), 
@@ -324,22 +356,55 @@ class BatchNormalization(ONNXOp):
   """
   Carries out batch normalization as described in the paper
   https://arxiv.org/abs/1502.03167. Depending on the mode it is being run,
-  there are multiple cases for the number of outputs, which we list below:
+  There are five required inputs 'X', 'scale', 'B', 'input_mean' and
+  'input_var'.
+  Note that 'input_mean' and 'input_var' are expected to be the estimated
+  statistics in inference mode (training_mode=False, default),
+  and the running statistics in training mode (training_mode=True).
+  There are multiple cases for the number of outputs, which we list below:
   
-  Output case #1: Y, mean, var, saved_mean, saved_var (training mode)
-  Output case #2: Y (test mode)
+  Output case #1: Y, running_mean, running_var (training_mode=True)
+  Output case #2: Y (training_mode=False)
+  
+  When training_mode=False, extra outputs are invalid.
+  The outputs are updated as follows when training_mode=True:
+  ```
+  running_mean = input_mean * momentum + current_mean * (1 - momentum)
+  running_var = input_var * momentum + current_var * (1 - momentum)
+  
+  Y = (X - current_mean) / sqrt(current_var + epsilon) * scale + B
+  
+  where:
+  
+  current_mean = ReduceMean(X, axis=all_except_channel_index)
+  current_var =  ReduceVar(X, axis=all_except_channel_index)
+  
+  Notice that ReduceVar refers to the population variance, and it equals to
+  sum(sqrd(x_i - x_avg)) / N
+  where N is the population size (this formula does not use sample size N - 1).
+  
+  ```
+  
+  When training_mode=False:
+  ```
+  Y = (X - input_mean) / sqrt(input_var + epsilon) * scale + B
+  ```
   
   For previous (depreciated) non-spatial cases, implementors are suggested
-  to flatten the input shape to (N x C*D1*D2 ..*Dn) before a BatchNormalization Op.
+  to flatten the input shape to (N x C * D1 * D2 * ... * Dn) before a BatchNormalization Op.
   This operator has **optional** inputs/outputs. See [the doc](IR.md) for more details about the representation of optional arguments. An empty string may be used in the place of an actual argument's name to indicate a missing argument. Trailing optional arguments (those not followed by an argument that is present) may also be simply omitted.
   """
 
-  def __init__(self, X, scale, B, mean, var,
+  def __init__(self, X, scale, B, input_mean, input_var,
     epsilon=None, 
-    momentum=None):
-    super().__init__('BatchNormalization', 5, X, scale, B, mean, var,
+    momentum=None, 
+    training_mode=None):
+    super().__init__('BatchNormalization', 3,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X,scale,B,input_mean,input_var,
       epsilon=ONNXAttr(epsilon, AttrType.FLOAT), 
-      momentum=ONNXAttr(momentum, AttrType.FLOAT))
+      momentum=ONNXAttr(momentum, AttrType.FLOAT), 
+      training_mode=ONNXAttr(training_mode, AttrType.INT))
 
 class Binarizer(ONNXOp):
   """
@@ -348,7 +413,9 @@ class Binarizer(ONNXOp):
 
   def __init__(self, X,
     threshold=None):
-    super().__init__('Binarizer', 1, X,
+    super().__init__('Binarizer', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       threshold=ONNXAttr(threshold, AttrType.FLOAT))
 
 class BitShift(ONNXOp):
@@ -361,7 +428,7 @@ class BitShift(ONNXOp):
    Y specifies the amounts of shifting. For example, if "direction" is "Right", X is [1, 4],
    and S is [1, 1], the corresponding output Z would be [0, 2]. If "direction" is "LEFT" with
    X=[1, 2] and S=[1, 2], the corresponding output Y would be [2, 8].
-   
+  
    Because this operator supports Numpy-style broadcasting, X's and Y's shapes are
    not necessarily identical.
   This operator supports **multidirectional (i.e., Numpy-style) broadcasting**; for more details please check [the doc](Broadcasting.md).
@@ -369,7 +436,9 @@ class BitShift(ONNXOp):
 
   def __init__(self, X, Y,
     direction=None):
-    super().__init__('BitShift', 1, X, Y,
+    super().__init__('BitShift', 1,
+      [set(), set()],
+      X,Y,
       direction=ONNXAttr(direction, AttrType.STRING))
 
 class Cast(ONNXOp):
@@ -385,8 +454,8 @@ class Cast(ONNXOp):
   "+INF" (and "INF"), "-INF", and "NaN" are positive infinity, negative infinity, and not-a-number, respectively.
   Any string which can exactly match "+INF" in a case-insensitive way would be mapped to positive infinite. Similarly,
   this case-insensitive rule is applied to "INF" and "NaN". When casting from numeric tensors
-  to string tensors, plain floating-point representation (such as "314.15926") would be used. 
-  Converting non-numerical-literal string such as "Hello World!" is an undefined behavior. Cases 
+  to string tensors, plain floating-point representation (such as "314.15926") would be used.
+  Converting non-numerical-literal string such as "Hello World!" is an undefined behavior. Cases
   of converting string representing floating-point arithmetic value, such as "2.718", to INT is an undefined behavior.
   
   Conversion from a numerical type to any numerical type is always allowed.
@@ -397,7 +466,9 @@ class Cast(ONNXOp):
 
   def __init__(self, input,
     to=None):
-    super().__init__('Cast', 1, input,
+    super().__init__('Cast', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      input,
       to=ONNXAttr(to, AttrType.INT))
 
 class CastMap(ONNXOp):
@@ -411,7 +482,9 @@ class CastMap(ONNXOp):
     cast_to=None, 
     map_form=None, 
     max_map=None):
-    super().__init__('CastMap', 1, X,
+    super().__init__('CastMap', 1,
+      [set()],
+      X,
       cast_to=ONNXAttr(cast_to, AttrType.STRING), 
       map_form=ONNXAttr(map_form, AttrType.STRING), 
       max_map=ONNXAttr(max_map, AttrType.INT))
@@ -421,7 +494,7 @@ class CategoryMapper(ONNXOp):
       Converts strings to integers and vice versa.<br>
       Two sequences of equal length are used to map between integers and strings,
       with strings and integers at the same index detailing the mapping.<br>
-      Each operator converts either integers to strings or strings to integers, depending 
+      Each operator converts either integers to strings or strings to integers, depending
       on which default value attribute is provided. Only one default value attribute
       should be defined.<br>
       If the string default value is set, it will convert integers to strings.
@@ -433,7 +506,9 @@ class CategoryMapper(ONNXOp):
     cats_strings=None, 
     default_int64=None, 
     default_string=None):
-    super().__init__('CategoryMapper', 1, X,
+    super().__init__('CategoryMapper', 1,
+      [{'at::kLong'}],
+      X,
       cats_int64s=ONNXAttr(cats_int64s, AttrType.INTS), 
       cats_strings=ONNXAttr(cats_strings, AttrType.STRINGS), 
       default_int64=ONNXAttr(default_int64, AttrType.INT), 
@@ -447,13 +522,15 @@ class Ceil(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Ceil', 1, X)
+    super().__init__('Ceil', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Celu(ONNXOp):
   """
   Continuously Differentiable Exponential Linear Units:
   Perform the linear unit element-wise on the input tensor X
-  using formula: 
+  using formula:
   
   ```
   max(0,x) + min(0,alpha*(exp(x/alpha)-1))
@@ -462,7 +539,9 @@ class Celu(ONNXOp):
 
   def __init__(self, X,
     alpha=None):
-    super().__init__('Celu', 1, X,
+    super().__init__('Celu', 1,
+      [{'at::kFloat'}],
+      X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT))
 
 class Clip(ONNXOp):
@@ -473,7 +552,9 @@ class Clip(ONNXOp):
   """
 
   def __init__(self, input, min, max):
-    super().__init__('Clip', 1, input, min, max)
+    super().__init__('Clip', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      input,min,max)
 
 class Compress(ONNXOp):
   """
@@ -485,7 +566,9 @@ class Compress(ONNXOp):
 
   def __init__(self, input, condition,
     axis=None):
-    super().__init__('Compress', 1, input, condition,
+    super().__init__('Compress', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kBool'}],
+      input,condition,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class Concat(ONNXOp):
@@ -495,7 +578,9 @@ class Concat(ONNXOp):
 
   def __init__(self, inputs,
     axis=None):
-    super().__init__('Concat', 1, inputs,
+    super().__init__('Concat', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      inputs,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class ConcatFromSequence(ONNXOp):
@@ -509,7 +594,9 @@ class ConcatFromSequence(ONNXOp):
   def __init__(self, input_sequence,
     axis=None, 
     new_axis=None):
-    super().__init__('ConcatFromSequence', 1, input_sequence,
+    super().__init__('ConcatFromSequence', 1,
+      [set()],
+      input_sequence,
       axis=ONNXAttr(axis, AttrType.INT), 
       new_axis=ONNXAttr(new_axis, AttrType.INT))
 
@@ -529,6 +616,7 @@ class Constant(ONNXOp):
     value_string=None, 
     value_strings=None):
     super().__init__('Constant', 1,
+      [],
       sparse_value=ONNXAttr(sparse_value, AttrType.SPARSE_TENSOR), 
       value=ONNXAttr(value, AttrType.TENSOR), 
       value_float=ONNXAttr(value_float, AttrType.FLOAT), 
@@ -545,7 +633,9 @@ class ConstantOfShape(ONNXOp):
 
   def __init__(self, input,
     value=None):
-    super().__init__('ConstantOfShape', 1, input,
+    super().__init__('ConstantOfShape', 1,
+      [{'at::kLong'}],
+      input,
       value=ONNXAttr(value, AttrType.TENSOR))
 
 class Conv(ONNXOp):
@@ -561,7 +651,9 @@ class Conv(ONNXOp):
     kernel_shape=None, 
     pads=None, 
     strides=None):
-    super().__init__('Conv', 1, X, W, B,
+    super().__init__('Conv', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,W,B,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       dilations=ONNXAttr(dilations, AttrType.INTS), 
       group=ONNXAttr(group, AttrType.INT), 
@@ -582,7 +674,9 @@ class ConvInteger(ONNXOp):
     kernel_shape=None, 
     pads=None, 
     strides=None):
-    super().__init__('ConvInteger', 1, x, w, x_zero_point, w_zero_point,
+    super().__init__('ConvInteger', 1,
+      [{'at::kByte'}, {'at::kByte'}, {'at::kByte'}, {'at::kByte'}],
+      x,w,x_zero_point,w_zero_point,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       dilations=ONNXAttr(dilations, AttrType.INTS), 
       group=ONNXAttr(group, AttrType.INT), 
@@ -617,7 +711,9 @@ class ConvTranspose(ONNXOp):
     output_shape=None, 
     pads=None, 
     strides=None):
-    super().__init__('ConvTranspose', 1, X, W, B,
+    super().__init__('ConvTranspose', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,W,B,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       dilations=ONNXAttr(dilations, AttrType.INTS), 
       group=ONNXAttr(group, AttrType.INT), 
@@ -633,7 +729,9 @@ class Cos(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Cos', 1, input)
+    super().__init__('Cos', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Cosh(ONNXOp):
   """
@@ -641,7 +739,9 @@ class Cosh(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Cosh', 1, input)
+    super().__init__('Cosh', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class CumSum(ONNXOp):
   """
@@ -670,7 +770,9 @@ class CumSum(ONNXOp):
   def __init__(self, x, axis,
     exclusive=None, 
     reverse=None):
-    super().__init__('CumSum', 1, x, axis,
+    super().__init__('CumSum', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}],
+      x,axis,
       exclusive=ONNXAttr(exclusive, AttrType.INT), 
       reverse=ONNXAttr(reverse, AttrType.INT))
 
@@ -707,7 +809,9 @@ class DepthToSpace(ONNXOp):
   def __init__(self, input,
     blocksize=None, 
     mode=None):
-    super().__init__('DepthToSpace', 1, input,
+    super().__init__('DepthToSpace', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      input,
       blocksize=ONNXAttr(blocksize, AttrType.INT), 
       mode=ONNXAttr(mode, AttrType.STRING))
 
@@ -722,7 +826,9 @@ class DequantizeLinear(ONNXOp):
 
   def __init__(self, x, x_scale, x_zero_point,
     axis=None):
-    super().__init__('DequantizeLinear', 1, x, x_scale, x_zero_point,
+    super().__init__('DequantizeLinear', 1,
+      [{'at::kByte', 'at::kInt'}, {'at::kFloat'}, {'at::kByte', 'at::kInt'}],
+      x,x_scale,x_zero_point,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class Det(ONNXOp):
@@ -735,7 +841,9 @@ class Det(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Det', 1, X)
+    super().__init__('Det', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class DictVectorizer(ONNXOp):
   """
@@ -756,7 +864,9 @@ class DictVectorizer(ONNXOp):
   def __init__(self, X,
     int64_vocabulary=None, 
     string_vocabulary=None):
-    super().__init__('DictVectorizer', 1, X,
+    super().__init__('DictVectorizer', 1,
+      [set()],
+      X,
       int64_vocabulary=ONNXAttr(int64_vocabulary, AttrType.INTS), 
       string_vocabulary=ONNXAttr(string_vocabulary, AttrType.STRINGS))
 
@@ -765,10 +875,14 @@ class Div(ONNXOp):
   Performs element-wise binary division (with Numpy-style broadcasting support).
   
   This operator supports **multidirectional (i.e., Numpy-style) broadcasting**; for more details please check [the doc](Broadcasting.md).
+  
+  (Opset 14 change): Extend supported types to include uint8, int8, uint16, and int16.
   """
 
   def __init__(self, A, B):
-    super().__init__('Div', 1, A, B)
+    super().__init__('Div', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class Dropout(ONNXOp):
   """
@@ -788,7 +902,9 @@ class Dropout(ONNXOp):
 
   def __init__(self, data, ratio, training_mode,
     seed=None):
-    super().__init__('Dropout', 2, data, ratio, training_mode,
+    super().__init__('Dropout', 2,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kBool'}],
+      data,ratio,training_mode,
       seed=ONNXAttr(seed, AttrType.INT))
 
 class DynamicQuantizeLinear(ONNXOp):
@@ -818,7 +934,9 @@ class DynamicQuantizeLinear(ONNXOp):
   """
 
   def __init__(self, x):
-    super().__init__('DynamicQuantizeLinear', 3, x)
+    super().__init__('DynamicQuantizeLinear', 3,
+      [{'at::kFloat'}],
+      x)
 
 class Einsum(ONNXOp):
   """
@@ -849,7 +967,9 @@ class Einsum(ONNXOp):
 
   def __init__(self, Inputs,
     equation=None):
-    super().__init__('Einsum', 1, Inputs,
+    super().__init__('Einsum', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      Inputs,
       equation=ONNXAttr(equation, AttrType.STRING))
 
 class Elu(ONNXOp):
@@ -861,7 +981,9 @@ class Elu(ONNXOp):
 
   def __init__(self, X,
     alpha=None):
-    super().__init__('Elu', 1, X,
+    super().__init__('Elu', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT))
 
 class Equal(ONNXOp):
@@ -873,7 +995,9 @@ class Equal(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('Equal', 1, A, B)
+    super().__init__('Equal', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class Erf(ONNXOp):
   """
@@ -881,7 +1005,9 @@ class Erf(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Erf', 1, input)
+    super().__init__('Erf', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      input)
 
 class Exp(ONNXOp):
   """
@@ -889,7 +1015,9 @@ class Exp(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Exp', 1, input)
+    super().__init__('Exp', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Expand(ONNXOp):
   """
@@ -904,7 +1032,9 @@ class Expand(ONNXOp):
   """
 
   def __init__(self, input, shape):
-    super().__init__('Expand', 1, input, shape)
+    super().__init__('Expand', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      input,shape)
 
 class EyeLike(ONNXOp):
   """
@@ -920,7 +1050,9 @@ class EyeLike(ONNXOp):
   def __init__(self, input,
     dtype=None, 
     k=None):
-    super().__init__('EyeLike', 1, input,
+    super().__init__('EyeLike', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      input,
       dtype=ONNXAttr(dtype, AttrType.INT), 
       k=ONNXAttr(k, AttrType.INT))
 
@@ -934,7 +1066,9 @@ class FeatureVectorizer(ONNXOp):
 
   def __init__(self, X,
     inputdimensions=None):
-    super().__init__('FeatureVectorizer', 1, X,
+    super().__init__('FeatureVectorizer', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       inputdimensions=ONNXAttr(inputdimensions, AttrType.INTS))
 
 class Flatten(ONNXOp):
@@ -946,7 +1080,9 @@ class Flatten(ONNXOp):
 
   def __init__(self, input,
     axis=None):
-    super().__init__('Flatten', 1, input,
+    super().__init__('Flatten', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      input,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class Floor(ONNXOp):
@@ -957,7 +1093,9 @@ class Floor(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Floor', 1, X)
+    super().__init__('Floor', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Gather(ONNXOp):
   """
@@ -1020,7 +1158,9 @@ class Gather(ONNXOp):
 
   def __init__(self, data, indices,
     axis=None):
-    super().__init__('Gather', 1, data, indices,
+    super().__init__('Gather', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}],
+      data,indices,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class GatherElements(ONNXOp):
@@ -1034,7 +1174,7 @@ class GatherElements(ONNXOp):
   (gathered from the `data`) for each element in `indices`.
   
   For instance, in the 3-D case (r = 3), the output produced is determined
-  by the following equations: 
+  by the following equations:
   ```
     out[i][j][k] = input[index[i][j][k]][j][k] if axis = 0,
     out[i][j][k] = input[i][index[i][j][k]][k] if axis = 1,
@@ -1084,29 +1224,31 @@ class GatherElements(ONNXOp):
 
   def __init__(self, data, indices,
     axis=None):
-    super().__init__('GatherElements', 1, data, indices,
+    super().__init__('GatherElements', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}],
+      data,indices,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class GatherND(ONNXOp):
   """
-  Given `data` tensor of rank `r` >= 1, `indices` tensor of rank `q` >= 1, and `batch_dims` integer `b`, this operator gathers 
+  Given `data` tensor of rank `r` >= 1, `indices` tensor of rank `q` >= 1, and `batch_dims` integer `b`, this operator gathers
   slices of `data` into an output tensor of rank `q + r - indices_shape[-1] - 1 - b`.
   
-  `indices` is an q-dimensional integer tensor, best thought of as a `(q-1)`-dimensional tensor of index-tuples into `data`, 
+  `indices` is an q-dimensional integer tensor, best thought of as a `(q-1)`-dimensional tensor of index-tuples into `data`,
   where each element defines a slice of `data`
   
-  `batch_dims` (denoted as `b`) is an integer indicating the number of batch dimensions, i.e the leading `b` number of dimensions of 
-  `data` tensor and `indices` are representing the batches, and the gather starts from the `b+1` dimension. 
+  `batch_dims` (denoted as `b`) is an integer indicating the number of batch dimensions, i.e the leading `b` number of dimensions of
+  `data` tensor and `indices` are representing the batches, and the gather starts from the `b+1` dimension.
   
   Some salient points about the inputs' rank and shape:
-   
+  
   1) r >= 1 and q >= 1 are to be honored. There is no dependency condition to be met between ranks `r` and `q`
   
   2) The first `b` dimensions of the shape of `indices` tensor and `data` tensor must be equal.
   
   3) b < min(q, r) is to be honored.
   
-  4) The `indices_shape[-1]` should have a value between 1 (inclusive) and rank `r-b` (inclusive) 
+  4) The `indices_shape[-1]` should have a value between 1 (inclusive) and rank `r-b` (inclusive)
   
   5) All values in `indices` are expected to be within bounds [-s, s-1] along axis of size `s` (i.e.) `-data_shape[i] <= indices[...,i] <= data_shape[i] - 1`.
      It is an error if any of the index values are out of bounds.
@@ -1114,17 +1256,17 @@ class GatherND(ONNXOp):
   The output is computed as follows:
   
   The output tensor is obtained by mapping each index-tuple in the `indices` tensor to the corresponding slice of the input `data`.
-   
+  
   1) If `indices_shape[-1] > r-b` => error condition
   
   2) If `indices_shape[-1] == r-b`, since the rank of `indices` is `q`, `indices` can be thought of as `N` `(q-b-1)`-dimensional tensors
-     containing 1-D tensors of dimension `r-b`, where `N` is an integer equals to the product of 1 and all the elements in the batch dimensions 
-     of the indices_shape. Let us think of each such `r-b` ranked tensor as `indices_slice`. Each *scalar value* corresponding to `data[0:b-1,indices_slice]` 
+     containing 1-D tensors of dimension `r-b`, where `N` is an integer equals to the product of 1 and all the elements in the batch dimensions
+     of the indices_shape. Let us think of each such `r-b` ranked tensor as `indices_slice`. Each *scalar value* corresponding to `data[0:b-1,indices_slice]`
      is filled into the corresponding location of the `(q-b-1)`-dimensional tensor to form the `output` tensor (Example 1 below)
   
   3) If `indices_shape[-1] < r-b`, since the rank of `indices` is `q`, `indices` can be thought of as `N` `(q-b-1)`-dimensional tensor
-     containing 1-D tensors of dimension `< r-b`. Let us think of each such tensors as `indices_slice`. Each *tensor slice* corresponding 
-     to `data[0:b-1, indices_slice , :]` is filled into the corresponding location of the `(q-b-1)`-dimensional tensor 
+     containing 1-D tensors of dimension `< r-b`. Let us think of each such tensors as `indices_slice`. Each *tensor slice* corresponding
+     to `data[0:b-1, indices_slice , :]` is filled into the corresponding location of the `(q-b-1)`-dimensional tensor
      to form the `output` tensor (Examples 2, 3, 4 and 5 below)
   
   This operator is the inverse of `ScatterND`.
@@ -1157,7 +1299,7 @@ class GatherND(ONNXOp):
   
     indices = [[0,1],[1,0]]                 # indices_shape = [2, 2]
   
-    output  = [[2,3],[4,5]]                 # output_shape = [2, 2]   
+    output  = [[2,3],[4,5]]                 # output_shape = [2, 2]
   
   `Example 4`
   
@@ -1167,7 +1309,7 @@ class GatherND(ONNXOp):
   
     indices = [[[0,1]],[[1,0]]]             # indices_shape = [2, 1, 2]
   
-    output  = [[[2,3]],[[4,5]]]             # output_shape = [2, 1, 2] 
+    output  = [[[2,3]],[[4,5]]]             # output_shape = [2, 1, 2]
   
   `Example 5`
   
@@ -1177,12 +1319,14 @@ class GatherND(ONNXOp):
   
     indices = [[1],[0]]             # indices_shape = [2, 1]
   
-    output  = [[2,3],[4,5]]             # output_shape = [2, 2] 
+    output  = [[2,3],[4,5]]             # output_shape = [2, 2]
   """
 
   def __init__(self, data, indices,
     batch_dims=None):
-    super().__init__('GatherND', 1, data, indices,
+    super().__init__('GatherND', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      data,indices,
       batch_dims=ONNXAttr(batch_dims, AttrType.INT))
 
 class Gemm(ONNXOp):
@@ -1207,7 +1351,9 @@ class Gemm(ONNXOp):
     beta=None, 
     transA=None, 
     transB=None):
-    super().__init__('Gemm', 1, A, B, C,
+    super().__init__('Gemm', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      A,B,C,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       beta=ONNXAttr(beta, AttrType.FLOAT), 
       transA=ONNXAttr(transA, AttrType.INT), 
@@ -1221,7 +1367,9 @@ class GlobalAveragePool(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('GlobalAveragePool', 1, X)
+    super().__init__('GlobalAveragePool', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class GlobalLpPool(ONNXOp):
   """
@@ -1232,7 +1380,9 @@ class GlobalLpPool(ONNXOp):
 
   def __init__(self, X,
     p=None):
-    super().__init__('GlobalLpPool', 1, X,
+    super().__init__('GlobalLpPool', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       p=ONNXAttr(p, AttrType.INT))
 
 class GlobalMaxPool(ONNXOp):
@@ -1243,7 +1393,9 @@ class GlobalMaxPool(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('GlobalMaxPool', 1, X)
+    super().__init__('GlobalMaxPool', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Gradient(ONNXOp):
   """
@@ -1347,7 +1499,7 @@ class Gradient(ONNXOp):
   The tensors named in attributes "xs", "zs", and "y" define the differentiated
   computation graph, and the inputs to Gradient node define the values at
   which the gradient is computed. We can feed different tensors to the identified
-  graph. For example, one can compute the gradient of Y with respect to H at 
+  graph. For example, one can compute the gradient of Y with respect to H at
   a specific value of H, H_1, by providing that value as an input to the Gradient
   node.
   
@@ -1375,7 +1527,9 @@ class Gradient(ONNXOp):
     xs=None, 
     y=None, 
     zs=None):
-    super().__init__('Gradient', 1, Inputs,
+    super().__init__('Gradient', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      Inputs,
       xs=ONNXAttr(xs, AttrType.STRINGS), 
       y=ONNXAttr(y, AttrType.STRING), 
       zs=ONNXAttr(zs, AttrType.STRINGS))
@@ -1389,7 +1543,9 @@ class Greater(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('Greater', 1, A, B)
+    super().__init__('Greater', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class GreaterOrEqual(ONNXOp):
   """
@@ -1400,7 +1556,9 @@ class GreaterOrEqual(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('GreaterOrEqual', 1, A, B)
+    super().__init__('GreaterOrEqual', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      A,B)
 
 class GRU(ONNXOp):
   """
@@ -1486,14 +1644,18 @@ class GRU(ONNXOp):
     clip=None, 
     direction=None, 
     hidden_size=None, 
+    layout=None, 
     linear_before_reset=None):
-    super().__init__('GRU', 2, X, W, R, B, sequence_lens, initial_h,
+    super().__init__('GRU', 2,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kInt'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,W,R,B,sequence_lens,initial_h,
       activation_alpha=ONNXAttr(activation_alpha, AttrType.FLOATS), 
       activation_beta=ONNXAttr(activation_beta, AttrType.FLOATS), 
       activations=ONNXAttr(activations, AttrType.STRINGS), 
       clip=ONNXAttr(clip, AttrType.FLOAT), 
       direction=ONNXAttr(direction, AttrType.STRING), 
       hidden_size=ONNXAttr(hidden_size, AttrType.INT), 
+      layout=ONNXAttr(layout, AttrType.INT), 
       linear_before_reset=ONNXAttr(linear_before_reset, AttrType.INT))
 
 class Hardmax(ONNXOp):
@@ -1510,7 +1672,9 @@ class Hardmax(ONNXOp):
 
   def __init__(self, input,
     axis=None):
-    super().__init__('Hardmax', 1, input,
+    super().__init__('Hardmax', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      input,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class HardSigmoid(ONNXOp):
@@ -1523,9 +1687,23 @@ class HardSigmoid(ONNXOp):
   def __init__(self, X,
     alpha=None, 
     beta=None):
-    super().__init__('HardSigmoid', 1, X,
+    super().__init__('HardSigmoid', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       beta=ONNXAttr(beta, AttrType.FLOAT))
+
+class HardSwish(ONNXOp):
+  """
+  HardSwish takes one input data (Tensor<T>) and produces one output data (Tensor<T>) where
+  the HardSwish function, y = x * max(0, min(1, alpha * x + beta)) = x * HardSigmoid<alpha, beta>(x),
+  where alpha = 1/6 and beta = 0.5, is applied to the tensor elementwise.
+  """
+
+  def __init__(self, X):
+    super().__init__('HardSwish', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Identity(ONNXOp):
   """
@@ -1533,7 +1711,9 @@ class Identity(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Identity', 1, input)
+    super().__init__('Identity', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      input)
 
 class If(ONNXOp):
   """
@@ -1543,7 +1723,9 @@ class If(ONNXOp):
   def __init__(self, cond,
     else_branch=None, 
     then_branch=None):
-    super().__init__('If', 1, cond,
+    super().__init__('If', 1,
+      [{'at::kBool'}],
+      cond,
       else_branch=ONNXAttr(else_branch, AttrType.GRAPH), 
       then_branch=ONNXAttr(then_branch, AttrType.GRAPH))
 
@@ -1564,7 +1746,9 @@ class Imputer(ONNXOp):
     imputed_value_int64s=None, 
     replaced_value_float=None, 
     replaced_value_int64=None):
-    super().__init__('Imputer', 1, X,
+    super().__init__('Imputer', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       imputed_value_floats=ONNXAttr(imputed_value_floats, AttrType.FLOATS), 
       imputed_value_int64s=ONNXAttr(imputed_value_int64s, AttrType.INTS), 
       replaced_value_float=ONNXAttr(replaced_value_float, AttrType.FLOAT), 
@@ -1581,7 +1765,9 @@ class InstanceNormalization(ONNXOp):
 
   def __init__(self, input, scale, B,
     epsilon=None):
-    super().__init__('InstanceNormalization', 1, input, scale, B,
+    super().__init__('InstanceNormalization', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input,scale,B,
       epsilon=ONNXAttr(epsilon, AttrType.FLOAT))
 
 class IsInf(ONNXOp):
@@ -1592,7 +1778,9 @@ class IsInf(ONNXOp):
   def __init__(self, X,
     detect_negative=None, 
     detect_positive=None):
-    super().__init__('IsInf', 1, X,
+    super().__init__('IsInf', 1,
+      [{'at::kDouble', 'at::kFloat'}],
+      X,
       detect_negative=ONNXAttr(detect_negative, AttrType.INT), 
       detect_positive=ONNXAttr(detect_positive, AttrType.INT))
 
@@ -1602,7 +1790,9 @@ class IsNaN(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('IsNaN', 1, X)
+    super().__init__('IsNaN', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class LabelEncoder(ONNXOp):
   """
@@ -1635,7 +1825,9 @@ class LabelEncoder(ONNXOp):
     values_floats=None, 
     values_int64s=None, 
     values_strings=None):
-    super().__init__('LabelEncoder', 1, X,
+    super().__init__('LabelEncoder', 1,
+      [{'at::kLong', 'at::kFloat'}],
+      X,
       default_float=ONNXAttr(default_float, AttrType.FLOAT), 
       default_int64=ONNXAttr(default_int64, AttrType.INT), 
       default_string=ONNXAttr(default_string, AttrType.STRING), 
@@ -1655,7 +1847,9 @@ class LeakyRelu(ONNXOp):
 
   def __init__(self, X,
     alpha=None):
-    super().__init__('LeakyRelu', 1, X,
+    super().__init__('LeakyRelu', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT))
 
 class Less(ONNXOp):
@@ -1667,7 +1861,9 @@ class Less(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('Less', 1, A, B)
+    super().__init__('Less', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class LessOrEqual(ONNXOp):
   """
@@ -1678,7 +1874,9 @@ class LessOrEqual(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('LessOrEqual', 1, A, B)
+    super().__init__('LessOrEqual', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      A,B)
 
 class LinearClassifier(ONNXOp):
   """
@@ -1692,7 +1890,9 @@ class LinearClassifier(ONNXOp):
     intercepts=None, 
     multi_class=None, 
     post_transform=None):
-    super().__init__('LinearClassifier', 2, X,
+    super().__init__('LinearClassifier', 2,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       classlabels_ints=ONNXAttr(classlabels_ints, AttrType.INTS), 
       classlabels_strings=ONNXAttr(classlabels_strings, AttrType.STRINGS), 
       coefficients=ONNXAttr(coefficients, AttrType.FLOATS), 
@@ -1715,7 +1915,9 @@ class LinearRegressor(ONNXOp):
     intercepts=None, 
     post_transform=None, 
     targets=None):
-    super().__init__('LinearRegressor', 1, X,
+    super().__init__('LinearRegressor', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       coefficients=ONNXAttr(coefficients, AttrType.FLOATS), 
       intercepts=ONNXAttr(intercepts, AttrType.FLOATS), 
       post_transform=ONNXAttr(post_transform, AttrType.STRING), 
@@ -1727,7 +1929,9 @@ class Log(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Log', 1, input)
+    super().__init__('Log', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class LogSoftmax(ONNXOp):
   """
@@ -1743,7 +1947,9 @@ class LogSoftmax(ONNXOp):
 
   def __init__(self, input,
     axis=None):
-    super().__init__('LogSoftmax', 1, input,
+    super().__init__('LogSoftmax', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      input,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class Loop(ONNXOp):
@@ -1887,7 +2093,9 @@ class Loop(ONNXOp):
 
   def __init__(self, M, cond, v_initial,
     body=None):
-    super().__init__('Loop', 1, M, cond, v_initial,
+    super().__init__('Loop', 1,
+      [{'at::kLong'}, {'at::kBool'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      M,cond,v_initial,
       body=ONNXAttr(body, AttrType.GRAPH))
 
 class LpNormalization(ONNXOp):
@@ -1898,7 +2106,9 @@ class LpNormalization(ONNXOp):
   def __init__(self, input,
     axis=None, 
     p=None):
-    super().__init__('LpNormalization', 1, input,
+    super().__init__('LpNormalization', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input,
       axis=ONNXAttr(axis, AttrType.INT), 
       p=ONNXAttr(p, AttrType.INT))
 
@@ -1917,7 +2127,9 @@ class LpPool(ONNXOp):
     p=None, 
     pads=None, 
     strides=None):
-    super().__init__('LpPool', 1, X,
+    super().__init__('LpPool', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       kernel_shape=ONNXAttr(kernel_shape, AttrType.INTS), 
       p=ONNXAttr(p, AttrType.INT), 
@@ -1943,7 +2155,9 @@ class LRN(ONNXOp):
     beta=None, 
     bias=None, 
     size=None):
-    super().__init__('LRN', 1, X,
+    super().__init__('LRN', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       beta=ONNXAttr(beta, AttrType.FLOAT), 
       bias=ONNXAttr(bias, AttrType.FLOAT), 
@@ -2041,15 +2255,19 @@ class LSTM(ONNXOp):
     clip=None, 
     direction=None, 
     hidden_size=None, 
-    input_forget=None):
-    super().__init__('LSTM', 3, X, W, R, B, sequence_lens, initial_h, initial_c, P,
+    input_forget=None, 
+    layout=None):
+    super().__init__('LSTM', 3,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kInt'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,W,R,B,sequence_lens,initial_h,initial_c,P,
       activation_alpha=ONNXAttr(activation_alpha, AttrType.FLOATS), 
       activation_beta=ONNXAttr(activation_beta, AttrType.FLOATS), 
       activations=ONNXAttr(activations, AttrType.STRINGS), 
       clip=ONNXAttr(clip, AttrType.FLOAT), 
       direction=ONNXAttr(direction, AttrType.STRING), 
       hidden_size=ONNXAttr(hidden_size, AttrType.INT), 
-      input_forget=ONNXAttr(input_forget, AttrType.INT))
+      input_forget=ONNXAttr(input_forget, AttrType.INT), 
+      layout=ONNXAttr(layout, AttrType.INT))
 
 class MatMul(ONNXOp):
   """
@@ -2057,7 +2275,9 @@ class MatMul(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('MatMul', 1, A, B)
+    super().__init__('MatMul', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class MatMulInteger(ONNXOp):
   """
@@ -2066,7 +2286,9 @@ class MatMulInteger(ONNXOp):
   """
 
   def __init__(self, A, B, a_zero_point, b_zero_point):
-    super().__init__('MatMulInteger', 1, A, B, a_zero_point, b_zero_point)
+    super().__init__('MatMulInteger', 1,
+      [{'at::kByte'}, {'at::kByte'}, {'at::kByte'}, {'at::kByte'}],
+      A,B,a_zero_point,b_zero_point)
 
 class Max(ONNXOp):
   """
@@ -2076,7 +2298,9 @@ class Max(ONNXOp):
   """
 
   def __init__(self, data_0):
-    super().__init__('Max', 1, data_0)
+    super().__init__('Max', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      data_0)
 
 class MaxPool(ONNXOp):
   """
@@ -2119,7 +2343,9 @@ class MaxPool(ONNXOp):
     pads=None, 
     storage_order=None, 
     strides=None):
-    super().__init__('MaxPool', 2, X,
+    super().__init__('MaxPool', 2,
+      [{'at::kDouble', 'at::kByte', 'at::kHalf', 'at::kFloat'}],
+      X,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       ceil_mode=ONNXAttr(ceil_mode, AttrType.INT), 
       dilations=ONNXAttr(dilations, AttrType.INTS), 
@@ -2138,7 +2364,9 @@ class MaxRoiPool(ONNXOp):
   def __init__(self, X, rois,
     pooled_shape=None, 
     spatial_scale=None):
-    super().__init__('MaxRoiPool', 1, X, rois,
+    super().__init__('MaxRoiPool', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,rois,
       pooled_shape=ONNXAttr(pooled_shape, AttrType.INTS), 
       spatial_scale=ONNXAttr(spatial_scale, AttrType.FLOAT))
 
@@ -2168,7 +2396,9 @@ class MaxUnpool(ONNXOp):
     kernel_shape=None, 
     pads=None, 
     strides=None):
-    super().__init__('MaxUnpool', 1, X, I, output_shape,
+    super().__init__('MaxUnpool', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kLong'}, {'at::kLong'}],
+      X,I,output_shape,
       kernel_shape=ONNXAttr(kernel_shape, AttrType.INTS), 
       pads=ONNXAttr(pads, AttrType.INTS), 
       strides=ONNXAttr(strides, AttrType.INTS))
@@ -2181,7 +2411,9 @@ class Mean(ONNXOp):
   """
 
   def __init__(self, data_0):
-    super().__init__('Mean', 1, data_0)
+    super().__init__('Mean', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      data_0)
 
 class MeanVarianceNormalization(ONNXOp):
   """
@@ -2191,7 +2423,9 @@ class MeanVarianceNormalization(ONNXOp):
 
   def __init__(self, X,
     axes=None):
-    super().__init__('MeanVarianceNormalization', 1, X,
+    super().__init__('MeanVarianceNormalization', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X,
       axes=ONNXAttr(axes, AttrType.INTS))
 
 class Min(ONNXOp):
@@ -2202,20 +2436,22 @@ class Min(ONNXOp):
   """
 
   def __init__(self, data_0):
-    super().__init__('Min', 1, data_0)
+    super().__init__('Min', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      data_0)
 
 class Mod(ONNXOp):
   """
-    Performs element-wise binary modulus (with Numpy-style broadcasting support). 
+    Performs element-wise binary modulus (with Numpy-style broadcasting support).
       The sign of the remainder is the same as that of the Divisor.
-    
-      Mod operator can also behave like C fmod() or numpy.fmod. In this case, the sign of the remainder however, will be the same as the Dividend 
+  
+      Mod operator can also behave like C fmod() or numpy.fmod. In this case, the sign of the remainder however, will be the same as the Dividend
       (in contrast to integer mod). To force a behavior like numpy.fmod() an 'fmod' Attribute is provided.
-      This attribute is set to 0 by default causing the behavior to be like integer mod. 
+      This attribute is set to 0 by default causing the behavior to be like integer mod.
       Setting this attribute to 1 causes the remainder to be calculated similar to that of numpy.fmod().
   
       If the input type is floating point, then `fmod` attribute must be set to 1.
-    
+  
       In case of dividend being zero, the results will be platform dependent.
   
     This operator supports **multidirectional (i.e., Numpy-style) broadcasting**; for more details please check [the doc](Broadcasting.md).
@@ -2223,7 +2459,9 @@ class Mod(ONNXOp):
 
   def __init__(self, A, B,
     fmod=None):
-    super().__init__('Mod', 1, A, B,
+    super().__init__('Mod', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      A,B,
       fmod=ONNXAttr(fmod, AttrType.INT))
 
 class Momentum(ONNXOp):
@@ -2233,7 +2471,7 @@ class Momentum(ONNXOp):
   
       Let's define the behavior of this operator. As you can imagine, SG with momentum requires
       several parameters:
-       
+  
        - The learning-rate "R".
        - The update count "T". That is, the number of conducted training iterations. It should
          be zero in the first training iteration.
@@ -2247,7 +2485,7 @@ class Momentum(ONNXOp):
       Other necessary inputs are "X"'s gradient (called "G") and "X"'s momentum (called "V"). This
       Momentum operator maps all these inputs to the new value of "X" (called "X_new") and its new
       momentum (called "V_new").
-      
+  
       This operator supports two different momentum algorithms. Set the attribute "mode" to
       "nesterov" if Nesterov's momentum is desired. Otherwise, set the attribute "model" to
       "standard" to use standard momentum. Computation details are described subsequently.
@@ -2295,7 +2533,9 @@ class Momentum(ONNXOp):
     beta=None, 
     mode=None, 
     norm_coefficient=None):
-    super().__init__('Momentum', 1, R, T, inputs,
+    super().__init__('Momentum', 1,
+      [{'at::kDouble', 'at::kFloat'}, {'at::kLong'}, {'at::kDouble', 'at::kFloat'}],
+      R,T,inputs,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       beta=ONNXAttr(beta, AttrType.FLOAT), 
       mode=ONNXAttr(mode, AttrType.STRING), 
@@ -2306,10 +2546,14 @@ class Mul(ONNXOp):
   Performs element-wise binary multiplication (with Numpy-style broadcasting support).
   
   This operator supports **multidirectional (i.e., Numpy-style) broadcasting**; for more details please check [the doc](Broadcasting.md).
+  
+  (Opset 14 change): Extend supported types to include uint8, int8, uint16, and int16.
   """
 
   def __init__(self, A, B):
-    super().__init__('Mul', 1, A, B)
+    super().__init__('Mul', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class Multinomial(ONNXOp):
   """
@@ -2321,7 +2565,9 @@ class Multinomial(ONNXOp):
     dtype=None, 
     sample_size=None, 
     seed=None):
-    super().__init__('Multinomial', 1, input,
+    super().__init__('Multinomial', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input,
       dtype=ONNXAttr(dtype, AttrType.INT), 
       sample_size=ONNXAttr(sample_size, AttrType.INT), 
       seed=ONNXAttr(seed, AttrType.FLOAT))
@@ -2334,7 +2580,9 @@ class Neg(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Neg', 1, X)
+    super().__init__('Neg', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      X)
 
 class NegativeLogLikelihoodLoss(ONNXOp):
   """
@@ -2352,7 +2600,7 @@ class NegativeLogLikelihoodLoss(ONNXOp):
       loss[n][d_1][d_2]...[d_k] = -input[n][c][d_1][d_2]...[d_k] * weight[c].
   
   loss is zero for the case when target-value equals ignore_index.
-      
+  
       loss[n][d_1][d_2]...[d_k] = 0, when target[n][d_1][d_2]...[d_k] = ignore_index
   
   If "reduction" attribute is set to "none", the operator's output will be the above loss with shape (N, d1, d2, ..., dk).
@@ -2429,7 +2677,9 @@ class NegativeLogLikelihoodLoss(ONNXOp):
   def __init__(self, input, target, weight,
     ignore_index=None, 
     reduction=None):
-    super().__init__('NegativeLogLikelihoodLoss', 1, input, target, weight,
+    super().__init__('NegativeLogLikelihoodLoss', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input,target,weight,
       ignore_index=ONNXAttr(ignore_index, AttrType.INT), 
       reduction=ONNXAttr(reduction, AttrType.STRING))
 
@@ -2446,7 +2696,9 @@ class NonMaxSuppression(ONNXOp):
 
   def __init__(self, boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold,
     center_point_box=None):
-    super().__init__('NonMaxSuppression', 1, boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold,
+    super().__init__('NonMaxSuppression', 1,
+      [{'at::kFloat'}, {'at::kFloat'}, {'at::kLong'}, {'at::kFloat'}, {'at::kFloat'}],
+      boxes,scores,max_output_boxes_per_class,iou_threshold,score_threshold,
       center_point_box=ONNXAttr(center_point_box, AttrType.INT))
 
 class NonZero(ONNXOp):
@@ -2458,7 +2710,9 @@ class NonZero(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('NonZero', 1, X)
+    super().__init__('NonZero', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      X)
 
 class Normalizer(ONNXOp):
   """
@@ -2476,7 +2730,9 @@ class Normalizer(ONNXOp):
 
   def __init__(self, X,
     norm=None):
-    super().__init__('Normalizer', 1, X,
+    super().__init__('Normalizer', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       norm=ONNXAttr(norm, AttrType.STRING))
 
 class Not(ONNXOp):
@@ -2485,7 +2741,9 @@ class Not(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Not', 1, X)
+    super().__init__('Not', 1,
+      [{'at::kBool'}],
+      X)
 
 class OneHot(ONNXOp):
   """
@@ -2511,15 +2769,17 @@ class OneHot(ONNXOp):
 
   def __init__(self, indices, depth, values,
     axis=None):
-    super().__init__('OneHot', 1, indices, depth, values,
+    super().__init__('OneHot', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      indices,depth,values,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class OneHotEncoder(ONNXOp):
   """
       Replace each input element with an array of ones and zeros, where a single
-      one is placed at the index of the category that was passed in. The total category count 
+      one is placed at the index of the category that was passed in. The total category count
       will determine the size of the extra dimension of the output array Y.<br>
-      For example, if we pass a tensor with a single value of 4, and a category count of 8, 
+      For example, if we pass a tensor with a single value of 4, and a category count of 8,
       the output will be a tensor with ``[0,0,0,0,1,0,0,0]``.<br>
       This operator assumes every input feature is from the same set of categories.<br>
       If the input is a tensor of float, int32, or double, the data will be cast
@@ -2530,7 +2790,9 @@ class OneHotEncoder(ONNXOp):
     cats_int64s=None, 
     cats_strings=None, 
     zeros=None):
-    super().__init__('OneHotEncoder', 1, X,
+    super().__init__('OneHotEncoder', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       cats_int64s=ONNXAttr(cats_int64s, AttrType.INTS), 
       cats_strings=ONNXAttr(cats_strings, AttrType.STRINGS), 
       zeros=ONNXAttr(zeros, AttrType.INT))
@@ -2544,16 +2806,18 @@ class Or(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('Or', 1, A, B)
+    super().__init__('Or', 1,
+      [{'at::kBool'}, {'at::kBool'}],
+      A,B)
 
 class Pad(ONNXOp):
   """
-  Given a tensor containing the data to be padded (`data`), a tensor containing the number of start and end pad values for axis (`pads`), (optionally) a `mode`, and (optionally) `constant_value`, 
+  Given a tensor containing the data to be padded (`data`), a tensor containing the number of start and end pad values for axis (`pads`), (optionally) a `mode`, and (optionally) `constant_value`,
   a padded tensor (`output`) is generated.
   
   The three supported `modes` are (similar to corresponding modes supported by `numpy.pad`):
   
-  1) `constant`(default) - pads with a given constant value as specified by `constant_value` (which defaults to 0)
+  1) `constant`(default) - pads with a given constant value as specified by `constant_value` (which defaults to 0, empty string, or False)
   
   2) `reflect` - pads with the reflection of the vector mirrored on the first and last values of the vector along each axis
   
@@ -2563,12 +2827,12 @@ class Pad(ONNXOp):
   Example 1 (`constant` mode):
     Insert 0 pads to the beginning of the second dimension.
   
-    data = 
+    data =
     [
         [1.0, 1.2],
         [2.3, 3.4],
         [4.5, 5.7],
-    ] 
+    ]
   
     pads = [0, 2, 0, 0]
   
@@ -2576,7 +2840,7 @@ class Pad(ONNXOp):
   
     constant_value = 0.0
   
-    output = 
+    output =
     [
         [0.0, 0.0, 1.0, 1.2],
         [0.0, 0.0, 2.3, 3.4],
@@ -2585,18 +2849,18 @@ class Pad(ONNXOp):
   
   
   Example 2 (`reflect` mode):
-    data = 
+    data =
     [
         [1.0, 1.2],
         [2.3, 3.4],
         [4.5, 5.7],
-    ] 
+    ]
   
     pads = [0, 2, 0, 0]
   
     mode = 'reflect'
   
-    output = 
+    output =
     [
         [1.0, 1.2, 1.0, 1.2],
         [2.3, 3.4, 2.3, 3.4],
@@ -2605,18 +2869,18 @@ class Pad(ONNXOp):
   
   
   Example 3 (`edge` mode):
-    data = 
+    data =
     [
         [1.0, 1.2],
         [2.3, 3.4],
         [4.5, 5.7],
-    ] 
+    ]
   
     pads = [0, 2, 0, 0]
   
     mode = 'edge'
   
-    output = 
+    output =
     [
         [1.0, 1.0, 1.0, 1.2],
         [2.3, 2.3, 2.3, 3.4],
@@ -2626,7 +2890,9 @@ class Pad(ONNXOp):
 
   def __init__(self, data, pads, constant_value,
     mode=None):
-    super().__init__('Pad', 1, data, pads, constant_value,
+    super().__init__('Pad', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      data,pads,constant_value,
       mode=ONNXAttr(mode, AttrType.STRING))
 
 class Pow(ONNXOp):
@@ -2638,7 +2904,9 @@ class Pow(ONNXOp):
   """
 
   def __init__(self, X, Y):
-    super().__init__('Pow', 1, X, Y)
+    super().__init__('Pow', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      X,Y)
 
 class PRelu(ONNXOp):
   """
@@ -2649,7 +2917,9 @@ class PRelu(ONNXOp):
   """
 
   def __init__(self, X, slope):
-    super().__init__('PRelu', 1, X, slope)
+    super().__init__('PRelu', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat'}],
+      X,slope)
 
 class QLinearConv(ONNXOp):
   """
@@ -2658,7 +2928,7 @@ class QLinearConv(ONNXOp):
   and computes the quantized output. Each scale and zero-point pair must have same shape.
   It means they must be either scalars (per tensor) or 1-D tensors (per output channel).
   Each input or output and its related zero point must have same type.
-  When bias is present it must be quantized using scale = input scale * weight scale and 
+  When bias is present it must be quantized using scale = input scale * weight scale and
   zero point as 0.
   """
 
@@ -2669,7 +2939,9 @@ class QLinearConv(ONNXOp):
     kernel_shape=None, 
     pads=None, 
     strides=None):
-    super().__init__('QLinearConv', 1, x, x_scale, x_zero_point, w, w_scale, w_zero_point, y_scale, y_zero_point, B,
+    super().__init__('QLinearConv', 1,
+      [{'at::kByte'}, {'at::kFloat'}, {'at::kByte'}, {'at::kByte'}, {'at::kFloat'}, {'at::kByte'}, {'at::kFloat'}, {'at::kByte'}, {'at::kInt'}],
+      x,x_scale,x_zero_point,w,w_scale,w_zero_point,y_scale,y_zero_point,B,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       dilations=ONNXAttr(dilations, AttrType.INTS), 
       group=ONNXAttr(group, AttrType.INT), 
@@ -2690,7 +2962,9 @@ class QLinearMatMul(ONNXOp):
   """
 
   def __init__(self, a, a_scale, a_zero_point, b, b_scale, b_zero_point, y_scale, y_zero_point):
-    super().__init__('QLinearMatMul', 1, a, a_scale, a_zero_point, b, b_scale, b_zero_point, y_scale, y_zero_point)
+    super().__init__('QLinearMatMul', 1,
+      [{'at::kByte'}, {'at::kFloat'}, {'at::kByte'}, {'at::kByte'}, {'at::kFloat'}, {'at::kByte'}, {'at::kFloat'}, {'at::kByte'}],
+      a,a_scale,a_zero_point,b,b_scale,b_zero_point,y_scale,y_zero_point)
 
 class QuantizeLinear(ONNXOp):
   """
@@ -2702,7 +2976,9 @@ class QuantizeLinear(ONNXOp):
 
   def __init__(self, x, y_scale, y_zero_point,
     axis=None):
-    super().__init__('QuantizeLinear', 1, x, y_scale, y_zero_point,
+    super().__init__('QuantizeLinear', 1,
+      [{'at::kInt', 'at::kFloat'}, {'at::kFloat'}, {'at::kByte'}],
+      x,y_scale,y_zero_point,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class RandomNormal(ONNXOp):
@@ -2723,6 +2999,7 @@ class RandomNormal(ONNXOp):
     seed=None, 
     shape=None):
     super().__init__('RandomNormal', 1,
+      [],
       dtype=ONNXAttr(dtype, AttrType.INT), 
       mean=ONNXAttr(mean, AttrType.FLOAT), 
       scale=ONNXAttr(scale, AttrType.FLOAT), 
@@ -2745,7 +3022,9 @@ class RandomNormalLike(ONNXOp):
     mean=None, 
     scale=None, 
     seed=None):
-    super().__init__('RandomNormalLike', 1, input,
+    super().__init__('RandomNormalLike', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      input,
       dtype=ONNXAttr(dtype, AttrType.INT), 
       mean=ONNXAttr(mean, AttrType.FLOAT), 
       scale=ONNXAttr(scale, AttrType.FLOAT), 
@@ -2768,6 +3047,7 @@ class RandomUniform(ONNXOp):
     seed=None, 
     shape=None):
     super().__init__('RandomUniform', 1,
+      [],
       dtype=ONNXAttr(dtype, AttrType.INT), 
       high=ONNXAttr(high, AttrType.FLOAT), 
       low=ONNXAttr(low, AttrType.FLOAT), 
@@ -2790,7 +3070,9 @@ class RandomUniformLike(ONNXOp):
     high=None, 
     low=None, 
     seed=None):
-    super().__init__('RandomUniformLike', 1, input,
+    super().__init__('RandomUniformLike', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      input,
       dtype=ONNXAttr(dtype, AttrType.INT), 
       high=ONNXAttr(high, AttrType.FLOAT), 
       low=ONNXAttr(low, AttrType.FLOAT), 
@@ -2825,7 +3107,9 @@ class Range(ONNXOp):
   """
 
   def __init__(self, start, limit, delta):
-    super().__init__('Range', 1, start, limit, delta)
+    super().__init__('Range', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kShort', 'at::kFloat'}],
+      start,limit,delta)
 
 class Reciprocal(ONNXOp):
   """
@@ -2835,7 +3119,9 @@ class Reciprocal(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Reciprocal', 1, X)
+    super().__init__('Reciprocal', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class ReduceL1(ONNXOp):
   """
@@ -2850,7 +3136,9 @@ class ReduceL1(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceL1', 1, data,
+    super().__init__('ReduceL1', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2867,7 +3155,9 @@ class ReduceL2(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceL2', 1, data,
+    super().__init__('ReduceL2', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2884,7 +3174,9 @@ class ReduceLogSum(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceLogSum', 1, data,
+    super().__init__('ReduceLogSum', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2901,7 +3193,9 @@ class ReduceLogSumExp(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceLogSumExp', 1, data,
+    super().__init__('ReduceLogSumExp', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2918,7 +3212,9 @@ class ReduceMax(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceMax', 1, data,
+    super().__init__('ReduceMax', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2935,7 +3231,9 @@ class ReduceMean(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceMean', 1, data,
+    super().__init__('ReduceMean', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2952,7 +3250,9 @@ class ReduceMin(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceMin', 1, data,
+    super().__init__('ReduceMin', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2969,7 +3269,9 @@ class ReduceProd(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceProd', 1, data,
+    super().__init__('ReduceProd', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -2986,7 +3288,9 @@ class ReduceSum(ONNXOp):
   def __init__(self, data, axes,
     keepdims=None, 
     noop_with_empty_axes=None):
-    super().__init__('ReduceSum', 1, data, axes,
+    super().__init__('ReduceSum', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      data,axes,
       keepdims=ONNXAttr(keepdims, AttrType.INT), 
       noop_with_empty_axes=ONNXAttr(noop_with_empty_axes, AttrType.INT))
 
@@ -3003,7 +3307,9 @@ class ReduceSumSquare(ONNXOp):
   def __init__(self, data,
     axes=None, 
     keepdims=None):
-    super().__init__('ReduceSumSquare', 1, data,
+    super().__init__('ReduceSumSquare', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -3015,7 +3321,9 @@ class Relu(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Relu', 1, X)
+    super().__init__('Relu', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      X)
 
 class Reshape(ONNXOp):
   """
@@ -3024,11 +3332,16 @@ class Reshape(ONNXOp):
   At most one dimension of the new shape can be -1. In this case, the value is
   inferred from the size of the tensor and the remaining dimensions. A dimension
   could also be 0, in which case the actual dimension value is unchanged (i.e. taken
-  from the input tensor).
+  from the input tensor). If 'allowzero' is set, and the new shape includes 0, the
+  dimension will be set explicitly to zero (i.e. not taken from input tensor)
   """
 
-  def __init__(self, data, shape):
-    super().__init__('Reshape', 1, data, shape)
+  def __init__(self, data, shape,
+    allowzero=None):
+    super().__init__('Reshape', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      data,shape,
+      allowzero=ONNXAttr(allowzero, AttrType.INT))
 
 class Resize(ONNXOp):
   """
@@ -3044,7 +3357,9 @@ class Resize(ONNXOp):
     extrapolation_value=None, 
     mode=None, 
     nearest_mode=None):
-    super().__init__('Resize', 1, X, roi, scales, sizes,
+    super().__init__('Resize', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kFloat'}, {'at::kLong'}],
+      X,roi,scales,sizes,
       coordinate_transformation_mode=ONNXAttr(coordinate_transformation_mode, AttrType.STRING), 
       cubic_coeff_a=ONNXAttr(cubic_coeff_a, AttrType.FLOAT), 
       exclude_outside=ONNXAttr(exclude_outside, AttrType.INT), 
@@ -3092,7 +3407,9 @@ class ReverseSequence(ONNXOp):
   def __init__(self, input, sequence_lens,
     batch_axis=None, 
     time_axis=None):
-    super().__init__('ReverseSequence', 1, input, sequence_lens,
+    super().__init__('ReverseSequence', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong'}],
+      input,sequence_lens,
       batch_axis=ONNXAttr(batch_axis, AttrType.INT), 
       time_axis=ONNXAttr(time_axis, AttrType.INT))
 
@@ -3167,14 +3484,18 @@ class RNN(ONNXOp):
     activations=None, 
     clip=None, 
     direction=None, 
-    hidden_size=None):
-    super().__init__('RNN', 2, X, W, R, B, sequence_lens, initial_h,
+    hidden_size=None, 
+    layout=None):
+    super().__init__('RNN', 2,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kInt'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,W,R,B,sequence_lens,initial_h,
       activation_alpha=ONNXAttr(activation_alpha, AttrType.FLOATS), 
       activation_beta=ONNXAttr(activation_beta, AttrType.FLOATS), 
       activations=ONNXAttr(activations, AttrType.STRINGS), 
       clip=ONNXAttr(clip, AttrType.FLOAT), 
       direction=ONNXAttr(direction, AttrType.STRING), 
-      hidden_size=ONNXAttr(hidden_size, AttrType.INT))
+      hidden_size=ONNXAttr(hidden_size, AttrType.INT), 
+      layout=ONNXAttr(layout, AttrType.INT))
 
 class RoiAlign(ONNXOp):
   """
@@ -3197,7 +3518,9 @@ class RoiAlign(ONNXOp):
     output_width=None, 
     sampling_ratio=None, 
     spatial_scale=None):
-    super().__init__('RoiAlign', 1, X, rois, batch_indices,
+    super().__init__('RoiAlign', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kLong'}],
+      X,rois,batch_indices,
       mode=ONNXAttr(mode, AttrType.STRING), 
       output_height=ONNXAttr(output_height, AttrType.INT), 
       output_width=ONNXAttr(output_width, AttrType.INT), 
@@ -3222,7 +3545,9 @@ class Round(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Round', 1, X)
+    super().__init__('Round', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Scaler(ONNXOp):
   """
@@ -3232,7 +3557,9 @@ class Scaler(ONNXOp):
   def __init__(self, X,
     offset=None, 
     scale=None):
-    super().__init__('Scaler', 1, X,
+    super().__init__('Scaler', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       offset=ONNXAttr(offset, AttrType.FLOATS), 
       scale=ONNXAttr(scale, AttrType.FLOATS))
 
@@ -3367,7 +3694,9 @@ class Scan(ONNXOp):
     scan_input_directions=None, 
     scan_output_axes=None, 
     scan_output_directions=None):
-    super().__init__('Scan', 1, initial_state_and_scan_inputs,
+    super().__init__('Scan', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      initial_state_and_scan_inputs,
       body=ONNXAttr(body, AttrType.GRAPH), 
       num_scan_inputs=ONNXAttr(num_scan_inputs, AttrType.INT), 
       scan_input_axes=ONNXAttr(scan_input_axes, AttrType.INTS), 
@@ -3377,8 +3706,8 @@ class Scan(ONNXOp):
 
 class Scatter(ONNXOp):
   """
-  Given `data`, `updates` and `indices` input tensors of rank r >= 1, write the values provided by `updates` 
-  into the first input, `data`, along `axis` dimension of `data` (by default outer-most one as axis=0) at corresponding `indices`. 
+  Given `data`, `updates` and `indices` input tensors of rank r >= 1, write the values provided by `updates`
+  into the first input, `data`, along `axis` dimension of `data` (by default outer-most one as axis=0) at corresponding `indices`.
   For each entry in `updates`, the target index in `data` is specified by corresponding entry in `indices`
   for dimension = axis, and index in source for dimension != axis. For instance, in a 2-D tensor case,
   data[indices[i][j]][j] = updates[i][j] if axis = 0, or data[i][indices[i][j]] = updates[i][j] if axis = 1,
@@ -3412,7 +3741,9 @@ class Scatter(ONNXOp):
 
   def __init__(self, data, indices, updates,
     axis=None):
-    super().__init__('Scatter', 1, data, indices, updates,
+    super().__init__('Scatter', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      data,indices,updates,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class ScatterElements(ONNXOp):
@@ -3433,7 +3764,7 @@ class ScatterElements(ONNXOp):
   For instance, in a 2-D tensor case, the update corresponding to the [i][j] entry
   is performed as below:
   ```
-    output[indices[i][j]][j] = updates[i][j] if axis = 0, 
+    output[indices[i][j]][j] = updates[i][j] if axis = 0,
     output[i][indices[i][j]] = updates[i][j] if axis = 1,
   ```
   
@@ -3472,7 +3803,9 @@ class ScatterElements(ONNXOp):
 
   def __init__(self, data, indices, updates,
     axis=None):
-    super().__init__('ScatterElements', 1, data, indices, updates,
+    super().__init__('ScatterElements', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      data,indices,updates,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class ScatterND(ONNXOp):
@@ -3536,7 +3869,9 @@ class ScatterND(ONNXOp):
   """
 
   def __init__(self, data, indices, updates):
-    super().__init__('ScatterND', 1, data, indices, updates)
+    super().__init__('ScatterND', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      data,indices,updates)
 
 class Selu(ONNXOp):
   """
@@ -3549,7 +3884,9 @@ class Selu(ONNXOp):
   def __init__(self, X,
     alpha=None, 
     gamma=None):
-    super().__init__('Selu', 1, X,
+    super().__init__('Selu', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       gamma=ONNXAttr(gamma, AttrType.FLOAT))
 
@@ -3561,7 +3898,9 @@ class SequenceAt(ONNXOp):
   """
 
   def __init__(self, input_sequence, position):
-    super().__init__('SequenceAt', 1, input_sequence, position)
+    super().__init__('SequenceAt', 1,
+      [set(), {'at::kLong', 'at::kInt'}],
+      input_sequence,position)
 
 class SequenceConstruct(ONNXOp):
   """
@@ -3570,7 +3909,9 @@ class SequenceConstruct(ONNXOp):
   """
 
   def __init__(self, inputs):
-    super().__init__('SequenceConstruct', 1, inputs)
+    super().__init__('SequenceConstruct', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      inputs)
 
 class SequenceEmpty(ONNXOp):
   """
@@ -3580,6 +3921,7 @@ class SequenceEmpty(ONNXOp):
   def __init__(self,
     dtype=None):
     super().__init__('SequenceEmpty', 1,
+      [],
       dtype=ONNXAttr(dtype, AttrType.INT))
 
 class SequenceErase(ONNXOp):
@@ -3591,7 +3933,9 @@ class SequenceErase(ONNXOp):
   """
 
   def __init__(self, input_sequence, position):
-    super().__init__('SequenceErase', 1, input_sequence, position)
+    super().__init__('SequenceErase', 1,
+      [set(), {'at::kLong', 'at::kInt'}],
+      input_sequence,position)
 
 class SequenceInsert(ONNXOp):
   """
@@ -3603,7 +3947,9 @@ class SequenceInsert(ONNXOp):
   """
 
   def __init__(self, input_sequence, tensor, position):
-    super().__init__('SequenceInsert', 1, input_sequence, tensor, position)
+    super().__init__('SequenceInsert', 1,
+      [set(), {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong', 'at::kInt'}],
+      input_sequence,tensor,position)
 
 class SequenceLength(ONNXOp):
   """
@@ -3611,7 +3957,9 @@ class SequenceLength(ONNXOp):
   """
 
   def __init__(self, input_sequence):
-    super().__init__('SequenceLength', 1, input_sequence)
+    super().__init__('SequenceLength', 1,
+      [set()],
+      input_sequence)
 
 class Shape(ONNXOp):
   """
@@ -3619,7 +3967,9 @@ class Shape(ONNXOp):
   """
 
   def __init__(self, data):
-    super().__init__('Shape', 1, data)
+    super().__init__('Shape', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      data)
 
 class Shrink(ONNXOp):
   """
@@ -3632,7 +3982,9 @@ class Shrink(ONNXOp):
   def __init__(self, input,
     bias=None, 
     lambd=None):
-    super().__init__('Shrink', 1, input,
+    super().__init__('Shrink', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      input,
       bias=ONNXAttr(bias, AttrType.FLOAT), 
       lambd=ONNXAttr(lambd, AttrType.FLOAT))
 
@@ -3644,7 +3996,9 @@ class Sigmoid(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Sigmoid', 1, X)
+    super().__init__('Sigmoid', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Sign(ONNXOp):
   """
@@ -3653,7 +4007,9 @@ class Sign(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Sign', 1, input)
+    super().__init__('Sign', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      input)
 
 class Sin(ONNXOp):
   """
@@ -3661,7 +4017,9 @@ class Sin(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Sin', 1, input)
+    super().__init__('Sin', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Sinh(ONNXOp):
   """
@@ -3669,7 +4027,9 @@ class Sinh(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Sinh', 1, input)
+    super().__init__('Sinh', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Size(ONNXOp):
   """
@@ -3677,7 +4037,9 @@ class Size(ONNXOp):
   """
 
   def __init__(self, data):
-    super().__init__('Size', 1, data)
+    super().__init__('Size', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      data)
 
 class Slice(ONNXOp):
   """
@@ -3689,9 +4051,9 @@ class Slice(ONNXOp):
   start or end indices, it represents number of elements before the end of that
   dimension. If the value passed to start or end is larger than the `n` (the
   number of elements in this dimension), it represents `n`. For slicing to the
-  end of a dimension with unknown size, it is recommended to pass in `INT_MAX` 
+  end of a dimension with unknown size, it is recommended to pass in `INT_MAX`
   when sclicing forward and 'INT_MIN' when slicing backward.
-  If a negative value is passed for step, it represents slicing backward. 
+  If a negative value is passed for step, it represents slicing backward.
   However step value cannot be 0.
   If `axes` are omitted, they are set to `[0, ..., ndim-1]`.
   If `steps` are omitted, they are set to `[1, ..., 1]` of length `len(starts)`
@@ -3720,7 +4082,9 @@ class Slice(ONNXOp):
   """
 
   def __init__(self, data, starts, ends, axes, steps):
-    super().__init__('Slice', 1, data, starts, ends, axes, steps)
+    super().__init__('Slice', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}],
+      data,starts,ends,axes,steps)
 
 class Softmax(ONNXOp):
   """
@@ -3736,7 +4100,9 @@ class Softmax(ONNXOp):
 
   def __init__(self, input,
     axis=None):
-    super().__init__('Softmax', 1, input,
+    super().__init__('Softmax', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      input,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class SoftmaxCrossEntropyLoss(ONNXOp):
@@ -3777,7 +4143,9 @@ class SoftmaxCrossEntropyLoss(ONNXOp):
   def __init__(self, scores, labels, weights,
     ignore_index=None, 
     reduction=None):
-    super().__init__('SoftmaxCrossEntropyLoss', 2, scores, labels, weights,
+    super().__init__('SoftmaxCrossEntropyLoss', 2,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      scores,labels,weights,
       ignore_index=ONNXAttr(ignore_index, AttrType.INT), 
       reduction=ONNXAttr(reduction, AttrType.STRING))
 
@@ -3789,7 +4157,9 @@ class Softplus(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Softplus', 1, X)
+    super().__init__('Softplus', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Softsign(ONNXOp):
   """
@@ -3797,7 +4167,9 @@ class Softsign(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Softsign', 1, input)
+    super().__init__('Softsign', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class SpaceToDepth(ONNXOp):
   """
@@ -3808,7 +4180,9 @@ class SpaceToDepth(ONNXOp):
 
   def __init__(self, input,
     blocksize=None):
-    super().__init__('SpaceToDepth', 1, input,
+    super().__init__('SpaceToDepth', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      input,
       blocksize=ONNXAttr(blocksize, AttrType.INT))
 
 class Split(ONNXOp):
@@ -3820,7 +4194,9 @@ class Split(ONNXOp):
 
   def __init__(self, input, split,
     axis=None):
-    super().__init__('Split', 1, input, split,
+    super().__init__('Split', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      input,split,
       axis=ONNXAttr(axis, AttrType.INT))
 
 class SplitToSequence(ONNXOp):
@@ -3840,7 +4216,9 @@ class SplitToSequence(ONNXOp):
   def __init__(self, input, split,
     axis=None, 
     keepdims=None):
-    super().__init__('SplitToSequence', 1, input, split,
+    super().__init__('SplitToSequence', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong', 'at::kInt'}],
+      input,split,
       axis=ONNXAttr(axis, AttrType.INT), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
 
@@ -3852,7 +4230,9 @@ class Sqrt(ONNXOp):
   """
 
   def __init__(self, X):
-    super().__init__('Sqrt', 1, X)
+    super().__init__('Sqrt', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      X)
 
 class Squeeze(ONNXOp):
   """
@@ -3863,7 +4243,9 @@ class Squeeze(ONNXOp):
   """
 
   def __init__(self, data, axes):
-    super().__init__('Squeeze', 1, data, axes)
+    super().__init__('Squeeze', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      data,axes)
 
 class StringNormalizer(ONNXOp):
   """
@@ -3883,7 +4265,9 @@ class StringNormalizer(ONNXOp):
     is_case_sensitive=None, 
     locale=None, 
     stopwords=None):
-    super().__init__('StringNormalizer', 1, X,
+    super().__init__('StringNormalizer', 1,
+      [set()],
+      X,
       case_change_action=ONNXAttr(case_change_action, AttrType.STRING), 
       is_case_sensitive=ONNXAttr(is_case_sensitive, AttrType.INT), 
       locale=ONNXAttr(locale, AttrType.STRING), 
@@ -3894,10 +4278,14 @@ class Sub(ONNXOp):
   Performs element-wise binary subtraction (with Numpy-style broadcasting support).
   
   This operator supports **multidirectional (i.e., Numpy-style) broadcasting**; for more details please check [the doc](Broadcasting.md).
+  
+  (Opset 14 change): Extend supported types to include uint8, int8, uint16, and int16.
   """
 
   def __init__(self, A, B):
-    super().__init__('Sub', 1, A, B)
+    super().__init__('Sub', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      A,B)
 
 class Sum(ONNXOp):
   """
@@ -3907,7 +4295,9 @@ class Sum(ONNXOp):
   """
 
   def __init__(self, data_0):
-    super().__init__('Sum', 1, data_0)
+    super().__init__('Sum', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      data_0)
 
 class SVMClassifier(ONNXOp):
   """
@@ -3926,7 +4316,9 @@ class SVMClassifier(ONNXOp):
     rho=None, 
     support_vectors=None, 
     vectors_per_class=None):
-    super().__init__('SVMClassifier', 2, X,
+    super().__init__('SVMClassifier', 2,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       classlabels_ints=ONNXAttr(classlabels_ints, AttrType.INTS), 
       classlabels_strings=ONNXAttr(classlabels_strings, AttrType.STRINGS), 
       coefficients=ONNXAttr(coefficients, AttrType.FLOATS), 
@@ -3953,7 +4345,9 @@ class SVMRegressor(ONNXOp):
     post_transform=None, 
     rho=None, 
     support_vectors=None):
-    super().__init__('SVMRegressor', 1, X,
+    super().__init__('SVMRegressor', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       coefficients=ONNXAttr(coefficients, AttrType.FLOATS), 
       kernel_params=ONNXAttr(kernel_params, AttrType.FLOATS), 
       kernel_type=ONNXAttr(kernel_type, AttrType.STRING), 
@@ -3969,7 +4363,9 @@ class Tan(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Tan', 1, input)
+    super().__init__('Tan', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class Tanh(ONNXOp):
   """
@@ -3977,7 +4373,9 @@ class Tanh(ONNXOp):
   """
 
   def __init__(self, input):
-    super().__init__('Tanh', 1, input)
+    super().__init__('Tanh', 1,
+      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      input)
 
 class TfIdfVectorizer(ONNXOp):
   """
@@ -4020,7 +4418,9 @@ class TfIdfVectorizer(ONNXOp):
     pool_int64s=None, 
     pool_strings=None, 
     weights=None):
-    super().__init__('TfIdfVectorizer', 1, X,
+    super().__init__('TfIdfVectorizer', 1,
+      [{'at::kLong', 'at::kInt'}],
+      X,
       max_gram_length=ONNXAttr(max_gram_length, AttrType.INT), 
       max_skip_count=ONNXAttr(max_skip_count, AttrType.INT), 
       min_gram_length=ONNXAttr(min_gram_length, AttrType.INT), 
@@ -4040,7 +4440,9 @@ class ThresholdedRelu(ONNXOp):
 
   def __init__(self, X,
     alpha=None):
-    super().__init__('ThresholdedRelu', 1, X,
+    super().__init__('ThresholdedRelu', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT))
 
 class Tile(ONNXOp):
@@ -4051,7 +4453,9 @@ class Tile(ONNXOp):
   """
 
   def __init__(self, input, repeats):
-    super().__init__('Tile', 1, input, repeats)
+    super().__init__('Tile', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      input,repeats)
 
 class TopK(ONNXOp):
   """
@@ -4075,7 +4479,9 @@ class TopK(ONNXOp):
     axis=None, 
     largest=None, 
     sorted=None):
-    super().__init__('TopK', 2, X, K,
+    super().__init__('TopK', 2,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kLong'}],
+      X,K,
       axis=ONNXAttr(axis, AttrType.INT), 
       largest=ONNXAttr(largest, AttrType.INT), 
       sorted=ONNXAttr(sorted, AttrType.INT))
@@ -4089,13 +4495,15 @@ class Transpose(ONNXOp):
 
   def __init__(self, data,
     perm=None):
-    super().__init__('Transpose', 1, data,
+    super().__init__('Transpose', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      data,
       perm=ONNXAttr(perm, AttrType.INTS))
 
 class TreeEnsembleClassifier(ONNXOp):
   """
       Tree Ensemble classifier.  Returns the top class for each of N inputs.<br>
-      The attributes named 'nodes_X' form a sequence of tuples, associated by 
+      The attributes named 'nodes_X' form a sequence of tuples, associated by
       index into the sequences, which must all be of equal length. These tuples
       define the nodes.<br>
       Similarly, all fields prefixed with 'class_' are tuples of votes at the leaves.
@@ -4123,7 +4531,9 @@ class TreeEnsembleClassifier(ONNXOp):
     nodes_truenodeids=None, 
     nodes_values=None, 
     post_transform=None):
-    super().__init__('TreeEnsembleClassifier', 2, X,
+    super().__init__('TreeEnsembleClassifier', 2,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       base_values=ONNXAttr(base_values, AttrType.FLOATS), 
       class_ids=ONNXAttr(class_ids, AttrType.INTS), 
       class_nodeids=ONNXAttr(class_nodeids, AttrType.INTS), 
@@ -4174,7 +4584,9 @@ class TreeEnsembleRegressor(ONNXOp):
     target_nodeids=None, 
     target_treeids=None, 
     target_weights=None):
-    super().__init__('TreeEnsembleRegressor', 1, X,
+    super().__init__('TreeEnsembleRegressor', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      X,
       aggregate_function=ONNXAttr(aggregate_function, AttrType.STRING), 
       base_values=ONNXAttr(base_values, AttrType.FLOATS), 
       n_targets=ONNXAttr(n_targets, AttrType.INT), 
@@ -4193,18 +4605,41 @@ class TreeEnsembleRegressor(ONNXOp):
       target_treeids=ONNXAttr(target_treeids, AttrType.INTS), 
       target_weights=ONNXAttr(target_weights, AttrType.FLOATS))
 
+class Trilu(ONNXOp):
+  """
+  Given a 2-D matrix or batches of 2-D matrices, returns the upper or lower triangular part of the tensor(s).
+  The attribute "upper" determines whether the upper or lower part is retained. If set to true,
+  the upper triangular matrix is retained. Lower triangular matrix is retained otherwise.
+  Default value for the "upper" attribute is true.
+  Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists
+  of the elements on and above the given diagonal (k). The lower triangular part consists of elements on and below the diagonal.
+  All other elements in the matrix are set to zero.
+  If k = 0, the triangular part on and above/below the main diagonal is retained.
+  If upper is set to true, a positive k retains the upper triangular matrix excluding the main diagonal and (k-1) diagonals above it.
+  A negative k value retains the main diagonal and |k| diagonals below it.
+  If upper is set to false, a positive k retains the lower triangular matrix including the main diagonal and k diagonals above it.
+  A negative k value excludes the main diagonal and (|k|-1) diagonals below it.
+  """
+
+  def __init__(self, input, k,
+    upper=None):
+    super().__init__('Trilu', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      input,k,
+      upper=ONNXAttr(upper, AttrType.INT))
+
 class Unique(ONNXOp):
   """
-  Find the unique elements of a tensor. When an optional attribute 'axis' is provided, unique subtensors sliced along the 'axis' are returned. 
-  Otherwise the input tensor is flattened and unique values of the flattened tensor are returned. 
+  Find the unique elements of a tensor. When an optional attribute 'axis' is provided, unique subtensors sliced along the 'axis' are returned.
+  Otherwise the input tensor is flattened and unique values of the flattened tensor are returned.
   
-  This operator returns the unique values or sliced unique subtensors of the input tensor and three optional outputs. 
-  The first output tensor 'Y' contains all unique values or subtensors of the input. 
-  The second optional output tensor 'indices' contains indices of 'Y' elements' first occurance in 'X'.. 
-  The third optional output tensor 'inverse_indices' contains, for elements of 'X', its corresponding indices in 'Y'. ". 
-  The fourth optional output tensor 'counts' contains the count of each element of 'Y' in the input. 
+  This operator returns the unique values or sliced unique subtensors of the input tensor and three optional outputs.
+  The first output tensor 'Y' contains all unique values or subtensors of the input.
+  The second optional output tensor 'indices' contains indices of 'Y' elements' first occurance in 'X'..
+  The third optional output tensor 'inverse_indices' contains, for elements of 'X', its corresponding indices in 'Y'. ".
+  The fourth optional output tensor 'counts' contains the count of each element of 'Y' in the input.
   
-  Outputs are either sorted in ascending order or optionally in the order of the first occurrence of the values in the input. 
+  Outputs are either sorted in ascending order or optionally in the order of the first occurrence of the values in the input.
   
   https://docs.scipy.org/doc/numpy/reference/generated/numpy.unique.html
   
@@ -4236,36 +4671,36 @@ class Unique(ONNXOp):
     output_counts = [2, 1]
   
   Example 4:
-    input_x = [[[1., 1.], [0., 1.], [2., 1.], [0., 1.]], 
+    input_x = [[[1., 1.], [0., 1.], [2., 1.], [0., 1.]],
                [[1., 1.], [0., 1.], [2., 1.], [0., 1.]]]
     attribute_sorted = 1
     attribute_axis = 1
   
-    intermediate data are presented below for better understanding: 
-    
+    intermediate data are presented below for better understanding:
+  
     there are 4 subtensors sliced along axis 1 of input_x (shape = (2, 4, 2)):
-    A: [[1, 1], [1, 1]], 
-       [[0, 1], [0, 1]], 
-       [[2, 1], [2, 1]], 
+    A: [[1, 1], [1, 1]],
+       [[0, 1], [0, 1]],
+       [[2, 1], [2, 1]],
        [[0, 1], [0, 1]].
-    
-    there are 3 unique subtensors: 
-    [[1, 1], [1, 1]], 
-    [[0, 1], [0, 1]], 
+  
+    there are 3 unique subtensors:
+    [[1, 1], [1, 1]],
+    [[0, 1], [0, 1]],
     [[2, 1], [2, 1]].
-    
+  
     sorted unique subtensors:
-    B: [[0, 1], [0, 1]], 
-       [[1, 1], [1, 1]], 
+    B: [[0, 1], [0, 1]],
+       [[1, 1], [1, 1]],
        [[2, 1], [2, 1]].
-    
+  
     output_Y is constructed from B:
-    [[[0. 1.], [1. 1.], [2. 1.]], 
+    [[[0. 1.], [1. 1.], [2. 1.]],
      [[0. 1.], [1. 1.], [2. 1.]]]
   
     output_indices is to map from B to A:
     [1, 0, 2]
-    
+  
     output_inverse_indices is to map from A to B:
     [1, 0, 2, 0]
   
@@ -4275,7 +4710,9 @@ class Unique(ONNXOp):
   def __init__(self, X,
     axis=None, 
     sorted=None):
-    super().__init__('Unique', 4, X,
+    super().__init__('Unique', 4,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      X,
       axis=ONNXAttr(axis, AttrType.INT), 
       sorted=ONNXAttr(sorted, AttrType.INT))
 
@@ -4290,12 +4727,14 @@ class Unsqueeze(ONNXOp):
   
   The input `axes` should not contain any duplicate entries. It is an error if it contains duplicates.
   The rank of the output tensor (`output_rank`) is the rank of the input tensor (`data`) plus the number of values in `axes`.
-  Each value in `axes` should be within the (inclusive) range [-output_rank , output_rank - 1]. 
-  The order of values in `axes` does not matter and can come in any order. 
+  Each value in `axes` should be within the (inclusive) range [-output_rank , output_rank - 1].
+  The order of values in `axes` does not matter and can come in any order.
   """
 
   def __init__(self, data, axes):
-    super().__init__('Unsqueeze', 1, data, axes)
+    super().__init__('Unsqueeze', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      data,axes)
 
 class Upsample(ONNXOp):
   """
@@ -4306,7 +4745,9 @@ class Upsample(ONNXOp):
 
   def __init__(self, X, scales,
     mode=None):
-    super().__init__('Upsample', 1, X, scales,
+    super().__init__('Upsample', 1,
+      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kFloat'}],
+      X,scales,
       mode=ONNXAttr(mode, AttrType.STRING))
 
 class Where(ONNXOp):
@@ -4318,7 +4759,9 @@ class Where(ONNXOp):
   """
 
   def __init__(self, condition, X, Y):
-    super().__init__('Where', 1, condition, X, Y)
+    super().__init__('Where', 1,
+      [{'at::kBool'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      condition,X,Y)
 
 class Xor(ONNXOp):
   """
@@ -4329,7 +4772,9 @@ class Xor(ONNXOp):
   """
 
   def __init__(self, A, B):
-    super().__init__('Xor', 1, A, B)
+    super().__init__('Xor', 1,
+      [{'at::kBool'}, {'at::kBool'}],
+      A,B)
 
 class ZipMap(ONNXOp):
   """
@@ -4342,193 +4787,197 @@ class ZipMap(ONNXOp):
   def __init__(self, X,
     classlabels_int64s=None, 
     classlabels_strings=None):
-    super().__init__('ZipMap', 1, X,
+    super().__init__('ZipMap', 1,
+      [{'at::kFloat'}],
+      X,
       classlabels_int64s=ONNXAttr(classlabels_int64s, AttrType.INTS), 
       classlabels_strings=ONNXAttr(classlabels_strings, AttrType.STRINGS))
 
 onnx_ops = {
+  'adam': Adam,
+  'adagrad': Adagrad,
   'momentum': Momentum,
   'gradient': Gradient,
-  'treeensembleclassifier': TreeEnsembleClassifier,
-  'scaler': Scaler,
-  'linearregressor': LinearRegressor,
+  'zipmap': ZipMap,
+  'onehotencoder': OneHotEncoder,
+  'normalizer': Normalizer,
+  'linearclassifier': LinearClassifier,
   'labelencoder': LabelEncoder,
   'imputer': Imputer,
-  'linearclassifier': LinearClassifier,
-  'binarizer': Binarizer,
-  'lessorequal': LessOrEqual,
-  'celu': Celu,
-  'concatfromsequence': ConcatFromSequence,
-  'sequenceat': SequenceAt,
-  'sequenceinsert': SequenceInsert,
-  'gathernd': GatherND,
-  'scatternd': ScatterND,
-  'det': Det,
-  'scatterelements': ScatterElements,
-  'gatherelements': GatherElements,
-  'splittosequence': SplitToSequence,
-  'dynamicquantizelinear': DynamicQuantizeLinear,
-  'round': Round,
-  'cumsum': CumSum,
-  'bitshift': BitShift,
-  'roialign': RoiAlign,
-  'reversesequence': ReverseSequence,
-  'nonmaxsuppression': NonMaxSuppression,
-  'isinf': IsInf,
-  'quantizelinear': QuantizeLinear,
-  'qlinearconv': QLinearConv,
-  'convinteger': ConvInteger,
-  'qlinearmatmul': QLinearMatMul,
-  'matmulinteger': MatMulInteger,
-  'stringnormalizer': StringNormalizer,
-  'meanvariancenormalization': MeanVarianceNormalization,
-  'tfidfvectorizer': TfIdfVectorizer,
+  'featurevectorizer': FeatureVectorizer,
   'treeensembleregressor': TreeEnsembleRegressor,
-  'range': Range,
-  'nonzero': NonZero,
-  'sign': Sign,
-  'isnan': IsNaN,
-  'sequenceerase': SequenceErase,
-  'shrink': Shrink,
-  'sinh': Sinh,
-  'mod': Mod,
-  'scatter': Scatter,
-  'onehot': OneHot,
-  'maxunpool': MaxUnpool,
-  'eyelike': EyeLike,
-  'constantofshape': ConstantOfShape,
-  'compress': Compress,
-  'scan': Scan,
-  'dequantizelinear': DequantizeLinear,
-  'thresholdedrelu': ThresholdedRelu,
-  'expand': Expand,
-  'multinomial': Multinomial,
-  'asin': Asin,
-  'xor': Xor,
-  'einsum': Einsum,
-  'floor': Floor,
-  'reducesumsquare': ReduceSumSquare,
-  'upsample': Upsample,
-  'and': And,
-  'tile': Tile,
-  'sub': Sub,
-  'squeeze': Squeeze,
-  'acosh': Acosh,
-  'reducelogsum': ReduceLogSum,
-  'split': Split,
-  'where': Where,
-  'sqrt': Sqrt,
-  'softsign': Softsign,
-  'softplus': Softplus,
-  'cos': Cos,
-  'spacetodepth': SpaceToDepth,
-  'greaterorequal': GreaterOrEqual,
-  'softmax': Softmax,
-  'erf': Erf,
-  'size': Size,
-  'max': Max,
-  'tanh': Tanh,
-  'transpose': Transpose,
-  'shape': Shape,
-  'onehotencoder': OneHotEncoder,
-  'selu': Selu,
-  'adam': Adam,
-  'sum': Sum,
-  'relu': Relu,
-  'negativeloglikelihoodloss': NegativeLogLikelihoodLoss,
-  'sequencelength': SequenceLength,
-  'reducemin': ReduceMin,
-  'reducel1': ReduceL1,
-  'reciprocal': Reciprocal,
-  'mul': Mul,
-  'randomuniformlike': RandomUniformLike,
-  'sin': Sin,
-  'sigmoid': Sigmoid,
-  'randomnormallike': RandomNormalLike,
-  'asinh': Asinh,
-  'rnn': RNN,
-  'pad': Pad,
-  'slice': Slice,
-  'greater': Greater,
-  'reducelogsumexp': ReduceLogSumExp,
-  'or': Or,
-  'neg': Neg,
-  'mean': Mean,
-  'adagrad': Adagrad,
-  'reshape': Reshape,
   'dictvectorizer': DictVectorizer,
-  'reducel2': ReduceL2,
-  'arrayfeatureextractor': ArrayFeatureExtractor,
-  'flatten': Flatten,
+  'castmap': CastMap,
+  'shape': Shape,
+  'reshape': Reshape,
+  'binarizer': Binarizer,
+  'reciprocal': Reciprocal,
+  'leakyrelu': LeakyRelu,
+  'hardsigmoid': HardSigmoid,
+  'treeensembleclassifier': TreeEnsembleClassifier,
+  'reducemin': ReduceMin,
+  'div': Div,
+  'randomnormallike': RandomNormalLike,
   'randomnormal': RandomNormal,
+  'greaterorequal': GreaterOrEqual,
+  'pow': Pow,
+  'or': Or,
+  'mul': Mul,
+  'min': Min,
+  'floor': Floor,
+  'mean': Mean,
+  'lrn': LRN,
+  'scaler': Scaler,
+  'max': Max,
+  'round': Round,
+  'lppool': LpPool,
+  'sigmoid': Sigmoid,
+  'relu': Relu,
+  'quantizelinear': QuantizeLinear,
+  'logsoftmax': LogSoftmax,
+  'randomuniform': RandomUniform,
+  'depthtospace': DepthToSpace,
+  'concat': Concat,
+  'bitshift': BitShift,
+  'ceil': Ceil,
+  'gather': Gather,
+  'log': Log,
+  'reducesumsquare': ReduceSumSquare,
+  'dropout': Dropout,
+  'greater': Greater,
+  'reducesum': ReduceSum,
+  'sequenceempty': SequenceEmpty,
+  'neg': Neg,
+  'constant': Constant,
+  'maxpool': MaxPool,
+  'sub': Sub,
+  'reducelogsumexp': ReduceLogSumExp,
+  'xor': Xor,
+  'globallppool': GlobalLpPool,
+  'upsample': Upsample,
+  'prelu': PRelu,
+  'loop': Loop,
+  'lpnormalization': LpNormalization,
+  'dynamicquantizelinear': DynamicQuantizeLinear,
+  'splittosequence': SplitToSequence,
+  'linearregressor': LinearRegressor,
+  'add': Add,
+  'selu': Selu,
+  'reducemax': ReduceMax,
+  'and': And,
+  'abs': Abs,
+  'qlinearmatmul': QLinearMatMul,
+  'lessorequal': LessOrEqual,
+  'clip': Clip,
+  'argmax': ArgMax,
+  'einsum': Einsum,
+  'hardmax': Hardmax,
   'conv': Conv,
   'globalmaxpool': GlobalMaxPool,
-  'lppool': LpPool,
-  'reducemax': ReduceMax,
-  'loop': Loop,
-  'zipmap': ZipMap,
-  'log': Log,
-  'leakyrelu': LeakyRelu,
-  'batchnormalization': BatchNormalization,
-  'cosh': Cosh,
-  'cast': Cast,
-  'not': Not,
-  'lstm': LSTM,
-  'unsqueeze': Unsqueeze,
-  'topk': TopK,
-  'argmax': ArgMax,
-  'lrn': LRN,
-  'sequenceempty': SequenceEmpty,
-  'acos': Acos,
-  'randomuniform': RandomUniform,
-  'normalizer': Normalizer,
+  'maxunpool': MaxUnpool,
+  'argmin': ArgMin,
+  'averagepool': AveragePool,
+  'sqrt': Sqrt,
+  'size': Size,
   'instancenormalization': InstanceNormalization,
-  'softmaxcrossentropyloss': SoftmaxCrossEntropyLoss,
-  'concat': Concat,
-  'if': If,
-  'categorymapper': CategoryMapper,
-  'maxroipool': MaxRoiPool,
-  'clip': Clip,
+  'gemm': Gemm,
+  'reducelogsum': ReduceLogSum,
+  'cos': Cos,
+  'not': Not,
+  'eyelike': EyeLike,
+  'equal': Equal,
+  'cast': Cast,
+  'exp': Exp,
+  'flatten': Flatten,
+  'svmclassifier': SVMClassifier,
+  'roialign': RoiAlign,
+  'reducemean': ReduceMean,
+  'scatter': Scatter,
+  'split': Split,
   'identity': Identity,
-  'svmregressor': SVMRegressor,
-  'reduceprod': ReduceProd,
-  'prelu': PRelu,
-  'gather': Gather,
-  'atanh': Atanh,
-  'hardsigmoid': HardSigmoid,
-  'matmul': MatMul,
-  'gru': GRU,
-  'resize': Resize,
-  'globallppool': GlobalLpPool,
-  'sequenceconstruct': SequenceConstruct,
-  'elu': Elu,
+  'reducel2': ReduceL2,
   'globalaveragepool': GlobalAveragePool,
   'tan': Tan,
-  'exp': Exp,
+  'reducel1': ReduceL1,
+  'lstm': LSTM,
+  'slice': Slice,
+  'softmax': Softmax,
+  'softmaxcrossentropyloss': SoftmaxCrossEntropyLoss,
+  'categorymapper': CategoryMapper,
+  'maxroipool': MaxRoiPool,
+  'softsign': Softsign,
+  'gathernd': GatherND,
+  'batchnormalization': BatchNormalization,
+  'spacetodepth': SpaceToDepth,
+  'squeeze': Squeeze,
   'unique': Unique,
-  'argmin': ArgMin,
-  'add': Add,
-  'constant': Constant,
-  'equal': Equal,
-  'reducesum': ReduceSum,
-  'featurevectorizer': FeatureVectorizer,
-  'pow': Pow,
-  'maxpool': MaxPool,
-  'min': Min,
-  'div': Div,
-  'svmclassifier': SVMClassifier,
-  'reducemean': ReduceMean,
+  'sum': Sum,
+  'sinh': Sinh,
   'less': Less,
-  'dropout': Dropout,
-  'depthtospace': DepthToSpace,
-  'ceil': Ceil,
+  'tanh': Tanh,
+  'isnan': IsNaN,
+  'tile': Tile,
+  'multinomial': Multinomial,
+  'topk': TopK,
+  'reversesequence': ReverseSequence,
+  'transpose': Transpose,
+  'stringnormalizer': StringNormalizer,
+  'acos': Acos,
+  'asin': Asin,
+  'gru': GRU,
   'atan': Atan,
-  'logsoftmax': LogSoftmax,
-  'averagepool': AveragePool,
-  'hardmax': Hardmax,
-  'castmap': CastMap,
-  'abs': Abs,
+  'sign': Sign,
+  'trilu': Trilu,
+  'where': Where,
+  'sin': Sin,
+  'shrink': Shrink,
+  'matmul': MatMul,
+  'expand': Expand,
+  'scan': Scan,
+  'compress': Compress,
+  'elu': Elu,
+  'unsqueeze': Unsqueeze,
+  'constantofshape': ConstantOfShape,
+  'onehot': OneHot,
+  'sequenceat': SequenceAt,
+  'cosh': Cosh,
+  'asinh': Asinh,
+  'rnn': RNN,
+  'acosh': Acosh,
+  'atanh': Atanh,
+  'erf': Erf,
+  'nonzero': NonZero,
+  'meanvariancenormalization': MeanVarianceNormalization,
+  'scatternd': ScatterND,
+  'randomuniformlike': RandomUniformLike,
+  'resize': Resize,
+  'mod': Mod,
+  'thresholdedrelu': ThresholdedRelu,
+  'matmulinteger': MatMulInteger,
+  'pad': Pad,
+  'convinteger': ConvInteger,
+  'qlinearconv': QLinearConv,
+  'celu': Celu,
   'convtranspose': ConvTranspose,
-  'lpnormalization': LpNormalization,
-  'gemm': Gemm,
+  'dequantizelinear': DequantizeLinear,
+  'sequencelength': SequenceLength,
+  'nonmaxsuppression': NonMaxSuppression,
+  'isinf': IsInf,
+  'cumsum': CumSum,
+  'softplus': Softplus,
+  'gatherelements': GatherElements,
+  'scatterelements': ScatterElements,
+  'range': Range,
+  'svmregressor': SVMRegressor,
+  'negativeloglikelihoodloss': NegativeLogLikelihoodLoss,
+  'det': Det,
+  'sequenceconstruct': SequenceConstruct,
+  'if': If,
+  'sequenceinsert': SequenceInsert,
+  'tfidfvectorizer': TfIdfVectorizer,
+  'sequenceerase': SequenceErase,
+  'concatfromsequence': ConcatFromSequence,
+  'hardswish': HardSwish,
+  'reduceprod': ReduceProd,
+  'arrayfeatureextractor': ArrayFeatureExtractor,
 }

@@ -9,11 +9,15 @@
 #include <pybind11/stl_bind.h>
 
 #include "core/common/parse_string.h"
+#include "core/graph/model.h"
 #include "core/session/environment.h"
+#include "core/dlpack/dlpack_converter.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
@@ -41,20 +45,20 @@ ORTTrainingPythonEnv& GetTrainingEnv();
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsVector& original_provider_options_vector,
-                                 ProviderOptionsVector& merged_options){
+                                 ProviderOptionsVector& merged_options) {
   auto& training_env = GetTrainingEnv();
   std::size_t j = 0;  // index for provider_options_vector
   for (const std::string& type : provider_types) {
     auto it = training_env.ext_execution_provider_info_map_.find(type);
-    if (it == training_env.ext_execution_provider_info_map_.end()){
+    if (it == training_env.ext_execution_provider_info_map_.end()) {
       if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
         merged_options.push_back(original_provider_options_vector[j]);
       }
-    }else{
+    } else {
       ProviderOptions options = it->second.second;
       options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
       if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
-        for (auto [k, v] : original_provider_options_vector[j]){
+        for (auto [k, v] : original_provider_options_vector[j]) {
           options.insert({k, v});
         }
       }
@@ -113,7 +117,7 @@ struct TrainingParameters {
   int propagate_cast_ops_level = 1;
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
-      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
+      GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill;
   bool allow_layer_norm_mod_precision = false;
 
   // graph dumping
@@ -124,6 +128,15 @@ struct TrainingParameters {
 
 struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
+};
+
+struct PyGradientGraphBuilder {
+  std::unique_ptr<GradientGraphBuilder> builder;
+  std::shared_ptr<Model> model;
+  std::unique_ptr<logging::Logger> logger;
+  std::unique_ptr<GradientGraphConfiguration> gradient_graph_config;
+  PyGradientGraphBuilder(std::unique_ptr<GradientGraphBuilder> builder_, std::shared_ptr<Model> model_, std::unique_ptr<logging::Logger> logger_, std::unique_ptr<GradientGraphConfiguration> gradient_graph_config_)
+      : builder(std::move(builder_)), model(std::move(model_)), logger(std::move(logger_)), gradient_graph_config(std::move(gradient_graph_config_)) {}
 };
 
 // TODO: this method does not handle parallel optimization.
@@ -359,14 +372,98 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
       .def("__iter__", [](const std::vector<OrtValue>& v) {
         return py::make_iterator(v.cbegin(), v.cend());
-      },
-           py::keep_alive<0, 1>())
+       }, py::keep_alive<0, 1>())
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
         return v.at(idx);
       })
+      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
+         std::vector<int64_t> indices;
+         for (size_t i = 0; i < v->size(); ++i) {
+           if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
+             indices.push_back(static_cast<int64_t>(i));
+           }
+         }
+         return indices;
+      }, "Returns the indices of every boolean tensor in this vector of OrtValue. "
+         "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
+         "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
+         "to get a boolean tensor.")
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      });
+      })
+      .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
+        return GetTensorProtoType(v->at(idx));
+      }, "Returns an integer equal to the ONNX proto type of the tensor at position i. "
+         "This integer is one type defined by ONNX TensorProto_DataType "
+         "(such as onnx.TensorProto.FLOAT)."
+          "Raises an exception in any other case.")
+      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+
+        if (v.size() == 0)
+          return py::list();
+
+        py::list list_dlpacks;
+        PyObject* obj;
+
+        py::gil_scoped_acquire acquire;
+
+        if (to_tensor.is_none()) {
+          DLManagedTensor* dlmanaged_tensor;
+
+          for (auto it : v) {
+            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+            py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+            list_dlpacks.append(capsule);
+          }
+        } else {
+          DLManagedTensor* dlmanaged_tensor;
+          PyObject* capsule = NULL;
+          PyObject* handle = to_tensor.ptr();
+
+          for (auto it : v) {
+            // A new instance of dlpack needs to be created. The object which consumes it
+            // is responsible for its deletion.
+            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+            if (capsule == NULL) {
+              capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
+              if (capsule == NULL)
+                throw std::runtime_error("Unexpected error: empty capsule returned.");
+            } else {
+              // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
+              PyCapsule_SetName(capsule, "dltensor");
+              PyCapsule_SetPointer(capsule, dlmanaged_tensor);
+            }
+            obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
+            if (obj == NULL)
+              throw std::runtime_error("to_tensor returned a null pointer. This is usually caused by an error during the conversion.");
+            list_dlpacks.append(obj);
+            Py_DECREF(obj);
+          }
+          if (capsule != NULL) {
+            // This test is never wrong because v is not empty if the execution goes through that path.
+            // If not present, Guardian detects a potential failure.
+            Py_DECREF(capsule);
+          }
+        }
+        return list_dlpacks;
+       },
+       R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
+a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
+consuming the DLPack structure or return a list of capsule if this function is None.
+
+:param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
+    a new tensor which becomes the new owner of the data. This function takes one python object and
+    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`,
+    if None, the method returns a capsule for every new DLPack structure.
+:return: a list containing the new tensors or a the new capsules if *to_tensor* is None
+
+This method is used to replace `tuple(torch._C._from_dlpack(ov.to_dlpack()) for ov in ort_values)`
+by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. This loop
+is difficult to parallelize as it goes through the GIL many times.
+It creates many tensors acquiring ownership of existing OrtValue.
+This method saves one object creation and an C++ allocation
+for every transfered tensor.
+)pbdoc");
 
   py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
@@ -375,7 +472,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("keys", [](const OrtValueCachePtr& cache_ptr) {
         py::list keys;
-        for(auto kv : *cache_ptr.get()) {
+        for (auto kv : *cache_ptr.get()) {
           keys.append(kv.first);
         }
         return keys;
@@ -469,7 +566,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
           void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
           void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Initialize(p_is_tensor_argument, p_aten_op_executor);
+          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
         });
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -760,6 +857,49 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         return ortmodule_graph_builder->GetGraphInfo();
       });
 
+  // Provide a convenient and well-documented way to make a gradient graph.
+  // It's possible to get the gradient graph through ORTModule by leveraging some "private" fields and not-so-well-documented APIs, so we provide this explicit and tested way to get the gradient graph.
+  py::class_<PyGradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
+  // Set up methods to match the C++ `GradientGraphBuilder` interface.
+  gradient_graph_builder.def(py::init([](
+                                          const py::bytes& serialized_model,
+                                          const std::unordered_set<std::string>& y_node_arg_names,
+                                          const std::unordered_set<std::string>& x_node_arg_names,
+                                          const std::string loss_node_arg_name) {
+        std::shared_ptr<Model> model;
+        auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+        logger_ptr->SetSeverity(logging::Severity::kINFO);
+        ONNX_NAMESPACE::ModelProto model_proto;
+        std::istringstream model_istream(serialized_model);
+        ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
+        ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
+        GradientGraphConfiguration gradient_graph_config{};
+        gradient_graph_config.set_gradients_as_graph_outputs = true;
+        // Save some objects, otherwise they get lost.
+        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+
+        auto builder = std::make_unique<GradientGraphBuilder>(
+            &model->MainGraph(),
+            y_node_arg_names,
+            x_node_arg_names,
+            loss_node_arg_name,
+            *gradient_graph_config_ptr,
+            *logger_ptr);
+
+        return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
+      }))
+      .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());
+      })
+      .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
+        ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model), path));
+      })
+      .def("get_model", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        std::string model_str;
+        gradient_graph_builder->model->ToProto().SerializeToString(&model_str);
+        return py::bytes(model_str);
+      });
+
   py::class_<GradientNodeAttributeDefinition> gradient_node_attribute_definition(
       m, "GradientNodeAttributeDefinition", R"pbdoc(Attribute definition for gradient graph nodes.)pbdoc");
 
@@ -783,7 +923,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
           GradientDefinitionRegistry::Instance().Register(key, gradient_def);
         });
-  
+
   m.def("register_custom_stop_gradient_edges",
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);

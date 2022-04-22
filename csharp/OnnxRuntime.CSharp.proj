@@ -44,13 +44,13 @@ CMake creates a target to this project
     <Message Importance="High" Text="Restoring NuGet packages for CSharp projects..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="Restore" 
-             Properties="Platform=AnyCPU" 
+             Properties="Platform=AnyCPU;OrtPackageId=$(OrtPackageId)" 
              />
     <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
              Targets="Restore" 
              Properties="Platform=AnyCPU" 
              />
-    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
+    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
              Targets="Restore" 
              Properties="ProtocDirectory=$(ProtocDirectory)"
              />
@@ -65,12 +65,12 @@ CMake creates a target to this project
  
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="ObtainPackageVersion;Build" 
-             Properties="Platform=AnyCPU"/>
+             Properties="Platform=AnyCPU;OrtPackageId=$(OrtPackageId)"/>
     <MSBuild Projects="sample\Microsoft.ML.OnnxRuntime.InferenceSample\Microsoft.ML.OnnxRuntime.InferenceSample.csproj"
              Targets="Build" 
              Properties="Platform=AnyCPU"
              />
-    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj"
+    <MSBuild Projects="test\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
              Targets="Build"
              />
     <MSBuild Projects="tools\Microsoft.ML.OnnxRuntime.PerfTool\Microsoft.ML.OnnxRuntime.PerfTool.csproj"
@@ -130,7 +130,7 @@ CMake creates a target to this project
     </Exec>
 
     <Message Importance="High" Text="Bundling native shared library artifacts into a NuGet package ..." />
-    <Exec ContinueOnError="False" Command="$(NugetExe) pack -Symbols -SymbolPackageFormat snupkg NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
+    <Exec ContinueOnError="False" Command="$(NugetExe) pack NativeNuget.nuspec" ConsoleToMSBuild="true" WorkingDirectory="$(NativeBuildOutputDirAbs)" Condition=" '$(OS)' == 'Windows_NT'">
       <Output TaskParameter="ConsoleOutput" PropertyName="OutputOfExec" />
     </Exec>
 

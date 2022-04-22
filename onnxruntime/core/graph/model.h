@@ -20,14 +20,27 @@ struct Offset;
 
 namespace onnxruntime {
 
-namespace experimental {
 namespace fbs {
 struct Model;
 }  // namespace fbs
-}  // namespace experimental
 
 typedef std::unordered_map<std::string, std::string> ModelMetaData;
 using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>>;
+
+// Options to configure Model.
+struct ModelOptions {
+  bool allow_released_opsets_only;
+  // If true, all inconsistencies encountered during shape and type inference
+  // will be exposed to the caller as failures. If false, in some cases
+  // warnings will be logged but processing will continue and no error will
+  // be returned.
+  bool strict_shape_type_inference;
+
+  ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
+      : allow_released_opsets_only(allow_released_opsets_only), strict_shape_type_inference(strict_shape_type_inference) {}
+
+  ModelOptions() : ModelOptions(true, false) {}
+};
 
 // A machine learning model representation class.
 // Besides a main <Graph>, it also holds basic information, say,
@@ -39,9 +52,10 @@ class Model {
 #if !defined(ORT_MINIMAL_BUILD)
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
-                 const logging::Logger& logger)
+                 const logging::Logger& logger,
+                 const ModelOptions& options = {})
       : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {},
-              {}, logger) {}
+              {}, logger, options) {}
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,
@@ -51,35 +65,37 @@ class Model {
                  const IOnnxRuntimeOpSchemaRegistryList& local_registries,
                  const std::unordered_map<std::string, int>& domain_to_version,
                  const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger,
+                 const ModelOptions& options = {});
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger)
-      : Model(model_proto, PathString(), local_registries, logger) {}
+                 const logging::Logger& logger, const ModelOptions& options = {})
+      : Model(model_proto, PathString(), local_registries, logger, options) {}
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger, const ModelOptions& options = {});
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger)
-      : Model(std::move(model_proto), PathString(), local_registries, logger) {}
+                 const logging::Logger& logger, const ModelOptions& options = {})
+      : Model(std::move(model_proto), PathString(), local_registries, logger, options) {}
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger);
+                 const logging::Logger& logger,
+                 const ModelOptions& options = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -207,19 +223,22 @@ class Model {
   static common::Status Load(const PathString& file_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
 
   static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
 
   static common::Status Load(int fd,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes,
@@ -228,53 +247,57 @@ class Model {
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                                      const logging::Logger& logger);
+                                      const logging::Logger& logger,
+                                      const ModelOptions& options = {});
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes,
                                       const PathString& model_path,
                                       /*out*/ std::shared_ptr<Model>& p_model,
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                                      const logging::Logger& logger);
+                                      const logging::Logger& logger,
+                                      const ModelOptions& options = {});
 
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
 
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
 
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
 
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger,
+                             const ModelOptions& options = {});
 
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                 flatbuffers::Offset<onnxruntime::experimental::fbs::Model>& model) const;
+                                 flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-  static common::Status LoadFromOrtFormat(const onnxruntime::experimental::fbs::Model& fbs_model,
+  static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Model& fbs_model,
 #if !defined(ORT_MINIMAL_BUILD)
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
-#endif
 
- private:
   Model();
 
+ private:
   // Model data.
 #if !defined(ORT_MINIMAL_BUILD)
   ONNX_NAMESPACE::ModelProto model_proto_;

@@ -31,8 +31,8 @@ print("producer_version={}".format(model.producer_version))
 #############################
 # With *ONNX Runtime*:
 
-from onnxruntime import InferenceSession
-sess = InferenceSession(example)
+import onnxruntime as rt
+sess = rt.InferenceSession(example, providers=rt.get_available_providers())
 meta = sess.get_modelmeta()
 
 print("custom_metadata_map={}".format(meta.custom_metadata_map))

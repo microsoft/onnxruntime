@@ -9,7 +9,6 @@ from onnx import AttributeProto, SparseTensorProto, TensorProto, GraphProto, Val
 import traceback
 
 from typing import Text, Sequence, Any, Optional, Dict, Union, TypeVar, Callable, Tuple, List, cast
-from six import text_type, integer_types, binary_type
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -55,14 +54,14 @@ def make_sparse_tensor_value_info(
             dim = sparse_tensor_shape_proto.dim.add()
             if d is None:
                 pass
-            elif isinstance(d, integer_types):
+            elif isinstance(d, int):
                 dim.dim_value = d
-            elif isinstance(d, text_type):
+            elif isinstance(d, str):
                 dim.dim_param = d
             else:
                 raise ValueError(
                     'Invalid item in shape: {}. '
-                    'Needs to of integer_types or text_type.'.format(d))
+                    'Needs to be one of `int` or `text`.'.format(d))
 
             if shape_denotation:
                 dim.denotation = shape_denotation[i]

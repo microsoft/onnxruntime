@@ -41,7 +41,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       size_t cpu_tensor_length;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       OrtValue ort_value;
-      std::unique_ptr<char[]> data(new char[cpu_tensor_length]);
+      std::unique_ptr<char[]> data = std::make_unique<char[]>(cpu_tensor_length);
       std::unique_ptr<Tensor> p_tensor;
       ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(),
                                                       model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str(),
@@ -100,11 +100,17 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 }
 
+Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const{
+  std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
+  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), out);
+}
+
 std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
+  FuncManager func;
   auto status = kernel_registry->TryCreateKernel(*node, execution_provider_, initializers_,
-                                                 ort_value_name_idx_map_, FuncManager(), data_transfer_mgr_,
+                                                 ort_value_name_idx_map_, func, data_transfer_mgr_,
                                                  op_kernel);
 
   // Kernel found in the CPU kernel registry
@@ -155,7 +161,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   }
 
   if (ml_type->IsTensorSequenceType()) {
-    auto element_type = ml_type->AsSequenceTensorBase()->GetElementType();
+    auto element_type = ml_type->AsSequenceTensorType()->GetElementType();
     auto p_sequence = std::make_unique<TensorSeq>(element_type);
     auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
     ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
@@ -163,7 +169,7 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   }
 
   if (!ml_type->IsTensorType()) {
-    assert(ml_type->AsNonTensorTypeBase() != nullptr);
+    assert(ml_type->AsNonTensorType() != nullptr);
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);
     auto creator = non_tensor_type->GetCreateFunc();
     ort_value.Init(creator(), non_tensor_type, non_tensor_type->GetDeleteFunc());

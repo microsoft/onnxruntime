@@ -280,7 +280,8 @@ def generate_test_data(onnx_file,
         else:
             sess_options.optimized_model_filepath = path_prefix + "_optimized_gpu.onnx"
 
-        session = onnxruntime.InferenceSession(onnx_file, sess_options)
+        session = onnxruntime.InferenceSession(onnx_file, sess_options=sess_options,
+                                               providers=onnxruntime.get_available_providers())
         if use_cpu:
             session.set_providers(['CPUExecutionProvider'])  # use cpu
         else:
@@ -315,7 +316,7 @@ def main():
     bert_model.update_graph()
     bert_model.remove_unused_constant()
 
-    print("opset verion", bert_model.model.opset_import[0].version)
+    print("opset version", bert_model.model.opset_import[0].version)
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())

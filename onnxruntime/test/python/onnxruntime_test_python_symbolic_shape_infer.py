@@ -25,16 +25,64 @@ def unique_element(lst):
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
+        
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, '..', 'models')
         for filename in Path(test_model_dir).rglob('*.onnx'):
             if filename.name.startswith('.'):
                 continue  # skip some bad model files
+
             print("Running symbolic shape inference on : " + str(filename))
             SymbolicShapeInference.infer_shapes(in_mp=onnx.load(str(filename)),
                                                 auto_merge=True,
                                                 int_max=100000,
                                                 guess_output_rank=True)
+
+    def test_mismatched_types(self):
+        graph = helper.make_graph(
+            [helper.make_node(
+                "If",
+                ["x"],
+                ["out"],
+                name="if_node",
+                then_branch=helper.make_graph(
+                    [helper.make_node(
+                        "Constant",
+                        [],
+                        ["one_float"],
+                        value=helper.make_tensor(
+                            "one_float_value",
+                            TensorProto.FLOAT,
+                            [],
+                            [1]),
+                    )],
+                    "then",
+                    [],
+                    [helper.make_tensor_value_info("one_float", TensorProto.FLOAT, [])],
+                ),
+                else_branch=helper.make_graph(
+                    [helper.make_node(
+                        "Constant",
+                        [],
+                        ["one_double"],
+                        value=helper.make_tensor(
+                            "one_double",
+                            TensorProto.DOUBLE,
+                            [],
+                            [1]),
+                    )],
+                    "else",
+                    [],
+                    [helper.make_tensor_value_info("one_double", TensorProto.DOUBLE, [])],
+                ))],
+            "graph",
+            [helper.make_tensor_value_info("x", TensorProto.BOOL, [])],
+            [helper.make_tensor_value_info("out", TensorProto.FLOAT, [])],
+        )
+        model = helper.make_model(graph, producer_name="test_mismatched_types")
+
+        with self.assertRaisesRegex(ValueError, r"if_node.*FLOAT.*DOUBLE"):
+            SymbolicShapeInference.infer_shapes(model, auto_merge=True)
 
 
 class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
@@ -238,7 +286,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
     def test_einsum_transpose(self):
         self._test_einsum_one_input_impl(['a', 'b'], ['b', 'a'], "ij -> ji")
-        
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):

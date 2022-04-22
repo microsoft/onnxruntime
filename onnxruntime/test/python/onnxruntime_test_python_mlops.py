@@ -3,6 +3,7 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
+import os
 import numpy as np
 import onnxruntime as onnxrt
 from helper import get_name
@@ -11,7 +12,8 @@ from helper import get_name
 class TestInferenceSession(unittest.TestCase):
 
     def testZipMapStringFloat(self):
-        sess = onnxrt.InferenceSession(get_name("zipmap_stringfloat.onnx"))
+        sess = onnxrt.InferenceSession(get_name("zipmap_stringfloat.onnx"),
+                                       providers=onnxrt.get_available_providers())
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
@@ -37,7 +39,8 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testZipMapInt64Float(self):
-        sess = onnxrt.InferenceSession(get_name("zipmap_int64float.onnx"))
+        sess = onnxrt.InferenceSession(get_name("zipmap_int64float.onnx"),
+                                       providers=onnxrt.get_available_providers())
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
@@ -55,7 +58,8 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testDictVectorizer(self):
-        sess = onnxrt.InferenceSession(get_name("pipeline_vectorize.onnx"))
+        sess = onnxrt.InferenceSession(get_name("pipeline_vectorize.onnx"),
+                                       providers=onnxrt.get_available_providers())
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "float_input")
         input_type = str(sess.get_inputs()[0].type)
@@ -99,7 +103,8 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testLabelEncoder(self):
-        sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"))
+        sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"),
+                                       providers=onnxrt.get_available_providers())
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "input")
         input_type = str(sess.get_inputs()[0].type)
@@ -141,7 +146,7 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), None,
                                            ['DmlExecutionProvider', 'CPUExecutionProvider'])
         else:
-            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"))
+            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), providers=available_providers)
 
         names = [_.name for _ in sess.get_outputs()]
         self.assertEqual(['C00', 'C12'], names)
@@ -166,6 +171,31 @@ class TestInferenceSession(unittest.TestCase):
         mat = res[1]
         total = mat.sum()
         self.assertEqual(total, 0)
+
+    def test_run_model_tree_ensemble_aionnxml_3(self):
+        available_providers = onnxrt.get_available_providers()
+        # Checks onnxruntime can load and execute TreeEnsembleRegressor with double threashold.
+        model = get_name("tree_ensemble_as_tensor.onnx")
+        # first threshold of the tree is 1.7999999523162842
+        # all number 1.79* are the same once converting to float32.
+        # predictions must be the same with float32 and different with float64.
+        iris = np.array([[0, 1, 1.7999999523162842, 3],
+                         [0, 1, 1.7999999523, 3],
+                         [0, 1, 1.79999995232, 3]], dtype=np.float64)
+        sess = onnxrt.InferenceSession(model, providers=available_providers)
+        got = sess.run(None, {'X': iris})
+        self.assertEqual(got[0].dtype, np.float64)
+        self.assertEqual(got[0].shape, (3, 1))
+        res64 = got[0].tolist()
+        self.assertEqual(res64, [[0.7284910678863525], [0.7284910678863525], [0.9134243130683899]])
+        iris = np.array([[0, 1, 1.7999999523162842, 3],
+                         [0, 1, 1.7999999523, 3],
+                         [0, 1, 1.79999995232, 3]], dtype=np.float32)
+        got = sess.run(None, {'X': iris.astype(np.float64)})
+        self.assertEqual(got[0].dtype, np.float64)
+        self.assertEqual(got[0].shape, (3, 1))
+        res32 = got[0].tolist()
+        self.assertEqual(res32, [[0.7284910678863525], [0.7284910678863525], [0.7284910678863525]])
 
 
 if __name__ == '__main__':

@@ -359,7 +359,8 @@ tvm::Tensor ReduceValueLowest_noPad(const tvm::Tensor& X,
   //[n1, w] for 2D or [w] for 1D
   auto head_tensor = tvm::compute(head_shape, l_head, name + "_head_reduce");
   //[n1, 1] for 2D or [1] for 1D
-  return topi::CommReduce(head_tensor, tvm_codegen::ToTvmArrayInt({(int64_t)(input_shape_rank)-1}), func, true, true);
+  const auto rank_minus_one = gsl::narrow<int64_t>(input_shape_rank) - 1;
+  return topi::CommReduce(head_tensor, tvm_codegen::ToTvmArrayInt({rank_minus_one}), func, true, true);
 }
 
 tvm::Tensor ReduceSumV(const tvm::Tensor& X, const int32_t vector_size, const std::string& name) {

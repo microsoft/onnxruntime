@@ -23,12 +23,12 @@ namespace onnxruntime {
 namespace test {
 
 struct TensorInfo {
-  TensorInfo(const std::initializer_list<int64_t>& shape,
+  TensorInfo(std::initializer_list<int64_t> shape_init,
              bool has_gradient = true,
              std::function<float(float)>* transformer = nullptr,
              MLDataType data_type = DataTypeImpl::GetTensorType<float>(),
              const std::vector<std::string>& dim_params = std::vector<std::string>{})
-      : shape(shape),
+      : shape(gsl::make_span(shape_init.begin(), shape_init.end())),
         has_gradient(has_gradient),
         transformer(transformer),
         data_type(data_type),

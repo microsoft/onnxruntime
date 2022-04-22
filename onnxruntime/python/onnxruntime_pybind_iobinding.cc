@@ -59,7 +59,8 @@ void addIoBindingMethods(pybind11::module& m) {
         }
       })
       // This binds input as a Tensor that wraps memory pointer along with the OrtMemoryInfo
-      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+      .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type,
+                            const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
 
         PyArray_Descr* dtype;
@@ -70,9 +71,9 @@ void addIoBindingMethods(pybind11::module& m) {
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-        auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
+        auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         OrtValue ml_value;
-        Tensor::InitOrtValue(ml_type, shape, reinterpret_cast<void*>(data_ptr), info, ml_value);
+        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
         auto status = io_binding->Get()->BindInput(name, ml_value);
         if (!status.IsOK()) {
@@ -87,8 +88,14 @@ void addIoBindingMethods(pybind11::module& m) {
           throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
         }
       })
+      .def("synchronize_inputs", [](SessionIOBinding* io_binding) -> void {
+        auto status = io_binding->Get()->SynchronizeInputs();
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when synchronizing bound inputs: " + status.ErrorMessage());
+        }
+      })
       // This binds output to a pre-allocated memory as a Tensor
-      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+      .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
 
         InferenceSession* sess = io_binding->GetInferenceSession();
@@ -117,9 +124,9 @@ void addIoBindingMethods(pybind11::module& m) {
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-        auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
+        auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         OrtValue ml_value;
-        Tensor::InitOrtValue(ml_type, shape, reinterpret_cast<void*>(data_ptr), info, ml_value);
+        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
         auto status = io_binding->Get()->BindOutput(name, ml_value);
         if (!status.IsOK()) {
@@ -138,6 +145,12 @@ void addIoBindingMethods(pybind11::module& m) {
         auto status = io_binding->Get()->BindOutput(name, ml_value);
         if (!status.IsOK()) {
           throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
+        }
+      })
+      .def("synchronize_outputs", [](SessionIOBinding* io_binding) -> void {
+        auto status = io_binding->Get()->SynchronizeOutputs();
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error when synchronizing bound outputs: " + status.ErrorMessage());
         }
       })
       .def("clear_binding_inputs", [](SessionIOBinding* io_binding) -> void {

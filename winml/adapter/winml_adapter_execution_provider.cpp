@@ -77,15 +77,3 @@ ORT_API_STATUS_IMPL(winmla::FreeProviderAllocator, _In_ OrtAllocator* allocator)
   return nullptr;
   API_IMPL_END
 }
-
-ORT_API_STATUS_IMPL(winmla::GetValueMemoryInfo, const OrtValue* value, OrtMemoryInfo** memory_info) {
-  API_IMPL_BEGIN
-  const auto& tensor = value->Get<onnxruntime::Tensor>();
-  auto info = tensor.Location();
-  *memory_info = new OrtMemoryInfo(info.name, info.alloc_type, info.device, info.id, info.mem_type);
-  if (*memory_info == nullptr) {
-    return OrtApis::CreateStatus(ORT_FAIL, "Out of memory");
-  }
-  return nullptr;
-  API_IMPL_END
-}

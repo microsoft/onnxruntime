@@ -10,18 +10,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define ALL_IEEE_FLOAT_TENSOR_TYPES           \
-  { DataTypeImpl::GetTensorType<float>(),     \
-    DataTypeImpl::GetTensorType<double>(),    \
-    DataTypeImpl::GetTensorType<MLFloat16>(), \
-    DataTypeImpl::GetTensorType<BFloat16>() }
-#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double, BFloat16
-#else
-#define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
-#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double
-#endif
-
 template <typename T>
 struct GetRatioDataImpl {
   void operator()(const Tensor* ratio, float& ratio_data) const {

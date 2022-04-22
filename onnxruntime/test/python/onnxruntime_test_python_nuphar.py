@@ -502,7 +502,7 @@ class TestNuphar(unittest.TestCase):
             data_seq_len = np.random.randint(1, seq_len, size=(batch_size,), dtype=np.int32)
 
             # run lstm as baseline
-            sess = onnxrt.InferenceSession(lstm_model_name)
+            sess = onnxrt.InferenceSession(lstm_model_name, providers=onnxrt.get_available_providers())
             first_lstm_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
 
             lstm_data_output = []
@@ -524,7 +524,7 @@ class TestNuphar(unittest.TestCase):
                         check=True)
 
             # run scan_batch with batch size 1
-            sess = onnxrt.InferenceSession(scan_model_name)
+            sess = onnxrt.InferenceSession(scan_model_name, providers=onnxrt.get_available_providers())
             scan_batch_data_output = sess.run([], {'input': data_input[:, 0:1, :], 'seq_len': data_seq_len[0:1]})
             assert np.allclose(first_lstm_data_output, scan_batch_data_output)
 
@@ -579,7 +579,7 @@ class TestNuphar(unittest.TestCase):
                 '--output', matmul_model_name, '--mode', 'gemm_to_matmul'
             ], check=True)
 
-            sess = onnxrt.InferenceSession(matmul_model_name)
+            sess = onnxrt.InferenceSession(matmul_model_name, providers=onnxrt.get_available_providers())
             test_inputs = {}
             set_gemm_model_inputs(running_config, test_inputs, a, b, c)
             actual_y = sess.run([], test_inputs)
@@ -651,7 +651,7 @@ class TestNuphar(unittest.TestCase):
             b1 = b1.reshape((1, ) + b1.shape)
             a2 = a2.reshape((1, ) + a2.shape)
             b2 = b2.reshape((1, ) + b2.shape)
-            sess = onnxrt.InferenceSession(gemm_model_name)
+            sess = onnxrt.InferenceSession(gemm_model_name, providers=onnxrt.get_available_providers())
 
             test_inputs = {}
             set_gemm_model_inputs(running_config1, test_inputs, a1, b1, c1)
@@ -667,7 +667,7 @@ class TestNuphar(unittest.TestCase):
             ], check=True)
 
             # run after model editing
-            sess = onnxrt.InferenceSession(matmul_model_name)
+            sess = onnxrt.InferenceSession(matmul_model_name, providers=onnxrt.get_available_providers())
             actual_y = sess.run([], test_inputs)
 
             assert np.allclose(expected_y, actual_y, atol=1e-7)

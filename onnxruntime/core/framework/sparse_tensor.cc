@@ -22,7 +22,7 @@ std::ostream& operator<<(std::ostream& os, SparseFormat flags) {
 namespace {
 // Round up size to a multiple of int64
 constexpr size_t kIndexAlignment = alignof(int64_t);
-inline int64_t Roundup(int64_t size) {
+constexpr inline int64_t Roundup(int64_t size) {
   return ((SafeInt<int64_t>(size) + kIndexAlignment - 1) / kIndexAlignment) * kIndexAlignment;
 }
 
@@ -31,7 +31,7 @@ inline int64_t Roundup(int64_t size) {
 /// after data and make sure indices start at int64_t aligned place
 /// </summary>
 /// <returns></returns>
-inline int64_t CalculateRequiredBufferSize(int64_t data_size, int64_t indices_size) {
+constexpr inline int64_t CalculateRequiredBufferSize(int64_t data_size, int64_t indices_size) {
   return SafeInt<int64_t>(Roundup(data_size)) + indices_size;
 }
 

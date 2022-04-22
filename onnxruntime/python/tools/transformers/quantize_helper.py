@@ -58,22 +58,13 @@ class QuantizeHelper:
 
     @staticmethod
     def quantize_onnx_model(onnx_model_path, quantized_model_path, use_external_data_format=False):
-        from onnxruntime.quantization import quantize, QuantizationMode
+        from onnxruntime.quantization import quantize_dynamic
+        from pathlib import Path
+        Path(quantized_model_path).parent.mkdir(parents=True, exist_ok=True)
         logger.info(f'Size of full precision ONNX model(MB):{os.path.getsize(onnx_model_path)/(1024*1024)}')
-        onnx_opt_model = onnx.load_model(onnx_model_path)
-        quantized_onnx_model = quantize(onnx_opt_model,
-                                        quantization_mode=QuantizationMode.IntegerOps,
-                                        symmetric_weight=True,
-                                        force_fusions=True)
-
-        if use_external_data_format:
-            from pathlib import Path
-            Path(quantized_model_path).parent.mkdir(parents=True, exist_ok=True)
-            onnx.external_data_helper.convert_model_to_external_data(quantized_onnx_model,
-                                                                     all_tensors_to_one_file=True,
-                                                                     location=Path(quantized_model_path).name + ".data")
-        onnx.save_model(quantized_onnx_model, quantized_model_path)
-
+        quantize_dynamic(onnx_model_path,
+                         quantized_model_path,
+                         use_external_data_format = use_external_data_format)
         logger.info(f"quantized model saved to:{quantized_model_path}")
         #TODO: inlcude external data in total model size.
         logger.info(f'Size of quantized ONNX model(MB):{os.path.getsize(quantized_model_path)/(1024*1024)}')

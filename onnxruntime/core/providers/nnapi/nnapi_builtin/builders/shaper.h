@@ -6,7 +6,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <core/session/onnxruntime_c_api.h>
+
+#include "core/common/status.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -20,115 +21,103 @@ class Shaper {
     return shape_map_.at(key);
   }
 
-  Status Conv(const std::string& input_name,
-              const std::string& weight_name,
-              const std::vector<int32_t>& onnx_pads,
-              const std::vector<int32_t>& onnx_strides,
-              const std::vector<int32_t>& onnx_dilations,
-              bool nchw,
-              const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status Conv(const std::string& input_name,
+                      const std::string& weight_name,
+                      const std::vector<int32_t>& onnx_pads,
+                      const std::vector<int32_t>& onnx_strides,
+                      const std::vector<int32_t>& onnx_dilations,
+                      bool nchw,
+                      const std::string& output_name);
 
-  Status DepthwiseConv(const std::string& input_name,
-                       const std::string& weight_name,
-                       const std::vector<int32_t>& onnx_pads,
-                       const std::vector<int32_t>& onnx_strides,
-                       const std::vector<int32_t>& onnx_dilations,
-                       bool nchw,
-                       const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status DepthwiseConv(const std::string& input_name,
+                               const std::string& weight_name,
+                               const std::vector<int32_t>& onnx_pads,
+                               const std::vector<int32_t>& onnx_strides,
+                               const std::vector<int32_t>& onnx_dilations,
+                               bool nchw,
+                               const std::string& output_name);
 
-  Status Pool(const std::string& input_name,
-              const std::vector<int32_t>& onnx_pads,
-              const std::vector<int32_t>& onnx_strides,
-              const std::vector<int32_t>& kernel_shape,
-              bool nchw,
-              const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status Pool(const std::string& input_name,
+                      const std::vector<int32_t>& onnx_pads,
+                      const std::vector<int32_t>& onnx_strides,
+                      const std::vector<int32_t>& kernel_shape,
+                      bool nchw,
+                      const std::string& output_name);
 
-  Status Reshape(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
+  common::Status Reshape(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name);
 
-  Status Transpose(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
+  common::Status Transpose(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name);
 
-  Status Eltwise(const std::string& input1_name, const std::string& input2_name, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
+  common::Status Eltwise(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
 
-  Status Identity(const std::string& input_name, const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status Identity(const std::string& input_name, const std::string& output_name);
 
-  Status FC(const std::string& input1_name, const std::string& input2_name, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
+  common::Status FC(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
 
-  Status Concat(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
+  common::Status Concat(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name);
 
-  Status Squeeze(const std::string& input_name, const std::vector<int32_t>& axes, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
+  common::Status Squeeze(const std::string& input_name, const std::vector<int32_t>& axes, const std::string& output_name);
 
-  Status ResizeUsingScales(const std::string& input_name,
-                           const float scale_h, const float scale_w,
-                           bool nchw,
-                           const std::string& output_name) ORT_MUST_USE_RESULT;
-  Status ResizeUsingOutputSizes(const std::string& input_name,
-                                const uint32_t output_h, const uint32_t output_w,
-                                bool nchw,
-                                const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status ResizeUsingScales(const std::string& input_name,
+                                   const float scale_h, const float scale_w,
+                                   bool nchw,
+                                   const std::string& output_name);
+  common::Status ResizeUsingOutputSizes(const std::string& input_name,
+                                        const uint32_t output_h, const uint32_t output_w,
+                                        bool nchw,
+                                        const std::string& output_name);
 
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
   // Only perform this when the NNAPI model is finalized!
-  Status UpdateShape(const std::string& name, const Shape& new_shape) ORT_MUST_USE_RESULT;
-  Status UpdateDynamicDimensions() ORT_MUST_USE_RESULT;
+  common::Status UpdateShape(const std::string& name, const Shape& new_shape);
+  common::Status UpdateDynamicDimensions();
 
   void Clear();
 
  private:
-  Status ConvImpl(const std::string& input_name,
-                  const std::string& weight_name,
-                  const std::vector<int32_t>& onnx_pads,
-                  const std::vector<int32_t>& onnx_strides,
-                  const std::vector<int32_t>& onnx_dilations,
-                  bool nchw,
-                  const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status ConvImpl(const std::string& input_name,
+                          const std::string& weight_name,
+                          const std::vector<int32_t>& onnx_pads,
+                          const std::vector<int32_t>& onnx_strides,
+                          const std::vector<int32_t>& onnx_dilations,
+                          bool nchw,
+                          const std::string& output_name);
 
-  Status DepthwiseConvImpl(const std::string& input_name,
-                           const std::string& weight_name,
-                           const std::vector<int32_t>& onnx_pads,
-                           const std::vector<int32_t>& onnx_strides,
-                           const std::vector<int32_t>& onnx_dilations,
-                           bool nchw,
-                           const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status DepthwiseConvImpl(const std::string& input_name,
+                                   const std::string& weight_name,
+                                   const std::vector<int32_t>& onnx_pads,
+                                   const std::vector<int32_t>& onnx_strides,
+                                   const std::vector<int32_t>& onnx_dilations,
+                                   bool nchw,
+                                   const std::string& output_name);
 
-  Status PoolImpl(const std::string& input_name,
-                  const std::vector<int32_t>& onnx_pads,
-                  const std::vector<int32_t>& onnx_strides,
-                  const std::vector<int32_t>& kernel_shape,
-                  bool nchw,
-                  const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status PoolImpl(const std::string& input_name,
+                          const std::vector<int32_t>& onnx_pads,
+                          const std::vector<int32_t>& onnx_strides,
+                          const std::vector<int32_t>& kernel_shape,
+                          bool nchw,
+                          const std::string& output_name);
 
-  Status ReshapeImpl(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
-  Status TransposeImpl(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
-  Status EltwiseImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
-  Status IdentityImpl(const std::string& input_name, const std::string& output_name) ORT_MUST_USE_RESULT;
-  Status FCImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
-  Status ConcatImpl(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
-  Status SqueezeImpl(const std::string& input_names, const std::vector<int32_t>& axes, const std::string& output_name)
-      ORT_MUST_USE_RESULT;
-  Status ResizeUsingScalesImpl(const std::string& input_name,
-                               const float scale_h, const float scale_w,
-                               bool nchw,
-                               const std::string& output_name) ORT_MUST_USE_RESULT;
-  Status ResizeUsingOutputSizesImpl(const std::string& input_name,
-                                    const uint32_t output_h, const uint32_t output_w,
-                                    bool nchw,
-                                    const std::string& output_name) ORT_MUST_USE_RESULT;
+  common::Status ReshapeImpl(const std::string& input_name, const std::vector<int32_t>& shape, const std::string& output_name);
+  common::Status TransposeImpl(const std::string& input_name, const std::vector<int32_t>& perm, const std::string& output_name);
+  common::Status EltwiseImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
+  common::Status IdentityImpl(const std::string& input_name, const std::string& output_name);
+  common::Status FCImpl(const std::string& input1_name, const std::string& input2_name, const std::string& output_name);
+  common::Status ConcatImpl(const std::vector<std::string>& input_names, const int32_t axis, const std::string& output_name);
+  common::Status SqueezeImpl(const std::string& input_names, const std::vector<int32_t>& axes, const std::string& output_name);
+  common::Status ResizeUsingScalesImpl(const std::string& input_name,
+                                       const float scale_h, const float scale_w,
+                                       bool nchw,
+                                       const std::string& output_name);
+  common::Status ResizeUsingOutputSizesImpl(const std::string& input_name,
+                                            const uint32_t output_h, const uint32_t output_w,
+                                            bool nchw,
+                                            const std::string& output_name);
 
   std::unordered_map<std::string, Shape> shape_map_;
-  std::vector<std::function<Status(Shaper&)>> shape_ops_;
+  std::vector<std::function<common::Status(Shaper&)>> shape_ops_;
 };
 
 }  // namespace nnapi

@@ -65,8 +65,11 @@ void DnnlElementwise::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
   auto elemenwise_primitive = dnnl::eltwise_forward(elementwise_pd);
   sp.AddPrimitive(elemenwise_primitive, {{DNNL_ARG_SRC, elementwise_src_mem},
                                          {DNNL_ARG_DST, elementwise_dst_mem}});
-
-  sp.SetMemory(node.Output(OUT_Y), elementwise_dst_mem);
+  if (sp.IsScalar(node.Input(IN_X))) {
+    sp.SetMemory(node.Output(OUT_Y), elementwise_dst_mem, false, true);
+  } else {
+    sp.SetMemory(node.Output(OUT_Y), elementwise_dst_mem);
+  }
 }
 
 float DnnlElementwise::GetAlpha(DnnlNode& node, float default_alpha) {

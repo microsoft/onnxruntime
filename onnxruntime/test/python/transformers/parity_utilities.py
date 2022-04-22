@@ -10,13 +10,13 @@ import numpy
 import torch
 
 
-def find_transformers_source():
-    source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
+def find_transformers_source(sub_dir_paths=[]):
+    source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers', *sub_dir_paths)
     if (os.path.exists(source_dir)):
         if source_dir not in sys.path:
             sys.path.append(source_dir)
         return True
-    return False
+    return False    
 
 
 def create_inputs(batch_size=1, sequence_length=1, hidden_size=768, float16=False, device=torch.device('cuda')):
@@ -41,7 +41,6 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
                       input_names=['input'],
                       output_names=["output"],
                       dynamic_axes=dynamic_axes,
-                      example_outputs=outputs,
                       opset_version=11,
                       do_constant_folding=True)
     print("exported:", onnx_model_path)

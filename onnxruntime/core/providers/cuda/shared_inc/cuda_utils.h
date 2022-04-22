@@ -9,6 +9,7 @@
 #include <memory>
 #include <type_traits>
 #include <vector>
+#include <gsl/gsl>
 
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
@@ -59,6 +60,11 @@ struct TArray {
   }
 
   TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
+    static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
+    memcpy(data_, vec.data(), vec.size() * sizeof(T));
+  }
+
+  TArray(gsl::span<const T> vec) : TArray(static_cast<int32_t>(vec.size())) {
     static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }

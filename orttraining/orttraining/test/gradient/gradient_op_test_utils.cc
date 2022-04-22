@@ -270,7 +270,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, O
     if (output_index_to_use_as_loss == static_cast<int>(i)) {
       values[data_index_of_output] = 1.0;  //set only one value to one to construct jacobian matrix
     }
-    AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.GetDims(), values.data(), values.size(), true);
+    AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.AsShapeVector(), values.data(), values.size(), true);
   }
 
   for (size_t i = 0; i < gradient_data.size(); ++i) {

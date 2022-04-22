@@ -22,7 +22,7 @@ void Capture::CapturePrintf(msvc_printf_check const char* format, ...) {
 // Modifications Copyright (c) Microsoft.
 void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) {
   static constexpr auto kTruncatedWarningText = "[...truncated...]";
-  static const int kMaxMessageSize = 2048;
+  static constexpr int kMaxMessageSize = 2048;
   char message_buffer[kMaxMessageSize];
   const auto message = gsl::make_span(message_buffer);
 

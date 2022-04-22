@@ -9,6 +9,8 @@
 #pragma once
 #include <vector>
 
+#include "core/common/common.h"
+
 namespace onnxruntime {
 namespace cuda {
 // initial reference from:
@@ -80,9 +82,9 @@ void launch_multi_tensor_functor(
     TMultiTensorFunctor multipleTensorKernel,
     TFunctorParams&&... kernelParams) {
   ORT_ENFORCE(tensor_sizes.size() > 0);
-  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(std::numeric_limits<int>::max()));
+  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(INT_MAX));
   ORT_ENFORCE(grouped_tensor_pointers.size() > 0);
-  ORT_ENFORCE(grouped_tensor_pointers.size() < static_cast<size_t>(std::numeric_limits<int>::max()));
+  ORT_ENFORCE(grouped_tensor_pointers.size() < static_cast<size_t>(INT_MAX));
   ORT_ENFORCE(chunk_size > 0);
   // Number of groups, for example, the number of updated weight tensors in Lamb optimizer.
   const int group_count = static_cast<int>(grouped_tensor_pointers.size());
@@ -92,7 +94,7 @@ void launch_multi_tensor_functor(
   int block_index = 0;
 
   // Check if 32-bit integer is enough.
-  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(std::numeric_limits<int>::max()));
+  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(INT_MAX));
   ORT_ENFORCE(grouped_tensor_pointers.size() == tensor_sizes.size());
   ORT_ENFORCE(group_size == ACTUAL_TENSOR_GROUP_SIZE[TensorGroupSize]);
   for (int i = 0; i < group_count; ++i) {

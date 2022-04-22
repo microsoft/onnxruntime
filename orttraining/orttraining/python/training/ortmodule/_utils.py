@@ -5,19 +5,46 @@
 
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
-from ._fallback_exceptions import ORTModuleDeviceException, wrap_exception
+from onnxruntime.tools import pytorch_export_contrib_ops
+from ._fallback_exceptions import (
+    ORTModuleDeviceException, wrap_exception, ORTModuleIOError)
 from ._torch_module_pytorch import TorchModulePytorch
+from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+from ._custom_gradient_registry import CustomGradientRegistry
+from . import _onnx_models
+from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
 import os
 import copy
+import functools
 import inspect
+from onnx import TensorProto
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
+from torch._C import _from_dlpack
 import traceback
 from typing import List
 import types
 import warnings
 from distutils.version import LooseVersion
+import random
+import numpy as np
+
+def get_random_states():
+    r_state = random.getstate()
+    np_state = np.random.get_state()
+    torch_state = torch.get_rng_state()
+    torch_cuda_state = torch.cuda.get_rng_state() if torch.cuda.is_available() else None
+    return r_state, np_state, torch_state, torch_cuda_state
+
+def set_random_states(states):
+    r_state, np_state, torch_state, torch_cuda_state = states
+    random.setstate(r_state)
+    np.random.set_state(np_state)
+    torch.set_rng_state(torch_state)
+    if torch_cuda_state is not None:
+        torch.cuda.set_rng_state(torch_cuda_state)
+
 
 def _ortvalue_from_torch_tensor(torch_tensor):
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
@@ -31,30 +58,78 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
-def _torch_tensor_from_dl_pack(dlpack, ortvalue, device):
-    torch_tensor = from_dlpack(dlpack) if device.type != 'ort' else C.ort_from_dlpack(dlpack)
-    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
+def _ortvalues_to_torch_tensor(ortvalues, device):
+    if len(ortvalues) == 0:
+        return tuple()
+
+    if 'ort' == device.type:
+        if not hasattr(C, 'to_aten_ort_device_tensor'):
+            raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
+        return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
+
+    if not isinstance(ortvalues, C.OrtValueVector):
+        raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
+
+    res = ortvalues.to_dlpacks(_from_dlpack)
+    bool_indices = ortvalues.bool_tensor_indices()
+    if len(bool_indices):
+        # DLPack structure does not know for sure if it stores boolean
+        # or uint8. Method to_dlpacks cannot be used in that case.
+        # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
+        # And fct is a function with signature `fct(dlp) -> torch.Tensor`.
+        # Boolean tensors are converted into uint8 tensor with the DLPack protocol.
+        # Therefore, the function `fct` does not know if the dlpack structure
+        # is a boolean tensor or a uint8 tensor.
+        # We could either consider another function as an input in
+        # `to_dlpacks` or add an argument to `fct(dlp, ortvalue)`.
+        # Second option makes it impossible to directly use `_from_dlpack` or
+        # or `from_dlpack` from torch.
+        # The best option would be to add boolean type in DLDataTypeCode.
+        for i in range(0, len(bool_indices)):
+            j = bool_indices[i]
+            res[j] = res[j].to(torch.bool)
+
+    return tuple(res)
 
 
-def _ortvalue_to_torch_tensor(ortvalue, device):
-    # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
-    # and convert the config to torch.uint8 tensor duing from_dlpack().
-    # So we need to convert the torch tensor to torch.bool type if OrtValue is bool tensor.
-    dlpack_tensor = ortvalue.to_dlpack()
-    return _torch_tensor_from_dl_pack(dlpack_tensor, ortvalue, device)
+def _ortvalues_to_torch_tensor_list(ortvalues, device, c_class=False):
+    if len(ortvalues) == 0:
+        return tuple()
+
+    if 'ort' == device.type:
+        if not hasattr(C, 'to_aten_ort_device_tensor'):
+            raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
+        return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
+
+    if not isinstance(ortvalues, list):
+        raise TypeError("ortvalues must be a list not %r." % type(ortvalues))
+
+    if c_class:
+        res = [_from_dlpack(ov.to_dlpack()) for ov in ortvalues]
+        for i in range(0, len(res)):
+            if ortvalues[i].element_type() == TensorProto.BOOL:
+                res[i] = res[i].to(torch.bool)
+    else:
+        res = [_from_dlpack(ov._ortvalue.to_dlpack()) for ov in ortvalues]
+        for i in range(0, len(res)):
+            if ortvalues[i]._ortvalue.element_type() == TensorProto.BOOL:
+                res[i] = res[i].to(torch.bool)
+
+    return tuple(res)
+
 
 def _torch_tensor_to_dlpack(tensor):
-    if tensor.device.type == 'ort':
-        return C.ort_to_dlpack(tensor)
-    else:
-        # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
-        # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
-        # We need to convert bool tensor to unit8 tensor to workaround this.
-        # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
-        # and PyTorch support bool type.
-        if tensor.dtype == torch.bool and LooseVersion(torch.__version__) >= LooseVersion('1.10.0'):
-            tensor = tensor.to(torch.uint8)
-        return to_dlpack(tensor)
+    # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
+    # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41
+    # We need to convert bool tensor to unit8 tensor to workaround this.
+    # DLPack is discussing how to support bool type, we can remove this workaround once both DLPack
+    # and PyTorch support bool type.
+    if not tensor.is_contiguous():
+        raise ORTModuleIOError(
+            "Only contiguous tensors are supported.")
+    if tensor.dtype == torch.bool and LooseVersion(torch.__version__) >= LooseVersion('1.10.0'):
+        tensor = tensor.to(torch.uint8)
+    return to_dlpack(tensor)
 
 
 def _check_same_device(device, argument_str, *args):
@@ -197,6 +272,41 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                     warnings.warn(f"User Module's attribute name {attribute_name} collides with ORTModule's attribute name. "
                     "User Module's attribute may not be returned when trying to retrieve the attribute through ORTModule.")
 
+def get_state_after_deletion_of_non_ortmodule_methods(ortmodule, user_module):
+    """Returns ORTModule state after deleting any user defined method from ORTModule state"""
+
+    ortmodule_state = copy.copy(ortmodule.__dict__)
+    ortmodule_attributes = dict(inspect.getmembers(ortmodule))
+    torch_module_attributes = dict(inspect.getmembers(torch.nn.Module()))
+    user_module_attributes = inspect.getmembers(user_module)
+
+    # Check if ORTModule has any user defined attributes that are methods.
+    # Methods that were bound in check_for_name_collisions_and_bind_methods_to_ortmodule
+    # must be dropped in this function.
+    for attribute_name, attribute in user_module_attributes:
+        if inspect.ismethod(attribute):
+            # Skip the dunder methods
+            if attribute_name.startswith('__'):
+                continue
+
+            # if the attribute is not a torch attribute, and if the attribute
+            # corresponding to attribute_name is an ORTModule method and the user attribute
+            # does equals the ORTModule attribute, then this is a user defined method and
+            # must be dropped.
+            if attribute_name not in torch_module_attributes and \
+                attribute_name in ortmodule_attributes and \
+                inspect.ismethod(ortmodule_attributes[attribute_name]) and \
+                attribute.__func__ == ortmodule_attributes[attribute_name].__func__:
+
+                # forward is expected to be defined by the user.
+                if attribute_name == 'forward':
+                    continue
+
+                # This is a custom method, drop it from ORTModule state before serialization.
+                del ortmodule_state[attribute_name]
+
+    return ortmodule_state
+
 def parse_os_env_skip_check_flags(env_name):
     """Returns a list of SkipChecks as defined by os env variable env_name"""
 
@@ -230,3 +340,77 @@ def switch_backend_to_pytorch(ortmodule, pytorch_module):
 def warn_of_constant_inputs(data):
     warnings.warn(f"Received input of type {type(data)} which may be treated as a constant by ORT by default."
         " Please consider moving constant arguments to the model constructor.")
+
+def patch_torch_module_ort_forward_method(torch_module_ort):
+    def _forward(self, *inputs, **kwargs):
+        '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+
+        ONNX model is exported the first time this method is executed.
+        Next, we build a full training graph with module_gradient_graph_builder.
+        Finally, we instantiate the ONNX Runtime InferenceSession.
+        '''
+
+        return torch_module_ort._execution_manager(
+            torch_module_ort.is_training()).forward(*inputs, **kwargs)
+
+    # Bind the forward method.
+    torch_module_ort.forward = _forward.__get__(torch_module_ort)
+    # Copy the forward signature from the PyTorch module.
+    functools.update_wrapper(
+        torch_module_ort.forward.__func__, torch_module_ort._original_module.forward.__func__)
+
+def patch_ortmodule_forward_method(ortmodule):
+    # Create forward dynamically, so each ORTModule instance will have its own copy.
+    # This is needed to be able to copy the forward signatures from the original PyTorch models
+    # and possibly have different signatures for different instances.
+    def _forward(self, *inputs, **kwargs):
+        '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+
+        ONNX model is exported the first time this method is executed.
+        Next, we build a full training graph with module_gradient_graph_builder.
+        Finally, we instantiate the ONNX Runtime InferenceSession.
+        '''
+
+        return ortmodule._torch_module.forward(*inputs, **kwargs)
+
+    # Bind the forward method.
+    ortmodule.forward = _forward.__get__(ortmodule)
+    # Copy the forward signature from the _torch_module's forward signature.
+    functools.update_wrapper(
+        ortmodule.forward.__func__, ortmodule._torch_module.forward.__func__)
+
+def reinitialize_ortmodule(ortmodule):
+    # Re-register contrib OPs
+    pytorch_export_contrib_ops.register()
+    CustomOpSymbolicRegistry.register_all()
+    CustomGradientRegistry.register_all()
+
+    # Re-initialize the ORTModule forward method
+    patch_ortmodule_forward_method(ortmodule)
+
+    # Re-bind users custom methods to ORTModule
+    check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule, ortmodule.module)
+
+def reinitialize_torch_module_ort(torch_module):
+    # Re-initialize the forward method
+    patch_torch_module_ort_forward_method(torch_module)
+
+def reinitialize_graph_execution_manager(graph_execution_manager):
+    # Instantiate the onnx models so they can populated on the first call to forward
+    if hasattr(graph_execution_manager, '_onnx_models'):
+        del graph_execution_manager._onnx_models
+    graph_execution_manager._onnx_models = _onnx_models.ONNXModels()
+
+    graph_execution_manager._graph_builder = None
+    graph_execution_manager._graph_info = None
+    graph_execution_manager._execution_agent = None
+
+    # Re-define the torch allocator
+    graph_execution_manager._get_torch_gpu_allocator_function_addresses()
+
+    # Load ATen op executor extension.
+    load_aten_op_executor_cpp_extension()
+
+def reinitialize_training_manager(training_manager):
+    # Redefine training managers forward_class
+    training_manager._forward_class = training_manager._create_autofunction_class()

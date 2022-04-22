@@ -6,8 +6,8 @@
 #include "orttraining/training_ops/cuda/communication/send.h"
 #include "orttraining/training_ops/communication_common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
-#include "core/providers/cuda/nvtx_profile.h" 
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include <mpi.h>

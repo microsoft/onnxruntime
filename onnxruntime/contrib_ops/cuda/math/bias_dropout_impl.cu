@@ -238,9 +238,7 @@ void BiasDropoutKernelImpl(
 SPECIALIZED_BIAS_DROPOUT_IMPL(float)
 SPECIALIZED_BIAS_DROPOUT_IMPL(double)
 SPECIALIZED_BIAS_DROPOUT_IMPL(half)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_BIAS_DROPOUT_IMPL(nv_bfloat16)
-#endif
+SPECIALIZED_BIAS_DROPOUT_IMPL(BFloat16)
 
 }  // namespace cuda
 }  // namespace contrib {

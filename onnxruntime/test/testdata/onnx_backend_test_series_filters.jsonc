@@ -66,8 +66,23 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        // Following tests are for opset 15 ops and are not yet implemented in ORT
+        // Optional operators are supported in ORT but the ONNX backend test runner
+        // doesn't yet have capability to deal with optional type test data.
+        // These tests have been validated using the in-house onnx_test_runner.
+        // Uncomment here once the ONNX backend test runner is able to handle
+        // optional type test data.
+        // https://github.com/onnx/onnx/issues/3608
+        // TODO: Once ONNX #3608 is solved and these tests are removed from exclusion,
+        // we need to figure out a way to keep these tests in the exclusion list for
+        // builds that have disabled support for the optional type.
         "^test_optional_*",
+        "^test_if_opt",
+        "^test_loop16_seq_none",
+        "^test_identity_opt",
+        // Following tests are for opset 16 ops and are not yet implemented in ORT
+        "^test_roialign_aligned_*",
+        "^test_scatternd_*",
+        "^test_scatter_elements_with_duplicate_indices",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
@@ -78,7 +93,8 @@
         "^test_lstm_batchwise_cuda",
         "^test_gru_batchwise_cuda",
         "^test_div_uint8_cuda",
-        "^test_add_uint8_cuda"
+        "^test_add_uint8_cuda",
+        "^test_roialign_aligned_*"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -182,6 +198,8 @@
         "^test_mvn.*",
         "^test_max_float64.*",
         "^test_min_float64.*",
+        "^test_max_one_input_cpu",
+        "^test_min_one_input_cpu",
         "^test_gather_negative_indices.*",
         "^test_sce.*",
         "^test_nllloss.*",
@@ -191,6 +209,8 @@
         "^test_reduce_sum_default_axes_keepdims*",
         "^test_reduce_sum_negative_axes_keepdims*",
         "^test_reduce_sum_empty_axes_input_noop*",
+        "^test_scatter_elements_with_negative_indices_cpu",
+        "^test_sum_one_input_cpu",
         "^test_unsqueeze_*",  // Does not support axes as input
         "^test_squeeze_*",   // Does not support axes as input
         "^test_logsoftmax_*", // Does not support opset-13 yet

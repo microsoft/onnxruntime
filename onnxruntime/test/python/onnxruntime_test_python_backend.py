@@ -39,7 +39,7 @@ class TestBackend(unittest.TestCase):
         This test is to ensure that the case is covered.
         """
         name = get_name("alloc_tensor_reuse.onnx")
-        sess = onnxrt.InferenceSession(name)
+        sess = onnxrt.InferenceSession(name, providers=onnxrt.get_available_providers())
 
         run_options = onnxrt.RunOptions()
         run_options.only_execute_path_to_fetches = True

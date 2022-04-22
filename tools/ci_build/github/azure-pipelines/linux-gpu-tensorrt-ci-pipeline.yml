@@ -3,7 +3,7 @@ jobs:
   pool: onnxruntime-tensorrt-linuxbuild
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   steps:
     - checkout: self
       clean: true
@@ -11,10 +11,10 @@ jobs:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_0
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_2
         Context: tools/ci_build/github/linux/docker
         DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimetensorrt8gpubuild
+        Repository: onnxruntimetensorrt82gpubuild
     - task: CmdLine@2
       inputs:
         script: |
@@ -28,7 +28,7 @@ jobs:
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            onnxruntimetensorrt8gpubuild \
+            onnxruntimetensorrt82gpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release \

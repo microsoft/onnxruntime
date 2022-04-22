@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <random>
+
 #include "core/util/math.h"
+#include "core/mlas/inc/mlas.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include <random>
 
 namespace onnxruntime {
 namespace test {
@@ -70,7 +72,9 @@ class NhwcMaxPoolOpTester {
     Y_shape.push_back(batch_count);
     for (size_t n = 0; n < kernel_rank; n++) {
       Y_shape.push_back(((input_shape[n] + pads[n] + pads[kernel_rank + n]) -
-                         (dilations[n] * (kernel_shape_[n] - 1) + 1)) / strides[n] + 1);
+                         (dilations[n] * (kernel_shape_[n] - 1) + 1)) /
+                            strides[n] +
+                        1);
     }
     Y_shape.push_back(channels);
     Y_data.resize(ShapeSize(Y_shape));
@@ -87,7 +91,7 @@ class NhwcMaxPoolOpTester {
       std::vector<int64_t> d_output(kernel_rank, 0);
       std::vector<int64_t> d_kernel(kernel_rank, 0);
       do {
-        std::fill_n(Ydata, channels, static_cast<T>(0));
+        std::fill_n(Ydata, channels, std::numeric_limits<T>::lowest());
         do {
           int64_t input_offset = 0;
           bool is_padding = false;
@@ -163,7 +167,7 @@ class NhwcMaxPoolOpTester {
 };
 
 TEST(NhwcMaxPoolContribOpTest, MaxPool1D) {
-  for (int64_t channels = 1; channels < 64; channels++) {
+  for (int64_t channels = 1; channels < 94; channels++) {
     NhwcMaxPoolOpTester<uint8_t> test;
     test.GenerateRandomInput({1, 23, channels});
     test.SetKernelShape({5});
@@ -173,7 +177,7 @@ TEST(NhwcMaxPoolContribOpTest, MaxPool1D) {
 }
 
 TEST(NhwcMaxPoolContribOpTest, MaxPool2D) {
-  for (int64_t channels = 1; channels < 64; channels++) {
+  for (int64_t channels = 1; channels < 94; channels++) {
     NhwcMaxPoolOpTester<uint8_t> test;
     test.GenerateRandomInput({1, 15, 19, channels});
     test.SetKernelShape({3, 5});
@@ -183,7 +187,7 @@ TEST(NhwcMaxPoolContribOpTest, MaxPool2D) {
 }
 
 TEST(NhwcMaxPoolContribOpTest, MaxPool3D) {
-  for (int64_t channels = 1; channels < 64; channels++) {
+  for (int64_t channels = 1; channels < 94; channels++) {
     NhwcMaxPoolOpTester<uint8_t> test;
     test.GenerateRandomInput({1, 9, 13, 15, channels});
     test.SetKernelShape({2, 4, 6});
@@ -202,6 +206,52 @@ TEST(NhwcMaxPoolContribOpTest, MaxPoolStrides) {
 
 TEST(NhwcMaxPoolContribOpTest, MaxPoolDilations) {
   NhwcMaxPoolOpTester<uint8_t> test;
+  test.GenerateRandomInput({4, 23, 19, 32});
+  test.SetKernelShape({3, 3});
+  test.SetDilations({2, 2});
+  test.Run();
+}
+
+TEST(NhwcMaxPoolContribOpTest, MaxPool1D_S8) {
+  for (int64_t channels = 1; channels < 94; channels++) {
+    NhwcMaxPoolOpTester<int8_t> test;
+    test.GenerateRandomInput({1, 23, channels});
+    test.SetKernelShape({5});
+    test.SetPads({2, 2});
+    test.Run();
+  }
+}
+
+TEST(NhwcMaxPoolContribOpTest, MaxPool2D_S8) {
+  for (int64_t channels = 1; channels < 94; channels++) {
+    NhwcMaxPoolOpTester<int8_t> test;
+    test.GenerateRandomInput({1, 15, 19, channels});
+    test.SetKernelShape({3, 5});
+    test.SetPads({1, 1, 1, 1});
+    test.Run();
+  }
+}
+
+TEST(NhwcMaxPoolContribOpTest, MaxPool3D_S8) {
+  for (int64_t channels = 1; channels < 94; channels++) {
+    NhwcMaxPoolOpTester<int8_t> test;
+    test.GenerateRandomInput({1, 9, 13, 15, channels});
+    test.SetKernelShape({2, 4, 6});
+    test.SetPads({0, 0, 0, 1, 1, 1});
+    test.Run();
+  }
+}
+
+TEST(NhwcMaxPoolContribOpTest, MaxPoolStrides_S8) {
+  NhwcMaxPoolOpTester<int8_t> test;
+  test.GenerateRandomInput({4, 23, 19, 32});
+  test.SetKernelShape({3, 3});
+  test.SetStrides({2, 2});
+  test.Run();
+}
+
+TEST(NhwcMaxPoolContribOpTest, MaxPoolDilations_S8) {
+  NhwcMaxPoolOpTester<int8_t> test;
   test.GenerateRandomInput({4, 23, 19, 32});
   test.SetKernelShape({3, 3});
   test.SetDilations({2, 2});

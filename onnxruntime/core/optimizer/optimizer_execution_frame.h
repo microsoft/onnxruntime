@@ -15,6 +15,7 @@
 
 namespace onnxruntime {
 class DataTransferManager;
+struct KernelCreateInfo;
 
 class OptimizerExecutionFrame final : public IExecutionFrame {
  public:
@@ -59,6 +60,9 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     }
 
     std::unique_ptr<const OpKernel> CreateKernel(const Node* node) const;
+
+    // Check if an kernel create info can be found in the registry.
+    Status TryFindKernel(const Node* node, const KernelCreateInfo** out) const;
 
     const DataTransferManager& GetDataTransferManager() const { return data_transfer_mgr_; }
 

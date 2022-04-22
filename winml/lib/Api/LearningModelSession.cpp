@@ -27,10 +27,10 @@ static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::W
 
 namespace WINMLP {
 
-LearningModelSession::LearningModelSession(_winml::IEngine* engine) : model_(nullptr),
+LearningModelSession::LearningModelSession(_winml::IEngine* engine) : operator_registry_(nullptr, nullptr),
+                                                                      model_(nullptr),
                                                                       device_(LearningModelDeviceKind::Cpu),
-                                                                      session_options_(nullptr),
-                                                                      operator_registry_(nullptr, nullptr)
+                                                                      session_options_(nullptr)
 { 
     engine_.copy_from(engine);
 }
@@ -51,10 +51,10 @@ WINML_CATCH_ALL
 LearningModelSession::LearningModelSession(
     winml::LearningModel const& model,
     winml::LearningModelDevice const& deviceToRunOn,
-    winml::LearningModelSessionOptions const& learningModelSessionOptions) try : model_(model),
+    winml::LearningModelSessionOptions const& learningModelSessionOptions) try : operator_registry_(nullptr, nullptr),
+                                                                                 model_(model),
                                                                                  device_(deviceToRunOn),
-                                                                                 session_options_(learningModelSessionOptions),
-                                                                                 operator_registry_(nullptr, nullptr) {
+                                                                                 session_options_(learningModelSessionOptions) {
   Initialize();
 }
 WINML_CATCH_ALL

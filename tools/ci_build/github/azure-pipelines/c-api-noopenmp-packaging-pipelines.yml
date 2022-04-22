@@ -19,6 +19,13 @@ parameters:
   type: boolean
   default: false
 
+resources:
+  repositories:
+  - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
+    type: github
+    endpoint: ort-examples 
+    name: microsoft/onnxruntime-inference-examples 
+
 jobs:
 - template: templates/c-api-cpu.yml
   parameters:
@@ -71,7 +78,6 @@ jobs:
           artifactName: 'onnxruntime-linux-x64-cuda-$(OnnxRuntimeVersion)'
           artifactNameNoVersionString:  'onnxruntime-linux-x64-cuda'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-          commitId: $(OnnxRuntimeGitCommitHash)
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
@@ -110,7 +116,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.3.4.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -270,9 +276,14 @@ jobs:
   - Linux_C_API_Packaging_GPU_TensorRT_x64
   condition: succeeded()
   steps:
-  - checkout: self
+  - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+  - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
     submodules: false
+  - script: dir $(Build.SourcesDirectory)
   - template: templates/set-version-number-variables-step.yml
+    parameters:
+      versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime'
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -288,7 +299,7 @@ jobs:
   - task: ShellScript@2
     displayName: 'Shell Script'
     inputs:
-      scriptPath: 'tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
+      scriptPath: 'onnxruntime/tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
       args: '-a $(Build.BinariesDirectory)/tgz-artifacts'
       workingDirectory: '$(Build.BinariesDirectory)/tgz-artifacts'
 
@@ -306,8 +317,25 @@ jobs:
       PackageType: 'tarball'
       PackagePath: '$(Build.ArtifactStagingDirectory)'
       PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+      ScriptPath: '$(Build.SourcesDirectory)/onnxruntime/tools/nuget/validate_package.py'
       PlatformsSupported: 'linux-x64'
       VerifyNugetSigning: false
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      ScriptName: onnxruntime/tools/ci_build/get_docker_image.py 
+      Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_2
+      Context: onnxruntime/tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecuda114xtrt82build
+  - task: CmdLine@2
+    displayName: 'Test C API application for GPU package'
+    inputs:
+      script: |
+        docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
+        --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda114xtrt82build \
+        /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet 
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@1
@@ -318,15 +346,26 @@ jobs:
 - job: Windows_Packaging_combined_GPU
   workspace:
     clean: all
-  pool: 'Win-CPU-2021'
+  pool: 'onnxruntime-gpu-tensorrt8-winbuild'
   dependsOn:
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
   condition: succeeded()
   steps:
-  - checkout: self
+  - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+  - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
     submodules: false
+  - script: dir $(Build.SourcesDirectory)
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+        filename: '$(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\setup_env_gpu.bat'
+        modifyEnvironment: true
+        workingFolder: '$(Build.BinariesDirectory)'
   - template: templates/set-version-number-variables-step.yml
+    parameters:
+      versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
+      workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -343,7 +382,7 @@ jobs:
     displayName: 'PowerShell Script'
     inputs:
       targetType: filePath
-      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_zip_files_gpu.ps1
+      filePath: $(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\extract_zip_files_gpu.ps1
 
   - script: |
      dir
@@ -353,7 +392,7 @@ jobs:
   - task: BatchScript@1
     displayName: 'Bundle CUDA/TRT EP binaries'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu.bat
+      filename: $(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\bundle_dlls_gpu.bat
       workingFolder: $(Build.BinariesDirectory)\zip-artifacts
 
   - task: CopyFiles@2
@@ -368,9 +407,17 @@ jobs:
       PackageType: 'zip'
       PackagePath: '$(Build.ArtifactStagingDirectory)'
       PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
+      ScriptPath: '$(Build.SourcesDirectory)\onnxruntime\tools\nuget\validate_package.py'
       PlatformsSupported: 'win-x64'
       VerifyNugetSigning: false
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+  - task: BatchScript@1
+    displayName: 'Test C API application for GPU package'
+    inputs:
+      filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
+      arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet 
+      workingFolder: '$(Build.ArtifactStagingDirectory)' 
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
@@ -445,22 +492,22 @@ jobs:
     inputs:
       versionSpec: 5.7.0
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore nuget packages'
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
     inputs:
-      command: restore
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      msbuildArguments: '-t:restore -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: DotNetCoreCLI@2
+  - task: MSBuild@1
     displayName: 'Build C#'
     inputs:
-      command: build
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      platform: 'Any CPU'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - template: templates/win-esrp-dll.yml
@@ -469,13 +516,13 @@ jobs:
       DisplayName: 'ESRP - Sign C# dlls'
       DoEsrp: ${{ parameters.DoEsrp }}
 
-  - task: DotNetCoreCLI@2
+  - task: MSBuild@1
     displayName: 'Build Nuget Packages'
     inputs:
-      command: build
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -t:CreatePackage -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      platform: 'Any CPU'
+      msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: BatchScript@1
@@ -525,22 +572,22 @@ jobs:
       artifactName: 'drop-signed-nuget-GPU'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Build C#'
+
+  - task: MSBuild@1
+    displayName: 'Clean C#'
     inputs:
-      command: custom
-      custom: clean
-      projects: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
       configuration: RelWithDebInfo
-      arguments: '--configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+      msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
 
   - task: RoslynAnalyzers@2
     displayName: 'Run Roslyn Analyzers'
     inputs:
       userProvideBuildInfo: msBuildInfo
-      msBuildArchitecture: DotNetCore
-      msBuildCommandline: '"C:\Program Files\dotnet\dotnet.exe" build $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln --configuration RelWithDebInfo -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
+      msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu'
     condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
   - template: templates/component-governance-component-detection-steps.yml
@@ -563,3 +610,4 @@ jobs:
     AgentPool : Onnxruntime-Linux-GPU
     ArtifactSuffix: 'GPU'
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Gpu'
+

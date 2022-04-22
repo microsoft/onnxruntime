@@ -17,6 +17,12 @@
 
 #endif
 
+#ifdef USE_TVM
+
+#include "core/providers/tvm/tvm_provider_factory.h"
+
+#endif
+
 #ifdef USE_OPENVINO
 
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -67,6 +73,10 @@ void ServerEnvironment::RegisterExecutionProviders(){
 
   #ifdef USE_NUPHAR
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(options_, 1, ""));
+  #endif
+
+  #ifdef USE_TVM
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tvm(options_, ""));
   #endif
   
   #ifdef USE_OPENVINO

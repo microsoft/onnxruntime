@@ -26,11 +26,23 @@
 
 #include <gsl/gsl>
 
+#ifdef _GAMING_XBOX_SCARLETT
+#include <d3d12_xs.h>
+#include <d3dx12_xs.h>
+#elif defined(_GAMING_XBOX_XBOXONE)
+#include <d3d12_x.h>
+#include <d3dx12_x.h>
+#else // Desktop
 #include <d3d12.h>
 #include <d3d12sdklayers.h>
 #include "External/D3DX12/d3dx12.h"
+#endif
+
+#include "GraphicsUnknownHelper.h"
 
 #include <DirectML.h>
+#include "core/common/common.h"
+#include "ErrorHandling.h"
 
 // DirectML helper libraries
 #include "External/DirectMLHelpers/ApiTraits.h"
@@ -51,7 +63,6 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/OperatorAuthorHelper/Common.h"
 
 #include "DmlCommon.h"
-#include "ErrorHandling.h"
 #include "TensorDesc.h"
 #include "DescriptorPool.h"
 #include "IExecutionProvider.h"

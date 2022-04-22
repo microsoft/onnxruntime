@@ -46,14 +46,13 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 
 #ifdef ENABLE_TRAINING
 
-static void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
-      PyCapsule_GetPointer(data, "dltensor"));
-  if (dlmanged_tensor) {
-    // The dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+void DlpackCapsuleDestructor(PyObject* data) {
+  DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));
+  if (dlmanaged_tensor) {
+    // The dlmanaged_tensor has not been consumed, call deleter ourselves.
+    dlmanaged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanaged_tensor));
   } else {
-    // The dlmanged_tensor has been consumed,
+    // The dlmanaged_tensor has been consumed,
     // PyCapsule_GetPointer has set an error indicator.
     PyErr_Clear();
   }
@@ -80,11 +79,19 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
 
 #endif
 
-void PySparseTensor::Init(std::unique_ptr<SparseTensor>&& instance) {
-  auto sparse_tensor(std::move(instance));
-  auto ml_type = DataTypeImpl::GetType<SparseTensor>();
-  ort_value_.Init(sparse_tensor.get(), ml_type, ml_type->GetDeleteFunc());
-  sparse_tensor.release();
+#if !defined(DISABLE_SPARSE_TENSORS)
+std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {
+  if (instance_) {
+    auto ort_value = std::make_unique<OrtValue>();
+    auto ml_type = DataTypeImpl::GetType<SparseTensor>();
+    py::object this_object = py::cast(*this);
+    // Create an std::function deleter that captures and ref-counts this PySparseTensor
+    ort_value->Init(instance_.get(), ml_type, [object = std::move(this_object)](void*) {});
+    return ort_value;
+  }
+
+  assert(ort_value_.IsAllocated());
+  return std::make_unique<OrtValue>(ort_value_);
 }
 
 PySparseTensor::~PySparseTensor() {
@@ -101,6 +108,7 @@ PySparseTensor::~PySparseTensor() {
     }
   }
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace python
 }  // namespace onnxruntime

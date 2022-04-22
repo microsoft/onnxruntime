@@ -4,6 +4,11 @@
 # Stop at any error, show all commands
 set -exuo pipefail
 
+# Get script directory
+MY_DIR=$(dirname "${BASH_SOURCE[0]}")
+
+# Get build utilities
+source $MY_DIR/build_utils.sh
 
 fixup-mirrors
 if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
@@ -21,6 +26,15 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	apt-get upgrade -qq -y
 	apt-get clean -qq
 	rm -rf /var/lib/apt/lists/*
+	if [ "${AUDITWHEEL_ARCH}" == "s390x" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ]; then
+		# those arch are missing some updates
+		# we need to manually delete some certificates...
+		sed -i '/DST_Root_CA_X3.crt$/d' /etc/ca-certificates.conf
+		find /etc/ssl/certs -name 'DST_Root_CA_X3.pem' -delete
+		update-ca-certificates
+	fi
+elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
+	apk upgrade --no-cache
 else
 	echo "Unsupported policy: '${AUDITWHEEL_POLICY}'"
 	exit 1
@@ -28,25 +42,27 @@ fi
 fixup-mirrors
 
 # do we want to update locales ?
-LOCALE_ARCHIVE=/usr/lib/locale/locale-archive
-TIMESTAMP_FILE=${LOCALE_ARCHIVE}.ml.timestamp
-if [ ! -f ${TIMESTAMP_FILE} ] || [ ${LOCALE_ARCHIVE} -nt ${TIMESTAMP_FILE} ]; then
-	# upgrading glibc-common can end with removal on en_US.UTF-8 locale
-	localedef -i en_US -f UTF-8 en_US.UTF-8
-
-	# if we updated glibc, we need to strip locales again...
-	if localedef --list-archive | grep -sq -v -i ^en_US.utf8; then
-		localedef --list-archive | grep -v -i ^en_US.utf8 | xargs localedef --delete-from-archive
-	fi
-	if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
-		mv -f ${LOCALE_ARCHIVE} ${LOCALE_ARCHIVE}.tmpl
-		build-locale-archive --install-langs="en_US.utf8"
-	elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
-		rm ${LOCALE_ARCHIVE}
+if [ "${BASE_POLICY}" == "manylinux" ]; then
+	LOCALE_ARCHIVE=/usr/lib/locale/locale-archive
+	TIMESTAMP_FILE=${LOCALE_ARCHIVE}.ml.timestamp
+	if [ ! -f ${TIMESTAMP_FILE} ] || [ ${LOCALE_ARCHIVE} -nt ${TIMESTAMP_FILE} ]; then
+		# upgrading glibc-common can end with removal on en_US.UTF-8 locale
 		localedef -i en_US -f UTF-8 en_US.UTF-8
-		update-locale LANG=en_US.UTF-8
+
+		# if we updated glibc, we need to strip locales again...
+		if localedef --list-archive | grep -sq -v -i ^en_US.utf8; then
+			localedef --list-archive | grep -v -i ^en_US.utf8 | xargs localedef --delete-from-archive
+		fi
+		if [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
+			mv -f ${LOCALE_ARCHIVE} ${LOCALE_ARCHIVE}.tmpl
+			build-locale-archive --install-langs="en_US.utf8"
+		elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
+			rm ${LOCALE_ARCHIVE}
+			localedef -i en_US -f UTF-8 en_US.UTF-8
+			update-locale LANG=en_US.UTF-8
+		fi
+		touch ${TIMESTAMP_FILE}
 	fi
-	touch ${TIMESTAMP_FILE}
 fi
 
 if [ -d /usr/share/locale ]; then

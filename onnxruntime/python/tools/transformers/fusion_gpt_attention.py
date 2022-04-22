@@ -50,12 +50,16 @@ class FusionGptAttentionPastBase(Fusion):
             return None
         past = gather.input[0]
 
-        past_k_nodes = self.model.match_parent_path(concat_k, ['Transpose', 'Gather'], [0, 0])
-        if past_k_nodes is None:
-            logger.debug("match_past_pattern_1: failed match Transpose and Gather")
-            return None
+        parent = self.model.get_parent(concat_k, 0, output_name_to_node)
+        if parent.op_type == 'Gather':
+            gather_past_k = parent
+        else:
+            past_k_nodes = self.model.match_parent_path(concat_k, ['Transpose', 'Gather'], [0, 0])
+            if past_k_nodes is None:
+                logger.debug("match_past_pattern_1: failed match Transpose and Gather")
+                return None
+            gather_past_k = past_k_nodes[-1]
 
-        gather_past_k = past_k_nodes[-1]
         if not self.model.find_constant_input(gather_past_k, 0) == 1:
             logger.debug("match_past_pattern_1: expect indices=0 for Gather k of past")
             return None

@@ -24,7 +24,8 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         dense_shape = [3,3]
         values = np.array([1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float)
         indices = np.array([2, 3, 5], np.int64)
-        sess = onnxrt.InferenceSession(get_name("sparse_initializer_as_output.onnx"))
+        sess = onnxrt.InferenceSession(get_name("sparse_initializer_as_output.onnx"),
+                                       providers=onnxrt.get_available_providers())
         res = sess.run_with_ort_values(["values"], {})
         self.assertEqual(len(res), 1)
         ort_value = res[0]
@@ -83,7 +84,8 @@ class TestSparseToDenseMatmul(unittest.TestCase):
                             786, 915, 1044, 3324, 3462, 3600, 4911, 5178, 5445,
                             894, 1041, 1188, 3756, 3912, 4068, 5559, 5862, 6165], np.float).reshape(common_shape)
 
-        sess = onnxrt.InferenceSession(get_name("sparse_to_dense_matmul.onnx"))
+        sess = onnxrt.InferenceSession(get_name("sparse_to_dense_matmul.onnx"),
+                                       providers=onnxrt.get_available_providers())
         res = sess.run_with_ort_values(["dense_Y"], { "sparse_A" : A_ort_value, "dense_B" : B_ort_value })
         self.assertEqual(len(res), 1)
         ort_value = res[0]

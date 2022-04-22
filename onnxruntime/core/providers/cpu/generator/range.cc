@@ -6,7 +6,10 @@
 #include <cmath>
 
 #include "core/providers/op_kernel_type_control.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
