@@ -37,12 +37,18 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
   }
 };
 
-ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session) {
+ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+ _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
     // Create the inference session
-    inference_session = std::make_unique<onnxruntime::InferenceSession>(options->value, env->GetEnvironment());
+    inference_session =
+        std::make_unique<onnxruntime::InferenceSession>(
+            options->value,
+            env->GetEnvironment(),
+            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(intra_op_thread_pool),
+            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(inter_op_thread_pool));
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }

@@ -136,7 +136,10 @@ static void Scenario1LoadBindEvalDefault() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
   // create a session on the default device
+  //auto device = LearningModelDevice(LearningModelDeviceKind::Default);
   LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::Default));
+  LearningModelSession session2(model, LearningModelDevice(LearningModelDeviceKind::Default));
+  LearningModelSession session3(model, LearningModelDevice(LearningModelDeviceKind::Default));
   // create a binding set
   LearningModelBinding binding(session);
   // bind the input and the output buffers by name

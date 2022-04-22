@@ -114,6 +114,26 @@ LearningModelDevice::SharedHandleInitialized() {
   return m_deviceCache->SharedHandleInitialized();
 }
 
+STDMETHODIMP
+LearningModelDevice::GetThreadPool(_winml::IThreading** thread_pool) {
+  m_threadPool.copy_to(thread_pool);
+  return S_OK;
+}
+
+STDMETHODIMP
+LearningModelDevice::CacheThreadPool(_winml::IThreading* thread_pool) {
+  m_threadPool.copy_from(thread_pool);
+  return S_OK;
+}
+
+uint32_t LearningModelDevice::NumberOfIntraOpThreads() {
+  return std::thread::hardware_concurrency();
+}
+
+bool LearningModelDevice::AllowSpinning() {
+  return true;
+}
+
 }  // namespace WINMLP 
 
 namespace WINML::factory_implementation {
