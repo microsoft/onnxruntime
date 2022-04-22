@@ -274,8 +274,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
-      bool allow_intra_op_spinning =
+      const bool allow_intra_op_spinning =
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+
+      const bool enable_spin_stop = 
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableSpinStop, "0") == "1";
+
+      std::function<bool()> spinning_switch;
+      if (allow_intra_op_spinning && enable_spin_stop) {
+        spinning_switch = is_session_run_in_progress;
+      }
+
       OrtThreadPoolParams to = session_options_.intra_op_param;
       std::basic_stringstream<ORTCHAR_T> ss;
       if (to.name) {
@@ -304,11 +313,12 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       }
 
       thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, is_session_run_in_progress, concurrency::ThreadPoolType::INTRA_OP);
+          concurrency::CreateThreadPool(&Env::Default(), to, std::move(spinning_switch), concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       bool allow_inter_op_spinning =
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
+
       OrtThreadPoolParams to = session_options_.inter_op_param;
       // If the thread pool can use all the processors, then
       // we set thread affinity.
