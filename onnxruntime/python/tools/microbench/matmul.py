@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import argparse
 from dataclasses import dataclass
@@ -35,21 +35,61 @@ class BenchmarkMatMul(BenchmarkOp):
 
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
-        a = np.random.rand(op_param.b1, op_param.b2, op_param.m, op_param.k).astype(op_param.data_type)
-        b = np.random.rand(op_param.b1, op_param.b2, op_param.k, op_param.n).astype(op_param.data_type)
-        c = np.random.rand(op_param.b1, op_param.b2, op_param.m, op_param.n).astype(op_param.data_type)
+        a = np.random.rand(op_param.b1, op_param.b2, op_param.m, op_param.k).astype(
+            op_param.data_type
+        )
+        b = np.random.rand(op_param.b1, op_param.b2, op_param.k, op_param.n).astype(
+            op_param.data_type
+        )
+        c = np.random.rand(op_param.b1, op_param.b2, op_param.m, op_param.n).astype(
+            op_param.data_type
+        )
         inputs = {"A": a, "B": b}
         outputs = {"return_val": c}
         return inputs, outputs
 
     def add_model_cases(self, mp, model):
-        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.hidden_size, mp.data_type), model)
-        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.inter_dim, mp.hidden_size, mp.data_type), model)
-        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.inter_dim, mp.data_type), model)
-        self.add_case(OpParam(mp.batch_size, mp.num_heads, mp.seq_len, mp.seq_len, int(mp.hidden_size / mp.num_heads), mp.data_type), model)
+        self.add_case(
+            OpParam(
+                1,
+                mp.batch_size,
+                mp.seq_len,
+                mp.hidden_size,
+                mp.hidden_size,
+                mp.data_type,
+            ),
+            model,
+        )
+        self.add_case(
+            OpParam(
+                1, mp.batch_size, mp.seq_len, mp.inter_dim, mp.hidden_size, mp.data_type
+            ),
+            model,
+        )
+        self.add_case(
+            OpParam(
+                1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.inter_dim, mp.data_type
+            ),
+            model,
+        )
+        self.add_case(
+            OpParam(
+                mp.batch_size,
+                mp.num_heads,
+                mp.seq_len,
+                mp.seq_len,
+                int(mp.hidden_size / mp.num_heads),
+                mp.data_type,
+            ),
+            model,
+        )
 
     def create_cases(self):
-        model = "models/matmul_fp16.onnx" if self.args.precision == "fp16" else "models/matmul_fp32.onnx"
+        model = (
+            "models/matmul_fp16.onnx"
+            if self.args.precision == "fp16"
+            else "models/matmul_fp32.onnx"
+        )
         data_type = np.float16 if self.args.precision == "fp16" else np.float32
         # bert-large
         model_param = ModelParam(1, 384, 1024, 1024 * 4, 16, data_type)
@@ -59,7 +99,16 @@ class BenchmarkMatMul(BenchmarkOp):
         self.add_model_cases(model_param, model)
 
     def case_profile(cls, op_param, time):
-        tflops = op_param.b1 * op_param.b2 * op_param.m * op_param.k * op_param.n * 2 / time / 1000000000
+        tflops = (
+            op_param.b1
+            * op_param.b2
+            * op_param.m
+            * op_param.k
+            * op_param.n
+            * 2
+            / time
+            / 1000000000
+        )
         profile = f"(b1 b2 m k n) = ({op_param.b1} {op_param.b2} {op_param.m} {op_param.k} {op_param.n}), {time:7.4f} ms, {tflops:4.2f} tflops"
         return profile
 

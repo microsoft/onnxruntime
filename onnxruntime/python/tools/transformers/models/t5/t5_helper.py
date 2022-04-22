@@ -16,7 +16,7 @@ from t5_encoder import T5Encoder, T5EncoderHelper
 from t5_decoder import T5DecoderInit, T5Decoder, T5DecoderHelper
 from t5_encoder_decoder_init import T5EncoderDecoderInit, T5EncoderDecoderInitHelper
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from onnx_model import OnnxModel
 from float16 import float_to_float16_max_diff
 from fusion_utils import FusionUtils
@@ -28,9 +28,13 @@ PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3B", "t5-11B"]
 
 
 class T5Helper:
-
     @staticmethod
-    def get_onnx_path(output_dir: str, model_name_or_path: str, suffix: str = "", new_folder: bool = False) -> str:
+    def get_onnx_path(
+        output_dir: str,
+        model_name_or_path: str,
+        suffix: str = "",
+        new_folder: bool = False,
+    ) -> str:
         """Build onnx path
 
         Args:
@@ -46,7 +50,7 @@ class T5Helper:
         if os.path.isdir(model_name_or_path):
             model_name = Path(model_name_or_path).parts[-1]
         else:
-            model_name.split('/')[-1]
+            model_name.split("/")[-1]
 
         model_name += suffix
 
@@ -54,10 +58,12 @@ class T5Helper:
         return os.path.join(dir, model_name + ".onnx")
 
     @staticmethod
-    def load_model(model_name_or_path: str,
-                   cache_dir: str,
-                   device: torch.device,
-                   merge_encoder_and_decoder_init: bool = True) -> Dict[str, torch.nn.Module]:
+    def load_model(
+        model_name_or_path: str,
+        cache_dir: str,
+        device: torch.device,
+        merge_encoder_and_decoder_init: bool = True,
+    ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
         Args:
@@ -69,44 +75,74 @@ class T5Helper:
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
-        model = T5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        model = T5ForConditionalGeneration.from_pretrained(
+            model_name_or_path, cache_dir=cache_dir
+        )
 
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)
 
         if merge_encoder_and_decoder_init:
-            encoder_decoder_init = T5EncoderDecoderInit(model.encoder,
-                                                        model.decoder,
-                                                        model.lm_head,
-                                                        model.config,
-                                                        decoder_start_token_id=None)
+            encoder_decoder_init = T5EncoderDecoderInit(
+                model.encoder,
+                model.decoder,
+                model.lm_head,
+                model.config,
+                decoder_start_token_id=None,
+            )
             return {"encoder_decoder_init": encoder_decoder_init, "decoder": decoder}
         else:
             encoder = T5Encoder(model.encoder, model.config)
             encoder.eval().to(device)
             decoder_init = T5DecoderInit(model.decoder, model.lm_head, model.config)
             decoder_init.eval().to(device)
-            return {"encoder": encoder, "decoder": decoder, "decoder_init": decoder_init}
+            return {
+                "encoder": encoder,
+                "decoder": decoder,
+                "decoder_init": decoder_init,
+            }
 
     @staticmethod
-    def export_onnx(model: Union[T5Encoder, T5Decoder, T5DecoderInit, T5EncoderDecoderInit],
-                    device: torch.device,
-                    onnx_model_path: str,
-                    verbose: bool = True,
-                    use_external_data_format: bool = False,
-                    use_decoder_input_ids: bool = True):
+    def export_onnx(
+        model: Union[T5Encoder, T5Decoder, T5DecoderInit, T5EncoderDecoderInit],
+        device: torch.device,
+        onnx_model_path: str,
+        verbose: bool = True,
+        use_external_data_format: bool = False,
+        use_decoder_input_ids: bool = True,
+    ):
         if isinstance(model, T5Encoder):
-            T5EncoderHelper.export_onnx(model, device, onnx_model_path, verbose, use_external_data_format)
+            T5EncoderHelper.export_onnx(
+                model, device, onnx_model_path, verbose, use_external_data_format
+            )
         elif isinstance(model, T5EncoderDecoderInit):
-            T5EncoderDecoderInitHelper.export_onnx(model, device, onnx_model_path, use_decoder_input_ids, verbose,
-                                                   use_external_data_format)
+            T5EncoderDecoderInitHelper.export_onnx(
+                model,
+                device,
+                onnx_model_path,
+                use_decoder_input_ids,
+                verbose,
+                use_external_data_format,
+            )
         else:
-            T5DecoderHelper.export_onnx(model, device, onnx_model_path, verbose, use_external_data_format)
+            T5DecoderHelper.export_onnx(
+                model, device, onnx_model_path, verbose, use_external_data_format
+            )
 
     @staticmethod
     def auto_mixed_precision(
-            onnx_model: OnnxModel,
-            op_block_list: List[str] = ["Pow", "ReduceMean", "Add", "Sqrt", "Div", "Mul", "Softmax", "Relu"]):
+        onnx_model: OnnxModel,
+        op_block_list: List[str] = [
+            "Pow",
+            "ReduceMean",
+            "Add",
+            "Sqrt",
+            "Div",
+            "Mul",
+            "Softmax",
+            "Relu",
+        ],
+    ):
         """Convert model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
         Args:
@@ -141,10 +177,14 @@ class T5Helper:
             # when the max difference of value after converting float to float16 is lower than a threshold (1e-6),
             # we can deduce that the weights are stored in float16 precision.
             max_diff = float_to_float16_max_diff(initializer)
-            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
-            is_weight_fp16_precision = (max_diff < 1E-6)
+            logger.debug(
+                f"max diff of converting weights in last MatMul node {node.name}: {max_diff}"
+            )
+            is_weight_fp16_precision = max_diff < 1e-6
         else:
-            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
+            logger.warning(
+                f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}"
+            )
 
         keep_io_types = []
         node_block_list = []
@@ -157,7 +197,7 @@ class T5Helper:
             "keep_io_types": keep_io_types,
             "op_block_list": op_block_list,
             "node_block_list": node_block_list,
-            "force_fp16_initializers": is_weight_fp16_precision
+            "force_fp16_initializers": is_weight_fp16_precision,
         }
 
         logger.info(f"auto_mixed_precision parameters: {parameters}")
@@ -170,22 +210,25 @@ class T5Helper:
         return parameters
 
     @staticmethod
-    def optimize_onnx(onnx_model_path: str,
-                      optimized_model_path: str,
-                      is_float16: bool,
-                      num_attention_heads: int,
-                      hidden_size: int,
-                      use_external_data_format: bool = False,
-                      auto_mixed_precision: bool = True):
-        """ Optimize ONNX model with an option to convert it to use mixed precision.
-        """
-        m = optimize_model(onnx_model_path,
-                           model_type='bert',
-                           num_heads=num_attention_heads,
-                           hidden_size=hidden_size,
-                           opt_level=0,
-                           optimization_options=None,
-                           use_gpu=False)
+    def optimize_onnx(
+        onnx_model_path: str,
+        optimized_model_path: str,
+        is_float16: bool,
+        num_attention_heads: int,
+        hidden_size: int,
+        use_external_data_format: bool = False,
+        auto_mixed_precision: bool = True,
+    ):
+        """Optimize ONNX model with an option to convert it to use mixed precision."""
+        m = optimize_model(
+            onnx_model_path,
+            model_type="bert",
+            num_heads=num_attention_heads,
+            hidden_size=hidden_size,
+            opt_level=0,
+            optimization_options=None,
+            use_gpu=False,
+        )
         if is_float16:
             if auto_mixed_precision:
                 T5Helper.auto_mixed_precision(m)
@@ -195,10 +238,12 @@ class T5Helper:
         m.save_model_to_file(optimized_model_path, use_external_data_format)
 
     @staticmethod
-    def verify_onnx(model: Union[T5Encoder, T5Decoder, T5DecoderInit, T5EncoderDecoderInit],
-                    ort_session: InferenceSession, device: torch.device):
-        """ Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good.
-        """
+    def verify_onnx(
+        model: Union[T5Encoder, T5Decoder, T5DecoderInit, T5EncoderDecoderInit],
+        ort_session: InferenceSession,
+        device: torch.device,
+    ):
+        """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         if isinstance(model, T5Encoder):
             return T5EncoderHelper.verify_onnx(model, ort_session, device)
         elif isinstance(model, T5EncoderDecoderInit):

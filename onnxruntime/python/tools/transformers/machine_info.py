@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 # It is used to dump machine information for Notebooks
 
@@ -14,17 +14,29 @@ import json
 import sys
 import platform
 from os import environ
-from py3nvml.py3nvml import nvmlInit, nvmlSystemGetDriverVersion, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, \
-                            nvmlDeviceGetMemoryInfo, nvmlDeviceGetName, nvmlShutdown, NVMLError
+from py3nvml.py3nvml import (
+    nvmlInit,
+    nvmlSystemGetDriverVersion,
+    nvmlDeviceGetCount,
+    nvmlDeviceGetHandleByIndex,
+    nvmlDeviceGetMemoryInfo,
+    nvmlDeviceGetName,
+    nvmlShutdown,
+    NVMLError,
+)
 
 
-class MachineInfo():
-    """ Class encapsulating Machine Info logic. """
+class MachineInfo:
+    """Class encapsulating Machine Info logic."""
+
     def __init__(self, silent=False, logger=None):
         self.silent = silent
 
         if logger is None:
-            logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s: %(message)s", level=logging.INFO)
+            logging.basicConfig(
+                format="%(asctime)s - %(name)s - %(levelname)s: %(message)s",
+                level=logging.INFO,
+            )
             self.logger = logging.getLogger(__name__)
         else:
             self.logger = logger
@@ -50,7 +62,7 @@ class MachineInfo():
             "packages": self.get_related_packages(),
             "onnxruntime": self.get_onnxruntime_info(),
             "pytorch": self.get_pytorch_info(),
-            "tensorflow": self.get_tensorflow_info()
+            "tensorflow": self.get_tensorflow_info(),
         }
         return machine_info
 
@@ -79,7 +91,7 @@ class MachineInfo():
             "hz": self._try_get(cpu_info, ["hz_actual"]),
             "l2_cache": self._try_get(cpu_info, ["l2_cache_size"]),
             "flags": self._try_get(cpu_info, ["flags"]),
-            "processor": platform.uname().processor
+            "processor": platform.uname().processor,
         }
 
     def get_gpu_info_by_nvml(self) -> Dict:
@@ -101,31 +113,49 @@ class MachineInfo():
             nvmlShutdown()
         except NVMLError as error:
             if not self.silent:
-                self.logger.error("Error fetching GPU information using nvml: %s", error)
+                self.logger.error(
+                    "Error fetching GPU information using nvml: %s", error
+                )
             return None
 
         result = {"driver_version": driver_version, "devices": gpu_info_list}
 
-        if 'CUDA_VISIBLE_DEVICES' in environ:
-            result["cuda_visible"] = environ['CUDA_VISIBLE_DEVICES']
+        if "CUDA_VISIBLE_DEVICES" in environ:
+            result["cuda_visible"] = environ["CUDA_VISIBLE_DEVICES"]
         return result
 
     def get_related_packages(self) -> List[str]:
         import pkg_resources
+
         installed_packages = pkg_resources.working_set
         related_packages = [
-            'onnxruntime-gpu', 'onnxruntime', 'ort-nightly-gpu', 'ort-nightly', 'onnx', 'transformers', 'protobuf',
-            'sympy', 'torch', 'tensorflow', 'flatbuffers', 'numpy', 'onnxconverter-common'
+            "onnxruntime-gpu",
+            "onnxruntime",
+            "ort-nightly-gpu",
+            "ort-nightly",
+            "onnx",
+            "transformers",
+            "protobuf",
+            "sympy",
+            "torch",
+            "tensorflow",
+            "flatbuffers",
+            "numpy",
+            "onnxconverter-common",
         ]
-        related_packages_list = {i.key: i.version for i in installed_packages if i.key in related_packages}
+        related_packages_list = {
+            i.key: i.version for i in installed_packages if i.key in related_packages
+        }
         return related_packages_list
 
     def get_onnxruntime_info(self) -> Dict:
         try:
             import onnxruntime
+
             return {
                 "version": onnxruntime.__version__,
-                "support_gpu": 'CUDAExecutionProvider' in onnxruntime.get_available_providers()
+                "support_gpu": "CUDAExecutionProvider"
+                in onnxruntime.get_available_providers(),
             }
         except ImportError as error:
             if not self.silent:
@@ -139,7 +169,12 @@ class MachineInfo():
     def get_pytorch_info(self) -> Dict:
         try:
             import torch
-            return {"version": torch.__version__, "support_gpu": torch.cuda.is_available(), "cuda": torch.version.cuda}
+
+            return {
+                "version": torch.__version__,
+                "support_gpu": torch.cuda.is_available(),
+                "cuda": torch.version.cuda,
+            }
         except ImportError as error:
             if not self.silent:
                 self.logger.exception(error)
@@ -152,10 +187,11 @@ class MachineInfo():
     def get_tensorflow_info(self) -> Dict:
         try:
             import tensorflow as tf
+
             return {
                 "version": tf.version.VERSION,
                 "git_version": tf.version.GIT_VERSION,
-                "support_gpu": tf.test.is_built_with_cuda()
+                "support_gpu": tf.test.is_built_with_cuda(),
             }
         except ImportError as error:
             if not self.silent:
@@ -170,7 +206,12 @@ class MachineInfo():
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--silent', required=False, action='store_true', help="Do not print error message")
+    parser.add_argument(
+        "--silent",
+        required=False,
+        action="store_true",
+        help="Do not print error message",
+    )
     parser.set_defaults(silent=False)
 
     args = parser.parse_args()
@@ -182,6 +223,6 @@ def get_machine_info(silent=True) -> str:
     return json.dumps(machine.machine_info, indent=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_arguments()
     print(get_machine_info(args.silent))

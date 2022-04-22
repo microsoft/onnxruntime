@@ -23,18 +23,20 @@ AUTO_TVM_TYPE = "AutoTVM"
 
 
 @tvm.register_func("tvm_onnx_import_and_compile")
-def onnx_compile(model_string,
-                 model_path,
-                 executor,
-                 target,
-                 target_host,
-                 opt_level,
-                 opset,
-                 freeze_params,
-                 input_shapes,
-                 nhwc=False,
-                 tuning_logfile="",
-                 tuning_type=AUTO_TVM_TYPE):
+def onnx_compile(
+    model_string,
+    model_path,
+    executor,
+    target,
+    target_host,
+    opt_level,
+    opset,
+    freeze_params,
+    input_shapes,
+    nhwc=False,
+    tuning_logfile="",
+    tuning_type=AUTO_TVM_TYPE,
+):
     def get_tvm_executor(irmod, executor, target, params):
         if executor == "vm":
             log.info("Build TVM virtual machine")
@@ -47,8 +49,10 @@ def onnx_compile(model_string,
             log.info("Build TVM graph executor")
             lib = relay.build(irmod, target=target, params=params)
         else:
-            log.error("Executor type {} is unsupported. ".format(executor) +
-                      "Only \"vm\" and \"graph\" types are supported")
+            log.error(
+                "Executor type {} is unsupported. ".format(executor)
+                + 'Only "vm" and "graph" types are supported'
+            )
             return None
         return lib
 
@@ -63,7 +67,9 @@ def onnx_compile(model_string,
     net_feed_input_names = list(set(all_input_names) - set(all_initializer))
 
     # Match names and input shapes
-    all_input_mapping = [(name, shape) for (name, shape) in zip(all_input_names, input_shapes)]
+    all_input_mapping = [
+        (name, shape) for (name, shape) in zip(all_input_names, input_shapes)
+    ]
     # Using an ordereddict maintains input ordering.
     shape_dict = collections.OrderedDict(all_input_mapping)
     # Get only feed input pairs
@@ -71,7 +77,9 @@ def onnx_compile(model_string,
     for name in net_feed_input_names:
         feed_shape_dict[name] = shape_dict[name]
 
-    irmod, params = relay.frontend.from_onnx(model, feed_shape_dict, opset=opset, freeze_params=freeze_params)
+    irmod, params = relay.frontend.from_onnx(
+        model, feed_shape_dict, opset=opset, freeze_params=freeze_params
+    )
     irmod = relay.transform.DynamicToStatic()(irmod)
 
     # Tuning file can be set by client through ep options
@@ -94,7 +102,7 @@ def onnx_compile(model_string,
                     config={
                         "relay.backend.use_auto_scheduler": True,
                         "relay.FuseOps.max_depth": 30,
-                        }
+                    },
                 ):
                     if nhwc:
                         seq = tvm.transform.Sequential(
@@ -113,8 +121,10 @@ def onnx_compile(model_string,
                 with autotvm.apply_history_best(tuning_logfile):
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         else:
-            log.error("Tuning log type {} is unsupported. ".format(tuning_type) +
-                      "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE))
+            log.error(
+                "Tuning log type {} is unsupported. ".format(tuning_type)
+                + "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE)
+            )
             return None
     else:
         with tvm.transform.PassContext(opt_level=opt_level):
@@ -129,8 +139,10 @@ def onnx_compile(model_string,
     elif executor == "graph":
         m = graph_executor.GraphModule(lib["default"](ctx))
     else:
-        print("ERROR: Executor type {} is unsupported. ".format(executor),
-              "Only \"vm\" and \"graph\" types are supported")
+        print(
+            "ERROR: Executor type {} is unsupported. ".format(executor),
+            'Only "vm" and "graph" types are supported',
+        )
         return None
 
     return m.module
