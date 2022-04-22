@@ -23,7 +23,9 @@
     ],
     "python.sortImports.args": [
         "--profile",
-        "black"
+        "black",
+        "--line-length",
+        "120"
     ],
     "python.linting.enabled": true,
     "python.linting.flake8Enabled": true,
