@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto, OperatorSetIdProto
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 opsets = []
 onnxdomain = OperatorSetIdProto()

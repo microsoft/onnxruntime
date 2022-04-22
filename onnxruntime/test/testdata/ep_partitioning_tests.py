@@ -1,7 +1,6 @@
 import numpy as np
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 
 # Create graph with Add and Sub nodes that can be used to test partitioning when one of the operators

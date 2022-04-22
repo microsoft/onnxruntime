@@ -1,7 +1,8 @@
-import onnx
-from onnx import helper, shape_inference
-from onnx import AttributeProto, TensorProto, GraphProto
 import os
+
+import onnx
+from onnx import (AttributeProto, GraphProto, TensorProto, helper,
+                  shape_inference)
 
 _this_dir = os.path.abspath(os.path.dirname(__file__))
 

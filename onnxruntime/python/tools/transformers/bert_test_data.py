@@ -6,13 +6,14 @@
 # It is a tool to generate test data for a bert model.
 # The test data can be used by onnxruntime_perf_test tool to evaluate the inference latency.
 
-import sys
 import argparse
-import numpy as np
 import os
 import random
+import sys
 from pathlib import Path
-from typing import List, Dict, Tuple, Union
+from typing import Dict, List, Tuple, Union
+
+import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
 

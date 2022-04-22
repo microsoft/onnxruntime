@@ -3,7 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-from fusion_attention import FusionAttention, AttentionMask
+
+from fusion_attention import AttentionMask, FusionAttention
 from fusion_reshape import FusionReshape
 from onnx import numpy_helper
 from onnx_model import OnnxModel

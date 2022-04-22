@@ -1,7 +1,8 @@
 import onnx
-from .base_operator import QuantOperatorBase
-from ..quant_utils import QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
+
+from ..quant_utils import QuantizedValue, QuantizedValueType
+from .base_operator import QuantOperatorBase
 
 """
     Quantize Gather

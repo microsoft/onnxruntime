@@ -1,8 +1,7 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto, GraphProto, OperatorSetIdProto
-from onnx import numpy_helper
 import numpy as np
+import onnx
+from onnx import (GraphProto, OperatorSetIdProto, TensorProto, helper,
+                  numpy_helper)
 
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, [2, 4, 8])
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 4, 16])

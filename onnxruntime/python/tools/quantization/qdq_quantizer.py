@@ -3,39 +3,29 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+import logging
 import os
 import struct
 from pathlib import Path
-import numpy as np
-import logging
 
+import numpy as np
 import onnx
 import onnx.numpy_helper
-from onnx import onnx_pb as onnx_proto
 from onnx import TensorProto
-from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
+from onnx import onnx_pb as onnx_proto
 
-from .quant_utils import (
-    QuantizationMode,
-    QuantizedValueType,
-    QuantizedInitializer,
-    QuantizedValue,
-)
-from .quant_utils import (
-    find_by_name,
-    get_elem_index,
-    get_mul_node,
-    generate_identified_filename,
-    attribute_to_kwarg,
-    type_to_name,
-    quantize_nparray,
-)
-from .quant_utils import QuantType, onnx_domain, __producer__, __version__
-
-from .registry import CreateQDQQuantizer
+from onnxruntime import (GraphOptimizationLevel, InferenceSession,
+                         SessionOptions)
 
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
+from .quant_utils import (QuantizationMode, QuantizedInitializer,
+                          QuantizedValue, QuantizedValueType, QuantType,
+                          __producer__, __version__, attribute_to_kwarg,
+                          find_by_name, generate_identified_filename,
+                          get_elem_index, get_mul_node, onnx_domain,
+                          quantize_nparray, type_to_name)
+from .registry import CreateQDQQuantizer
 
 
 class QDQQuantizer(ONNXQuantizer):

@@ -1,23 +1,25 @@
-import os
-import csv
-import timeit
-from datetime import datetime
-import numpy
-import logging
-import coloredlogs
-import numpy as np
 import argparse
 import copy
+import csv
 import json
+import logging
+import os
+import pprint
 import re
 import sys
-import onnxruntime
-from onnx import numpy_helper
-from perf_utils import *
-import pprint
 import time
+import timeit
+from datetime import datetime
+
+import coloredlogs
+import numpy
+import numpy as np
 import pandas as pd
 from float16 import *
+from onnx import numpy_helper
+from perf_utils import *
+
+import onnxruntime
 
 debug = False
 sys.path.append(".")
@@ -1054,8 +1056,8 @@ def parse_models_info_from_file(root_dir, path, models):
 
 
 def convert_model_from_float_to_float16(model_path):
-    from onnxmltools.utils import load_model, save_model
     from float16 import convert_float_to_float16
+    from onnxmltools.utils import load_model, save_model
 
     new_model_path = os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
     if not os.path.exists(new_model_path):

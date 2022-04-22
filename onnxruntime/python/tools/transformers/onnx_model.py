@@ -3,24 +3,17 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from typing import List, Tuple, Dict
 import logging
 import os
 import sys
-from pathlib import Path
-import numpy as np
 from collections import deque
-from onnx import (
-    onnx_pb,
-    AttributeProto,
-    ModelProto,
-    TensorProto,
-    NodeProto,
-    numpy_helper,
-    helper,
-    external_data_helper,
-    save_model,
-)
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+import numpy as np
+from onnx import (AttributeProto, ModelProto, NodeProto, TensorProto,
+                  external_data_helper, helper, numpy_helper, onnx_pb,
+                  save_model)
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)

@@ -4,9 +4,10 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
+
+from fusion_base import Fusion
 from onnx import helper
 from onnx_model import OnnxModel
-from fusion_base import Fusion
 
 
 class FusionGeluApproximation(Fusion):

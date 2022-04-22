@@ -4,21 +4,18 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import argparse
+import copy
+import logging
 import os
 import sys
-import argparse
-import logging
+
 import torch
-import copy
 from t5_helper import PRETRAINED_T5_MODELS, T5Helper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import (
-    setup_logger,
-    prepare_environment,
-    create_onnxruntime_session,
-    Precision,
-)
+from benchmark_helper import (Precision, create_onnxruntime_session,
+                              prepare_environment, setup_logger)
 
 logger = logging.getLogger("")
 

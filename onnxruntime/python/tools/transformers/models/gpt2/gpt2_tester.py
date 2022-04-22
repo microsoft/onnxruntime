@@ -5,15 +5,15 @@
 # --------------------------------------------------------------------------
 # This script helps evaluation of GPT-2 model.
 import logging
-import torch
-import numpy
-import timeit
 import math
-import statistics
-from gpt2_helper import Gpt2Helper, Gpt2Inputs
-
-import sys
 import os
+import statistics
+import sys
+import timeit
+
+import numpy
+import torch
+from gpt2_helper import Gpt2Helper, Gpt2Inputs
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -361,7 +361,8 @@ class Gpt2Tester:
         from onnx import load
 
         model = load(onnx_model_path)
-        from onnxruntime.quantization.quantize import __producer__ as quantize_producer
+        from onnxruntime.quantization.quantize import \
+            __producer__ as quantize_producer
 
         return model.producer_name == quantize_producer
 

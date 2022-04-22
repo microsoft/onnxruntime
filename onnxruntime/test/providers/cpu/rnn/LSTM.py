@@ -1,13 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
+
+from typing import Any, Tuple
 
 import numpy as np  # type: ignore
-from typing import Any, Tuple
 
 # import onnx
 # from ..base import Base

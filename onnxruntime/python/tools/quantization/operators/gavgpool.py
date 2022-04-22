@@ -1,11 +1,8 @@
 import onnx
+
+from ..quant_utils import (QuantizedValue, QuantizedValueType,
+                           attribute_to_kwarg, ms_domain)
 from .base_operator import QuantOperatorBase
-from ..quant_utils import (
-    attribute_to_kwarg,
-    ms_domain,
-    QuantizedValue,
-    QuantizedValueType,
-)
 
 
 class QGlobalAveragePool(QuantOperatorBase):

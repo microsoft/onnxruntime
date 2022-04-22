@@ -1,7 +1,7 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto
 from enum import Enum
+
+import onnx
+from onnx import TensorProto, helper
 from packaging import version
 
 if version.parse(onnx.__version__) == version.parse("1.8.0"):

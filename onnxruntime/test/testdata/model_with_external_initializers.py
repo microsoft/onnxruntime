@@ -1,12 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import onnx
 import numpy as np
-from onnx import helper
-from onnx import TensorProto
-from onnx.numpy_helper import from_array
+import onnx
+from onnx import TensorProto, helper
 from onnx.external_data_helper import set_external_data
+from onnx.numpy_helper import from_array
 
 
 def create_external_data_tensor(

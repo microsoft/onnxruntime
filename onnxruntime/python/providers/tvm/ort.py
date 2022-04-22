@@ -4,17 +4,16 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import os
 import collections
 import copy
 import logging
+import os
 
 import onnx
 import tvm
-from tvm import relay, auto_scheduler
-from tvm.relay import vm
+from tvm import auto_scheduler, autotvm, relay
 from tvm.contrib import graph_executor
-from tvm import autotvm
+from tvm.relay import vm
 
 log = logging.getLogger("tvm_ep")
 

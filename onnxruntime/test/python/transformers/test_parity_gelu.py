@@ -23,12 +23,13 @@ Formula             Input(BeforeCast)  MaxDiff     MaxDiff(Optimized)
 For comparison, CPU has MaxDiff=4.77E-07 for each formula.
 """
 
-import unittest
-import torch
-from torch import nn
 import math
 import os
+import unittest
+
+import torch
 from parity_utilities import *
+from torch import nn
 
 
 class Gelu(nn.Module):

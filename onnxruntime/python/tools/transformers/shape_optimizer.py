@@ -7,21 +7,23 @@
 # (1) It could simplify graph by removing many sub-graphs related to reshape.
 # (2) It could reduce extra inputs and outputs to fit other tools. The script compare_bert_results.py or bert_perf_test.py requires 3 inputs.
 
-import sys
 import argparse
-import numpy as np
-from collections import deque
-from typing import List
-import onnx
-import re
-import tempfile
-import os
 import logging
+import os
+import re
+import sys
+import tempfile
+from collections import deque
 from datetime import datetime
 from pathlib import Path
+from typing import List
+
+import numpy as np
+import onnx
 from onnx import ModelProto, TensorProto, numpy_helper
-import onnxruntime
 from onnx_model import OnnxModel
+
+import onnxruntime
 
 logger = logging.getLogger(__name__)
 

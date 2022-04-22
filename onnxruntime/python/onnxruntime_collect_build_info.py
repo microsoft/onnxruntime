@@ -2,9 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-import warnings
 import ctypes
 import sys
+import warnings
 
 
 def find_cudart_versions(build_env=False, build_cuda_version=None):

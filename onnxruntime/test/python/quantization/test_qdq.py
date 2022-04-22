@@ -7,22 +7,16 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import onnx
+
 import numpy as np
-from onnx import helper, TensorProto
-from onnxruntime.quantization import (
-    quantize_static,
-    QuantType,
-    QuantFormat,
-    QuantizationMode,
-    QDQQuantizer,
-)
-from op_test_utils import (
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_type_count,
-    check_op_type_order,
-)
+import onnx
+from onnx import TensorProto, helper
+from op_test_utils import (TestDataFeeds, check_model_correctness,
+                           check_op_type_count, check_op_type_order)
+
+from onnxruntime.quantization import (QDQQuantizer, QuantFormat,
+                                      QuantizationMode, QuantType,
+                                      quantize_static)
 
 
 class TestQDQFormat(unittest.TestCase):

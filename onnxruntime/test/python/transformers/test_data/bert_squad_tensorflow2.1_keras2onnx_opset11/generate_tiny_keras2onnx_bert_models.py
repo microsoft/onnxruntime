@@ -23,18 +23,20 @@ The input model is generated like the following (need install keras2onnx from so
         keras2onnx.save_model(onnx_model, output_model_path)
 """
 
+import argparse
+import os
+import random
+import sys
+import timeit
+from pathlib import Path
+
+import numpy as np
 import onnx
 import onnx.utils
-import sys
-import argparse
-import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnxruntime_tools.transformers.onnx_model import OnnxModel
-import os
+
 import onnxruntime
-import random
-from pathlib import Path
-import timeit
 
 DICT_SIZE = 20
 SEQ_LEN = 7

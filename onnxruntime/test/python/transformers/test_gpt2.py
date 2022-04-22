@@ -6,21 +6,19 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import unittest
-import os
 import logging
+import os
+import unittest
+
 import coloredlogs
 import pytest
-
 from parity_utilities import find_transformers_source
 
 if find_transformers_source(sub_dir_paths=["models", "gpt2"]):
-    from benchmark_gpt2 import parse_arguments, main
+    from benchmark_gpt2 import main, parse_arguments
 else:
     from onnxruntime.transformers.models.gpt2.benchmark_gpt2 import (
-        parse_arguments,
-        main,
-    )
+        main, parse_arguments)
 
 
 class TestGpt2(unittest.TestCase):

@@ -12,22 +12,22 @@
 # Example command to run test on batch_size 1 and 2 for a model on GPU:
 #   python bert_perf_test.py --model bert.onnx --batch_size 1 2 --sequence_length 128 --use_gpu --samples 1000 --test_times 1
 
-import sys
 import argparse
-import os
-from pathlib import Path
-import timeit
-import statistics
-import psutil
 import csv
-import numpy as np
-import torch
-import random
-from datetime import datetime
 import multiprocessing
-from bert_test_data import get_bert_inputs, generate_test_data
-
+import os
+import random
+import statistics
+import sys
+import timeit
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import psutil
+import torch
+from bert_test_data import generate_test_data, get_bert_inputs
 
 
 @dataclass

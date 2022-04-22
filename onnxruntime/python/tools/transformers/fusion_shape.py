@@ -3,12 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from fusion_base import Fusion
 from logging import getLogger
-from onnx import TensorProto, NodeProto
-from onnx_model import OnnxModel
+from typing import Dict, List, Union
+
+from fusion_base import Fusion
 from fusion_utils import FusionUtils
-from typing import Union, Dict, List
+from onnx import NodeProto, TensorProto
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
@@ -104,7 +105,7 @@ class FusionShape(Fusion):
                     return
 
             value = self.model.get_constant_value(gather.input[1])
-            from numpy import ndarray, array_equal
+            from numpy import array_equal, ndarray
 
             if not (
                 isinstance(value, ndarray) and value.size == 1 and value.item() == i

@@ -8,10 +8,10 @@
 
 # For live logging, use the command: pytest -o log_cli=true --log-cli-level=DEBUG
 
-import unittest
 import os
-import pytest
+import unittest
 
+import pytest
 from test_optimizer import _get_test_model_path
 
 

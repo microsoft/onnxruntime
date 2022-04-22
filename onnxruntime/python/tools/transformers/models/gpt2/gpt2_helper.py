@@ -5,26 +5,26 @@
 # --------------------------------------------------------------------------
 # This script helps onnx conversion and validation for GPT2 model with past state.
 import logging
-import torch
-import shutil
-import random
-import numpy
-import time
-import pickle
-from pathlib import Path
-from typing import List, Dict, Tuple, Union
-from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
-
-import sys
 import os
+import pickle
+import random
+import shutil
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Tuple, Union
+
+import numpy
+import torch
+from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from float16 import float_to_float16_max_diff
-from onnx_model import OnnxModel
-from fusion_utils import FusionUtils
 from benchmark_helper import Precision
+from float16 import float_to_float16_max_diff
+from fusion_utils import FusionUtils
 from io_binding_helper import IOBindingHelper
+from onnx_model import OnnxModel
 from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
@@ -516,9 +516,8 @@ class Gpt2Helper:
         **kwargs,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
-        from optimizer import optimize_model
-
         from fusion_options import FusionOptions
+        from optimizer import optimize_model
 
         optimization_options = FusionOptions("gpt2")
         # optimization_options.enable_gelu = False

@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 # Loop is so the Tranpose output is used in a subgraph
 loop_body = helper.make_graph(

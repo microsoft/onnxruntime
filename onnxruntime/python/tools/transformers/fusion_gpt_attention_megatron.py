@@ -2,13 +2,14 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-import numpy as np
 from logging import getLogger
-from onnx import helper, numpy_helper, TensorProto
-from onnx_model import OnnxModel
+
+import numpy as np
 from fusion_base import Fusion
-from fusion_utils import FusionUtils
 from fusion_gpt_attention import FusionGptAttentionPastBase
+from fusion_utils import FusionUtils
+from onnx import TensorProto, helper, numpy_helper
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 

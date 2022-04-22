@@ -16,29 +16,25 @@ This converts GPT2 model to onnx. Examples:
 """
 
 import argparse
-import logging
-import torch
-import numpy
 import json
+import logging
+import os
+import sys
 from pathlib import Path
+
+import numpy
+import torch
+from gpt2_beamsearch_helper import MODEL_CLASSES, Gpt2HelperFactory
+from gpt2_beamsearch_tester import Gpt2TesterFactory
+from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from packaging import version
 from transformers import AutoConfig
-from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
-from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
-from gpt2_beamsearch_tester import Gpt2TesterFactory
-
-import sys
-import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from benchmark_helper import (Precision, create_onnxruntime_session,
+                              prepare_environment, setup_logger)
 from quantize_helper import QuantizeHelper
-from benchmark_helper import (
-    create_onnxruntime_session,
-    setup_logger,
-    prepare_environment,
-    Precision,
-)
 
 logger = logging.getLogger("")
 
@@ -500,6 +496,7 @@ def main(
 
         # Write results to file
         import csv
+
         from onnxruntime import __version__ as ort_version
 
         latency_name = get_latency_name()

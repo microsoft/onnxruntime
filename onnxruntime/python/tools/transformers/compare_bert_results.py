@@ -5,23 +5,25 @@
 
 # It is a tool to compare the inference results of the original model and optimized model.
 
-import sys
 import argparse
-import numpy as np
+import csv
 import os
 import random
-from pathlib import Path
 import statistics
+import sys
+import timeit
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
 import onnx
 import onnx.utils
 import psutil
-import csv
-import timeit
-from datetime import datetime
+from bert_perf_test import create_session, onnxruntime_inference
+from bert_test_data import (generate_test_data, get_bert_inputs,
+                            output_test_data)
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
-from bert_test_data import get_bert_inputs, generate_test_data, output_test_data
-from bert_perf_test import create_session, onnxruntime_inference
 
 
 def run_model(model_path, all_inputs, use_gpu, disable_optimization):

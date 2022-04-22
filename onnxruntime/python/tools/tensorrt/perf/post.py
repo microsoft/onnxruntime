@@ -1,16 +1,14 @@
 import argparse
-import sys
 import os
-import pandas as pd
+import sys
 import time
+
+import pandas as pd
 from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.data_format import DataFormat
 from azure.kusto.data.helpers import dataframe_from_result_table
-from azure.kusto.ingest import (
-    IngestionProperties,
-    ReportLevel,
-    QueuedIngestClient,
-)
+from azure.kusto.ingest import (IngestionProperties, QueuedIngestClient,
+                                ReportLevel)
 from perf_utils import *
 
 # database connection strings

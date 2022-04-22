@@ -3,48 +3,30 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+import logging
 import os
 import struct
 from pathlib import Path
-import numpy as np
-import logging
 
+import numpy as np
 import onnx
 import onnx.numpy_helper
 from onnx import onnx_pb as onnx_proto
-from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
-from .quant_utils import (
-    QuantizationMode,
-    QuantizedValueType,
-    QuantizedInitializer,
-    QuantizedValue,
-)
-from .quant_utils import (
-    find_by_name,
-    get_elem_index,
-    get_mul_node,
-    generate_identified_filename,
-    attribute_to_kwarg,
-    type_to_name,
-)
-from .quant_utils import (
-    quantize_nparray,
-    quantize_data,
-    compute_scale_zp,
-    get_qrange_for_qType,
-    get_qmin_qmax_for_qType,
-)
-from .quant_utils import (
-    save_and_reload_model,
-    model_has_infer_metadata,
-    add_infer_metadata,
-)
-from .quant_utils import QuantType, onnx_domain, __producer__, __version__
-
-from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
+from onnxruntime import (GraphOptimizationLevel, InferenceSession,
+                         SessionOptions)
 
 from .onnx_model import ONNXModel
+from .quant_utils import (QuantizationMode, QuantizedInitializer,
+                          QuantizedValue, QuantizedValueType, QuantType,
+                          __producer__, __version__, add_infer_metadata,
+                          attribute_to_kwarg, compute_scale_zp, find_by_name,
+                          generate_identified_filename, get_elem_index,
+                          get_mul_node, get_qmin_qmax_for_qType,
+                          get_qrange_for_qType, model_has_infer_metadata,
+                          onnx_domain, quantize_data, quantize_nparray,
+                          save_and_reload_model, type_to_name)
+from .registry import CreateDefaultOpQuantizer, CreateOpQuantizer
 
 
 class ONNXQuantizer:

@@ -5,20 +5,16 @@
 """
 Implements ONNX's backend API.
 """
-from onnx import ModelProto
-from onnx import helper
-from onnx import version
-from onnx.checker import check_model
-from onnx.backend.base import Backend
-from onnxruntime import (
-    InferenceSession,
-    SessionOptions,
-    get_device,
-    get_available_providers,
-)
-from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
-import unittest
 import os
+import unittest
+
+from onnx import ModelProto, helper, version
+from onnx.backend.base import Backend
+from onnx.checker import check_model
+
+from onnxruntime import (InferenceSession, SessionOptions,
+                         get_available_providers, get_device)
+from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
 
 class OnnxRuntimeBackend(Backend):

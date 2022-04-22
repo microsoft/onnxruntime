@@ -5,6 +5,7 @@
 
 import glob
 import os
+
 import requests
 
 TFMODELS = {
@@ -164,7 +165,8 @@ def convert_tf_checkpoint_to_pytorch(
     else:
         if TFMODELS[model_name][0] != "bert":
             raise NotImplementedError("Only support tf2 ckeckpoint for Bert model")
-        from transformers import convert_bert_original_tf2_checkpoint_to_pytorch
+        from transformers import \
+            convert_bert_original_tf2_checkpoint_to_pytorch
 
         load_tf_weight_func = (
             convert_bert_original_tf2_checkpoint_to_pytorch.load_tf2_weights_in_bert
@@ -195,6 +197,7 @@ def tf2pt_pipeline(model_name, is_tf2=False):
 def tf2pt_pipeline_test():
     # For test on linux only
     import logging
+
     import torch
 
     logger = logging.getLogger("")

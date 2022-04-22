@@ -8,15 +8,14 @@
 
 import math
 import multiprocessing
-import numpy
 import os
-import torch
-from pathlib import Path
-from onnx import numpy_helper, TensorProto
-from gpt2_helper import Gpt2Helper
-
 import sys
-import os
+from pathlib import Path
+
+import numpy
+import torch
+from gpt2_helper import Gpt2Helper
+from onnx import TensorProto, numpy_helper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 

@@ -1,7 +1,8 @@
-import os
-import wget
-import tarfile
 import json
+import os
+import tarfile
+
+import wget
 
 
 def get_tar_file(link):

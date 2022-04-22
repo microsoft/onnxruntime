@@ -4,21 +4,23 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import unittest
 import os
+import unittest
+
 import onnx
-from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
+from bert_model_generator import (create_bert_attention,
+                                  create_tf2onnx_attention_3d)
 from gpt2_model_generator import create_gpt2_attention
 from model_loader import get_test_data_path
-
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
-    from optimizer import optimize_model, optimize_by_fusion
     from onnx_model import OnnxModel
+    from optimizer import optimize_by_fusion, optimize_model
 else:
-    from onnxruntime.transformers.optimizer import optimize_model, optimize_by_fusion
     from onnxruntime.transformers.onnx_model import OnnxModel
+    from onnxruntime.transformers.optimizer import (optimize_by_fusion,
+                                                    optimize_model)
 
 
 class TestFusion(unittest.TestCase):

@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 
 def save_model(graph, file_name):

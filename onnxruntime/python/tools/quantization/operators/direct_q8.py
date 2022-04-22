@@ -1,6 +1,7 @@
+from ..quant_utils import QuantizedValue, QuantizedValueType
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
-from ..quant_utils import QuantizedValue, QuantizedValueType
+
 
 # For operators that support 8bits operations directly, and output could
 # reuse input[0]'s type, zeropoint, scale; For example,Transpose, Reshape, etc.

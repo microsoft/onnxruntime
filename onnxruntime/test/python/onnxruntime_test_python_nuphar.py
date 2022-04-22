@@ -1,21 +1,24 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# -*- coding: UTF-8 -*-
-import numpy as np
-import onnx
-from onnx import helper, numpy_helper
-import onnxruntime as onnxrt
-from helper import get_name
 import os
-from onnxruntime.nuphar.rnn_benchmark import perf_test, generate_model
-from onnxruntime.nuphar.model_tools import validate_with_ort, run_shape_inference
 import shutil
-import sys
 import subprocess
+import sys
 import tarfile
 import unittest
 import urllib.request
+
+# -*- coding: UTF-8 -*-
+import numpy as np
+import onnx
+from helper import get_name
+from onnx import helper, numpy_helper
+
+import onnxruntime as onnxrt
+from onnxruntime.nuphar.model_tools import (run_shape_inference,
+                                            validate_with_ort)
+from onnxruntime.nuphar.rnn_benchmark import generate_model, perf_test
 
 
 def reference_gemm(a, b, c, alpha, beta, transA, transB):

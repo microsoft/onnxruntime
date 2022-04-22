@@ -5,9 +5,10 @@
 # --------------------------------------------------------------------------
 
 import logging
-import torch
-import onnx
 import os
+
+import onnx
+import torch
 from transformers.modeling_utils import Conv1D
 
 logger = logging.getLogger(__name__)
@@ -66,8 +67,9 @@ class QuantizeHelper:
     def quantize_onnx_model(
         onnx_model_path, quantized_model_path, use_external_data_format=False
     ):
-        from onnxruntime.quantization import quantize_dynamic
         from pathlib import Path
+
+        from onnxruntime.quantization import quantize_dynamic
 
         Path(quantized_model_path).parent.mkdir(parents=True, exist_ok=True)
         logger.info(

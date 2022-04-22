@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 add = helper.make_node("Add", ["input", "bias"], ["add_out"], "add")
 reverseadd = helper.make_node("Add", ["bias", "input"], ["add_out"], "add")

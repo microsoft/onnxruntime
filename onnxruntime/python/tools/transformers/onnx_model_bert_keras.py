@@ -3,12 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import logging
-import onnx
-import sys
 import argparse
-import numpy as np
+import logging
+import sys
 from collections import deque
+
+import numpy as np
+import onnx
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model_bert_tf import BertOnnxModelTF
 

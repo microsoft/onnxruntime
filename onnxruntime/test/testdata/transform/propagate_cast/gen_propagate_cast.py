@@ -1,9 +1,8 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
 import itertools
+
 import numpy as np
+import onnx
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 12

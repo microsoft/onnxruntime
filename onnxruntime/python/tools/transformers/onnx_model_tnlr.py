@@ -3,12 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-from fusion_attention import FusionAttention, AttentionMask
+from typing import Union
+
+from fusion_attention import AttentionMask, FusionAttention
 from fusion_utils import NumpyHelper
-from onnx import helper, numpy_helper, TensorProto, NodeProto
+from onnx import NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
-from typing import Union
 
 logger = logging.getLogger(__name__)
 

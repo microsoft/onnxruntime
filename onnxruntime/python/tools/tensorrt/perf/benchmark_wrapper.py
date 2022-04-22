@@ -1,14 +1,15 @@
-import os
-import csv
-import logging
-import coloredlogs
 import argparse
 import copy
+import csv
 import json
-import re
+import logging
+import os
 import pprint
-from perf_utils import *
+import re
+
+import coloredlogs
 from benchmark import *
+from perf_utils import *
 
 
 def write_model_info_to_file(model, path):

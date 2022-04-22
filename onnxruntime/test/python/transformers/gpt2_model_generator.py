@@ -4,13 +4,14 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import onnx
 import math
-import numpy
 from typing import List
-from packaging import version
-from onnx import helper, TensorProto
+
+import numpy
+import onnx
 from bert_model_generator import float_tensor, reverse_if
+from onnx import TensorProto, helper
+from packaging import version
 
 
 def create_gpt2_attention(

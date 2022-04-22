@@ -4,10 +4,11 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import unittest
 import os
-from onnx import ModelProto, TensorProto, numpy_helper, external_data_helper, load_model
+import unittest
 
+from onnx import (ModelProto, TensorProto, external_data_helper, load_model,
+                  numpy_helper)
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():

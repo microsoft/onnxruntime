@@ -5,25 +5,24 @@
 # --------------------------------------------------------------------------
 
 import logging
-import numpy
 import os
-import torch
-from pathlib import Path
-from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
-from affinity_helper import AffinitySetting
-from benchmark_helper import create_onnxruntime_session, Precision, OptimizerInfo
-from quantize_helper import QuantizeHelper
-from huggingface_models import MODEL_CLASSES
-from torch_onnx_export_helper import torch_onnx_export
-
 import sys
+from pathlib import Path
+
+import numpy
+import torch
+from affinity_helper import AffinitySetting
+from benchmark_helper import (OptimizerInfo, Precision,
+                              create_onnxruntime_session)
+from huggingface_models import MODEL_CLASSES
+from quantize_helper import QuantizeHelper
+from torch_onnx_export_helper import torch_onnx_export
+from transformers import (AutoConfig, AutoTokenizer, LxmertConfig,
+                          TransfoXLConfig)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import (
-    GPT2ModelNoPastState,
-    PRETRAINED_GPT2_MODELS,
-    TFGPT2ModelNoPastState,
-)
+from gpt2_helper import (PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState,
+                         TFGPT2ModelNoPastState)
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -223,7 +222,7 @@ def optimize_onnx_model_by_ort(
 ):
     if overwrite or not os.path.exists(ort_model_path):
         Path(ort_model_path).parent.mkdir(parents=True, exist_ok=True)
-        from optimizer import optimize_by_onnxruntime, get_fusion_statistics
+        from optimizer import get_fusion_statistics, optimize_by_onnxruntime
 
         # Use onnxruntime to optimize model, which will be saved to *_ort.onnx
         opt_model = optimize_by_onnxruntime(
@@ -255,8 +254,8 @@ def optimize_onnx_model(
     if overwrite or not os.path.exists(optimized_model_path):
         Path(optimized_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        from optimizer import optimize_model
         from fusion_options import FusionOptions
+        from optimizer import optimize_model
 
         if optimization_options == None:
             optimization_options = FusionOptions(model_type)
@@ -687,7 +686,9 @@ def export_onnx_model_from_tf(
         if not use_external_data_format:
             Path(tf_internal_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        import tf2onnx, zipfile
+        import zipfile
+
+        import tf2onnx
 
         tf2onnx.logging.set_level(tf2onnx.logging.ERROR)
         specs = []

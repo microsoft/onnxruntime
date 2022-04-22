@@ -5,14 +5,14 @@
 # --------------------------------------------------------------------------
 # This script helps evaluation of GPT-2 model.
 import logging
-import torch
-import numpy
-import timeit
-from gpt2_tester import Gpt2Tester, Gpt2Metric
-from gpt2_beamsearch_helper import Gpt2BeamSearchHelper, Gpt2BeamSearchInputs
-
-import sys
 import os
+import sys
+import timeit
+
+import numpy
+import torch
+from gpt2_beamsearch_helper import Gpt2BeamSearchHelper, Gpt2BeamSearchInputs
+from gpt2_tester import Gpt2Metric, Gpt2Tester
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 

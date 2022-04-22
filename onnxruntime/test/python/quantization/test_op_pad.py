@@ -7,21 +7,15 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import onnx
+
 import numpy as np
-from onnx import helper, TensorProto
-from onnxruntime.quantization import (
-    quantize_static,
-    quantize_dynamic,
-    QuantType,
-    QuantFormat,
-)
-from op_test_utils import (
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_type_count,
-    check_qtype_by_node_type,
-)
+import onnx
+from onnx import TensorProto, helper
+from op_test_utils import (TestDataFeeds, check_model_correctness,
+                           check_op_type_count, check_qtype_by_node_type)
+
+from onnxruntime.quantization import (QuantFormat, QuantType, quantize_dynamic,
+                                      quantize_static)
 
 
 class TestOpQuatizerPad(unittest.TestCase):

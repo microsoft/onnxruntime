@@ -1,6 +1,7 @@
-import pandas as pd
-import numpy as np
 import argparse
+
+import numpy as np
+import pandas as pd
 
 ep_map = {"cpu": "CPU", "cuda": "CUDA", "trt": "TRT EP", "native": "Standalone TRT"}
 

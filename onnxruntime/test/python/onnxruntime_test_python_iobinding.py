@@ -1,17 +1,17 @@
-import numpy as np
-from numpy.testing import assert_almost_equal
-from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE
-from onnx.defs import onnx_opset_version
-from onnx import helper
-import onnxruntime as onnxrt
-from onnxruntime.capi._pybind_state import (  # pylint: disable=E0611
-    OrtDevice as C_OrtDevice,
-    OrtValue as C_OrtValue,
-    SessionIOBinding,
-)
 import unittest
 
+import numpy as np
 from helper import get_name
+from numpy.testing import assert_almost_equal
+from onnx import helper
+from onnx.defs import onnx_opset_version
+from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE
+
+import onnxruntime as onnxrt
+from onnxruntime.capi._pybind_state import \
+    OrtDevice as C_OrtDevice  # pylint: disable=E0611
+from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
+from onnxruntime.capi._pybind_state import SessionIOBinding
 
 
 class TestIOBinding(unittest.TestCase):

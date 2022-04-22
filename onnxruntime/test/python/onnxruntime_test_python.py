@@ -3,15 +3,16 @@
 
 # -*- coding: UTF-8 -*-
 import gc
-import numpy as np
-import onnxruntime as onnxrt
 import os
 import platform
 import sys
 import threading
 import unittest
 
+import numpy as np
 from helper import get_name
+
+import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
@@ -180,8 +181,8 @@ class TestInferenceSession(unittest.TestCase):
             """
 
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
-            import sys
             import ctypes
+            import sys
 
             CUDA_SUCCESS = 0
 
@@ -320,6 +321,7 @@ class TestInferenceSession(unittest.TestCase):
 
             def setDeviceIdTest(i):
                 import ctypes
+
                 import onnxruntime as onnxrt
 
                 device = ctypes.c_int()
@@ -1365,9 +1367,8 @@ class TestInferenceSession(unittest.TestCase):
                 sess2.run([], {input_name: x}, ro2)
 
     def testCheckAndNormalizeProviderArgs(self):
-        from onnxruntime.capi.onnxruntime_inference_collection import (
-            check_and_normalize_provider_args,
-        )
+        from onnxruntime.capi.onnxruntime_inference_collection import \
+            check_and_normalize_provider_args
 
         valid_providers = ["a", "b", "c"]
 

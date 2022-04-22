@@ -5,8 +5,8 @@
 """
 Check OS requirements for ONNX Runtime Python Bindings.
 """
-import platform
 import linecache
+import platform
 import warnings
 
 
@@ -80,7 +80,8 @@ def validate_build_package_info():
         # for any exception other than not having ortmodule, we want to continue
         # device version validation and raise the exception after.
         try:
-            from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+            from onnxruntime.training.ortmodule._fallback import \
+                ORTModuleInitException
 
             if isinstance(e, ORTModuleInitException):
                 # ORTModule is present but not ready to run yet
@@ -99,8 +100,8 @@ def validate_build_package_info():
     if has_ortmodule:
         try:
             # collect onnxruntime package name, version, and cuda version
-            from .build_and_package_info import package_name
             from .build_and_package_info import __version__ as version
+            from .build_and_package_info import package_name
 
             try:
                 from .build_and_package_info import cuda_version
@@ -135,9 +136,8 @@ def validate_build_package_info():
                     )
 
                 # collection cuda library info from current environment.
-                from onnxruntime.capi.onnxruntime_collect_build_info import (
-                    find_cudart_versions,
-                )
+                from onnxruntime.capi.onnxruntime_collect_build_info import \
+                    find_cudart_versions
 
                 local_cudart_versions = find_cudart_versions(
                     build_env=False, build_cuda_version=cuda_version

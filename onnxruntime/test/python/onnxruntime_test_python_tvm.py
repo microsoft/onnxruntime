@@ -1,14 +1,9 @@
 import numpy
 from numpy.testing import assert_almost_equal
-from onnx import numpy_helper, TensorProto
-from onnx.helper import (
-    make_model,
-    make_node,
-    set_model_props,
-    make_tensor,
-    make_graph,
-    make_tensor_value_info,
-)
+from onnx import TensorProto, numpy_helper
+from onnx.helper import (make_graph, make_model, make_node, make_tensor,
+                         make_tensor_value_info, set_model_props)
+
 import onnxruntime
 
 if "TvmExecutionProvider" not in onnxruntime.get_available_providers():

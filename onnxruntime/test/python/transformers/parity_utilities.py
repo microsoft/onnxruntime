@@ -6,6 +6,7 @@
 
 import os
 import sys
+
 import numpy
 import torch
 
@@ -144,12 +145,9 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
 
 
 def create_ort_session(onnx_model_path, use_gpu=True):
-    from onnxruntime import (
-        SessionOptions,
-        InferenceSession,
-        GraphOptimizationLevel,
-        __version__ as onnxruntime_version,
-    )
+    from onnxruntime import (GraphOptimizationLevel, InferenceSession,
+                             SessionOptions)
+    from onnxruntime import __version__ as onnxruntime_version
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL

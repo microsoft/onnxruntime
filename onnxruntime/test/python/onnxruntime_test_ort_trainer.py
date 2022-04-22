@@ -1,31 +1,26 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import os
-import unittest
-import pytest
-import sys
 import copy
-import numpy as np
-from numpy.testing import assert_allclose, assert_array_equal
+import os
+import sys
+import unittest
 
+import numpy as np
 import onnx
+import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from helper import get_name
+from numpy.testing import assert_allclose, assert_array_equal
 from torchvision import datasets, transforms
 
-from helper import get_name
 import onnxruntime
-from onnxruntime.capi.ort_trainer import (
-    ORTTrainer,
-    IODescription,
-    ModelDescription,
-    LossScaler,
-    generate_sample,
-    save_checkpoint,
-    load_checkpoint,
-)
+from onnxruntime.capi.ort_trainer import (IODescription, LossScaler,
+                                          ModelDescription, ORTTrainer,
+                                          generate_sample, load_checkpoint,
+                                          save_checkpoint)
 
 SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
 

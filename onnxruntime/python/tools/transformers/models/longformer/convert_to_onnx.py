@@ -23,17 +23,18 @@
 #
 # For inference of the onnx model, you will need onnxruntime-gpu 1.7.0 or newer version.
 
-import sys
-import os
-import torch
-import numpy as np
 import argparse
+import os
+import sys
+from pathlib import Path
+
+import numpy as np
+import torch
 import transformers
+from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper
+from packaging import version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
-from packaging import version
-from pathlib import Path
-from longformer_helper import LongformerHelper, PRETRAINED_LONGFORMER_MODELS
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from torch_onnx_export_helper import torch_onnx_export
@@ -282,8 +283,9 @@ def export_longformer(model, onnx_model_path, export_padding):
         raise RuntimeError("This tool requires transformers 4.0.0 or later.")
 
     # Here we replace LongformerSelfAttention.forward using our implmentation for exporting ONNX model
-    from transformers import LongformerSelfAttention
     import inspect
+
+    from transformers import LongformerSelfAttention
 
     key = " ".join(inspect.getfullargspec(LongformerSelfAttention.forward).args)
     args_to_func = {
@@ -334,6 +336,7 @@ def export_longformer(model, onnx_model_path, export_padding):
 
 def optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path=None):
     from onnx import load_model
+
     from onnxruntime.transformers.onnx_model_bert import BertOnnxModel
 
     model = load_model(onnx_model_path, format=None, load_external_data=True)

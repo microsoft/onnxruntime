@@ -5,23 +5,23 @@
 
 from logging import getLogger
 from typing import List
-from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
-from onnx_model import OnnxModel
+
+from fusion_attention import AttentionMask, FusionAttention
+from fusion_biasgelu import FusionBiasGelu
+from fusion_embedlayer import FusionEmbedLayerNormalization
+from fusion_fastgelu import FusionFastGelu
+from fusion_gelu import FusionGelu
+from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_layernorm import (FusionLayerNormalization,
+                              FusionLayerNormalizationTF)
+from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
-from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
-from fusion_skiplayernorm import (
-    FusionSkipLayerNormalization,
-    FusionBiasSkipLayerNormalization,
-)
-from fusion_embedlayer import FusionEmbedLayerNormalization
-from fusion_attention import FusionAttention, AttentionMask
-from fusion_gelu import FusionGelu
-from fusion_fastgelu import FusionFastGelu
-from fusion_biasgelu import FusionBiasGelu
-from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_skiplayernorm import (FusionBiasSkipLayerNormalization,
+                                  FusionSkipLayerNormalization)
 from fusion_utils import FusionUtils
-from fusion_options import FusionOptions
+from onnx import GraphProto, ModelProto, TensorProto, ValueInfoProto, helper
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 

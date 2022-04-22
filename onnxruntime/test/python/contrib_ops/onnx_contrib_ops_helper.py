@@ -3,11 +3,12 @@
 #
 # Helper functions for generating ONNX model and data to test ONNX Runtime contrib ops
 
-import onnx
 import os
-from onnx import numpy_helper
-import subprocess
 import shutil
+import subprocess
+
+import onnx
+from onnx import numpy_helper
 
 TOP_DIR = os.path.realpath(os.path.dirname(__file__))
 DATA_DIR = os.path.join(TOP_DIR, "..", "testdata/")

@@ -1,10 +1,11 @@
-import subprocess
 import json
-import pprint
 import logging
-import coloredlogs
+import pprint
 import re
+import subprocess
 import sys
+
+import coloredlogs
 
 debug = False
 debug_verbose = False

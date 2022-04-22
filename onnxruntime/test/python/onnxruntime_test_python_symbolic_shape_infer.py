@@ -1,10 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import os
+
 # -*- coding: UTF-8 -*-
 import onnx
-from onnx import helper, AttributeProto, TensorProto, GraphProto
-import os
+from onnx import AttributeProto, GraphProto, TensorProto, helper
 
 if os.path.exists(
     os.path.join(
@@ -26,8 +27,8 @@ if os.path.exists(
 else:
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 
 def unique_element(lst):

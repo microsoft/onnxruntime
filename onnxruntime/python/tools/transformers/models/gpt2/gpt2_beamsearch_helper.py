@@ -5,23 +5,18 @@
 # --------------------------------------------------------------------------
 # This script helps onnx conversion and validation for GPT2 model with past state.
 import logging
-import torch
+import os
 import random
-import numpy
+import sys
 import time
 from pathlib import Path
-from typing import List, Dict, Union
-from transformers import GPT2LMHeadModel, GPT2Config
-from gpt2_helper import (
-    Gpt2Helper,
-    Gpt2Inputs,
-    MyGPT2Model,
-    MyGPT2LMHeadModel,
-    MyGPT2LMHeadModel_NoPadding,
-)
+from typing import Dict, List, Union
 
-import sys
-import os
+import numpy
+import torch
+from gpt2_helper import (Gpt2Helper, Gpt2Inputs, MyGPT2LMHeadModel,
+                         MyGPT2LMHeadModel_NoPadding, MyGPT2Model)
+from transformers import GPT2Config, GPT2LMHeadModel
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from io_binding_helper import TypeHelper

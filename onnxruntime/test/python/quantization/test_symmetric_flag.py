@@ -7,10 +7,12 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import onnx
-from onnxruntime import quantization
+
 import numpy as np
-from onnx import helper, TensorProto, numpy_helper
+import onnx
+from onnx import TensorProto, helper, numpy_helper
+
+from onnxruntime import quantization
 
 
 class TestSymmetricFlag(unittest.TestCase):

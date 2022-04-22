@@ -7,13 +7,13 @@
 # Modifications: keep_io_types can be list of names; convert initializers if needed to preserve precision; add force_fp16_initializers option.
 
 import itertools
+import logging
+from typing import Dict, List
+
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
-from typing import List, Dict
-
-import logging
 
 logger = logging.getLogger(__name__)
 

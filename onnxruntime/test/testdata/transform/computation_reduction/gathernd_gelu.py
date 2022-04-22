@@ -1,8 +1,7 @@
-import onnx
-from onnx import helper
-from onnx import AttributeProto, TensorProto, GraphProto, OperatorSetIdProto
-from onnx import numpy_helper
 import numpy as np
+import onnx
+from onnx import (AttributeProto, GraphProto, OperatorSetIdProto, TensorProto,
+                  helper, numpy_helper)
 
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", 128])
 unsqueezed_masked_lm_positions = helper.make_tensor_value_info(

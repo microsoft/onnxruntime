@@ -1,18 +1,19 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import gc
+import os
+import sys
+import threading
+import time
 # -*- coding: UTF-8 -*-
 import unittest
-import os
+
 import numpy as np
-import gc
+from helper import get_name
 
 import onnxruntime as onnxrt
-import threading
-import sys
-from helper import get_name
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
-import time
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):

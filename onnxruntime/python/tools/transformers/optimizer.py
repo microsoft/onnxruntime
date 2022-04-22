@@ -17,19 +17,20 @@
 #  (2) Change input data type from int64 to int32.
 #  (3) Some model cannot be handled by OnnxRuntime, and you can modify this script to get optimized model.
 
-import logging
-import coloredlogs
-import os
 import argparse
+import logging
+import os
 from typing import Dict, Optional
-from onnx import load_model, ModelProto
+
+import coloredlogs
+from fusion_options import FusionOptions
+from onnx import ModelProto, load_model
 from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel
-from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_bert_keras import BertOnnxModelKeras
+from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
-from fusion_options import FusionOptions
 
 logger = logging.getLogger(__name__)
 

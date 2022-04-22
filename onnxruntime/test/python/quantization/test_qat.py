@@ -3,19 +3,19 @@
 
 # -*- coding: UTF-8 -*-
 
-import numpy as np
-import onnx
-from onnx import helper, numpy_helper, TensorProto, ValueInfoProto
-from onnx import shape_inference
-import onnxruntime
-from pathlib import Path
 import unittest
 import urllib.request
+from pathlib import Path
 
-from onnxruntime.quantization.quantize import ONNXQuantizer
-
-from onnxruntime.quantization.quant_utils import QuantizationMode
+import numpy as np
+import onnx
+from onnx import TensorProto, ValueInfoProto, helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
+from onnx import shape_inference
+
+import onnxruntime
+from onnxruntime.quantization.quant_utils import QuantizationMode
+from onnxruntime.quantization.quantize import ONNXQuantizer
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):

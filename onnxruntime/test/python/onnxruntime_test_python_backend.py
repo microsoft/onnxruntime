@@ -3,11 +3,13 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
+
 import numpy as np
+from helper import get_name
 from numpy.testing import assert_allclose
+
 import onnxruntime as onnxrt
 import onnxruntime.backend as backend
-from helper import get_name
 
 
 class TestBackend(unittest.TestCase):

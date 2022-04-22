@@ -3,13 +3,15 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import logging
+import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
-import logging
+
 import numpy
-import onnxruntime as ort
-import time
 import torch
+
+import onnxruntime as ort
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

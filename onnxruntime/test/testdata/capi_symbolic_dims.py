@@ -1,7 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import shape_inference
+from onnx import TensorProto, helper, shape_inference
 
 # create output with rank but unnamed symbolic dim
 output = helper.make_tensor_value_info("C", TensorProto.FLOAT, [1])

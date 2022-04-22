@@ -11,12 +11,13 @@
 # -------------------------------------------------------------------------
 
 import math
+import os
+from typing import Dict, List, Optional, Tuple
+
 import numpy
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
-from typing import Dict, List, Optional, Tuple
-import os
 
 torch.manual_seed(0)
 
@@ -312,7 +313,7 @@ class AttentionForONNX(nn.Module):
             "value_cache": numpy.ascontiguousarray(value_cache.detach().cpu().numpy()),
         }
 
-        from onnxruntime import SessionOptions, InferenceSession
+        from onnxruntime import InferenceSession, SessionOptions
 
         sess_options = SessionOptions()
         ort_session = InferenceSession(
@@ -339,7 +340,7 @@ def create_decoder_attention_graph(
     has_layer_state,
     has_key_padding_mask,
 ):
-    from onnx import helper, TensorProto
+    from onnx import TensorProto, helper
 
     S, B, NH = query.size()
     S2 = key.size()[0]

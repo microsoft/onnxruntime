@@ -6,24 +6,20 @@
 # It is used to dump machine information for Notebooks
 
 import argparse
+import json
 import logging
-from typing import List, Dict, Union, Tuple
+import platform
+import sys
+from os import environ
+from typing import Dict, List, Tuple, Union
+
 import cpuinfo
 import psutil
-import json
-import sys
-import platform
-from os import environ
-from py3nvml.py3nvml import (
-    nvmlInit,
-    nvmlSystemGetDriverVersion,
-    nvmlDeviceGetCount,
-    nvmlDeviceGetHandleByIndex,
-    nvmlDeviceGetMemoryInfo,
-    nvmlDeviceGetName,
-    nvmlShutdown,
-    NVMLError,
-)
+from py3nvml.py3nvml import (NVMLError, nvmlDeviceGetCount,
+                             nvmlDeviceGetHandleByIndex,
+                             nvmlDeviceGetMemoryInfo, nvmlDeviceGetName,
+                             nvmlInit, nvmlShutdown,
+                             nvmlSystemGetDriverVersion)
 
 
 class MachineInfo:

@@ -4,21 +4,23 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import logging
+import os
+import sys
 from pathlib import Path
 from typing import List, Union
-import sys
-import os
-import logging
+
 import numpy
 import torch
-from transformers import T5Config
-from onnxruntime import InferenceSession
-from t5_encoder import T5EncoderInputs
 from past_helper import PastKeyValuesHelper
+from t5_encoder import T5EncoderInputs
+from transformers import T5Config
+
+from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from torch_onnx_export_helper import torch_onnx_export
 from io_binding_helper import TypeHelper
+from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
 

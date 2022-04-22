@@ -3,13 +3,14 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import logging
-import onnx
-import sys
 import argparse
-import numpy as np
+import logging
+import sys
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper, helper
+
+import numpy as np
+import onnx
+from onnx import ModelProto, TensorProto, helper, numpy_helper
 from onnx_model_bert import BertOnnxModel
 
 logger = logging.getLogger(__name__)

@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 
 # Since NNAPI EP does not support dynamic shape input and we now switch from the approach of immediately rejecting

@@ -1,8 +1,7 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
 from enum import Enum
+
+import onnx
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 
 def GenerateModel(model_name, has_casts=False):

@@ -7,9 +7,10 @@
 # The ORT Performance may change especially on generative models.
 
 import argparse
-import numpy as np
-from onnx import onnx_pb, numpy_helper, save_model, load_model
 from pathlib import Path
+
+import numpy as np
+from onnx import load_model, numpy_helper, onnx_pb, save_model
 
 # An experimental small value for differentiating shape data and weights.
 # The tensor data with larger size can't be shape data.

@@ -4,11 +4,11 @@
 # -*- coding: UTF-8 -*-
 import argparse
 import logging
+
 import numpy as np
 import onnx
-from onnx import helper, numpy_helper, shape_inference
 import sympy
-
+from onnx import helper, numpy_helper, shape_inference
 from packaging import version
 
 assert version.parse(onnx.__version__) >= version.parse("1.8.0")

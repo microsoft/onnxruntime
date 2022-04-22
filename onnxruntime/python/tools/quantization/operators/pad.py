@@ -1,12 +1,9 @@
-import onnx
 import numpy as np
+import onnx
+
+from ..quant_utils import (QuantizedValue, QuantizedValueType,
+                           attribute_to_kwarg, quantize_nparray)
 from .base_operator import QuantOperatorBase
-from ..quant_utils import (
-    QuantizedValue,
-    QuantizedValueType,
-    attribute_to_kwarg,
-    quantize_nparray,
-)
 
 
 class QPad(QuantOperatorBase):

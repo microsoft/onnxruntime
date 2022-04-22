@@ -1,7 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 
 def GenerateModel(model_name):

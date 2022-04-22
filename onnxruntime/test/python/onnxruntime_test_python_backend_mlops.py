@@ -3,12 +3,14 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
+
 import numpy as np
-from onnxruntime import datasets
-import onnxruntime.backend as backend
-from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
-from onnx import load
 from helper import get_name
+from onnx import load
+
+import onnxruntime.backend as backend
+from onnxruntime import datasets
+from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
 
 
 def check_list_of_map_to_float(testcase, expected_rows, actual_rows):

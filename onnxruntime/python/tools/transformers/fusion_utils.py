@@ -4,8 +4,9 @@
 # --------------------------------------------------------------------------
 from logging import getLogger
 from typing import Tuple
-from onnx import helper, numpy_helper, TensorProto
-from numpy import ndarray, array_equal
+
+from numpy import array_equal, ndarray
+from onnx import TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)

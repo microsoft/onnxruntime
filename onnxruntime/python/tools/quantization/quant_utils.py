@@ -1,14 +1,15 @@
 import logging
-import numpy
-import onnx
 import tempfile
-
 from enum import Enum
-from onnx import onnx_pb as onnx_proto
-from onnx import external_data_helper
 from pathlib import Path
 
-from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
+import numpy
+import onnx
+from onnx import external_data_helper
+from onnx import onnx_pb as onnx_proto
+
+from onnxruntime import (GraphOptimizationLevel, InferenceSession,
+                         SessionOptions)
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -377,8 +378,9 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
 
 def apply_plot(hist, hist_edges):
     import sys
-    import numpy
+
     import matplotlib.pyplot as plt
+    import numpy
 
     numpy.set_printoptions(threshold=sys.maxsize)
     print("Histogram:")
@@ -398,9 +400,11 @@ def write_calibration_table(calibration_cache):
     """
 
     import json
+
     import flatbuffers
-    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
+
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
+    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
 
     logging.info("calibration cache: {}".format(calibration_cache))
 

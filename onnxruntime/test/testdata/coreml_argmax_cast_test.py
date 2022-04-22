@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 # CoreML EP currently handles a special case for supporting ArgMax op
 # Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc and

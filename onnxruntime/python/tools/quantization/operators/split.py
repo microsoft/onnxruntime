@@ -1,7 +1,9 @@
 import onnx
-from .base_operator import QuantOperatorBase
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 from onnx import onnx_pb as onnx_proto
+
+from ..quant_utils import (QuantizedValue, QuantizedValueType,
+                           attribute_to_kwarg)
+from .base_operator import QuantOperatorBase
 
 
 class QSplit(QuantOperatorBase):

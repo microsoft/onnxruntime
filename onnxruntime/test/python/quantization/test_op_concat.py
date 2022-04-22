@@ -5,15 +5,13 @@
 # --------------------------------------------------------------------------
 
 import unittest
+
 import numpy as np
-from onnx import helper, TensorProto, numpy_helper, save
-from onnxruntime.quantization import quantize_static, QuantFormat, QuantType
-from op_test_utils import (
-    InputFeedsNegOneZeroOne,
-    check_model_correctness,
-    check_op_type_count,
-    check_qtype_by_node_type,
-)
+from onnx import TensorProto, helper, numpy_helper, save
+from op_test_utils import (InputFeedsNegOneZeroOne, check_model_correctness,
+                           check_op_type_count, check_qtype_by_node_type)
+
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestONNXModel(unittest.TestCase):

@@ -2,18 +2,17 @@
 # Licensed under the MIT License.
 
 import unittest
-from numpy.testing import assert_allclose
 
 import torch
 import torch.nn as nn
-
+from numpy.testing import assert_allclose
 from onnxruntime_test_ort_trainer import (
-    map_optimizer_attributes,
-    ort_trainer_learning_rate_description,
-)
-import onnxruntime
+    map_optimizer_attributes, ort_trainer_learning_rate_description)
 from onnxruntime_test_training_unittest_utils import process_dropout
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription
+
+import onnxruntime
+from onnxruntime.capi.ort_trainer import (IODescription, ModelDescription,
+                                          ORTTrainer)
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)

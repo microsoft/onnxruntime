@@ -42,40 +42,28 @@
 
 import argparse
 import logging
+import os
 import timeit
 from datetime import datetime
-import numpy
-
-import os
-import psutil
-import onnx
 from enum import Enum
-from benchmark_helper import (
-    OptimizerInfo,
-    create_onnxruntime_session,
-    Precision,
-    setup_logger,
-    get_latency_result,
-    output_details,
-    output_summary,
-    output_fusion_statistics,
-    inference_ort,
-    inference_ort_with_io_binding,
-    allocateOutputBuffers,
-    ConfigModifier,
-)
+
+import numpy
+import onnx
+import psutil
+from benchmark_helper import (ConfigModifier, OptimizerInfo, Precision,
+                              allocateOutputBuffers,
+                              create_onnxruntime_session, get_latency_result,
+                              inference_ort, inference_ort_with_io_binding,
+                              output_details, output_fusion_statistics,
+                              output_summary, setup_logger)
 from fusion_options import FusionOptions
+from onnx_exporter import (create_onnxruntime_input, export_onnx_model_from_pt,
+                           export_onnx_model_from_tf, load_pretrained_model)
 from quantize_helper import QuantizeHelper
-from onnx_exporter import (
-    create_onnxruntime_input,
-    load_pretrained_model,
-    export_onnx_model_from_pt,
-    export_onnx_model_from_tf,
-)
 
 logger = logging.getLogger("")
 
-from huggingface_models import MODELS, MODEL_CLASSES
+from huggingface_models import MODEL_CLASSES, MODELS
 
 cpu_count = psutil.cpu_count(logical=False)
 
@@ -84,7 +72,8 @@ if "OMP_NUM_THREADS" not in os.environ:
     os.environ["OMP_NUM_THREADS"] = str(cpu_count)
 
 import torch
-from transformers import AutoConfig, AutoTokenizer, AutoModel, GPT2Model, LxmertConfig
+from transformers import (AutoConfig, AutoModel, AutoTokenizer, GPT2Model,
+                          LxmertConfig)
 
 
 def run_onnxruntime(
@@ -425,8 +414,9 @@ def run_pytorch(
 
 
 def run_with_tf_optimizations(do_eager_mode: bool, use_xla: bool):
-    import tensorflow as tf
     from functools import wraps
+
+    import tensorflow as tf
 
     def run_func(func):
         @wraps(func)

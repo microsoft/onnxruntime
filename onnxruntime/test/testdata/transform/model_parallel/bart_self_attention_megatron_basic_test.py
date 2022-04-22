@@ -1,9 +1,9 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto, GraphProto, OperatorSetIdProto
-from onnx import numpy_helper
-import numpy as np
 import random
+
+import numpy as np
+import onnx
+from onnx import (GraphProto, OperatorSetIdProto, TensorProto, helper,
+                  numpy_helper)
 
 batch = 6
 hidden_size = 4

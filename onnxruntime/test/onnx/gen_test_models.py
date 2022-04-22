@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-import onnx
-import numpy as np
-import os
 import argparse
+import os
 from datetime import date
-from onnx import numpy_helper
-from onnx import helper
-from onnx import utils
-from onnx import AttributeProto, TensorProto, GraphProto
+
+import numpy as np
+import onnx
+from onnx import (AttributeProto, GraphProto, TensorProto, helper,
+                  numpy_helper, utils)
 
 
 def parse_arguments():

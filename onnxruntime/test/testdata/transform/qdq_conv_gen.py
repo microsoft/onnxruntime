@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 
 # Generate a basic QDQ Conv model with `num_convs` Conv nodes and their surrounding DQ/Q nodes

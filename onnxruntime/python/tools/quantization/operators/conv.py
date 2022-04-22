@@ -1,16 +1,11 @@
-import onnx
 import numpy as np
+import onnx
+from onnx import onnx_pb as onnx_proto
+
+from ..quant_utils import (BiasToQuantize, QuantizedValue, QuantizedValueType,
+                           attribute_to_kwarg, find_by_name, get_mul_node)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
-from ..quant_utils import (
-    find_by_name,
-    get_mul_node,
-    QuantizedValue,
-    QuantizedValueType,
-    attribute_to_kwarg,
-    BiasToQuantize,
-)
-from onnx import onnx_pb as onnx_proto
 
 
 class ConvInteger(QuantOperatorBase):

@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 # copied and adapted from here:
 # https://github.com/onnx/onnx/blob/c940fa3fea84948e46603cab2f86467291443beb/docs/Operators.md?plain=1#L3494-L3502

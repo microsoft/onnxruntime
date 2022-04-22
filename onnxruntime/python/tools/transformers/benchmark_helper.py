@@ -4,19 +4,20 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import argparse
+import csv
+import logging
 import os
 import sys
-import csv
-import numpy
 import time
 import timeit
 from datetime import datetime
-import argparse
-import logging
-import coloredlogs
-import torch
-import onnx
 from enum import Enum
+
+import coloredlogs
+import numpy
+import onnx
+import torch
 from packaging import version
 
 logger = logging.getLogger(__name__)
@@ -86,12 +87,9 @@ def create_onnxruntime_session(
 ):
     session = None
     try:
-        from onnxruntime import (
-            SessionOptions,
-            InferenceSession,
-            GraphOptimizationLevel,
-            __version__ as onnxruntime_version,
-        )
+        from onnxruntime import (GraphOptimizationLevel, InferenceSession,
+                                 SessionOptions)
+        from onnxruntime import __version__ as onnxruntime_version
 
         sess_options = SessionOptions()
 
@@ -429,8 +427,9 @@ def set_random_seed(seed=123):
 
 def measure_memory(is_gpu, func):
     import os
-    import psutil
     from time import sleep
+
+    import psutil
 
     class MemoryMonitor:
         def __init__(self, keep_measuring=True):
@@ -448,15 +447,11 @@ def measure_memory(is_gpu, func):
             return max_usage
 
         def measure_gpu_usage(self):
-            from py3nvml.py3nvml import (
-                nvmlInit,
-                nvmlDeviceGetCount,
-                nvmlDeviceGetHandleByIndex,
-                nvmlDeviceGetMemoryInfo,
-                nvmlDeviceGetName,
-                nvmlShutdown,
-                NVMLError,
-            )
+            from py3nvml.py3nvml import (NVMLError, nvmlDeviceGetCount,
+                                         nvmlDeviceGetHandleByIndex,
+                                         nvmlDeviceGetMemoryInfo,
+                                         nvmlDeviceGetName, nvmlInit,
+                                         nvmlShutdown)
 
             max_gpu_usage = []
             gpu_name = []

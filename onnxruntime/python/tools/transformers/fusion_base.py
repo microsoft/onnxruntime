@@ -3,9 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from onnx_model import OnnxModel
-from typing import Union, List
+from typing import List, Union
+
 from onnx import GraphProto
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 

@@ -2,8 +2,8 @@
 # Licensed under the MIT License.
 
 import unittest
-from numpy.testing import assert_allclose, assert_array_equal
 
+from numpy.testing import assert_allclose, assert_array_equal
 from onnxruntime_test_ort_trainer import runBertTrainingTest
 
 

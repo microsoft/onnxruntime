@@ -3,12 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from typing import Dict, List, Tuple, Union
 from logging import getLogger
-from onnx import helper, TensorProto, NodeProto
-from onnx_model import OnnxModel
+from typing import Dict, List, Tuple, Union
+
 from fusion_base import Fusion
 from fusion_utils import FusionUtils
+from onnx import NodeProto, TensorProto, helper
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 

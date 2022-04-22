@@ -1,7 +1,9 @@
-import onnx
 import itertools
-from .quant_utils import find_by_name, attribute_to_kwarg
 from pathlib import Path
+
+import onnx
+
+from .quant_utils import attribute_to_kwarg, find_by_name
 
 
 class ONNXModel:

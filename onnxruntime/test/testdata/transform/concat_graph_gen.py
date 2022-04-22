@@ -1,7 +1,6 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto
 import numpy as np
+import onnx
+from onnx import TensorProto, helper
 
 
 def GenerateModel(model_name):

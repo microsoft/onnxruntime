@@ -26,18 +26,19 @@
 #   python benchmark_longformer.py --model longformer-base-4096 --batch_sizes 1 --sequence_lengths 4096 --global_lengths 8 --onnx_dir . --memory -t 10
 # By default, compact memory kernel is not enabled. You need set an environment variable ORT_LONGFORMER_COMPACT_MEMORY=1 to enable it.
 
-import timeit
-from datetime import datetime
-import csv
 import argparse
+import csv
+import math
 import os
 import sys
-import torch
-import onnxruntime
-import numpy as np
-import math
+import timeit
+from datetime import datetime
 
-from longformer_helper import LongformerHelper, PRETRAINED_LONGFORMER_MODELS
+import numpy as np
+import torch
+from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper
+
+import onnxruntime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 import benchmark_helper

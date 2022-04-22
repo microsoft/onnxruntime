@@ -13,27 +13,26 @@ Example 2: convert T5 model with beam search:
    python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./onnx_models/t5-small_decoder.onnx --encoder_decoder_init_onnx ./onnx_models/t5-small_encoder_decoder_init.onnx --output ./onnx_models/t5_small_beam_search.onnx
 """
 
-import os
-import time
-import onnx
-import logging
 import argparse
+import logging
+import os
+import sys
+import time
 from pathlib import Path
-from onnx import helper
-import numpy as np
 from typing import List, Union
+
+import numpy as np
+import onnx
 import torch
+from benchmark_helper import Precision
+from onnx import helper
+from onnx import onnx_pb as onnx_proto
 from packaging import version
 from transformers import GPT2Config, T5Config
-from benchmark_helper import Precision
-from onnx import onnx_pb as onnx_proto
-
-import sys
-import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx
+from gpt2_helper import PRETRAINED_GPT2_MODELS
 
 config: Union[GPT2Config, T5Config] = None
 
@@ -287,13 +286,10 @@ def shape_inference(decoder_onnx_path):
 
 
 def create_ort_session(model_path, use_gpu):
-    from onnxruntime import (
-        SessionOptions,
-        InferenceSession,
-        __version__ as ort_version,
-        GraphOptimizationLevel,
-        get_available_providers,
-    )
+    from onnxruntime import (GraphOptimizationLevel, InferenceSession,
+                             SessionOptions)
+    from onnxruntime import __version__ as ort_version
+    from onnxruntime import get_available_providers
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -639,7 +635,7 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
         )
         return True
 
-    from transformers import GPT2Tokenizer, GPT2LMHeadModel
+    from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
     tokenizer = GPT2Tokenizer.from_pretrained(
         args.model_name_or_path, cache_dir=args.cache_dir

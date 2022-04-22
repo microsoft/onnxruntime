@@ -4,12 +4,13 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import onnx
 import math
-import numpy as np
 from typing import List
+
+import numpy as np
+import onnx
+from onnx import TensorProto, helper
 from packaging import version
-from onnx import helper, TensorProto
 
 
 def float_tensor(name: str, shape: List[int], random=False):

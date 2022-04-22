@@ -1,8 +1,7 @@
-import onnx
-from onnx import helper
-from onnx import AttributeProto, TensorProto, GraphProto, OperatorSetIdProto
-from onnx import numpy_helper
 import numpy as np
+import onnx
+from onnx import (AttributeProto, GraphProto, OperatorSetIdProto, TensorProto,
+                  helper, numpy_helper)
 
 # Gelu formula: x * 0.5 * (1.0 + tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 

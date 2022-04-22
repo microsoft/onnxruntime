@@ -3,14 +3,15 @@
 
 import argparse
 import json
-import sys
 import os
 import platform
+import sys
 import unittest
+
+import numpy as np
 import onnx
 import onnx.backend.test
 
-import numpy as np
 import onnxruntime.backend as c2
 
 pytest_plugins = ("onnx.backend.test.report",)

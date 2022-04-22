@@ -7,23 +7,19 @@
 # --------------------------------------------------------------------------
 import abc
 import itertools
-import numpy as np
-import onnxruntime
-
-import onnx
-from onnx import helper, TensorProto, ModelProto
-from onnx import onnx_pb as onnx_proto
 from enum import Enum
 from pathlib import Path
 
-from .quant_utils import (
-    QuantType,
-    model_has_infer_metadata,
-    smooth_distribution,
-    apply_plot,
-    load_model,
-    clone_model_with_shape_infer,
-)
+import numpy as np
+import onnx
+from onnx import ModelProto, TensorProto, helper
+from onnx import onnx_pb as onnx_proto
+
+import onnxruntime
+
+from .quant_utils import (QuantType, apply_plot, clone_model_with_shape_infer,
+                          load_model, model_has_infer_metadata,
+                          smooth_distribution)
 from .registry import QLinearOpsRegistry
 
 
@@ -833,8 +829,9 @@ class HistogramCollector(CalibrationDataCollector):
         `q` is a truncated version of the original distribution.
         Ref: http://on-demand.gputechconf.com/gtc/2017/presentation/s7310-8-bit-inference-with-tensorrt.pdf
         """
-        from scipy.stats import entropy
         import copy
+
+        from scipy.stats import entropy
 
         hist = histogram[0]
         hist_edges = histogram[1]

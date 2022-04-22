@@ -1,8 +1,8 @@
+import math
 import os
 import unittest
-import math
-import torch
 
+import torch
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():

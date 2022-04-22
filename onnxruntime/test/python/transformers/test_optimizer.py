@@ -8,29 +8,29 @@
 
 # For live logging, use the command: pytest -o log_cli=true --log-cli-level=DEBUG
 
-import unittest
 import os
-import pytest
-from onnx import TensorProto, load_model
-from model_loader import get_test_data_path, get_fusion_test_model
+import unittest
 
+import pytest
+from model_loader import get_fusion_test_model, get_test_data_path
+from onnx import TensorProto, load_model
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
-    from optimizer import optimize_model
-    from onnx_model import OnnxModel
-    from onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from benchmark_helper import OptimizerInfo, Precision
     from huggingface_models import MODELS
-    from benchmark_helper import Precision, OptimizerInfo
+    from onnx_exporter import (export_onnx_model_from_pt,
+                               export_onnx_model_from_tf)
+    from onnx_model import OnnxModel
+    from optimizer import optimize_model
 else:
-    from onnxruntime.transformers.optimizer import optimize_model
-    from onnxruntime.transformers.onnx_model import OnnxModel
-    from onnxruntime.transformers.onnx_exporter import (
-        export_onnx_model_from_tf,
-        export_onnx_model_from_pt,
-    )
+    from onnxruntime.transformers.benchmark_helper import (OptimizerInfo,
+                                                           Precision)
     from onnxruntime.transformers.huggingface_models import MODELS
-    from onnxruntime.transformers.benchmark_helper import Precision, OptimizerInfo
+    from onnxruntime.transformers.onnx_exporter import (
+        export_onnx_model_from_pt, export_onnx_model_from_tf)
+    from onnxruntime.transformers.onnx_model import OnnxModel
+    from onnxruntime.transformers.optimizer import optimize_model
 
 BERT_TEST_MODELS = {
     "bert_keras_0": (

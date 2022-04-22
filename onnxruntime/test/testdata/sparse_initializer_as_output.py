@@ -1,32 +1,15 @@
-import onnx
-import numpy as np
+import argparse
 import os
 import sys
-import argparse
-from onnx import helper, numpy_helper, mapping, utils
-from onnx.helper import make_opsetid
-from onnx import (
-    AttributeProto,
-    SparseTensorProto,
-    TensorProto,
-    GraphProto,
-    ValueInfoProto,
-)
 import traceback
+from typing import (Any, Callable, Dict, List, Optional, Sequence, Text, Tuple,
+                    TypeVar, Union, cast)
 
-from typing import (
-    Text,
-    Sequence,
-    Any,
-    Optional,
-    Dict,
-    Union,
-    TypeVar,
-    Callable,
-    Tuple,
-    List,
-    cast,
-)
+import numpy as np
+import onnx
+from onnx import (AttributeProto, GraphProto, SparseTensorProto, TensorProto,
+                  ValueInfoProto, helper, mapping, numpy_helper, utils)
+from onnx.helper import make_opsetid
 
 
 def parse_arguments():

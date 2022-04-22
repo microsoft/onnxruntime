@@ -5,18 +5,20 @@
 # This tool generates a tiny GPT2 model for testing fusion script.
 # You can use benchmark_gpt2.py to get a gpt2 ONNX model as input of this tool.
 
+import argparse
+import os
+import random
+import sys
+import timeit
+from pathlib import Path
+
+import numpy as np
 import onnx
 import onnx.utils
-import sys
-import argparse
-import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnxruntime_tools.transformers.onnx_model import OnnxModel
-import os
+
 import onnxruntime
-import random
-from pathlib import Path
-import timeit
 
 DICT_SIZE = 20
 SEQ_LEN = 5

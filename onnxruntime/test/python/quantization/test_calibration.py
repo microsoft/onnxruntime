@@ -7,11 +7,14 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import onnx
-import onnxruntime
+
 import numpy as np
-from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization.calibrate import CalibrationDataReader, MinMaxCalibrater
+import onnx
+from onnx import TensorProto, helper, numpy_helper
+
+import onnxruntime
+from onnxruntime.quantization.calibrate import (CalibrationDataReader,
+                                                MinMaxCalibrater)
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):

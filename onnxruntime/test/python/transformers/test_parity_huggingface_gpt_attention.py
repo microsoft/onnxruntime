@@ -10,17 +10,18 @@
 # license information.
 # -------------------------------------------------------------------------
 
+import os
+import random
 import unittest
+
+import numpy
+import onnx
 import pytest
 import torch
-from torch import nn
-import random
 from onnx import helper
-import onnx
-import numpy
-import os
+from parity_utilities import compare_outputs, create_ort_session, diff_outputs
+from torch import nn
 from transformers.modeling_utils import Conv1D
-from parity_utilities import diff_outputs, create_ort_session, compare_outputs
 
 DEBUG_OUTPUTS = ["qk", "norm_qk", "softmax", "attn_weights"]
 

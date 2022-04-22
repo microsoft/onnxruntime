@@ -4,12 +4,13 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import unittest
-import torch
-from torch import nn
 import os
+import unittest
+
 import onnx
+import torch
 from parity_utilities import *
+from torch import nn
 
 if find_transformers_source():
     from onnx_model import OnnxModel

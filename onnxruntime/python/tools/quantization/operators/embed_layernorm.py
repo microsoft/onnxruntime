@@ -1,8 +1,10 @@
-import onnx
 import logging
-from .base_operator import QuantOperatorBase
-from ..quant_utils import attribute_to_kwarg, ms_domain
+
+import onnx
 from onnx import onnx_pb as onnx_proto
+
+from ..quant_utils import attribute_to_kwarg, ms_domain
+from .base_operator import QuantOperatorBase
 
 """
 Quantizes the EmbedLayerNorm fused ONNXRuntime Op.

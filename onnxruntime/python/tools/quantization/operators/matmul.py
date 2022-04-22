@@ -1,9 +1,12 @@
-import onnx
 import itertools
+
+import onnx
+from onnx import onnx_pb as onnx_proto
+
+from ..quant_utils import (QuantizedValue, QuantizedValueType, find_by_name,
+                           get_mul_node)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
-from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType
-from onnx import onnx_pb as onnx_proto
 
 """
     Used when quantize mode is QuantizationMode.IntegerOps.

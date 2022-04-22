@@ -3,9 +3,10 @@
 #
 # Test reference implementation and model for ONNX Runtime conrtib op trilu
 
-import onnx
 import unittest
+
 import numpy as np
+import onnx
 from onnx_contrib_ops_helper import expect
 
 

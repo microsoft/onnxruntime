@@ -1,7 +1,9 @@
-import onnx
-import numpy as np
-import onnxruntime
 from pathlib import Path
+
+import numpy as np
+import onnx
+
+import onnxruntime
 from onnxruntime.quantization import CalibrationDataReader
 
 

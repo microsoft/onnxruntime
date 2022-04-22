@@ -3,10 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from fusion_base import Fusion
 from logging import getLogger
+
 import numpy as np
-from onnx import helper, numpy_helper, TensorProto
+from fusion_base import Fusion
+from onnx import TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)

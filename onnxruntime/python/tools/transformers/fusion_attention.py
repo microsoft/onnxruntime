@@ -2,18 +2,20 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from enum import Enum
+from logging import getLogger
 from os import name
 from sys import path
-import numpy as np
-from logging import getLogger
-from enum import Enum
 from typing import Tuple, Union
-from onnx import helper, numpy_helper, TensorProto, NodeProto
-from onnx_model import OnnxModel
+
+import numpy as np
 from fusion_base import Fusion
-from fusion_utils import FusionUtils, NumpyHelper
 from fusion_options import AttentionMaskFormat
-from shape_infer_helper import SymbolicShapeInferenceHelper, get_shape_from_type_proto
+from fusion_utils import FusionUtils, NumpyHelper
+from onnx import NodeProto, TensorProto, helper, numpy_helper
+from onnx_model import OnnxModel
+from shape_infer_helper import (SymbolicShapeInferenceHelper,
+                                get_shape_from_type_proto)
 
 logger = getLogger(__name__)
 

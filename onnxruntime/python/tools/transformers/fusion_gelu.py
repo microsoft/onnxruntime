@@ -2,11 +2,12 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from typing import Dict, Optional
 from logging import getLogger
+from typing import Dict, Optional
+
+from fusion_base import Fusion
 from onnx import helper
 from onnx_model import OnnxModel
-from fusion_base import Fusion
 
 logger = getLogger(__name__)
 

@@ -7,11 +7,14 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import onnx
+
 import numpy as np
-from onnx import helper, TensorProto
+import onnx
+from onnx import TensorProto, helper
+from op_test_utils import (TestDataFeeds, check_model_correctness,
+                           check_op_type_count)
+
 from onnxruntime.quantization import quantize_dynamic
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
 
 class TestOpEmbedLayerNormalization(unittest.TestCase):

@@ -4,22 +4,25 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import logging
 import os
 import sys
 from pathlib import Path
-from typing import Union, Dict, List
-import logging
+from typing import Dict, List, Union
+
 import torch
-from transformers import T5ForConditionalGeneration
-from onnxruntime import InferenceSession
+from t5_decoder import T5Decoder, T5DecoderHelper, T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderHelper
-from t5_decoder import T5DecoderInit, T5Decoder, T5DecoderHelper
-from t5_encoder_decoder_init import T5EncoderDecoderInit, T5EncoderDecoderInitHelper
+from t5_encoder_decoder_init import (T5EncoderDecoderInit,
+                                     T5EncoderDecoderInitHelper)
+from transformers import T5ForConditionalGeneration
+
+from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model import OnnxModel
 from float16 import float_to_float16_max_diff
 from fusion_utils import FusionUtils
+from onnx_model import OnnxModel
 from optimizer import optimize_model
 
 logger = logging.getLogger(__name__)

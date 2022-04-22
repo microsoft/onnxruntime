@@ -1,12 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import os
 # -*- coding: UTF-8 -*-
 import unittest
-import os
+
 import numpy as np
-import onnxruntime as onnxrt
 from helper import get_name
+
+import onnxruntime as onnxrt
 
 
 class TestInferenceSession(unittest.TestCase):

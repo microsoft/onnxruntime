@@ -1,8 +1,8 @@
 import sys
-import onnx
-from onnx import helper
-from onnx import TensorProto
 from enum import Enum
+
+import onnx
+from onnx import TensorProto, helper
 
 matmul_q_weights = [
     -0.10791015625,

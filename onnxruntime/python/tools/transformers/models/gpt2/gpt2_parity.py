@@ -11,19 +11,18 @@
 # User could use this script to select the best mixed precision model according to these metrics.
 
 import argparse
-import logging
-from onnx_model import OnnxModel
-import onnx
 import csv
 import datetime
+import logging
+import os
+import sys
+
+import onnx
 import scipy.stats
 import torch
-
+from convert_to_onnx import get_latency_name, main
 from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
-from convert_to_onnx import main, get_latency_name
-
-import sys
-import os
+from onnx_model import OnnxModel
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 

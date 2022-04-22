@@ -1,12 +1,9 @@
 import onnx
+
+from ..quant_utils import (QuantizedValue, QuantizedValueType,
+                           attribute_to_kwarg, ms_domain)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
-from ..quant_utils import (
-    QuantizedValue,
-    attribute_to_kwarg,
-    ms_domain,
-    QuantizedValueType,
-)
 
 
 class QLinearConcat(QuantOperatorBase):

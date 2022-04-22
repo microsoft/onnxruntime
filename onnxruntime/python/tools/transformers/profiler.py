@@ -1,8 +1,9 @@
-import os
 import argparse
 import json
-import psutil
+import os
+
 import numpy
+import psutil
 from onnx import TensorProto
 
 """

@@ -4,12 +4,14 @@
 # -*- coding: UTF-8 -*-
 # Taken from https://github.com/onnx/onnxmltools/blob/master/tests/end2end/test_custom_op.py.
 import unittest
+
 import numpy as np
 import onnxmltools
-import onnxruntime as onnxrt
-from keras import backend as K
 from keras import Sequential
-from keras.layers import Layer, Conv2D, MaxPooling2D
+from keras import backend as K
+from keras.layers import Conv2D, Layer, MaxPooling2D
+
+import onnxruntime as onnxrt
 
 
 class ScaledTanh(Layer):

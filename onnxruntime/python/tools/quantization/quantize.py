@@ -5,30 +5,20 @@
 # --------------------------------------------------------------------------
 import logging
 from pathlib import Path
+
 from onnx import onnx_pb as onnx_proto
 
-from .quant_utils import (
-    QuantizationMode,
-    QuantizedValueType,
-    QuantizedInitializer,
-    QuantizedValue,
-)
-from .quant_utils import (
-    find_by_name,
-    get_elem_index,
-    get_mul_node,
-    generate_identified_filename,
-    attribute_to_kwarg,
-)
-from .quant_utils import QuantType, QuantFormat
-from .quant_utils import load_model
-
-from .registry import QLinearOpsRegistry, IntegerOpsRegistry
-
+from .calibrate import (CalibrationDataReader, CalibrationMethod,
+                        create_calibrator)
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .calibrate import CalibrationDataReader, create_calibrator, CalibrationMethod
+from .quant_utils import (QuantFormat, QuantizationMode, QuantizedInitializer,
+                          QuantizedValue, QuantizedValueType, QuantType,
+                          attribute_to_kwarg, find_by_name,
+                          generate_identified_filename, get_elem_index,
+                          get_mul_node, load_model)
+from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
 def check_static_quant_arguments(

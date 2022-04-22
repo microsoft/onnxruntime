@@ -1,8 +1,9 @@
-import onnx
 import numpy
-from .base_operator import QuantOperatorBase
-from ..quant_utils import attribute_to_kwarg, ms_domain, QuantType
+import onnx
 from onnx import onnx_pb as onnx_proto
+
+from ..quant_utils import QuantType, attribute_to_kwarg, ms_domain
+from .base_operator import QuantOperatorBase
 
 """
     Quantize LSTM

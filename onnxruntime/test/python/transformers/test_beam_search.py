@@ -6,10 +6,10 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import unittest
 import os
-import pytest
+import unittest
 
+import pytest
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():

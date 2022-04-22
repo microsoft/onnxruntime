@@ -7,18 +7,16 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import onnx
-import onnxruntime
+
 import numpy as np
-from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization import quantize_dynamic, QuantType
-from op_test_utils import (
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_type_count,
-    check_op_type_order,
-    check_qtype_by_node_type,
-)
+import onnx
+from onnx import TensorProto, helper, numpy_helper
+from op_test_utils import (TestDataFeeds, check_model_correctness,
+                           check_op_type_count, check_op_type_order,
+                           check_qtype_by_node_type)
+
+import onnxruntime
+from onnxruntime.quantization import QuantType, quantize_dynamic
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):

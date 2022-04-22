@@ -4,15 +4,17 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import logging
+import os
 import random
 import sys
-import os
 from pathlib import Path
 from typing import List
-import logging
+
 import numpy
 import torch
 from transformers import T5Config
+
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))

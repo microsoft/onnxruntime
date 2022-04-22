@@ -4,11 +4,13 @@
 # --------------------------------------------------------------------------
 
 import argparse
-import onnxruntime as onnxrt
-import numpy as np
 import os
 import sys
 from timeit import default_timer as timer
+
+import numpy as np
+
+import onnxruntime as onnxrt
 
 float_dict = {
     "tensor(float16)": "float16",

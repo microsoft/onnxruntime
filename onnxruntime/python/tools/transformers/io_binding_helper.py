@@ -1,7 +1,9 @@
+import logging
+from typing import Dict, List, Union
+
 import numpy
 import torch
-import logging
-from typing import List, Dict, Union
+
 from onnxruntime import InferenceSession
 
 logger = logging.getLogger(__name__)

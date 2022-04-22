@@ -3,13 +3,15 @@
 
 """Test export of PyTorch operators using ONNX Runtime contrib ops."""
 
+import copy
+import io
+import unittest
+
+import numpy as np
 import torch
+
 import onnxruntime
 from onnxruntime.tools import pytorch_export_contrib_ops
-import numpy as np
-import unittest
-import io
-import copy
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):

@@ -7,17 +7,15 @@
 # --------------------------------------------------------------------------
 
 import unittest
-import onnx
-import onnxruntime
+
 import numpy as np
-from onnx import helper, TensorProto, numpy_helper
+import onnx
+from onnx import TensorProto, helper, numpy_helper
+from op_test_utils import (TestDataFeeds, check_model_correctness,
+                           check_op_type_count, check_op_type_order)
+
+import onnxruntime
 from onnxruntime.quantization.onnx_model import ONNXModel
-from op_test_utils import (
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_type_count,
-    check_op_type_order,
-)
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
