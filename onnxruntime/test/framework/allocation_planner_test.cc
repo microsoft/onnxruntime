@@ -1133,10 +1133,10 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
   const auto* main_graph_plan = main_graph_session_state.GetExecutionPlan();
 
-  OrtValueIndex init_data_index;
-  ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("image_data_in", init_data_index));
+  OrtValueIndex input_data_index;
+  ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("image_data_in", input_data_index));
 
-  EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(main_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
 #endif

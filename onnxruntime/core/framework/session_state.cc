@@ -1501,6 +1501,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       auto& control_flow_kernel = static_cast<controlflow::IControlFlowKernel&>(*p_op_kernel);
       ORT_RETURN_IF_ERROR(control_flow_kernel.SetupSubgraphExecutionInfo(*this, attr_name, subgraph_session_state));
     }
+
+    // TODO: Once the subgraph session states have been finalized, can we go back and plan the location of implicit
+    // inputs that are fed through as graph inputs in the graph level holding the subgraphs ? Ideally the planned
+    // locations for these would be the locations they are explicitly consumed on in nested subgraphs.
   }
 
   return Status::OK();

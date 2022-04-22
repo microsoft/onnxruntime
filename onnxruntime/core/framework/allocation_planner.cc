@@ -651,7 +651,7 @@ class PlannerImpl {
 
               // The "ideal" solution is to set the location of its first "explicit" usage which may occur
               // in any nested subgraph of the node, but that is potentially too costly to
-              // get at this stage (TODO: Investigate feasibility of this)
+              // get at this stage (TODO: Investigate feasibility of this, see TODO in FinalizeSessionStateImpl() arouxcnds this)
 
               // Instead, we take a "less than ideal" route which is to set the location to be the device
               // corresponding to the EP that the node is partitioned to. The hypothesis is that it is "most likely"
