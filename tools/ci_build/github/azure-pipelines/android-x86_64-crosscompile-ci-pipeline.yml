@@ -306,7 +306,7 @@ jobs:
 - job: NNAPI_EP_MASTER
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   workspace:
     clean: all
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
@@ -358,6 +358,7 @@ jobs:
         --skip_submodule_sync \
         --parallel \
         --use_nnapi \
+        --build_shared_lib \
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \

@@ -785,7 +785,7 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         auto numInputs = ctx.getNumInputs();
-        if (numInputs < 8 || (numInputs - 2) % 3 != 0 ||
+        if (numInputs < 5 || (numInputs - 2) % 3 != 0 ||
             !hasNInputShapes(ctx, static_cast<int>(numInputs))) {
           return;
         }

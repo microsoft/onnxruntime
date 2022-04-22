@@ -109,6 +109,7 @@ class ModelBuilder {
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
   // Get the NodeUnit which contains the given node
+  // the given node must be in the underlying graph_viewer
   const NodeUnit& GetNodeUnit(const Node* node) const;
 
  private:

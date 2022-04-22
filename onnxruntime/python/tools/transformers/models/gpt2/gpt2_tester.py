@@ -4,22 +4,26 @@
 # license information.
 # --------------------------------------------------------------------------
 # This script helps evaluation of GPT-2 model.
-import os
 import logging
 import torch
-import random
 import numpy
-import time
 import timeit
 import math
 import statistics
 from gpt2_helper import Gpt2Helper, Gpt2Inputs
+
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
 
 
 class Gpt2Metric:
+
     def __init__(self, treatment_name, baseline_name='Torch', top_k=20):
         assert top_k > 1 and top_k <= 100
         self.baseline = baseline_name
@@ -112,6 +116,7 @@ class Gpt2Metric:
 
 
 class Gpt2Tester:
+
     def __init__(self,
                  input_ids,
                  position_ids,

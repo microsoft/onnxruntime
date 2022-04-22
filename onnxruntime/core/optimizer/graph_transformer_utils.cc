@@ -252,9 +252,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
 #endif
-      if (enable_quant_qdq_cleanup) {
-        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>());
-      }
+      // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
+      // fusions might be prevented if this one removes a Q/DQ node too early.
+      transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
     } break;
 
     case TransformerLevel::Level3: {
@@ -319,10 +319,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
-      const bool enable_quant_qdq_cleanup =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
-      if (!saving && enable_quant_qdq_cleanup) {
-        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>());
+      if (!saving) {
+        const bool enable_quant_qdq_cleanup =
+            session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+        // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
+        // fusions might be prevented if this one removes a Q/DQ node too early.
+        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
       }
 
       break;
