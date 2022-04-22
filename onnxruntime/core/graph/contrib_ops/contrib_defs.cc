@@ -2342,7 +2342,7 @@ void RegisterContribSchemas() {
   static const char* DisentangledAttention_TRT_ver1_doc =
       R"DOC(Disentangled Attention TensorRT Plugin.)DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DisentangledAttentionPlugin)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DisentangledAttention_TRT)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
       .SetDoc(DisentangledAttention_TRT_ver1_doc)
@@ -2370,11 +2370,13 @@ void RegisterContribSchemas() {
         }
 
         // output dims is same as input[0] dims, i.e., regular c2c attention dims
-        ONNX_NAMESPACE::TensorShapeProto disentangled_attention_shape;
-        for (auto& dim : input0_dims) {
-          *disentangled_attention_shape.add_dim() = dim;
-        }
-        updateOutputShape(ctx, 0, disentangled_attention_shape);
+        // ONNX_NAMESPACE::TensorShapeProto disentangled_attention_shape;
+        // for (auto& dim : input0_dims) {
+        //   *disentangled_attention_shape.add_dim() = dim;
+        // }
+        // updateOutputShape(ctx, 0, disentangled_attention_shape);
+        propagateShapeFromInputToOutput(ctx, 0, 0); 
+
       });
 
 #ifndef _OPSCHEMA_LIB_
