@@ -306,7 +306,7 @@ jobs:
 - job: NNAPI_EP_MASTER
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   workspace:
     clean: all
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
