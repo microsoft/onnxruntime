@@ -17,7 +17,7 @@ ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.
 {:toc}
 
 ## ONNX Runtime Node.js binding
-ONNX Runtime Node.js binding can be achieved by installing or importing.
+ONNX Runtime Node.js binding can be achieved by installing and importing.
 ### Install
 
 ```bash
@@ -45,7 +45,7 @@ const ort = require('onnxruntime-node');
 ONNX Runtime Node.js binding supports Node.js v12.x+ or Electron v5.x+
 
 ## ONNX Runtime Web
-You can install or import ONNX Runtime Web.
+You can install and import ONNX Runtime Web.
 ### Install
 
 ```bash
@@ -85,7 +85,7 @@ ONNX Runtime supports mainstream modern browsers/OS on Windows, Ubuntu, macOS, A
 
 
 ## ONNX Runtime for React Native
-You can install or import ONNX Runtime Web for React Native.
+You can install and import ONNX Runtime Web for React Native.
 ### Install
 
 
