@@ -8,7 +8,7 @@ nav_order: 6
 # Get started with ORT for JavaScript
 {: .no_toc }
 
-ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.js binding](https://github.com/microsoft/onnxruntime/tree/master/js/node), [ONNX Runtime Web](https://github.com/microsoft/onnxruntime/tree/master/js/web) and [ONNX Runtime for React Native](https://github.com/microsoft/onnxruntime/tree/master/js/react_native).
+ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.js binding](https://github.com/microsoft/onnxruntime/tree/master/js/node), [ONNX Runtime Web](https://github.com/microsoft/onnxruntime/tree/master/js/web), and [ONNX Runtime for React Native](https://github.com/microsoft/onnxruntime/tree/master/js/react_native).
 
 ## Contents
 {: .no_toc }
@@ -17,7 +17,7 @@ ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.
 {:toc}
 
 ## ONNX Runtime Node.js binding
-
+ONNX Runtime Node.js binding can be achieved by installing and importing.
 ### Install
 
 ```bash
@@ -38,14 +38,14 @@ const ort = require('onnxruntime-node');
 
 ### Examples
 
-- [Quick Start](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-node)
+- Follow the [Quick Start](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-node) instructions for ONNX Runtime Node.js binding.
 
 ### Supported Versions
 
-Node.js v12.x+ or Electron v5.x+
+ONNX Runtime Node.js binding supports Node.js v12.x+ or Electron v5.x+
 
 ## ONNX Runtime Web
-
+You can install and import ONNX Runtime Web.
 ### Install
 
 ```bash
@@ -67,21 +67,25 @@ import * as ort from 'onnxruntime-web';
 // or use CommonJS style import syntax
 const ort = require('onnxruntime-web');
 ```
-ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CDN server. See examples below for detail.
 
 ### Examples
 
-
+ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CDN server. Here are some examples:
 - [Quick Start (using bundler)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-bundler)
 - [Quick Start (using script tag)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-script-tag)
+- [ONNX Runtime Web for In Browser Inference](https://youtu.be/0dskvE4IvGM)
+- [Inference in Javascript with ONNX Runtime Web](https://youtu.be/vYzWrT3A7wQ)
+
 
 ### Supported Versions
 
 
-mainstream modern browsers on Windows, macOS, Android and iOS.
+ONNX Runtime supports mainstream modern browsers/OS on Windows, Ubuntu, macOS, Android, and iOS. You can check the [compatibility](https://github.com/Microsoft/onnxjs#Compatibility) of ONNX Runtime with modern browsers and operating systems for your desktop and mobile platforms. In-browser inference is possible with [ONNX Runtime Web JavaScript](https://cloudblogs.microsoft.com/opensource/2021/09/02/onnx-runtime-web-running-your-machine-learning-model-in-browser/) that can enable cross-platform portability for web-applications. 
+
+
 
 ## ONNX Runtime for React Native
-
+You can install and import ONNX Runtime Web for React Native.
 ### Install
 
 
@@ -105,7 +109,7 @@ const ort = require('onnxruntime-react-native');
 
 ## Builds
 
-Builds are published to **npm** and can be installed using `npm install`
+[Builds](https://onnxruntime.ai/docs/build/web.html) are published to **npm** and can be installed using `npm install`
 
 | Package | Artifact  | Description | Supported Platforms |
 |---------|-----------|-------------|---------------------|
@@ -113,14 +117,16 @@ Builds are published to **npm** and can be installed using `npm install`
 |Web|[onnxruntime-web](https://www.npmjs.com/package/onnxruntime-web)|CPU and GPU|Browsers (wasm, webgl), Node.js (wasm)|
 |React Native|[onnxruntime-react-native](https://www.npmjs.com/package/onnxruntime-react-native)|CPU|Android, iOS|
 
-For Node.js binding, to use on platforms without pre-built binaries, you can [build Node.js binding from source](../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
+- For Node.js binding, to use on platforms without pre-built binaries, you can [build Node.js binding from source](../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
+- Consider the [options and considerations](https://onnxruntime.ai/docs/reference/build-web-app.html) for building a Web app with ONNX Runtime Web using JavaScript. 
+- Explore a simple web application to [classify images with ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/classify-images-nextjs-github-template.html). 
 
 ## API Reference
 
-See [ONNX Runtime JavaScript API](../api/js/index.html){:target="_blank"} for API reference.
+See [ONNX Runtime JavaScript API](../api/js/index.html){:target="_blank"} for API reference. Check out the [ONNX Runtime Web demos!](https://microsoft.github.io/onnxruntime-web-demo/#/) for image recognition, handwriting analysis, real-time emotion detection, object detection, and so on.
 
 See also:
 
-- [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js).
+- [ONNX Runtime JavaScript examples and API Usage](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js).
 
-- Typescript declarations for [Inference Session](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/inference-session.ts), [Tensor](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/tensor.ts) and [Environment Flags](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/env.ts) for reference.
+- Typescript declarations for [Inference Session](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/inference-session.ts), [Tensor](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/tensor.ts), and [Environment Flags](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/env.ts) for reference.
