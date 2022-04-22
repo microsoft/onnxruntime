@@ -394,11 +394,6 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
     // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
     const auto& node_implicit_inputs = node.ImplicitInputDefs();
     if (!node_implicit_inputs.empty()) {
-      // In nested subgraphs, the location of the implicit input(s) is the location it
-      // is consumed in the subgraph if there is an explicit consumer.
-      // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes, its
-      // location is the location of the value in the enclosing outer scope.
-
       // In the main graph, the location of the implicit input(s) is the location it
       // is consumed in the main graph if there is an explicit consumer.
       // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes and
@@ -407,6 +402,11 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
       // If multiple EPs are involved, then the planned location for such implicit inputs
       // just default to CPU (as there is ambiguity involved as to which non-CPU device is
       // most optimal)
+
+      // In nested subgraphs, the location of the implicit input(s) is the location it
+      // is consumed in the subgraph if there is an explicit consumer.
+      // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes, its
+      // location is the location of the value in the enclosing outer scope.
 
       // All this is setup in the planner, we just use the location from the plan here.
       for (const auto& input_def : node_implicit_inputs) {
