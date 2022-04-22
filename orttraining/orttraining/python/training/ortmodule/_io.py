@@ -181,7 +181,6 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
     # User inputs
     non_none_inputs = []
     _expand_inputs(inputs, non_none_inputs)
-    buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
     result = []
 
     for input_idx, name in enumerate(onnx_input_names):
@@ -206,6 +205,7 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
             try:
+                buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
                 inp = buffer_names_dict[name]
             except KeyError:
                 # ONNX input name is not present in the registered buffer dict.
