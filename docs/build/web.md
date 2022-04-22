@@ -48,8 +48,8 @@ There are 2 steps to build ONNX Runtime Web:
 
   (If you are using Windows, you can skip this step) in `<ORT_ROOT>/cmake/external/emsdk/`, run the following commands to setup emsdk:
   ```sh
-  ./emsdk install 3.1.3
-  ./emsdk activate 3.1.3
+  ./emsdk install latest
+  ./emsdk activate latest
   source ./emsdk_env.sh
   ```
 
