@@ -1,6 +1,8 @@
+black
 cerberus
 codecov
 flatbuffers
+isort
 jinja2
 numpy
 onnx
@@ -8,6 +10,7 @@ onnxmltools
 packaging
 pandas
 protobuf
+pydocstyle
 pytest
 pytest-cov
 scikit-learn
