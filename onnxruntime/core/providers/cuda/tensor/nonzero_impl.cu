@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "nonzero_impl.h"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
+
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include <cub/cub.cuh>
+#include "core/providers/cuda/cu_inc/cub.cuh"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 namespace cuda {

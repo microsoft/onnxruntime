@@ -19,13 +19,15 @@ limitations under the License.
 
 #pragma once
 
+#include "core/providers/cuda/math/softmax.h"
+
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cub.cuh"
+#include "core/providers/cuda/cuda_common.h"
+
 #include <type_traits>
-#include <cub/cub.cuh>
 #include <cuda_fp16.h>
 #include <math_constants.h>
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/math/softmax.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;

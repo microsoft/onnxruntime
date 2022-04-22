@@ -2,13 +2,16 @@
 // Licensed under the MIT License.
 
 #include "topk_impl.h"
+
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "device_atomic_functions.h"
-#include "cub/cub.cuh"
-#include "cub/util_type.cuh"
-#include "cub/util_allocator.cuh"
-#include "cub/device/device_radix_sort.cuh"
+#include "core/providers/cuda/cu_inc/cub.cuh"
+
+#include <device_atomic_functions.h>
+#include <cub/util_type.cuh>
+#include <cub/util_allocator.cuh>
+#include <cub/device/device_radix_sort.cuh>
 #include <limits>
+
 //TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)

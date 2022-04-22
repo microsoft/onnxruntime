@@ -3,8 +3,8 @@
 
 #include "matmul_integer.cuh"
 
-#include <cub/cub.cuh>
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 namespace onnxruntime {
 namespace cuda {

@@ -14,16 +14,15 @@ limitations under the License.
 ==============================================================================*/
 /* Modifications Copyright (c) Microsoft. */
 
-#include <thrust/device_vector.h>
-#include <thrust/execution_policy.h>
-
 #include "non_max_suppression_impl.h"
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
 
-#include <cub/cub.cuh>
 //TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)

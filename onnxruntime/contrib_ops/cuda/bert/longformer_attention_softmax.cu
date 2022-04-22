@@ -17,15 +17,16 @@ limitations under the License.
 // This is fast cuda kernels for longformer attention softmax.
 // It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
 
-#include <cub/cub.cuh>
-#include <cublas_v2.h>
+#include "longformer_attention_softmax.h"
+
+#include "attention_impl.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cuda_common.h"
+
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math_constants.h>
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_common.h"
-#include "longformer_attention_softmax.h"
-#include "attention_impl.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;

@@ -16,6 +16,7 @@ limitations under the License.
 
 // This is fast cuda kernels for longformer attention softmax.
 // It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
+#include <cublas_v2.h>
 
 namespace onnxruntime {
 namespace contrib {

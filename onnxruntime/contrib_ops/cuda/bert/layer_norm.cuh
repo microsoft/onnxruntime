@@ -21,12 +21,13 @@ limitations under the License.
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cub.cuh"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
-#include <cub/cub.cuh>
 
 using namespace onnxruntime::cuda;
 using namespace cub;
