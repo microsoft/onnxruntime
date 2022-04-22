@@ -38,15 +38,16 @@ class TrainingManager(GraphExecutionManager):
         state = C.PartialGraphExecutionState()
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
-        for input in inputs:
-            # TODO: Non-contiguous tensor input in execution_session_run_forward, need tensor copy.
-            if not input.is_contiguous():
-                input = input.contiguous()
-            if input.device.type == "ort":
-                forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
-            else:
-                valid_ort_tensor = _utils._torch_tensor_to_dlpack(input)
-                forward_inputs.push_back(valid_ort_tensor, input.dtype == torch.bool)
+        def tensor_to_ort_value(tensor):
+            # # TODO: Non-contiguous tensor input in execution_session_run_forward, need tensor copy.
+            # if not tensor.is_contiguous():
+            #     tensor = tensor.contiguous()
+            valid_ort_tensor = _utils._torch_tensor_to_dlpack(tensor)
+            return valid_ort_tensor, tensor.dtype == torch.bool
+
+        ort_values = list(map(tensor_to_ort_value, inputs))
+        for ort_value in ort_values:
+            forward_inputs.push_back(*ort_value)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
