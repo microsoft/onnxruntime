@@ -14,16 +14,12 @@ def GenerateModel(model_name, sign, b_zp=True, bias=False):
         ),
         helper.make_node(
             "MatMulInteger",
-            ["a_quantized", "B", "a_zp", "b_zero_point"]
-            if b_zp
-            else ["a_quantized", "B", "a_zp"],
+            ["a_quantized", "B", "a_zp", "b_zero_point"] if b_zp else ["a_quantized", "B", "a_zp"],
             ["matmul_output_int32"],
             "MatMulInteger",
         ),
         helper.make_node("Mul", ["a_scale", "b_scale"], ["multiplier"], "mul_right"),
-        helper.make_node(
-            "Cast", ["matmul_output_int32"], ["matmul_output_float"], "cast", to=1
-        ),
+        helper.make_node("Cast", ["matmul_output_int32"], ["matmul_output_float"], "cast", to=1),
         helper.make_node(
             "Mul",
             ["matmul_output_float", "multiplier"],
@@ -34,9 +30,7 @@ def GenerateModel(model_name, sign, b_zp=True, bias=False):
 
     inputs = [
         helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
-        helper.make_tensor_value_info(
-            "B", TensorProto.INT8 if sign else TensorProto.UINT8, ["K", "N"]
-        ),
+        helper.make_tensor_value_info("B", TensorProto.INT8 if sign else TensorProto.UINT8, ["K", "N"]),
         helper.make_tensor_value_info("b_scale", TensorProto.FLOAT, ["C"]),
     ]
 
@@ -52,9 +46,7 @@ def GenerateModel(model_name, sign, b_zp=True, bias=False):
         )
 
     if bias:
-        nodes.extend(
-            [helper.make_node("Add", ["mul_bottom_output", "bias"], ["Y"], "add")]
-        )
+        nodes.extend([helper.make_node("Add", ["mul_bottom_output", "bias"], ["Y"], "add")])
 
         inputs.extend([helper.make_tensor_value_info("bias", TensorProto.FLOAT, ["N"])])
 

@@ -8,8 +8,7 @@ import os
 import unittest
 
 import onnx
-from bert_model_generator import (create_bert_attention,
-                                  create_tf2onnx_attention_3d)
+from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
 from gpt2_model_generator import create_gpt2_attention
 from model_loader import get_test_data_path
 from parity_utilities import find_transformers_source
@@ -19,23 +18,18 @@ if find_transformers_source():
     from optimizer import optimize_by_fusion, optimize_model
 else:
     from onnxruntime.transformers.onnx_model import OnnxModel
-    from onnxruntime.transformers.optimizer import (optimize_by_fusion,
-                                                    optimize_model)
+    from onnxruntime.transformers.optimizer import optimize_by_fusion, optimize_model
 
 
 class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort()
 
-        expected_model_path = os.path.join(
-            os.path.dirname(__file__), "test_data", "models", expected_model_filename
-        )
+        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model_filename)
         expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort()
 
-        self.assertEqual(
-            str(optimized_model.model.graph), str(expected_model.model.graph)
-        )
+        self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
     def test_attention_fusion(self):
         model = create_bert_attention()
@@ -117,9 +111,7 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "bert_3d_attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(
-            model_path, model_type="bert_tf", num_heads=4, hidden_size=16
-        )
+        optimized_model = optimize_model(model_path, model_type="bert_tf", num_heads=4, hidden_size=16)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "bert_3d_attention_opt.onnx")
@@ -145,9 +137,7 @@ class TestFusion(unittest.TestCase):
             optimized_model.topological_sort()
             os.remove(model_path)
 
-            model_name = "gpt2_attention_{}.onnx".format(
-                "add_opt" if add_order else "opt"
-            )
+            model_name = "gpt2_attention_{}.onnx".format("add_opt" if add_order else "opt")
             self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):

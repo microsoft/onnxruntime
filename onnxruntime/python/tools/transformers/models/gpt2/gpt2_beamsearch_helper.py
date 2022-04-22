@@ -14,8 +14,7 @@ from typing import Dict, List, Union
 
 import numpy
 import torch
-from gpt2_helper import (Gpt2Helper, Gpt2Inputs, MyGPT2LMHeadModel,
-                         MyGPT2LMHeadModel_NoPadding, MyGPT2Model)
+from gpt2_helper import Gpt2Helper, Gpt2Inputs, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding, MyGPT2Model
 from transformers import GPT2Config, GPT2LMHeadModel
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -69,12 +68,8 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             past_key_values=past,
             return_dict=False,
         )
-        logits_flat, present_flat = MyGPT2Model.post_process(
-            result, self.config.n_layer
-        )
-        next_token_logits = logits_flat[:, -1].view(
-            self.config.batch_size, -1, logits_flat.size(-1)
-        )
+        logits_flat, present_flat = MyGPT2Model.post_process(result, self.config.n_layer)
+        next_token_logits = logits_flat[:, -1].view(self.config.batch_size, -1, logits_flat.size(-1))
         next_token_log_probs = torch.log_softmax(next_token_logits, dim=-1)
         next_token_log_probs, next_token_ids = torch.topk(
             next_token_log_probs,
@@ -88,15 +83,11 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
         finished_sents = ~input_unfinished_sents
         next_token_log_probs.masked_fill_(finished_sents.unsqueeze(-1), -numpy.inf)
         next_token_log_probs[..., 0].masked_fill_(finished_sents, 0)
-        next_token_ids.masked_fill_(
-            finished_sents.unsqueeze(-1), self.config.eos_token_id
-        )
+        next_token_ids.masked_fill_(finished_sents.unsqueeze(-1), self.config.eos_token_id)
         output_log_probs = input_log_probs.unsqueeze(-1) + next_token_log_probs
 
         # select N sequences from beams of each input, sorted by sequence probability
-        output_log_probs = output_log_probs.view(
-            self.config.batch_size, -1
-        )  # shape=(batch, beam_size^2)
+        output_log_probs = output_log_probs.view(self.config.batch_size, -1)  # shape=(batch, beam_size^2)
         output_log_probs, selected_index_flat = output_log_probs.topk(
             self.config.beam_size, dim=-1, largest=True, sorted=True
         )  # output shape=(batch, beam_size)
@@ -106,13 +97,9 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             selected_index_flat, self.config.beam_size, rounding_mode="trunc"
         )  # selected_index_flat // self.config.beam_size
 
-        next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(
-            -1, selected_index_flat
-        )
+        next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
 
-        prev_step_results = prev_step_results.view(
-            self.config.batch_size, -1, prev_step_results.size(-1)
-        )
+        prev_step_results = prev_step_results.view(self.config.batch_size, -1, prev_step_results.size(-1))
         prev_step_results = prev_step_results.gather(
             1, selected_input_seq.unsqueeze(-1).repeat(1, 1, prev_step_results.size(-1))
         )
@@ -124,19 +111,13 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
         )
 
         # get the next full input_ids
-        current_step_results = torch.cat(
-            [prev_step_results, next_token_ids.unsqueeze(-1)], dim=-1
-        ).contiguous()
+        current_step_results = torch.cat([prev_step_results, next_token_ids.unsqueeze(-1)], dim=-1).contiguous()
 
-        prev_step_scores = prev_step_scores.view(
-            self.config.batch_size, -1, prev_step_scores.size(-1)
-        )
+        prev_step_scores = prev_step_scores.view(self.config.batch_size, -1, prev_step_scores.size(-1))
         prev_step_scores = prev_step_scores.gather(
             1, selected_input_seq.unsqueeze(-1).repeat(1, 1, prev_step_scores.size(-1))
         )
-        current_step_scores = torch.cat(
-            [prev_step_scores, output_log_probs.unsqueeze(-1)], dim=-1
-        ).contiguous()
+        current_step_scores = torch.cat([prev_step_scores, output_log_probs.unsqueeze(-1)], dim=-1).contiguous()
 
         return (
             next_token_ids,
@@ -144,12 +125,8 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             selected_input_seq,
             output_log_probs,
             output_unfinished_sents,
-            current_step_results.view(
-                self.config.batch_size * self.config.beam_size, -1
-            ),
-            current_step_scores.view(
-                self.config.batch_size * self.config.beam_size, -1
-            ),
+            current_step_results.view(self.config.batch_size * self.config.beam_size, -1),
+            current_step_scores.view(self.config.batch_size * self.config.beam_size, -1),
         )
 
 
@@ -223,22 +200,14 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
         input_ids = input_ids.view(self.config.batch_size, -1, input_ids.size(-1))
         input_num_seq_per_sample = input_ids.size(1)
 
-        input_ids_unfinished_flat = self.collapse_first_two_dims(
-            input_ids
-        ).index_select(
+        input_ids_unfinished_flat = self.collapse_first_two_dims(input_ids).index_select(
             0, input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
         )
 
         if self.config.ignore_eos:
-            attention_mask = (
-                input_ids_unfinished_flat != self.config.eos_token_id
-            ).float()
+            attention_mask = (input_ids_unfinished_flat != self.config.eos_token_id).float()
         else:
-            attention_mask = (
-                torch.ones(input_ids_unfinished_flat.shape)
-                .float()
-                .to(input_ids_unfinished_flat.device)
-            )
+            attention_mask = torch.ones(input_ids_unfinished_flat.shape).float().to(input_ids_unfinished_flat.device)
         position_ids = (attention_mask.cumsum(-1) - 1).clamp(min=0).long()
 
         if past:
@@ -251,12 +220,7 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
                 input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
             ]
 
-            past = tuple(
-                [
-                    p.index_select(1, unfinished_index_relative_to_last_unfinished)
-                    for p in past
-                ]
-            )
+            past = tuple([p.index_select(1, unfinished_index_relative_to_last_unfinished) for p in past])
 
         result = super().forward(
             input_ids_unfinished_flat.view(-1, input_ids_unfinished_flat.size(-1)),
@@ -265,14 +229,10 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
             past_key_values=past,
             return_dict=False,
         )
-        logits_flat, present_flat = MyGPT2Model.post_process(
-            result, self.config.n_layer
-        )
+        logits_flat, present_flat = MyGPT2Model.post_process(result, self.config.n_layer)
 
         # insert finished sequence back to form a square shape of (batch_size, beam_size)
-        next_token_logits = logits_flat.new_zeros(
-            input_ids.size()[:2] + (logits_flat.size(-1),)
-        )
+        next_token_logits = logits_flat.new_zeros(input_ids.size()[:2] + (logits_flat.size(-1),))
         next_token_logits.index_fill_(
             2,
             torch.LongTensor([self.config.eos_token_id]).to(input_ids.device),
@@ -328,9 +288,7 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
                 num_samples=self.config.beam_size,
                 replacement=False,
             )
-            next_token_ids = next_token_ids.view(
-                self.config.batch_size, input_num_seq_per_sample, -1
-            )
+            next_token_ids = next_token_ids.view(self.config.batch_size, input_num_seq_per_sample, -1)
             next_token_log_probs = next_token_log_probs.gather(-1, next_token_ids)
         else:
             next_token_log_probs, next_token_ids = torch.topk(
@@ -344,9 +302,7 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
         output_log_probs = input_log_probs.unsqueeze(-1) + next_token_log_probs
 
         # select N sequences from beams of each input, sorted by sequence probability
-        output_log_probs = output_log_probs.view(
-            self.config.batch_size, -1
-        )  # shape=(batch, beam_size^2)
+        output_log_probs = output_log_probs.view(self.config.batch_size, -1)  # shape=(batch, beam_size^2)
         output_log_probs, selected_index_flat = output_log_probs.topk(
             self.config.beam_size, dim=-1, largest=True, sorted=True
         )  # output shape=(batch, beam_size)
@@ -356,41 +312,25 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
             selected_index_flat, self.config.beam_size, rounding_mode="trunc"
         )  # selected_index_flat // self.config.beam_size
 
-        next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(
-            -1, selected_index_flat
-        )
+        next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
 
-        prev_step_results = input_ids.view(
-            self.config.batch_size, -1, input_ids.size(-1)
-        ).contiguous()
+        prev_step_results = input_ids.view(self.config.batch_size, -1, input_ids.size(-1)).contiguous()
         prev_step_results = prev_step_results.gather(
             1,
-            selected_input_seq.unsqueeze(-1).expand(
-                selected_input_seq.shape + (prev_step_results.size(-1),)
-            ),
+            selected_input_seq.unsqueeze(-1).expand(selected_input_seq.shape + (prev_step_results.size(-1),)),
         )
 
         output_unfinished_sents = input_unfinished_sents.gather(1, selected_input_seq)
-        output_unfinished_sents = output_unfinished_sents & next_token_ids.ne(
-            self.config.eos_token_id
-        )
+        output_unfinished_sents = output_unfinished_sents & next_token_ids.ne(self.config.eos_token_id)
 
-        current_step_results = torch.cat(
-            [prev_step_results, next_token_ids.unsqueeze(-1)], dim=-1
-        ).contiguous()
+        current_step_results = torch.cat([prev_step_results, next_token_ids.unsqueeze(-1)], dim=-1).contiguous()
 
-        prev_step_scores = prev_step_scores.view(
-            self.config.batch_size, -1, prev_step_scores.size(-1)
-        )
+        prev_step_scores = prev_step_scores.view(self.config.batch_size, -1, prev_step_scores.size(-1))
         prev_step_scores = prev_step_scores.gather(
             1,
-            selected_input_seq.unsqueeze(-1).expand(
-                selected_input_seq.shape + (prev_step_scores.size(-1),)
-            ),
+            selected_input_seq.unsqueeze(-1).expand(selected_input_seq.shape + (prev_step_scores.size(-1),)),
         )
-        current_step_scores = torch.cat(
-            [prev_step_scores, output_log_probs.unsqueeze(-1)], dim=-1
-        ).contiguous()
+        current_step_scores = torch.cat([prev_step_scores, output_log_probs.unsqueeze(-1)], dim=-1).contiguous()
 
         # For next past state
         index_relative_to_last_unfinished = (
@@ -402,16 +342,12 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
         )
 
         return (
-            current_step_results.view(
-                self.config.batch_size * self.config.beam_size, -1
-            ),
+            current_step_results.view(self.config.batch_size * self.config.beam_size, -1),
             present_flat,
             index_relative_to_last_unfinished,
             output_log_probs,
             output_unfinished_sents,
-            current_step_scores.view(
-                self.config.batch_size * self.config.beam_size, -1
-            ),
+            current_step_scores.view(self.config.batch_size * self.config.beam_size, -1),
         )
 
 
@@ -448,18 +384,12 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
     ):
         super().__init__(input_ids, position_ids, attention_mask, past=past)
         self.prev_step_results: torch.LongTensor = prev_step_results
-        self.prev_step_scores: Union[
-            torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor
-        ] = prev_step_scores
+        self.prev_step_scores: Union[torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor] = prev_step_scores
         if beam_select_idx is None:
-            self.beam_select_idx: torch.LongTensor = torch.zeros(
-                [1, len(input_ids)]
-            ).long()
+            self.beam_select_idx: torch.LongTensor = torch.zeros([1, len(input_ids)]).long()
         else:
             self.beam_select_idx: torch.LongTensor = beam_select_idx
-        self.input_log_probs: Union[
-            torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor
-        ] = input_log_probs
+        self.input_log_probs: Union[torch.FloatTensor, torch.HalfTensor, torch.cuda.FloatTensor] = input_log_probs
         self.input_unfinished_sents: torch.ByteTensor = input_unfinished_sents
 
     def to_list(self) -> List:
@@ -484,9 +414,7 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
     def to_fp32(self):
         past = [p.to(dtype=torch.float32) for p in self.past]
         attention_mask = (
-            self.attention_mask.to(dtype=torch.float32)
-            if self.attention_mask is not None
-            else self.attention_mask
+            self.attention_mask.to(dtype=torch.float32) if self.attention_mask is not None else self.attention_mask
         )
         return Gpt2BeamSearchInputs(
             self.input_ids,
@@ -542,9 +470,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
         beam_select_idx = torch.zeros([1, batch_size], device=device).long()
         input_log_probs = torch.zeros([batch_size, 1], dtype=float_type, device=device)
-        input_unfinished_sents = torch.ones(
-            [batch_size, 1], dtype=torch.bool, device=device
-        )
+        input_unfinished_sents = torch.ones([batch_size, 1], dtype=torch.bool, device=device)
         if has_position_ids:
             prev_step_results = torch.randint(
                 low=0,
@@ -654,22 +580,12 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
         output_buffers = {}
         for name, shape in output_shapes.items():
-            if (
-                name == "output_selected_indices"
-                or name == "current_step_results"
-                or name == "last_state"
-            ):
-                output_buffers[name] = torch.empty(
-                    numpy.prod(shape), dtype=torch.long, device=device
-                )
+            if name == "output_selected_indices" or name == "current_step_results" or name == "last_state":
+                output_buffers[name] = torch.empty(numpy.prod(shape), dtype=torch.long, device=device)
             elif name == "output_unfinished_sents":
-                output_buffers[name] = torch.empty(
-                    numpy.prod(shape), dtype=torch.bool, device=device
-                )
+                output_buffers[name] = torch.empty(numpy.prod(shape), dtype=torch.bool, device=device)
             else:
-                output_buffers[name] = torch.empty(
-                    numpy.prod(shape), dtype=data_type, device=device
-                )
+                output_buffers[name] = torch.empty(numpy.prod(shape), dtype=data_type, device=device)
         return output_buffers
 
     @staticmethod
@@ -694,9 +610,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             rtol=rtol,
             atol=atol,
         )
-        logger.debug(
-            f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}"
-        )
+        logger.debug(f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}")
 
         is_all_close = is_close
         for layer in range(num_layers):
@@ -706,16 +620,12 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                 rtol=rtol,
                 atol=atol,
             )
-            logger.debug(
-                f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}"
-            )
+            logger.debug(f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}")
             is_all_close = is_all_close and is_close
 
         if not is_all_close:
             max_abs_diff = Gpt2BeamSearchHelper.diff_outputs(torch_outputs, ort_outputs)
-            logger.info(
-                f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}"
-            )
+            logger.info(f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}")
 
         return is_all_close
 
@@ -851,44 +761,26 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         )
 
     @staticmethod
-    def onnxruntime_inference(
-        ort_session, inputs: Gpt2BeamSearchInputs, total_runs: int = 0
-    ):
+    def onnxruntime_inference(ort_session, inputs: Gpt2BeamSearchInputs, total_runs: int = 0):
         """Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs."""
         logger.debug(f"start onnxruntime_inference")
 
-        ort_inputs = {
-            "input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())
-        }
+        ort_inputs = {"input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())}
 
         if inputs.position_ids is not None:
-            ort_inputs["position_ids"] = numpy.ascontiguousarray(
-                inputs.position_ids.cpu().numpy()
-            )
+            ort_inputs["position_ids"] = numpy.ascontiguousarray(inputs.position_ids.cpu().numpy())
         if inputs.attention_mask is not None:
-            ort_inputs["attention_mask"] = numpy.ascontiguousarray(
-                inputs.attention_mask.cpu().numpy()
-            )
+            ort_inputs["attention_mask"] = numpy.ascontiguousarray(inputs.attention_mask.cpu().numpy())
         if inputs.beam_select_idx is not None:
-            ort_inputs["beam_select_idx"] = numpy.ascontiguousarray(
-                inputs.beam_select_idx.cpu().numpy()
-            )
+            ort_inputs["beam_select_idx"] = numpy.ascontiguousarray(inputs.beam_select_idx.cpu().numpy())
         if inputs.input_log_probs is not None:
-            ort_inputs["input_log_probs"] = numpy.ascontiguousarray(
-                inputs.input_log_probs.cpu().numpy()
-            )
+            ort_inputs["input_log_probs"] = numpy.ascontiguousarray(inputs.input_log_probs.cpu().numpy())
         if inputs.input_unfinished_sents is not None:
-            ort_inputs["input_unfinished_sents"] = numpy.ascontiguousarray(
-                inputs.input_unfinished_sents.cpu().numpy()
-            )
+            ort_inputs["input_unfinished_sents"] = numpy.ascontiguousarray(inputs.input_unfinished_sents.cpu().numpy())
         if inputs.prev_step_results is not None:
-            ort_inputs["prev_step_results"] = numpy.ascontiguousarray(
-                inputs.prev_step_results.cpu().numpy()
-            )
+            ort_inputs["prev_step_results"] = numpy.ascontiguousarray(inputs.prev_step_results.cpu().numpy())
         if inputs.prev_step_scores is not None:
-            ort_inputs["prev_step_scores"] = numpy.ascontiguousarray(
-                inputs.prev_step_scores.cpu().numpy()
-            )
+            ort_inputs["prev_step_scores"] = numpy.ascontiguousarray(inputs.prev_step_scores.cpu().numpy())
         if inputs.past is not None:
             for i, past_i in enumerate(inputs.past):
                 ort_inputs[f"past_{i}"] = numpy.ascontiguousarray(past_i.cpu().numpy())
@@ -904,9 +796,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug(
-            "OnnxRuntime Inference time = {} ms".format(format(average_latency, ".2f"))
-        )
+        logger.debug("OnnxRuntime Inference time = {} ms".format(format(average_latency, ".2f")))
 
         return ort_outputs, average_latency
 
@@ -1013,11 +903,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug(
-            "OnnxRuntime with IO binding inference time = {} ms".format(
-                format(average_latency, ".2f")
-            )
-        )
+        logger.debug("OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f")))
 
         return ort_outputs, average_latency
 
@@ -1060,16 +946,12 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                 config,
                 model_class,
             )
-            output_buffers = Gpt2BeamSearchHelper.get_output_buffers(
-                max_output_shapes, device, is_float16
-            )
+            output_buffers = Gpt2BeamSearchHelper.get_output_buffers(max_output_shapes, device, is_float16)
 
         passed_test_cases = 0
         for _ in range(total_test_cases):
             past_sequence_length = random.randint(0, max_past_seq_len)
-            sequence_length = random.randint(
-                1 + past_sequence_length, max_seq_len + past_sequence_length
-            )
+            sequence_length = random.randint(1 + past_sequence_length, max_seq_len + past_sequence_length)
             batch_size = random.randint(1, max_batch_size)
 
             logger.debug(
@@ -1091,9 +973,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
             outputs = Gpt2BeamSearchHelper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
-                ort_outputs = Gpt2BeamSearchHelper.onnxruntime_inference(
-                    ort_session, dummy_inputs
-                )
+                ort_outputs = Gpt2BeamSearchHelper.onnxruntime_inference(ort_session, dummy_inputs)
             else:
                 output_shapes = Gpt2BeamSearchHelper.get_output_shapes(
                     batch_size,
@@ -1116,15 +996,11 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                 passed_test_cases += 1
         logger.info(f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}")
         if passed_test_cases > 0.95 * total_test_cases:
-            logger.info(
-                f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%"
-            )
+            logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")
         return passed_test_cases == total_test_cases
 
     @staticmethod
-    def torchscript(
-        model, config, device, has_position_ids=True, has_attention_mask=True
-    ):
+    def torchscript(model, config, device, has_position_ids=True, has_attention_mask=True):
         """JIT trace for TorchScript."""
         input_list = Gpt2BeamSearchHelper.get_dummy_inputs(
             batch_size=1,

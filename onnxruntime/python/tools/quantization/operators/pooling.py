@@ -1,7 +1,6 @@
 import onnx
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType,
-                           attribute_to_kwarg, ms_domain)
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 
 

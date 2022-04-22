@@ -20,8 +20,7 @@ import onnx
 import onnx.utils
 import psutil
 from bert_perf_test import create_session, onnxruntime_inference
-from bert_test_data import (generate_test_data, get_bert_inputs,
-                            output_test_data)
+from bert_test_data import generate_test_data, get_bert_inputs, output_test_data
 from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
 
@@ -35,9 +34,7 @@ def run_model(model_path, all_inputs, use_gpu, disable_optimization):
 
     intra_op_num_threads = psutil.cpu_count(logical=False)
 
-    session = create_session(
-        model_path, use_gpu, intra_op_num_threads, graph_optimization_level
-    )
+    session = create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization_level)
 
     output_names = [output.name for output in session.get_outputs()]
     results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
@@ -57,20 +54,14 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
             abs_diff = np.amax(np.abs(treatment_output - results[i]))
             max_rel_diff = max(max_rel_diff, rel_diff)
             max_abs_diff = max(max_abs_diff, abs_diff)
-            if not np.allclose(
-                results[i].tolist(), treatment_output.tolist(), rtol=rtol, atol=atol
-            ):
+            if not np.allclose(results[i].tolist(), treatment_output.tolist(), rtol=rtol, atol=atol):
                 if case_passed:
                     case_passed = False
                     diff_count += 1
 
                     if verbose:
                         print("case {} output {}".format(test_case_id, i))
-                        print(
-                            "baseline={}\ntreatment={}".format(
-                                results[i].tolist(), treatment_output
-                            )
-                        )
+                        print("baseline={}\ntreatment={}".format(results[i].tolist(), treatment_output))
                         print("rel_diff={} abs_diff={}".format(rel_diff, abs_diff))
 
     if diff_count == 0:
@@ -144,11 +135,7 @@ def run_test(
         optimized_model, all_inputs, use_gpu, disable_optimization=False
     )
     if verbose:
-        print(
-            "treatment average latency: {} ms".format(
-                statistics.mean(treatment_latency) * 1000
-            )
-        )
+        print("treatment average latency: {} ms".format(statistics.mean(treatment_latency) * 1000))
 
     # Validate the output of baseline and treatment, to make sure the results are similar.
     compare(baseline_results, treatment_results, verbose, rtol, atol)
@@ -156,9 +143,7 @@ def run_test(
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--baseline_model", required=True, type=str, help="baseline onnx model path."
-    )
+    parser.add_argument("--baseline_model", required=True, type=str, help="baseline onnx model path.")
 
     parser.add_argument(
         "--optimized_model",
@@ -176,9 +161,7 @@ def parse_arguments():
         help="output test data path. If not specified, test data will not be saved.",
     )
 
-    parser.add_argument(
-        "--batch_size", required=True, type=int, help="batch size of input"
-    )
+    parser.add_argument("--batch_size", required=True, type=int, help="batch size of input")
 
     parser.add_argument(
         "--sequence_length",
@@ -187,13 +170,9 @@ def parse_arguments():
         help="maximum sequence length of input",
     )
 
-    parser.add_argument(
-        "--rtol", required=False, type=float, default=1e-3, help="relative tolerance"
-    )
+    parser.add_argument("--rtol", required=False, type=float, default=1e-3, help="relative tolerance")
 
-    parser.add_argument(
-        "--atol", required=False, type=float, default=1e-4, help="absolute tolerance"
-    )
+    parser.add_argument("--atol", required=False, type=float, default=1e-4, help="absolute tolerance")
 
     parser.add_argument(
         "--samples",
@@ -203,13 +182,9 @@ def parse_arguments():
         help="number of test cases to be generated",
     )
 
-    parser.add_argument(
-        "--seed", required=False, type=int, default=3, help="random seed"
-    )
+    parser.add_argument("--seed", required=False, type=int, default=3, help="random seed")
 
-    parser.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU"
-    )
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU")
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(

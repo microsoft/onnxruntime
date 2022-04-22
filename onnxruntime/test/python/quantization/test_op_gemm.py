@@ -11,11 +11,9 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import (TestDataFeeds, check_model_correctness,
-                           check_op_type_count, check_qtype_by_node_type)
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
-from onnxruntime.quantization import (QuantFormat, QuantType, quantize_dynamic,
-                                      quantize_static)
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpGEMM(unittest.TestCase):
@@ -24,9 +22,7 @@ class TestOpGEMM(unittest.TestCase):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update(
-                    {name: np.random.randint(-1, 2, shape).astype(np.float32)}
-                )
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -45,13 +41,9 @@ class TestOpGEMM(unittest.TestCase):
         output_name = "output"
         initializers = []
 
-        def make_gemm(
-            input_name, weight_shape, weight_name, bias_shape, bias_name, output_name
-        ):
+        def make_gemm(input_name, weight_shape, weight_name, bias_shape, bias_name, output_name):
             weight_data = np.random.normal(0, 0.1, weight_shape).astype(np.float32)
-            initializers.append(
-                onnx.numpy_helper.from_array(weight_data, name=weight_name)
-            )
+            initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
 
             bias_data = np.random.normal(0, 0.1, bias_shape).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(bias_data, name=bias_name))
@@ -82,16 +74,8 @@ class TestOpGEMM(unittest.TestCase):
         clip_output_name = "clip_output"
         clip_inputs = [gemm1_output_name, clip_min_name, clip_max_name]
         clip_outputs = [clip_output_name]
-        initializers.append(
-            onnx.numpy_helper.from_array(
-                np.array(-1.0, dtype=np.float32), name=clip_min_name
-            )
-        )
-        initializers.append(
-            onnx.numpy_helper.from_array(
-                np.array(1.0, dtype=np.float32), name=clip_max_name
-            )
-        )
+        initializers.append(onnx.numpy_helper.from_array(np.array(-1.0, dtype=np.float32), name=clip_min_name))
+        initializers.append(onnx.numpy_helper.from_array(np.array(1.0, dtype=np.float32), name=clip_max_name))
         clip_node = onnx.helper.make_node("Clip", clip_inputs, clip_outputs)
 
         # make gemm2 node
@@ -105,12 +89,8 @@ class TestOpGEMM(unittest.TestCase):
         )
 
         # make graph
-        input_tensor = helper.make_tensor_value_info(
-            input_name, TensorProto.FLOAT, [-1, 10]
-        )
-        output_tensor = helper.make_tensor_value_info(
-            output_name, TensorProto.FLOAT, [-1, 10]
-        )
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [-1, 10])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [-1, 10])
         graph_name = "gemm_test"
         graph = helper.make_graph(
             [gemm1_node, clip_node, gemm2_node],
@@ -136,30 +116,20 @@ class TestOpGEMM(unittest.TestCase):
         output_name = "output"
         initializers = []
 
-        def make_attention_node(
-            input_name, weight_shape, weight_name, bias_shape, bias_name, output_name
-        ):
+        def make_attention_node(input_name, weight_shape, weight_name, bias_shape, bias_name, output_name):
             weight_data = np.random.normal(0, 0.1, weight_shape).astype(np.float32)
-            initializers.append(
-                onnx.numpy_helper.from_array(weight_data, name=weight_name)
-            )
+            initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
 
             bias_data = np.random.normal(0, 0.1, bias_shape).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(bias_data, name=bias_name))
 
-            return onnx.helper.make_node(
-                "Attention", [input_name, weight_name, bias_name], [output_name]
-            )
+            return onnx.helper.make_node("Attention", [input_name, weight_name, bias_name], [output_name])
 
         def make_matmul_node(input_name, weight_shape, weight_name, output_name):
             weight_data = np.random.normal(0, 0.1, weight_shape).astype(np.float32)
-            initializers.append(
-                onnx.numpy_helper.from_array(weight_data, name=weight_name)
-            )
+            initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
 
-            return onnx.helper.make_node(
-                "MatMul", [input_name, weight_name], [output_name]
-            )
+            return onnx.helper.make_node("MatMul", [input_name, weight_name], [output_name])
 
         # make attention node
         attention_output_name = "attention_output"
@@ -170,17 +140,11 @@ class TestOpGEMM(unittest.TestCase):
         attention_node.attribute.extend([helper.make_attribute("num_heads", 5)])
 
         # make matmul node
-        matmul_node = make_matmul_node(
-            attention_output_name, [10, 10], "matmul.weight", output_name
-        )
+        matmul_node = make_matmul_node(attention_output_name, [10, 10], "matmul.weight", output_name)
 
         # make graph
-        input_tensor = helper.make_tensor_value_info(
-            input_name, TensorProto.FLOAT, [1, -1, 10]
-        )
-        output_tensor = helper.make_tensor_value_info(
-            output_name, TensorProto.FLOAT, [1, -1, 10]
-        )
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [1, -1, 10])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, -1, 10])
         graph_name = "attention_test"
         graph = helper.make_graph(
             [attention_node, matmul_node],
@@ -202,16 +166,10 @@ class TestOpGEMM(unittest.TestCase):
         weight_type,
         extra_options={},
     ):
-        activation_proto_qtype = (
-            TensorProto.UINT8
-            if activation_type == QuantType.QUInt8
-            else TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "gemm_fp32.quant_{}{}.onnx".format(
-            activation_type_str, weight_type_str
-        )
+        model_int8_path = "gemm_fp32.quant_{}{}.onnx".format(activation_type_str, weight_type_str)
 
         data_reader.rewind()
         quantize_static(
@@ -234,9 +192,7 @@ class TestOpGEMM(unittest.TestCase):
         qnode_io_qtypes.update({"DequantizeLinear": [["i", 2, activation_proto_qtype]]})
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(
-            self, model_fp32_path, model_int8_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
     def static_quant_test_qdq(
         self,
@@ -246,16 +202,10 @@ class TestOpGEMM(unittest.TestCase):
         weight_type,
         extra_options={},
     ):
-        activation_proto_qtype = (
-            TensorProto.UINT8
-            if activation_type == QuantType.QUInt8
-            else TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "gemm_fp32.quant_dqd_{}{}.onnx".format(
-            activation_type_str, weight_type_str
-        )
+        model_int8_path = "gemm_fp32.quant_dqd_{}{}.onnx".format(activation_type_str, weight_type_str)
 
         data_reader.rewind()
         quantize_static(
@@ -277,9 +227,7 @@ class TestOpGEMM(unittest.TestCase):
         }
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(
-            self, model_fp32_path, model_int8_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
     def dynamic_quant_test(
         self,
@@ -289,16 +237,10 @@ class TestOpGEMM(unittest.TestCase):
         weight_type,
         extra_options={},
     ):
-        activation_proto_qtype = (
-            TensorProto.UINT8
-            if activation_type == QuantType.QUInt8
-            else TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "gemm_fp32.quant_dynamic_{}{}.onnx".format(
-            activation_type_str, weight_type_str
-        )
+        model_int8_path = "gemm_fp32.quant_dynamic_{}{}.onnx".format(activation_type_str, weight_type_str)
 
         quantize_dynamic(
             model_fp32_path,
@@ -318,9 +260,7 @@ class TestOpGEMM(unittest.TestCase):
             {"input": np.random.rand(5, 10).astype(np.float32)},
         )
 
-    def dynamic_attention_quant_test(
-        self, model_fp32_path, model_int8_path, per_channel, reduce_range
-    ):
+    def dynamic_attention_quant_test(self, model_fp32_path, model_int8_path, per_channel, reduce_range):
         quantize_dynamic(
             model_fp32_path,
             model_int8_path,
@@ -395,9 +335,7 @@ class TestOpGEMM(unittest.TestCase):
         self.dynamic_attention_quant_test(model_fp32_path, model_int8_path, True, True)
         self.dynamic_attention_quant_test(model_fp32_path, model_int8_path, True, False)
         self.dynamic_attention_quant_test(model_fp32_path, model_int8_path, False, True)
-        self.dynamic_attention_quant_test(
-            model_fp32_path, model_int8_path, False, False
-        )
+        self.dynamic_attention_quant_test(model_fp32_path, model_int8_path, False, False)
 
 
 if __name__ == "__main__":

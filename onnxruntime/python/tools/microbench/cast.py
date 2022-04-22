@@ -32,12 +32,8 @@ class BenchmarkCast(BenchmarkOp):
 
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
-        input_data = np.random.rand(
-            op_param.x, op_param.y, op_param.m, op_param.n
-        ).astype(op_param.input_data_type)
-        output_data = np.random.rand(
-            op_param.x, op_param.y, op_param.m, op_param.n
-        ).astype(op_param.output_data_type)
+        input_data = np.random.rand(op_param.x, op_param.y, op_param.m, op_param.n).astype(op_param.input_data_type)
+        output_data = np.random.rand(op_param.x, op_param.y, op_param.m, op_param.n).astype(op_param.output_data_type)
         inputs = {"X": input_data}
         outputs = {"Y": output_data}
         return inputs, outputs
@@ -78,24 +74,14 @@ class BenchmarkCast(BenchmarkOp):
         )
 
     def create_cases(self):
-        model = (
-            "models/cast_fp16tofp32.onnx"
-            if self.args.precision == "fp16"
-            else "models/cast_fp32tofp16.onnx"
-        )
+        model = "models/cast_fp16tofp32.onnx" if self.args.precision == "fp16" else "models/cast_fp32tofp16.onnx"
         input_data_type = np.float16 if self.args.precision == "fp16" else np.float32
         output_data_type = np.float32 if self.args.precision == "fp16" else np.float16
         # huggingface bert-large
         self.add_case(OpParam(1, 1, 1, 1024, input_data_type, output_data_type), model)
-        self.add_case(
-            OpParam(1, 1, 1024, 1024, input_data_type, output_data_type), model
-        )
-        self.add_case(
-            OpParam(1, 1, 1024, 4096, input_data_type, output_data_type), model
-        )
-        self.add_case(
-            OpParam(1, 1, 1024, 30522, input_data_type, output_data_type), model
-        )
+        self.add_case(OpParam(1, 1, 1024, 1024, input_data_type, output_data_type), model)
+        self.add_case(OpParam(1, 1, 1024, 4096, input_data_type, output_data_type), model)
+        self.add_case(OpParam(1, 1, 1024, 30522, input_data_type, output_data_type), model)
         # huggingface bert-large with default dims
         model_param = ModelParam(8, 512)
         self.add_model_cases(model_param, model, input_data_type, output_data_type)

@@ -53,14 +53,10 @@ class ModelSetting:
     opt_level: int
 
 
-def create_session(
-    model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None
-):
+def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None):
     import onnxruntime
 
-    if use_gpu and (
-        "CUDAExecutionProvider" not in onnxruntime.get_available_providers()
-    ):
+    if use_gpu and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers()):
         print(
             "Warning: Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
         )
@@ -96,34 +92,22 @@ def create_session(
         sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
 
         if graph_optimization_level is None:
-            sess_options.graph_optimization_level = (
-                onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-            )
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         elif graph_optimization_level == 0:
-            sess_options.graph_optimization_level = (
-                onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-            )
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         elif graph_optimization_level == 1:
-            sess_options.graph_optimization_level = (
-                onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-            )
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
         elif graph_optimization_level == 2:
-            sess_options.graph_optimization_level = (
-                onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-            )
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
         elif graph_optimization_level == 99:
-            sess_options.graph_optimization_level = (
-                onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-            )
+            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         else:
             sess_options.graph_optimization_level = graph_optimization_level
 
         if intra_op_num_threads is not None:
             sess_options.intra_op_num_threads = intra_op_num_threads
 
-        session = onnxruntime.InferenceSession(
-            model_path, sess_options, providers=execution_providers
-        )
+        session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
 
     if use_gpu:
         if provider == "dml":
@@ -157,12 +141,8 @@ def numpy_type(torch_type):
 
 
 def create_input_output_tensors(inputs, outputs, device):
-    input_tensors = {
-        name: torch.from_numpy(array).to(device) for name, array in inputs.items()
-    }
-    output_tensors = {
-        name: torch.from_numpy(array).to(device) for name, array in outputs.items()
-    }
+    input_tensors = {name: torch.from_numpy(array).to(device) for name, array in inputs.items()}
+    output_tensors = {name: torch.from_numpy(array).to(device) for name, array in outputs.items()}
     return input_tensors, output_tensors
 
 
@@ -189,9 +169,7 @@ def create_io_binding(sess, input_tensors, output_tensors):
     return io_binding
 
 
-def onnxruntime_inference_with_io_binding(
-    session, all_inputs, output_names, test_setting
-):
+def onnxruntime_inference_with_io_binding(session, all_inputs, output_names, test_setting):
     results = []
     latency_list = []
     device = "cuda" if test_setting.use_gpu else "cpu"
@@ -202,9 +180,7 @@ def onnxruntime_inference_with_io_binding(
         for i in range(len(output_names)):
             outputs[output_names[i]] = result[i]
 
-        input_tensors, output_tensors = create_input_output_tensors(
-            inputs, outputs, device
-        )
+        input_tensors, output_tensors = create_input_output_tensors(inputs, outputs, device)
         io_binding = create_io_binding(session, input_tensors, output_tensors)
 
         # warm up once
@@ -244,9 +220,7 @@ def to_string(model_path, session, test_setting):
     return option
 
 
-def run_one_test(
-    model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads
-):
+def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads):
     session = create_session(
         model_setting.model_path,
         test_setting.use_gpu,
@@ -272,9 +246,7 @@ def run_one_test(
             all_latency_list.extend(latency_list)
     else:
         for i in range(test_setting.test_times):
-            results, latency_list = onnxruntime_inference(
-                session, all_inputs, output_names
-            )
+            results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
             all_latency_list.extend(latency_list)
 
     # latency in miliseconds
@@ -299,15 +271,11 @@ def run_one_test(
     )
 
     print(
-        "Average latency = {} ms, Throughput = {} QPS".format(
-            format(average_latency, ".2f"), format(throughput, ".2f")
-        )
+        "Average latency = {} ms, Throughput = {} QPS".format(format(average_latency, ".2f"), format(throughput, ".2f"))
     )
 
 
-def launch_test(
-    model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads
-):
+def launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads):
     process = multiprocessing.Process(
         target=run_one_test,
         args=(
@@ -343,9 +311,7 @@ def run_perf_tests(model_setting, test_setting, perf_results, all_inputs):
     candidate_threads.sort(reverse=True)
 
     for intra_op_num_threads in candidate_threads:
-        launch_test(
-            model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads
-        )
+        launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads)
 
 
 def run_performance(model_setting, test_setting, perf_results):
@@ -438,14 +404,10 @@ def parse_arguments():
     )
     parser.set_defaults(verbose=False)
 
-    parser.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU"
-    )
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument(
-        "--use_io_binding", required=False, action="store_true", help="use io_binding"
-    )
+    parser.add_argument("--use_io_binding", required=False, action="store_true", help="use io_binding")
     parser.set_defaults(use_io_binding=False)
 
     parser.add_argument(

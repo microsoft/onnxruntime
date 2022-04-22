@@ -7,22 +7,17 @@ import pandas as pd
 from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.data_format import DataFormat
 from azure.kusto.data.helpers import dataframe_from_result_table
-from azure.kusto.ingest import (IngestionProperties, QueuedIngestClient,
-                                ReportLevel)
+from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
 from perf_utils import *
 
 # database connection strings
-cluster_ingest = (
-    "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
-)
+cluster_ingest = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
 database = "ep_perf_dashboard"
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-r", "--report_folder", help="Path to the local file report", required=True
-    )
+    parser.add_argument("-r", "--report_folder", help="Path to the local file report", required=True)
     parser.add_argument("-c", "--commit_hash", help="Commit id", required=True)
     parser.add_argument("-u", "--report_url", help="Report Url", required=True)
     parser.add_argument("-t", "--trt_version", help="Tensorrt Version", required=True)
@@ -41,9 +36,7 @@ def adjust_columns(table, columns, db_columns, model_group):
 def get_latency_over_time(commit_hash, report_url, branch, latency_table):
     if not latency_table.empty:
         over_time = latency_table
-        over_time = over_time.melt(
-            id_vars=[model_title, group_title], var_name="Ep", value_name="Latency"
-        )
+        over_time = over_time.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Latency")
         over_time = over_time.assign(CommitId=commit_hash)
         over_time = over_time.assign(ReportUrl=report_url)
         over_time = over_time.assign(Branch=branch)
@@ -118,9 +111,7 @@ def get_specs(specs, branch, commit_id, date_time):
 
 def get_session(session, model_group):
     session_columns = session.keys()
-    session_db_columns = (
-        [model_title] + ort_provider_list + [p + second for p in ort_provider_list]
-    )
+    session_db_columns = [model_title] + ort_provider_list + [p + second for p in ort_provider_list]
     session = adjust_columns(session, session_columns, session_db_columns, model_group)
     return session
 
@@ -155,14 +146,10 @@ def main():
     args = parse_arguments()
 
     # connect to database
-    kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(
-        cluster_ingest
-    )
+    kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
     date_time = args.datetime
-    identifier = get_identifier(
-        date_time, args.commit_hash, args.trt_version, args.branch
-    )
+    identifier = get_identifier(date_time, args.commit_hash, args.trt_version, args.branch)
 
     try:
         result_file = args.report_folder
@@ -208,9 +195,7 @@ def main():
                     table_results[latency_name] = table_results[latency_name].append(
                         get_latency(table, model_group), ignore_index=True
                     )
-                    table_results[latency_over_time_name] = table_results[
-                        latency_over_time_name
-                    ].append(
+                    table_results[latency_over_time_name] = table_results[latency_over_time_name].append(
                         get_latency_over_time(
                             args.commit_hash,
                             args.report_url,

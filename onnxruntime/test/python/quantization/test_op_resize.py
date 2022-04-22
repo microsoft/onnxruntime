@@ -11,9 +11,13 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import (TestDataFeeds, check_model_correctness,
-                           check_op_nodes, check_op_type_count,
-                           check_qtype_by_node_type)
+from op_test_utils import (
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_nodes,
+    check_op_type_count,
+    check_qtype_by_node_type,
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
@@ -24,9 +28,7 @@ class TestOpResize(unittest.TestCase):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update(
-                    {name: np.random.randint(-1, 2, shape).astype(np.float32)}
-                )
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -50,36 +52,20 @@ class TestOpResize(unittest.TestCase):
         #   Identity   Resize
         #    /            \
         # (identity_out)  (output)
-        input_tensor = helper.make_tensor_value_info(
-            "input", TensorProto.FLOAT, conv_input_shape
-        )
+        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, conv_input_shape)
 
         conv_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(np.float32)
-        conv_weight_initializer = onnx.numpy_helper.from_array(
-            conv_weight_arr, name="conv1_weight"
-        )
-        conv_node = onnx.helper.make_node(
-            "Conv", ["input", "conv1_weight"], ["conv_output"], name="conv_node"
-        )
+        conv_weight_initializer = onnx.numpy_helper.from_array(conv_weight_arr, name="conv1_weight")
+        conv_node = onnx.helper.make_node("Conv", ["input", "conv1_weight"], ["conv_output"], name="conv_node")
 
-        identity_out = helper.make_tensor_value_info(
-            "identity_out", TensorProto.FLOAT, resize_input_shape
-        )
-        identity_node = helper.make_node(
-            "Identity", ["conv_output"], ["identity_out"], name="IdentityNode"
-        )
+        identity_out = helper.make_tensor_value_info("identity_out", TensorProto.FLOAT, resize_input_shape)
+        identity_node = helper.make_node("Identity", ["conv_output"], ["identity_out"], name="IdentityNode")
 
         initializers = [conv_weight_initializer]
 
-        output_tensor = helper.make_tensor_value_info(
-            "output", TensorProto.FLOAT, resize_output_shape
-        )
-        resize_inputs = [
-            "conv_output"
-        ]  # resize_roi_name, resize_scales_name, resize_sizes_name]
-        resize_node = helper.make_node(
-            "Resize", resize_inputs, ["output"], name="resize_node", **resize_attrs
-        )
+        output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, resize_output_shape)
+        resize_inputs = ["conv_output"]  # resize_roi_name, resize_scales_name, resize_sizes_name]
+        resize_node = helper.make_node("Resize", resize_inputs, ["output"], name="resize_node", **resize_attrs)
 
         if resize_roi is not None:
             resize_roi_name = "resize_roi"
@@ -144,19 +130,11 @@ class TestOpResize(unittest.TestCase):
             None,
         )
 
-        activation_proto_qtype = (
-            TensorProto.UINT8
-            if activation_type == QuantType.QUInt8
-            else TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = "resize_{}{}.onnx".format(
-            activation_type_str, weight_type_str
-        )
-        model_uint8_qdq_path = "resize_{}{}_qdq.onnx".format(
-            activation_type_str, weight_type_str
-        )
+        model_uint8_path = "resize_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_qdq_path = "resize_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})
@@ -191,9 +169,7 @@ class TestOpResize(unittest.TestCase):
         qnode_io_qtypes.update({"DequantizeLinear": [["i", 2, activation_proto_qtype]]})
         check_qtype_by_node_type(self, model_uint8_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(
-            self, model_fp32_path, model_uint8_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_fp32_path, model_uint8_path, data_reader.get_next())
 
         # Verify QDQ mode
         data_reader.rewind()
@@ -221,9 +197,7 @@ class TestOpResize(unittest.TestCase):
         }
         check_qtype_by_node_type(self, model_uint8_qdq_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(
-            self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
 
     def test_quantize_resize(self):
         self.quantize_resize_test(QuantType.QUInt8, QuantType.QUInt8)

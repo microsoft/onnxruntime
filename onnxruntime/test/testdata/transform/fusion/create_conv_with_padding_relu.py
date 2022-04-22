@@ -7,9 +7,7 @@ from onnx import TensorProto, helper
 graph = helper.make_graph(
     [  # nodes
         # Convolution with padding
-        helper.make_node(
-            "Conv", ["x", "W"], ["y"], kernel_shape=[3, 3], pads=[1, 1, 1, 1]
-        ),
+        helper.make_node("Conv", ["x", "W"], ["y"], kernel_shape=[3, 3], pads=[1, 1, 1, 1]),
         helper.make_node("Relu", ["y"], ["relu_out"]),
     ],
     "ConvWithPaddingReluFusion",

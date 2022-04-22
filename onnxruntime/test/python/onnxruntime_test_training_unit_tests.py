@@ -6,13 +6,11 @@ import unittest
 import torch
 import torch.nn as nn
 from numpy.testing import assert_allclose
-from onnxruntime_test_ort_trainer import (
-    map_optimizer_attributes, ort_trainer_learning_rate_description)
+from onnxruntime_test_ort_trainer import map_optimizer_attributes, ort_trainer_learning_rate_description
 from onnxruntime_test_training_unittest_utils import process_dropout
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import (IODescription, ModelDescription,
-                                          ORTTrainer)
+from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -31,9 +29,7 @@ class TestTrainingDropout(unittest.TestCase):
                 super(TwoDropoutNet, self).__init__()
                 self.drop_1 = nn.Dropout(drop_prb_1)
                 self.drop_2 = nn.Dropout(drop_prb_2)
-                self.weight_1 = torch.nn.Parameter(
-                    torch.zeros(dim_size, dtype=torch.float32)
-                )
+                self.weight_1 = torch.nn.Parameter(torch.zeros(dim_size, dtype=torch.float32))
 
             def forward(self, x):
                 x = x + self.weight_1

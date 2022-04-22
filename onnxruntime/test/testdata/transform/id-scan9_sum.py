@@ -1,7 +1,6 @@
 import numpy as np
 import onnx
-from onnx import (GraphProto, OperatorSetIdProto, TensorProto, helper,
-                  numpy_helper)
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 initial = helper.make_tensor_value_info("initial", TensorProto.FLOAT, [2])
 x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [3, 2])
@@ -15,9 +14,7 @@ scan_out = helper.make_tensor_value_info("scan_out", TensorProto.FLOAT, [2])
 
 add_node = helper.make_node("Add", inputs=["sum_in", "next"], outputs=["sum_out"])
 id_node = helper.make_node("Identity", inputs=["sum_out"], outputs=["scan_out"])
-scan_body = helper.make_graph(
-    [add_node, id_node], "scan_body", [sum_in, next], [sum_out, scan_out]
-)
+scan_body = helper.make_graph([add_node, id_node], "scan_body", [sum_in, next], [sum_out, scan_out])
 # create scan op node
 scan_node = helper.make_node(
     "Scan",

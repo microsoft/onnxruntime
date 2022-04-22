@@ -26,9 +26,7 @@ class FusionFastGelu(Fusion):
         if self.fuse_3(tanh_node, input_name_to_nodes, output_name_to_node):
             return
 
-    def fuse_1(
-        self, tanh_node, input_name_to_nodes, output_name_to_node
-    ) -> Optional[bool]:
+    def fuse_1(self, tanh_node, input_name_to_nodes, output_name_to_node) -> Optional[bool]:
         """
         Fuse Gelu with tanh into one node:
               +---------------------------+
@@ -57,9 +55,7 @@ class FusionFastGelu(Fusion):
             return
         mul_after_tanh = children[0]
 
-        mul_half = self.model.match_parent(
-            mul_after_tanh, "Mul", None, output_name_to_node
-        )
+        mul_half = self.model.match_parent(mul_after_tanh, "Mul", None, output_name_to_node)
         if mul_half is None:
             return
 
@@ -70,13 +66,9 @@ class FusionFastGelu(Fusion):
         root_input = mul_half.input[0 if i == 1 else 1]
 
         # root_node could be None when root_input is graph input
-        root_node = self.model.get_parent(
-            mul_half, 0 if i == 1 else 1, output_name_to_node
-        )
+        root_node = self.model.get_parent(mul_half, 0 if i == 1 else 1, output_name_to_node)
 
-        mul_before_tanh = self.model.match_parent(
-            tanh_node, "Mul", 0, output_name_to_node
-        )
+        mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
         if mul_before_tanh is None:
             return
 
@@ -84,9 +76,7 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        add_before_tanh = self.model.match_parent(
-            mul_before_tanh, "Add", 0 if i == 1 else 1, output_name_to_node
-        )
+        add_before_tanh = self.model.match_parent(mul_before_tanh, "Add", 0 if i == 1 else 1, output_name_to_node)
         if add_before_tanh is None:
             return
 
@@ -104,9 +94,7 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        pow = self.model.match_parent(
-            mul_after_pow, "Pow", 0 if i == 1 else 1, output_name_to_node
-        )
+        pow = self.model.match_parent(mul_after_pow, "Pow", 0 if i == 1 else 1, output_name_to_node)
         if pow is None:
             return
 
@@ -146,9 +134,7 @@ class FusionFastGelu(Fusion):
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
 
-    def fuse_2(
-        self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict
-    ) -> Optional[bool]:
+    def fuse_2(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         This pattern is from Tensorflow model.
         Fuse Gelu with tanh into one node:
@@ -197,9 +183,7 @@ class FusionFastGelu(Fusion):
         if root_node is None:
             return
 
-        mul_before_tanh = self.model.match_parent(
-            tanh_node, "Mul", 0, output_name_to_node
-        )
+        mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
         if mul_before_tanh is None:
             return
 
@@ -207,15 +191,11 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        add_before_tanh = self.model.match_parent(
-            mul_before_tanh, "Add", 0 if i == 1 else 1, output_name_to_node
-        )
+        add_before_tanh = self.model.match_parent(mul_before_tanh, "Add", 0 if i == 1 else 1, output_name_to_node)
         if add_before_tanh is None:
             return
 
-        mul_after_pow = self.model.match_parent(
-            add_before_tanh, "Mul", None, output_name_to_node, exclude=[root_node]
-        )
+        mul_after_pow = self.model.match_parent(add_before_tanh, "Mul", None, output_name_to_node, exclude=[root_node])
         if mul_after_pow is None:
             return
 
@@ -223,9 +203,7 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        pow = self.model.match_parent(
-            mul_after_pow, "Pow", 0 if i == 1 else 1, output_name_to_node
-        )
+        pow = self.model.match_parent(mul_after_pow, "Pow", 0 if i == 1 else 1, output_name_to_node)
         if pow is None:
             return
 
@@ -265,9 +243,7 @@ class FusionFastGelu(Fusion):
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
 
-    def fuse_3(
-        self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict
-    ) -> Optional[bool]:
+    def fuse_3(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
         OpenAI's gelu implementation, also used in Megatron:
            Gelu(x) = x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1.0 + 0.044715 * x * x)))
@@ -311,24 +287,18 @@ class FusionFastGelu(Fusion):
 
         root_input = mul_half.input[0 if i == 1 else 1]
 
-        mul_before_tanh = self.model.match_parent(
-            tanh_node, "Mul", 0, output_name_to_node
-        )
+        mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
         if mul_before_tanh is None:
             return
 
-        add_1 = self.model.match_parent(
-            mul_before_tanh, "Add", None, output_name_to_node
-        )
+        add_1 = self.model.match_parent(mul_before_tanh, "Add", None, output_name_to_node)
         if add_1 is None:
             return
         j = self.model.find_constant_input(add_1, 1.0)
         if j < 0:
             return
 
-        mul_7978 = self.model.match_parent(
-            mul_before_tanh, "Mul", None, output_name_to_node
-        )
+        mul_7978 = self.model.match_parent(mul_before_tanh, "Mul", None, output_name_to_node)
         if mul_7978 is None:
             return
         k = self.model.find_constant_input(mul_7978, 0.7978, delta=0.0001)
@@ -337,9 +307,7 @@ class FusionFastGelu(Fusion):
         if mul_7978.input[0 if k == 1 else 1] != root_input:
             return
 
-        mul_before_add_1 = self.model.match_parent(
-            add_1, "Mul", 0 if j == 1 else 1, output_name_to_node
-        )
+        mul_before_add_1 = self.model.match_parent(add_1, "Mul", 0 if j == 1 else 1, output_name_to_node)
         if mul_before_add_1 is None:
             return
 
@@ -350,9 +318,7 @@ class FusionFastGelu(Fusion):
         else:
             return
 
-        mul_0447 = self.model.match_parent(
-            mul_before_add_1, "Mul", another, output_name_to_node
-        )
+        mul_0447 = self.model.match_parent(mul_before_add_1, "Mul", another, output_name_to_node)
         if mul_0447 is None:
             return
         m = self.model.find_constant_input(mul_0447, 0.0447, delta=0.0001)

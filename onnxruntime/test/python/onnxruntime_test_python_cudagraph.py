@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 import time
+
 # -*- coding: UTF-8 -*-
 import unittest
 
@@ -37,16 +38,12 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
             INPUT_SIZE = 1280
-            x = np.array(
-                [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]] * INPUT_SIZE, dtype=np.float32
-            )
+            x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]] * INPUT_SIZE, dtype=np.float32)
             y = np.array([[0.0], [0.0], [0.0]] * INPUT_SIZE, dtype=np.float32)
             x_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(x, "cuda", 0)
             y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, "cuda", 0)
 
-            session = onnxrt.InferenceSession(
-                get_name("matmul_2.onnx"), providers=providers
-            )
+            session = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=providers)
             io_binding = session.io_binding()
 
             # Bind the input and output
@@ -55,18 +52,12 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
 
             # One regular run for the necessary memory allocation and cuda graph capturing
             session.run_with_iobinding(io_binding)
-            expected_y = np.array(
-                [[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32
-            )
-            np.testing.assert_allclose(
-                expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05
-            )
+            expected_y = np.array([[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32)
+            np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
             # After capturing, CUDA graph replay happens from this Run onwards
             session.run_with_iobinding(io_binding)
-            np.testing.assert_allclose(
-                expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05
-            )
+            np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
             # Update input and then replay CUDA graph
             x_ortvalue.update_inplace(

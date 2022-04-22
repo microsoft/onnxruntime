@@ -24,18 +24,16 @@ class BenchmarkSkipLayerNorm(BenchmarkOp):
 
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
-        input_data = np.random.rand(
-            op_param.batch_size, op_param.seq_len, op_param.hidden_size
-        ).astype(op_param.data_type)
-        skip = np.random.rand(
-            op_param.batch_size, op_param.seq_len, op_param.hidden_size
-        ).astype(op_param.data_type)
+        input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
+            op_param.data_type
+        )
+        skip = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(op_param.data_type)
         gamma = np.random.rand(op_param.hidden_size).astype(op_param.data_type)
         beta = np.random.rand(op_param.hidden_size).astype(op_param.data_type)
         bias = np.random.rand(op_param.hidden_size).astype(op_param.data_type)
-        output_data = np.random.rand(
-            op_param.batch_size, op_param.seq_len, op_param.hidden_size
-        ).astype(op_param.data_type)
+        output_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
+            op_param.data_type
+        )
 
         inputs = {
             "INPUT": input_data,
@@ -50,9 +48,7 @@ class BenchmarkSkipLayerNorm(BenchmarkOp):
 
     def create_cases(self):
         model = (
-            "models/skip_layer_norm_fp16.onnx"
-            if self.args.precision == "fp16"
-            else "models/skip_layer_norm_fp32.onnx"
+            "models/skip_layer_norm_fp16.onnx" if self.args.precision == "fp16" else "models/skip_layer_norm_fp32.onnx"
         )
         data_type = np.float16 if self.args.precision == "fp16" else np.float32
         # bert-large

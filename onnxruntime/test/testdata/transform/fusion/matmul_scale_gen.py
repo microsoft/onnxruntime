@@ -16,9 +16,7 @@ scale_value = 3.0
 def save(model_path, nodes, inputs, outputs, initializers, opsets=opsets):
     graph = helper.make_graph(nodes, "MatMulScaleTest", inputs, outputs, initializers)
 
-    model = helper.make_model(
-        graph, opset_imports=opsets, producer_name="onnxruntime-test"
-    )
+    model = helper.make_model(graph, opset_imports=opsets, producer_name="onnxruntime-test")
 
     onnx.save(model, model_path)
 
@@ -31,11 +29,7 @@ def gen(model_path, use_transpose_matmul, scale_input_0, scale_input_1, scale_ou
     nodes = []
 
     if scale_input_0:
-        nodes.append(
-            helper.make_node(
-                "Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"
-            )
-        )
+        nodes.append(helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"))
 
     if scale_input_1:
         nodes.append(
@@ -63,17 +57,11 @@ def gen(model_path, use_transpose_matmul, scale_input_0, scale_input_1, scale_ou
     )
 
     if scale_output:
-        nodes.append(
-            helper.make_node(
-                "Mul", ["scale", "unscaled_output"], ["output"], "scale output"
-            )
-        )
+        nodes.append(helper.make_node("Mul", ["scale", "unscaled_output"], ["output"], "scale output"))
 
     initializers = [
         helper.make_tensor("scale", TensorProto.FLOAT, [], [scale_value]),
-        helper.make_tensor(
-            "scale_reciprocal", TensorProto.FLOAT, [], [1 / scale_value]
-        ),
+        helper.make_tensor("scale_reciprocal", TensorProto.FLOAT, [], [1 / scale_value]),
     ]
 
     inputs = [
@@ -81,9 +69,7 @@ def gen(model_path, use_transpose_matmul, scale_input_0, scale_input_1, scale_ou
         helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [2, "K", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, "M", "N"])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, "M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers)
 
@@ -103,32 +89,22 @@ def gen_unfusable(model_path, unfusable_type):
     matmul_op = "MatMul"
 
     if unfusable_type == UNFUSABLE_DIV_NOT_SCALE:
-        scale_node = helper.make_node(
-            "Div", ["scale", "input_0"], ["scaled_input_0"], "scale input_0"
-        )
+        scale_node = helper.make_node("Div", ["scale", "input_0"], ["scaled_input_0"], "scale input_0")
     elif unfusable_type == UNFUSABLE_SCALE_NOT_SCALAR:
-        scale_node = helper.make_node(
-            "Mul", ["scale_non_scalar", "input_0"], ["scaled_input_0"], "scale input_0"
-        )
+        scale_node = helper.make_node("Mul", ["scale_non_scalar", "input_0"], ["scaled_input_0"], "scale input_0")
     elif unfusable_type == UNFUSABLE_SCALE_NOT_CONSTANT:
-        scale_node = helper.make_node(
-            "Mul", ["input_0", "input_0"], ["scaled_input_0"], "scale input_0"
-        )
+        scale_node = helper.make_node("Mul", ["input_0", "input_0"], ["scaled_input_0"], "scale input_0")
     else:
         raise ValueError("Invalid unfusable_type: {}".format(unfusable_type))
 
     nodes = [
         scale_node,
-        helper.make_node(
-            matmul_op, ["scaled_input_0", "input_1"], ["output"], matmul_op
-        ),
+        helper.make_node(matmul_op, ["scaled_input_0", "input_1"], ["output"], matmul_op),
     ]
 
     initializers = [
         helper.make_tensor("scale", TensorProto.FLOAT, [], [scale_value]),
-        helper.make_tensor(
-            "scale_non_scalar", TensorProto.FLOAT, [2, 1, 1], [scale_value, scale_value]
-        ),
+        helper.make_tensor("scale_non_scalar", TensorProto.FLOAT, [2, 1, 1], [scale_value, scale_value]),
     ]
 
     inputs = [
@@ -136,29 +112,21 @@ def gen_unfusable(model_path, unfusable_type):
         helper.make_tensor_value_info("input_1", TensorProto.FLOAT, [2, "K", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, "M", "N"])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, "M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers)
 
 
 gen_unfusable("matmul_scale_unfusable_div_not_scale.onnx", UNFUSABLE_DIV_NOT_SCALE)
-gen_unfusable(
-    "matmul_scale_unfusable_scale_not_scalar.onnx", UNFUSABLE_SCALE_NOT_SCALAR
-)
-gen_unfusable(
-    "matmul_scale_unfusable_scale_not_constant.onnx", UNFUSABLE_SCALE_NOT_CONSTANT
-)
+gen_unfusable("matmul_scale_unfusable_scale_not_scalar.onnx", UNFUSABLE_SCALE_NOT_SCALAR)
+gen_unfusable("matmul_scale_unfusable_scale_not_constant.onnx", UNFUSABLE_SCALE_NOT_CONSTANT)
 
 
 def gen_reused_input_scale(model_path):
     matmul_op = "MatMul"
 
     nodes = [
-        helper.make_node(
-            "Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"
-        ),
+        helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"),
         helper.make_node(
             matmul_op,
             ["scaled_input_0", "input_1"],
@@ -196,9 +164,7 @@ def gen_int32(model_path):
     matmul_op = "MatMul"
 
     nodes = [
-        helper.make_node(
-            "Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"
-        ),
+        helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"),
         helper.make_node(
             matmul_op,
             ["scaled_input_0", "input_1"],
@@ -207,9 +173,7 @@ def gen_int32(model_path):
         ),
     ]
 
-    initializers = [
-        helper.make_tensor("scale", TensorProto.INT32, [], [int(scale_value)])
-    ]
+    initializers = [helper.make_tensor("scale", TensorProto.INT32, [], [int(scale_value)])]
 
     inputs = [
         helper.make_tensor_value_info("input_0", TensorProto.INT32, [2, "M", "K"]),
@@ -229,9 +193,7 @@ gen_int32("matmul_scale_int32.onnx")
 def gen_scale_input(model_path):
 
     nodes = [
-        helper.make_node(
-            "Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"
-        ),
+        helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"),
         helper.make_node(
             "MatMul",
             ["scaled_input_0", "input_1"],

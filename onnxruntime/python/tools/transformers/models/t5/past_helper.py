@@ -39,9 +39,7 @@ class PastKeyValuesHelper:
         present_self = []
         present_cross = []
         for i, present_layer_i in enumerate(present_key_values):
-            assert (
-                len(present_layer_i) == 4
-            ), f"Expected to have four items. Got {len(present_layer_i)}"
+            assert len(present_layer_i) == 4, f"Expected to have four items. Got {len(present_layer_i)}"
             (
                 present_key_self,
                 present_value_self,

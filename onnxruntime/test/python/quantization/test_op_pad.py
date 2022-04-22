@@ -11,11 +11,9 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import (TestDataFeeds, check_model_correctness,
-                           check_op_type_count, check_qtype_by_node_type)
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
-from onnxruntime.quantization import (QuantFormat, QuantType, quantize_dynamic,
-                                      quantize_static)
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
 
 
 class TestOpQuatizerPad(unittest.TestCase):
@@ -24,9 +22,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update(
-                    {name: np.random.randint(-1, 2, shape).astype(np.float32)}
-                )
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -47,27 +43,15 @@ class TestOpQuatizerPad(unittest.TestCase):
         rank = len(pad_input_shape)
         self.assertEqual(rank * 2, len(pad_dims))
 
-        input_tensor = helper.make_tensor_value_info(
-            "input", TensorProto.FLOAT, pad_input_shape
-        )
-        pad_dims_initializer = helper.make_tensor(
-            "pad_dims", TensorProto.INT64, [2 * rank], pad_dims
-        )
-        output_shape = [
-            sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))
-        ]
-        output_tensor = helper.make_tensor_value_info(
-            "output", TensorProto.FLOAT, output_shape
-        )
+        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, pad_input_shape)
+        pad_dims_initializer = helper.make_tensor("pad_dims", TensorProto.INT64, [2 * rank], pad_dims)
+        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))]
+        output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)
 
         inputs = ["input", "pad_dims"]
         initializers = [pad_dims_initializer]
-        if (constant_value is not None) and (
-            pad_mode is None or pad_mode == "constant"
-        ):
-            constant_value_tensor = helper.make_tensor(
-                "padding_value", TensorProto.FLOAT, [], [constant_value]
-            )
+        if (constant_value is not None) and (pad_mode is None or pad_mode == "constant"):
+            constant_value_tensor = helper.make_tensor("padding_value", TensorProto.FLOAT, [], [constant_value])
             inputs.extend(["padding_value"])
             initializers.extend([constant_value_tensor])
         kwargs = {"mode": pad_mode} if pad_mode is not None else {}
@@ -105,48 +89,26 @@ class TestOpQuatizerPad(unittest.TestCase):
         rank = len(pad_input_shape)
         self.assertEqual(rank * 2, len(pad_dims))
 
-        input_tensor = helper.make_tensor_value_info(
-            "input", TensorProto.FLOAT, conv_input_shape
-        )
+        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, conv_input_shape)
 
         conv_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(np.float32)
-        conv_weight_initializer = onnx.numpy_helper.from_array(
-            conv_weight_arr, name="conv1_weight"
-        )
-        conv_node = onnx.helper.make_node(
-            "Conv", ["input", "conv1_weight"], ["conv_output"], name="conv_node"
-        )
+        conv_weight_initializer = onnx.numpy_helper.from_array(conv_weight_arr, name="conv1_weight")
+        conv_node = onnx.helper.make_node("Conv", ["input", "conv1_weight"], ["conv_output"], name="conv_node")
 
-        identity_out = helper.make_tensor_value_info(
-            "identity_out", TensorProto.FLOAT, pad_input_shape
-        )
-        identity_node = helper.make_node(
-            "Identity", ["conv_output"], ["identity_out"], name="IdentityNode"
-        )
+        identity_out = helper.make_tensor_value_info("identity_out", TensorProto.FLOAT, pad_input_shape)
+        identity_node = helper.make_node("Identity", ["conv_output"], ["identity_out"], name="IdentityNode")
 
-        pad_dims_initializer = helper.make_tensor(
-            "pad_dims", TensorProto.INT64, [2 * rank], pad_dims
-        )
-        output_shape = [
-            sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))
-        ]
-        output_tensor = helper.make_tensor_value_info(
-            "output", TensorProto.FLOAT, output_shape
-        )
+        pad_dims_initializer = helper.make_tensor("pad_dims", TensorProto.INT64, [2 * rank], pad_dims)
+        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))]
+        output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)
         pad_inputs = ["conv_output", "pad_dims"]
         initializers = [conv_weight_initializer, pad_dims_initializer]
-        if (constant_value is not None) and (
-            pad_mode is None or pad_mode == "constant"
-        ):
-            constant_value_tensor = helper.make_tensor(
-                "padding_value", TensorProto.FLOAT, [], [constant_value]
-            )
+        if (constant_value is not None) and (pad_mode is None or pad_mode == "constant"):
+            constant_value_tensor = helper.make_tensor("padding_value", TensorProto.FLOAT, [], [constant_value])
             pad_inputs.extend(["padding_value"])
             initializers.extend([constant_value_tensor])
         kwargs = {"mode": pad_mode} if pad_mode is not None else {}
-        pad_node = helper.make_node(
-            "Pad", pad_inputs, ["output"], name="pad_node", **kwargs
-        )
+        pad_node = helper.make_node("Pad", pad_inputs, ["output"], name="pad_node", **kwargs)
 
         graph = helper.make_graph(
             [conv_node, identity_node, pad_node],
@@ -193,9 +155,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         model_fp32_path = "qop_pad_notrigger_fp32_{}.onnx".format(quantize_mode)
         model_i8_path = "qop_pad_notrigger_i8_{}.onnx".format(quantize_mode)
         data_reader = self.input_feeds(1, {"input": [1, 16, 31, 31]})
-        self.construct_model_pad(
-            model_fp32_path, "constant", [1, 16, 31, 31], [0, 0, 1, 2, 0, 0, 3, 4]
-        )
+        self.construct_model_pad(model_fp32_path, "constant", [1, 16, 31, 31], [0, 0, 1, 2, 0, 0, 3, 4])
         self.quantize_model(
             model_fp32_path,
             model_i8_path,
@@ -210,9 +170,7 @@ class TestOpQuatizerPad(unittest.TestCase):
             QuantizeLinear=0,
             DequantizeLinear=0,
         )
-        check_model_correctness(
-            self, model_fp32_path, model_i8_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_fp32_path, model_i8_path, data_reader.get_next())
 
     def test_static_quantize_no_trigger(self):
         self.verify_should_not_trigger(quantize_mode="static")
@@ -234,9 +192,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         np.random.seed(108)
         tag_pad_mode = pad_mode if pad_mode is not None else "none"
         tag_constant_value = "" if constant_value is None else "_value"
-        model_fp32_path = "qop_pad_{}_fp32_{}{}.onnx".format(
-            quantize_mode, tag_pad_mode, tag_constant_value
-        )
+        model_fp32_path = "qop_pad_{}_fp32_{}{}.onnx".format(quantize_mode, tag_pad_mode, tag_constant_value)
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv_pad(
             model_fp32_path,
@@ -248,11 +204,7 @@ class TestOpQuatizerPad(unittest.TestCase):
             constant_value=constant_value,
         )
 
-        activation_proto_qtype = (
-            TensorProto.UINT8
-            if activation_type == QuantType.QUInt8
-            else TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_i8_path = "qop_pad_{}_i8_{}{}_{}{}.onnx".format(
@@ -275,11 +227,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         # which means pad node is running in quantized semantic.
         # In dynamic quantize mode, pad operator in fact not quantized as input is fp32.
         if quantize_mode != "static":
-            kwargs = (
-                {"DynamicQuantizeLinear": 1}
-                if activation_type == QuantType.QUInt8
-                else {"QuantizeLinear": 1}
-            )
+            kwargs = {"DynamicQuantizeLinear": 1} if activation_type == QuantType.QUInt8 else {"QuantizeLinear": 1}
         else:
             kwargs = {"DequantizeLinear": 2, "QuantizeLinear": 1}
         check_op_type_count(self, model_i8_path, **kwargs)
@@ -360,24 +308,16 @@ class TestOpQuatizerPad(unittest.TestCase):
         )
 
     def test_dynamic_mode_edge(self):
-        self.verify_quantize_with_pad_mode(
-            "edge", constant_value=None, quantize_mode="dynamic"
-        )
+        self.verify_quantize_with_pad_mode("edge", constant_value=None, quantize_mode="dynamic")
 
     def test_dynamic_mode_reflect(self):
-        self.verify_quantize_with_pad_mode(
-            "reflect", constant_value=None, quantize_mode="dynamic"
-        )
+        self.verify_quantize_with_pad_mode("reflect", constant_value=None, quantize_mode="dynamic")
 
     def test_dynamic_mode_constant_default(self):
-        self.verify_quantize_with_pad_mode(
-            "constant", constant_value=None, quantize_mode="dynamic"
-        )
+        self.verify_quantize_with_pad_mode("constant", constant_value=None, quantize_mode="dynamic")
 
     def test_dynamic_mode_constant_value(self):
-        self.verify_quantize_with_pad_mode(
-            "constant", constant_value=3.75, quantize_mode="dynamic"
-        )
+        self.verify_quantize_with_pad_mode("constant", constant_value=3.75, quantize_mode="dynamic")
 
     # TODO: uncomment following after ConvInteger s8 supported
     # def test_dynamic_mode_edge_s8s8(self):

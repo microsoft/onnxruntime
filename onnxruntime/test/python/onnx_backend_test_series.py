@@ -71,9 +71,7 @@ def create_backend_test(testname=None):
         if c2.supports_device("NNAPI"):
             current_failing_tests += filters["current_failing_tests_NNAPI"]
 
-        if c2.supports_device("OPENVINO_GPU_FP32") or c2.supports_device(
-            "OPENVINO_GPU_FP16"
-        ):
+        if c2.supports_device("OPENVINO_GPU_FP32") or c2.supports_device("OPENVINO_GPU_FP16"):
             current_failing_tests += filters["current_failing_tests_OPENVINO_GPU"]
 
         if c2.supports_device("OPENVINO_MYRIAD"):

@@ -1,45 +1,32 @@
 import numpy as np
 import onnx
-from onnx import (AttributeProto, GraphProto, OperatorSetIdProto, TensorProto,
-                  helper, numpy_helper)
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 hidden_size = 4
 weight_dim_to_split = 16
 
-X = helper.make_tensor_value_info(
-    "input", TensorProto.FLOAT, ["batch", "seqlen", hidden_size]
-)
-Y = helper.make_tensor_value_info(
-    "output", TensorProto.FLOAT, ["batch", "seqlen", hidden_size]
-)
+X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", hidden_size])
+Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "seqlen", hidden_size])
 
-a_weight_np_vals = (
-    0.01 * np.arange(hidden_size * weight_dim_to_split, dtype=np.float32)
-).reshape((hidden_size, weight_dim_to_split))
+a_weight_np_vals = (0.01 * np.arange(hidden_size * weight_dim_to_split, dtype=np.float32)).reshape(
+    (hidden_size, weight_dim_to_split)
+)
 a_weight_initializer = numpy_helper.from_array(
     a_weight_np_vals, "transformer.layers.0.mlp.dense_h_to_4h.weight_transposed"
 )
 
-a_bias_np_vals = 0.01 * np.arange(
-    weight_dim_to_split, dtype=np.float32
-)  # weight_dim_to_split numbers in total
-a_bias_initializer = numpy_helper.from_array(
-    a_bias_np_vals, "transformer.layers.0.mlp.dense_h_to_4h.bias"
-)
+a_bias_np_vals = 0.01 * np.arange(weight_dim_to_split, dtype=np.float32)  # weight_dim_to_split numbers in total
+a_bias_initializer = numpy_helper.from_array(a_bias_np_vals, "transformer.layers.0.mlp.dense_h_to_4h.bias")
 
-b_weight_np_vals = (
-    0.01 * np.arange(weight_dim_to_split * hidden_size, dtype=np.float32)
-).reshape((weight_dim_to_split, hidden_size))
+b_weight_np_vals = (0.01 * np.arange(weight_dim_to_split * hidden_size, dtype=np.float32)).reshape(
+    (weight_dim_to_split, hidden_size)
+)
 b_weight_initializer = numpy_helper.from_array(
     b_weight_np_vals, "transformer.layers.0.mlp.dense_4h_to_h.weight_transposed"
 )
 
-b_bias_np_vals = 0.01 * np.arange(
-    hidden_size, dtype=np.float32
-)  # hidden_size numbers in total
-b_bias_initializer = numpy_helper.from_array(
-    b_bias_np_vals, "transformer.layers.0.mlp.dense_4h_to_h.bias"
-)
+b_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)  # hidden_size numbers in total
+b_bias_initializer = numpy_helper.from_array(b_bias_np_vals, "transformer.layers.0.mlp.dense_4h_to_h.bias")
 
 matmul = helper.make_node(
     "MatMul",  # node name
@@ -78,9 +65,7 @@ add2 = helper.make_node(
     name="add2",
 )
 
-identity = helper.make_node(
-    "Identity", ["add2"], ["output"], name="identity"  # node name  # inputs  # outputs
-)
+identity = helper.make_node("Identity", ["add2"], ["output"], name="identity")  # node name  # inputs  # outputs
 
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(

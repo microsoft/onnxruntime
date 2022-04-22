@@ -5,9 +5,7 @@ graph = helper.make_graph(
     [  # nodes
         # fusable, const_min_negative should be replaced
         helper.make_node("Conv", ["X", "W"], ["conv0_out"], "Conv0"),
-        helper.make_node(
-            "HardSigmoid", ["conv0_out"], ["hardsigmoid0_out"], "HardSigmoid0"
-        ),
+        helper.make_node("HardSigmoid", ["conv0_out"], ["hardsigmoid0_out"], "HardSigmoid0"),
     ],
     "ConvClipFusion",  # name
     [  # inputs

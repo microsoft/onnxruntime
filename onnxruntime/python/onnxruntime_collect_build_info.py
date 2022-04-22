@@ -41,10 +41,7 @@ def find_cudart_versions(build_env=False, build_cuda_version=None):
         return version.value
 
     # use set to avoid duplications
-    cudart_found_versions = {
-        get_cudart_version(cudart_version)
-        for cudart_version in cudart_possible_versions
-    }
+    cudart_found_versions = {get_cudart_version(cudart_version) for cudart_version in cudart_possible_versions}
 
     # convert to list and remove None
     return [ver for ver in cudart_found_versions if ver]
@@ -100,10 +97,7 @@ def find_cudnn_supported_cuda_versions(build_env=False):
             return None
 
     # use set to avoid duplications
-    cuda_found_versions = {
-        get_cudnn_supported_cuda_version(cudnn_version)
-        for cudnn_version in cudnn_possible_versions
-    }
+    cuda_found_versions = {get_cudnn_supported_cuda_version(cudnn_version) for cudnn_version in cudnn_possible_versions}
 
     # convert to list and remove None
     return [ver for ver in cuda_found_versions if ver]

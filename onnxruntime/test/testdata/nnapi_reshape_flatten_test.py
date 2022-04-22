@@ -9,13 +9,9 @@ def GenerateModel(model_name):
     nodes = [
         helper.make_node("Flatten", ["X"], ["Flatten_1_Y"], "flatten_1"),
         helper.make_node("MatMul", ["Flatten_1_Y", "MatMul_B"], ["MatMul_Y"], "matmul"),
-        helper.make_node(
-            "Reshape", ["Y", "Reshape_1_shape"], ["Reshape_1_Y"], "reshape_1"
-        ),
+        helper.make_node("Reshape", ["Y", "Reshape_1_shape"], ["Reshape_1_Y"], "reshape_1"),
         helper.make_node("Gemm", ["Reshape_1_Y", "Gemm_B"], ["Gemm_Y"], "gemm"),
-        helper.make_node(
-            "Reshape", ["MatMul_Y", "Reshape_2_shape"], ["Reshape_2_Y"], "reshape_2"
-        ),
+        helper.make_node("Reshape", ["MatMul_Y", "Reshape_2_shape"], ["Reshape_2_Y"], "reshape_2"),
         helper.make_node("Flatten", ["Gemm_Y"], ["Flatten_2_Y"], "flatten_2", axis=0),
         helper.make_node("Add", ["Reshape_2_Y", "Flatten_2_Y"], ["Z"], "add"),
     ]
@@ -29,9 +25,7 @@ def GenerateModel(model_name):
             [4, 2],
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
         ),
-        helper.make_tensor(
-            "MatMul_B", TensorProto.FLOAT, [2, 3], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-        ),
+        helper.make_tensor("MatMul_B", TensorProto.FLOAT, [2, 3], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
     ]
 
     inputs = [

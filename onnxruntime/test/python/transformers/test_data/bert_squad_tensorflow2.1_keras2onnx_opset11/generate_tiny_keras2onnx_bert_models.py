@@ -96,14 +96,9 @@ class TinyBertOnnxModel(OnnxModel):
         }
 
         for input in graph.input:
-            if (
-                input.type.tensor_type.shape.dim[1].dim_value
-                == old_parameters["seq_len"]
-            ):
+            if input.type.tensor_type.shape.dim[1].dim_value == old_parameters["seq_len"]:
                 print("input", input.name, input.type.tensor_type.shape)
-                input.type.tensor_type.shape.dim[1].dim_value = new_parameters[
-                    "seq_len"
-                ]
+                input.type.tensor_type.shape.dim[1].dim_value = new_parameters["seq_len"]
                 print("=>", input.type.tensor_type.shape)
 
         reshapes = {}
@@ -182,9 +177,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                     initializer.CopyFrom(
                         numpy_helper.from_array(
-                            np.asarray(
-                                [4 * new_parameters["hidden_size"]], dtype=dtype
-                            ),
+                            np.asarray([4 * new_parameters["hidden_size"]], dtype=dtype),
                             initializer.name,
                         )
                     )
@@ -299,9 +292,7 @@ class TinyBertOnnxModel(OnnxModel):
                 print("initializer", initializer.name, tensor.shape, "=>", new_shape)
 
         for initializer_name in reshapes:
-            self.replace_input_of_all_nodes(
-                initializer_name, initializer_name + "_resize"
-            )
+            self.replace_input_of_all_nodes(initializer_name, initializer_name + "_resize")
             tensor = self.resize_weight(initializer_name, reshapes[initializer_name])
             self.model.graph.initializer.extend([tensor])
 
@@ -337,9 +328,7 @@ def generate_test_data(
 ):
     input_data_type = np.int32
     for test_case in range(test_cases):
-        input_1 = np.random.randint(
-            dictionary_size, size=(batch_size, sequence_length), dtype=input_data_type
-        )
+        input_1 = np.random.randint(dictionary_size, size=(batch_size, sequence_length), dtype=input_data_type)
         tensor_1 = numpy_helper.from_array(input_1, "input_ids")
 
         actual_seq_len = random.randint(sequence_length - 3, sequence_length)
@@ -363,12 +352,8 @@ def generate_test_data(
             return
 
         sess_options = onnxruntime.SessionOptions()
-        sess_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        )
-        sess = onnxruntime.InferenceSession(
-            onnx_file, sess_options, providers=["CPUExecutionProvider"]
-        )
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess = onnxruntime.InferenceSession(onnx_file, sess_options, providers=["CPUExecutionProvider"])
 
         input1_name = sess.get_inputs()[0].name
         output_names = [output.name for output in sess.get_outputs()]
@@ -397,9 +382,7 @@ def generate_test_data(
 
         start_time = timeit.default_timer()
 
-        sess_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        )
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
 
         path_prefix = onnx_file[:-5]  # remove .onnx suffix
         if use_cpu:
@@ -460,9 +443,7 @@ def main():
     batch_size = 1
     sequence_length = SEQ_LEN
 
-    generate_test_data(
-        args.output, data_path, batch_size, sequence_length, use_cpu=not args.float16
-    )
+    generate_test_data(args.output, data_path, batch_size, sequence_length, use_cpu=not args.float16)
 
 
 if __name__ == "__main__":

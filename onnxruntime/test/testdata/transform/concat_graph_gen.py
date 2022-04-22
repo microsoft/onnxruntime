@@ -5,9 +5,7 @@ from onnx import TensorProto, helper
 
 def GenerateModel(model_name):
     nodes = [
-        helper.make_node(
-            "Gather", ["embed_weights", "input_1"], ["gather_out"], "gather"
-        ),
+        helper.make_node("Gather", ["embed_weights", "input_1"], ["gather_out"], "gather"),
         helper.make_node("Add", ["gather_out", "add_q_weight"], ["add_q_out"], "add_q"),
         helper.make_node("Add", ["gather_out", "add_k_weight"], ["add_k_out"], "add_k"),
         helper.make_node("Add", ["gather_out", "add_v_weight"], ["add_v_out"], "add_v"),
@@ -65,9 +63,7 @@ def GenerateModel(model_name):
     ]
 
     initializers = [  # initializers
-        helper.make_tensor(
-            "embed_weights", TensorProto.FLOAT, [1000, 8], embed_weights
-        ),
+        helper.make_tensor("embed_weights", TensorProto.FLOAT, [1000, 8], embed_weights),
         helper.make_tensor("add_q_weight", TensorProto.FLOAT, [8], add_q_weight),
         helper.make_tensor("add_k_weight", TensorProto.FLOAT, [8], add_k_weight),
         helper.make_tensor("add_v_weight", TensorProto.FLOAT, [8], add_v_weight),
@@ -77,11 +73,7 @@ def GenerateModel(model_name):
     graph = helper.make_graph(
         nodes,
         "ConcatThreeInputs",  # name
-        [  # inputs
-            helper.make_tensor_value_info(
-                "input_1", TensorProto.INT64, ["batch", "seq_len"]
-            )
-        ],
+        [helper.make_tensor_value_info("input_1", TensorProto.INT64, ["batch", "seq_len"])],  # inputs
         [  # outputs
             helper.make_tensor_value_info("predictions", TensorProto.FLOAT, [1, 1, 8]),
         ],

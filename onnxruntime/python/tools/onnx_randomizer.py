@@ -39,17 +39,13 @@ def randomize_graph_initializer(graph):
         array = numpy_helper.to_array(i_tensor)
         # TODO: need to find a better way to differentiate shape data and weights.
         if array.size > SIZE_THRESHOLD:
-            random_array = np.random.uniform(
-                array.min(), array.max(), size=array.shape
-            ).astype(array.dtype)
+            random_array = np.random.uniform(array.min(), array.max(), size=array.shape).astype(array.dtype)
             o_tensor = numpy_helper.from_array(random_array, i_tensor.name)
             i_tensor.CopyFrom(o_tensor)
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Randomize the weights of an ONNX model"
-    )
+    parser = argparse.ArgumentParser(description="Randomize the weights of an ONNX model")
     parser.add_argument("-m", type=str, required=True, help="input onnx model path")
     parser.add_argument("-o", type=str, required=True, help="output onnx model path")
     parser.add_argument(
@@ -69,9 +65,7 @@ def main():
     data_path = None
     if args.use_external_data_format:
         if Path(args.m).parent == Path(args.o).parent:
-            raise RuntimeError(
-                "Please specify output directory with different parent path to input directory."
-            )
+            raise RuntimeError("Please specify output directory with different parent path to input directory.")
         if args.all_tensors_to_one_file:
             data_path = Path(args.o).name + ".data"
 

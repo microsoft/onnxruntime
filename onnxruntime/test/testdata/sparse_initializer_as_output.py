@@ -2,24 +2,28 @@ import argparse
 import os
 import sys
 import traceback
-from typing import (Any, Callable, Dict, List, Optional, Sequence, Text, Tuple,
-                    TypeVar, Union, cast)
+from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast
 
 import numpy as np
 import onnx
-from onnx import (AttributeProto, GraphProto, SparseTensorProto, TensorProto,
-                  ValueInfoProto, helper, mapping, numpy_helper, utils)
+from onnx import (
+    AttributeProto,
+    GraphProto,
+    SparseTensorProto,
+    TensorProto,
+    ValueInfoProto,
+    helper,
+    mapping,
+    numpy_helper,
+    utils,
+)
 from onnx.helper import make_opsetid
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--node_name", required=True, type=str, help="Constant Node name"
-    )
-    parser.add_argument(
-        "--output_file", required=True, type=str, help="Model file name to save"
-    )
+    parser.add_argument("--node_name", required=True, type=str, help="Constant Node name")
+    parser.add_argument("--output_file", required=True, type=str, help="Model file name to save")
 
     args = parser.parse_args()
     return args
@@ -56,9 +60,7 @@ def make_sparse_tensor_value_info(
 
         if shape_denotation:
             if len(shape_denotation) != len(shape):
-                raise ValueError(
-                    "Invalid shape_denotation. " "Must be of the same length as shape."
-                )
+                raise ValueError("Invalid shape_denotation. " "Must be of the same length as shape.")
 
         for i, d in enumerate(shape):
             dim = sparse_tensor_shape_proto.dim.add()
@@ -69,10 +71,7 @@ def make_sparse_tensor_value_info(
             elif isinstance(d, str):
                 dim.dim_param = d
             else:
-                raise ValueError(
-                    "Invalid item in shape: {}. "
-                    "Needs to be one of `int` or `str`.".format(d)
-                )
+                raise ValueError("Invalid item in shape: {}. " "Needs to be one of `int` or `str`.".format(d))
 
             if shape_denotation:
                 dim.denotation = shape_denotation[i]
@@ -99,9 +98,7 @@ def create_model(constant_node_name, output_file_name):
         vals=np.array(linear_indicies).astype(np.int64),
         raw=False,
     )
-    sparse_tensor = helper.make_sparse_tensor(
-        values_tensor, indicies_tensor, dense_shape
-    )
+    sparse_tensor = helper.make_sparse_tensor(values_tensor, indicies_tensor, dense_shape)
 
     # Nodes
     # sparse_attribute = helper.make_attribute('value', sparse_tensor)
@@ -115,9 +112,7 @@ def create_model(constant_node_name, output_file_name):
     )
 
     # Outputs, a square matrix
-    Values_info = make_sparse_tensor_value_info(
-        "values", TensorProto.FLOAT, dense_shape
-    )
+    Values_info = make_sparse_tensor_value_info("values", TensorProto.FLOAT, dense_shape)
 
     graph_def = helper.make_graph(
         nodes=[constant_node],
@@ -126,9 +121,7 @@ def create_model(constant_node_name, output_file_name):
         outputs=[Values_info],
     )
 
-    model_def = helper.make_model(
-        graph_def, producer_name="dmitrism", opset_imports=[make_opsetid("", 12)]
-    )
+    model_def = helper.make_model(graph_def, producer_name="dmitrism", opset_imports=[make_opsetid("", 12)])
 
     onnx.save(model_def, output_file_name)
 

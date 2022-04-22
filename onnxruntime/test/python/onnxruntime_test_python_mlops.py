@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import os
+
 # -*- coding: UTF-8 -*-
 import unittest
 
@@ -17,9 +18,7 @@ class TestInferenceSession(unittest.TestCase):
             get_name("zipmap_stringfloat.onnx"),
             providers=onnxrt.get_available_providers(),
         )
-        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape(
-            (2, 3)
-        )
+        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "X")
@@ -43,9 +42,7 @@ class TestInferenceSession(unittest.TestCase):
             get_name("zipmap_int64float.onnx"),
             providers=onnxrt.get_available_providers(),
         )
-        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape(
-            (2, 3)
-        )
+        x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
 
         x_name = sess.get_inputs()[0].name
         self.assertEqual(x_name, "X")
@@ -112,9 +109,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testLabelEncoder(self):
-        sess = onnxrt.InferenceSession(
-            get_name("LabelEncoder.onnx"), providers=onnxrt.get_available_providers()
-        )
+        sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"), providers=onnxrt.get_available_providers())
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "input")
         input_type = str(sess.get_inputs()[0].type)
@@ -152,19 +147,14 @@ class TestInferenceSession(unittest.TestCase):
         # where one node is assigned to CUDA and one node to DML, as it doesn't have the data transfer capabilities to
         # deal with potentially different device memory. Hence, use a session with only DML and CPU (excluding CUDA)
         # for this test as it breaks with both CUDA and DML registered.
-        if (
-            "CUDAExecutionProvider" in available_providers
-            and "DmlExecutionProvider" in available_providers
-        ):
+        if "CUDAExecutionProvider" in available_providers and "DmlExecutionProvider" in available_providers:
             sess = onnxrt.InferenceSession(
                 get_name("mlnet_encoder.onnx"),
                 None,
                 ["DmlExecutionProvider", "CPUExecutionProvider"],
             )
         else:
-            sess = onnxrt.InferenceSession(
-                get_name("mlnet_encoder.onnx"), providers=available_providers
-            )
+            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), providers=available_providers)
 
         names = [_.name for _ in sess.get_outputs()]
         self.assertEqual(["C00", "C12"], names)
@@ -177,11 +167,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(total, 2)
         self.assertEqual(
             list(mat.ravel()),
-            list(
-                np.array(
-                    [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]
-                ).ravel()
-            ),
+            list(np.array([[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]).ravel()),
         )
 
         # In memory, the size of each element is fixed and equal to the
@@ -216,9 +202,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(got[0].dtype, np.float64)
         self.assertEqual(got[0].shape, (3, 1))
         res64 = got[0].tolist()
-        self.assertEqual(
-            res64, [[0.7284910678863525], [0.7284910678863525], [0.9134243130683899]]
-        )
+        self.assertEqual(res64, [[0.7284910678863525], [0.7284910678863525], [0.9134243130683899]])
         iris = np.array(
             [
                 [0, 1, 1.7999999523162842, 3],
@@ -231,9 +215,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(got[0].dtype, np.float64)
         self.assertEqual(got[0].shape, (3, 1))
         res32 = got[0].tolist()
-        self.assertEqual(
-            res32, [[0.7284910678863525], [0.7284910678863525], [0.7284910678863525]]
-        )
+        self.assertEqual(res32, [[0.7284910678863525], [0.7284910678863525], [0.7284910678863525]])
 
 
 if __name__ == "__main__":

@@ -39,8 +39,7 @@ def parse_arguments(argv=None):
         "--model_name_or_path",
         required=True,
         type=str,
-        help="Model path, or pretrained model name in the list: "
-        + ", ".join(PRETRAINED_GPT2_MODELS),
+        help="Model path, or pretrained model name in the list: " + ", ".join(PRETRAINED_GPT2_MODELS),
     )
 
     parser.add_argument(
@@ -59,13 +58,9 @@ def parse_arguments(argv=None):
         help="number of test cases per run",
     )
 
-    parser.add_argument(
-        "--runs", required=False, type=int, default=40, help="number of repeated runs"
-    )
+    parser.add_argument("--runs", required=False, type=int, default=40, help="number of repeated runs")
 
-    parser.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU for inference"
-    )
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
@@ -76,9 +71,7 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(all=False)
 
-    parser.add_argument(
-        "-e", "--use_external_data_format", required=False, action="store_true"
-    )
+    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
 
     parser.add_argument("--verbose", required=False, action="store_true")
@@ -183,10 +176,7 @@ def print_wins(wins, rows, test_name):
                         row["onnx_size_in_MB"],
                         row["experiment"],
                         " (Half2 Disabled)"
-                        if (
-                            row["ORT_CUDA_GEMM_OPTIONS"] == "4"
-                            and "Half2" not in row["experiment"]
-                        )
+                        if (row["ORT_CUDA_GEMM_OPTIONS"] == "4" and "Half2" not in row["experiment"])
                         else "",
                     )
                 )
@@ -252,22 +242,16 @@ def run_significance_test(rows, output_csv_path):
                 except ValueError:  # ValueError: All numbers are identical in mannwhitneyu
                     utest_statistic = None
                     utest_pvalue = None
-                ttest_statistic, ttest_pvalue = scipy.stats.ttest_ind(
-                    a, b, axis=None, equal_var=True
-                )
+                ttest_statistic, ttest_pvalue = scipy.stats.ttest_ind(a, b, axis=None, equal_var=True)
 
                 if utest_pvalue < 0.05:
-                    if float(result1["top1_match_rate"]) > float(
-                        result2["top1_match_rate"]
-                    ):
+                    if float(result1["top1_match_rate"]) > float(result2["top1_match_rate"]):
                         utest_wins[result1["run_id"]] += 1
                     else:
                         utest_wins[result2["run_id"]] += 1
 
                 if ttest_pvalue < 0.05:
-                    if float(result1["top1_match_rate"]) > float(
-                        result2["top1_match_rate"]
-                    ):
+                    if float(result1["top1_match_rate"]) > float(result2["top1_match_rate"]):
                         ttest_wins[result1["run_id"]] += 1
                     else:
                         ttest_wins[result2["run_id"]] += 1
@@ -303,9 +287,7 @@ def get_last_matmul_node_name(raw_onnx_model: str):
         logger.info(f"Found last MatMul node for logits: {node.name}")
         return node.name
 
-    logger.warning(
-        f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}"
-    )
+    logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
     return None
 
 
@@ -333,13 +315,9 @@ def run_candidate(
     last_matmul_node_name,
     op_block_list=["FastGelu", "LayerNormalization"],
 ):
-    parameters = get_mixed_precision_parameters(
-        args, last_matmul_node_name, op_block_list
-    )
+    parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
     op_block_list_str = ",".join(sorted(op_block_list))
-    name_suffix = (
-        " (Half2 Disabled)" if os.getenv("ORT_CUDA_GEMM_OPTIONS") == "4" else ""
-    )
+    name_suffix = " (Half2 Disabled)" if os.getenv("ORT_CUDA_GEMM_OPTIONS") == "4" else ""
     if op_block_list:
         name = f"Mixed precision baseline + {op_block_list_str} in FP32{name_suffix}"
     else:
@@ -380,11 +358,7 @@ def run_tuning_step0(task, fp16_baseline):
 
     # Only weights in FP16
     task.run(
-        fp16_baseline
-        + fp32_io
-        + ["--op_block_list"]
-        + [o for o in op_list]
-        + ["--force_fp16_initializers"],
+        fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in op_list] + ["--force_fp16_initializers"],
         "FP32 except weights in FP16",
     )
 
@@ -426,9 +400,7 @@ def run_parity_disable_half2(task: ParityTask, args):
     last_matmul_node_name = get_last_matmul_node_name(onnx_model_paths["raw"])
     run_candidate(task, args, last_matmul_node_name, op_block_list=[])
     run_candidate(task, args, last_matmul_node_name, op_block_list=["Add"])
-    run_candidate(
-        task, args, last_matmul_node_name, op_block_list=["LayerNormalization", "Add"]
-    )
+    run_candidate(task, args, last_matmul_node_name, op_block_list=["LayerNormalization", "Add"])
 
 
 def run_parity(task: ParityTask, args):
@@ -460,9 +432,7 @@ def run_parity(task: ParityTask, args):
 
     if args.all:
         run_tuning_step0(task, fp16_baseline)
-        mixed_precision_baseline = get_mixed_precision_parameters(
-            args, last_matmul_node_name, op_block_list=[]
-        )
+        mixed_precision_baseline = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list=[])
         run_tuning_step1(task, mixed_precision_baseline)
         run_tuning_step2(task, mixed_precision_baseline)
     else:
@@ -472,9 +442,7 @@ def run_parity(task: ParityTask, args):
             last_matmul_node_name,
             op_block_list=["LayerNormalization", "Add"],
         )
-        run_candidate(
-            task, args, last_matmul_node_name, op_block_list=["FastGelu", "Add"]
-        )
+        run_candidate(task, args, last_matmul_node_name, op_block_list=["FastGelu", "Add"])
 
     # Run a few good candidates
     run_candidate(

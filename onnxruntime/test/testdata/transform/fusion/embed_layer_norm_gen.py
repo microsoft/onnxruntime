@@ -9,16 +9,12 @@ if version.parse(onnx.__version__) == version.parse("1.8.0"):
 elif version.parse(onnx.__version__) == version.parse("1.6.0"):
     opset_version = 11
 else:
-    raise RuntimeError(
-        "Please pip install onnx==1.8.0 or 1.6.0 before running this script"
-    )
+    raise RuntimeError("Please pip install onnx==1.8.0 or 1.6.0 before running this script")
 
 
 def GenerateNodes(model_name, has_cast, suffix=""):
     nodes = [  # LayerNorm subgraph
-        helper.make_node(
-            "Shape", ["input_ids" + suffix], ["shape1_out" + suffix], "shape1" + suffix
-        ),
+        helper.make_node("Shape", ["input_ids" + suffix], ["shape1_out" + suffix], "shape1" + suffix),
         helper.make_node(
             "Gather",
             ["shape1_out" + suffix, "indices_0"],
@@ -39,9 +35,7 @@ def GenerateNodes(model_name, has_cast, suffix=""):
             "unsqueeze0" + suffix,
             axes=[0],
         ),
-        helper.make_node(
-            "Shape", ["input_ids" + suffix], ["shape2_out" + suffix], "shape2" + suffix
-        ),
+        helper.make_node("Shape", ["input_ids" + suffix], ["shape2_out" + suffix], "shape2" + suffix),
         helper.make_node(
             "Gather",
             ["shape2_out" + suffix, "indices_1"],
@@ -247,12 +241,8 @@ def GenerateInitializers():
             [2, 4],
             [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0],
         ),
-        helper.make_tensor(
-            "layer_norm_weight", TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0]
-        ),
-        helper.make_tensor(
-            "layer_norm_bias", TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]
-        ),
+        helper.make_tensor("layer_norm_weight", TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor("layer_norm_bias", TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
         helper.make_tensor("qkv_weights", TensorProto.FLOAT, [4, 12], [0.1] * 4 * 12),
         helper.make_tensor(
             "qkv_bias",
@@ -295,9 +285,7 @@ def GenerateMultipleEmbedModel(model_name):
     nodes_1 = GenerateNodes(model_name, False, "_1")
     nodes_2 = GenerateNodes(model_name, False, "_2")
     nodes = nodes_1 + nodes_2
-    nodes.append(
-        helper.make_node("Add", ["add2_out_1", "add2_out_2"], ["add3_out"], "add3")
-    )
+    nodes.append(helper.make_node("Add", ["add2_out_1", "add2_out_2"], ["add3_out"], "add3"))
 
     # hidden_size=4, num_heads=2, max_seq_length=3
     initializers = GenerateInitializers()
@@ -306,29 +294,15 @@ def GenerateMultipleEmbedModel(model_name):
         nodes,
         "EmbedLayerNorm_format3",  # name
         [  # inputs
-            helper.make_tensor_value_info(
-                "input_ids_1", TensorProto.INT64, ["batch", 3]
-            ),
-            helper.make_tensor_value_info(
-                "segment_ids_1", TensorProto.INT64, ["batch", 3]
-            ),
-            helper.make_tensor_value_info(
-                "input_mask_1", TensorProto.INT64, ["batch", 3]
-            ),
-            helper.make_tensor_value_info(
-                "input_ids_2", TensorProto.INT64, ["batch", 3]
-            ),
-            helper.make_tensor_value_info(
-                "segment_ids_2", TensorProto.INT64, ["batch", 3]
-            ),
-            helper.make_tensor_value_info(
-                "input_mask_2", TensorProto.INT64, ["batch", 3]
-            ),
+            helper.make_tensor_value_info("input_ids_1", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("segment_ids_1", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("input_mask_1", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("input_ids_2", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("segment_ids_2", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("input_mask_2", TensorProto.INT64, ["batch", 3]),
         ],
         [  # outputs
-            helper.make_tensor_value_info(
-                "add3_out", TensorProto.FLOAT, ["batch", 3, 4]
-            ),
+            helper.make_tensor_value_info("add3_out", TensorProto.FLOAT, ["batch", 3, 4]),
         ],
         initializers,
     )
@@ -348,17 +322,11 @@ def GenerateModel3(model_name, has_cast):
         "EmbedLayerNorm_format3",  # name
         [  # inputs
             helper.make_tensor_value_info("input_ids", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info(
-                "segment_ids", TensorProto.INT64, ["batch", 3]
-            ),
-            helper.make_tensor_value_info(
-                "input_mask", TensorProto.INT64, ["batch", 3]
-            ),
+            helper.make_tensor_value_info("segment_ids", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("input_mask", TensorProto.INT64, ["batch", 3]),
         ],
         [  # outputs
-            helper.make_tensor_value_info(
-                "add2_out", TensorProto.FLOAT, ["batch", 3, 4]
-            ),
+            helper.make_tensor_value_info("add2_out", TensorProto.FLOAT, ["batch", 3, 4]),
         ],
         initializers,
     )
@@ -394,9 +362,7 @@ def GenerateModel5(model_name):
             "seg_gather",
             axis=0,
         ),
-        helper.make_node(
-            "Add", ["word_add_pos_out", "seg_gather_out"], ["add3_out"], "add3"
-        ),
+        helper.make_node("Add", ["word_add_pos_out", "seg_gather_out"], ["add3_out"], "add3"),
         helper.make_node(
             "LayerNormalization",
             ["add3_out", "layer_norm_weight", "layer_norm_bias"],
@@ -430,9 +396,7 @@ def GenerateModel5(model_name):
             domain="com.microsoft",
             num_heads=attention_heads,
         ),
-        helper.make_node(
-            "MatMul", ["att_out", "matmul_weight"], ["matmul_out"], "matmul"
-        ),
+        helper.make_node("MatMul", ["att_out", "matmul_weight"], ["matmul_out"], "matmul"),
         helper.make_node("Add", ["matmul_out", "add_bias"], ["add_out"], "add"),
         helper.make_node("Add", ["add_out", "layernorm_out"], ["add2_out"], "add2"),
     ]
@@ -483,12 +447,8 @@ def GenerateModel5(model_name):
             [2, hidden_size],
             [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0],
         ),
-        helper.make_tensor(
-            "layer_norm_weight", TensorProto.FLOAT, [hidden_size], [1.0, 2.0, 3.0, 4.0]
-        ),
-        helper.make_tensor(
-            "layer_norm_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]
-        ),
+        helper.make_tensor("layer_norm_weight", TensorProto.FLOAT, [hidden_size], [1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor("layer_norm_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
         helper.make_tensor(
             "qkv_weights",
             TensorProto.FLOAT,
@@ -524,9 +484,7 @@ def GenerateModel5(model_name):
                 4.0,
             ],
         ),
-        helper.make_tensor(
-            "add_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]
-        ),
+        helper.make_tensor("add_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
         helper.make_tensor("axes_1", TensorProto.INT64, [1], [1]),
     ]
 
@@ -534,15 +492,9 @@ def GenerateModel5(model_name):
         nodes,
         "EmbedLayerNorm_format5",  # name
         [  # inputs
-            helper.make_tensor_value_info(
-                "input_ids", TensorProto.INT64, [batch_size, sequence_length]
-            ),
-            helper.make_tensor_value_info(
-                "segment_ids", TensorProto.INT64, [batch_size, sequence_length]
-            ),
-            helper.make_tensor_value_info(
-                "input_mask", TensorProto.INT64, [batch_size, sequence_length]
-            ),
+            helper.make_tensor_value_info("input_ids", TensorProto.INT64, [batch_size, sequence_length]),
+            helper.make_tensor_value_info("segment_ids", TensorProto.INT64, [batch_size, sequence_length]),
+            helper.make_tensor_value_info("input_mask", TensorProto.INT64, [batch_size, sequence_length]),
         ],
         [  # outputs
             helper.make_tensor_value_info(
@@ -561,27 +513,15 @@ def GenerateModel5(model_name):
 def GenerateModel6(model_name):
     nodes = [  # LayerNorm subgraph
         helper.make_node("Shape", ["input_ids"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices_0"], ["gather0_out"], "gather0"
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out", "axes_0"], ["unsqueeze0_out"], "unsqueeze0"
-        )
+        helper.make_node("Gather", ["shape1_out", "indices_0"], ["gather0_out"], "gather0"),
+        helper.make_node("Unsqueeze", ["gather0_out", "axes_0"], ["unsqueeze0_out"], "unsqueeze0")
         if opset_version == 13
-        else helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
+        else helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
         helper.make_node("Shape", ["input_ids"], ["shape2_out"], "shape2"),
-        helper.make_node(
-            "Gather", ["shape2_out", "indices_1"], ["gather1_out"], "gather1"
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out", "axes_0"], ["unsqueeze1_out"], "unsqueeze1"
-        )
+        helper.make_node("Gather", ["shape2_out", "indices_1"], ["gather1_out"], "gather1"),
+        helper.make_node("Unsqueeze", ["gather1_out", "axes_0"], ["unsqueeze1_out"], "unsqueeze1")
         if opset_version == 13
-        else helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        else helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "unsqueeze1_out"],
@@ -589,46 +529,24 @@ def GenerateModel6(model_name):
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["concat_out", "reshape_init"], ["reshape_out"], "reshape"
-        ),
-        helper.make_node(
-            "Equal", ["reshape_out", "equal_init"], ["equal_out"], "equal"
-        ),
-        helper.make_node(
-            "Where", ["equal_out", "where_init", "reshape_out"], ["where_out"], "where"
-        ),
-        helper.make_node(
-            "Range", ["start_0", "gather1_out", "delta_1"], ["range_out"], "range"
-        ),
-        helper.make_node(
-            "Unsqueeze", ["range_out", "axes_0"], ["unsqueeze2_out"], "unsqueeze2"
-        )
+        helper.make_node("Reshape", ["concat_out", "reshape_init"], ["reshape_out"], "reshape"),
+        helper.make_node("Equal", ["reshape_out", "equal_init"], ["equal_out"], "equal"),
+        helper.make_node("Where", ["equal_out", "where_init", "reshape_out"], ["where_out"], "where"),
+        helper.make_node("Range", ["start_0", "gather1_out", "delta_1"], ["range_out"], "range"),
+        helper.make_node("Unsqueeze", ["range_out", "axes_0"], ["unsqueeze2_out"], "unsqueeze2")
         if opset_version == 13
-        else helper.make_node(
-            "Unsqueeze", ["range_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
-        helper.make_node(
-            "Expand", ["unsqueeze2_out", "where_out"], ["expand_out"], "expand"
-        ),
-        helper.make_node(
-            "Gather", ["pos_embed", "expand_out"], ["pos_gather_out"], "pos_gather"
-        ),
-        helper.make_node(
-            "Gather", ["word_embed", "input_ids"], ["word_gather_out"], "word_gather"
-        ),
+        else helper.make_node("Unsqueeze", ["range_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+        helper.make_node("Expand", ["unsqueeze2_out", "where_out"], ["expand_out"], "expand"),
+        helper.make_node("Gather", ["pos_embed", "expand_out"], ["pos_gather_out"], "pos_gather"),
+        helper.make_node("Gather", ["word_embed", "input_ids"], ["word_gather_out"], "word_gather"),
         helper.make_node(
             "Add",
             ["word_gather_out", "pos_gather_out"],
             ["word_add_pos_out"],
             "word_add_pos",
         ),
-        helper.make_node(
-            "Gather", ["seg_embed", "segment_ids"], ["seg_gather_out"], "seg_gather"
-        ),
-        helper.make_node(
-            "Add", ["word_add_pos_out", "seg_gather_out"], ["add3_out"], "add3"
-        ),
+        helper.make_node("Gather", ["seg_embed", "segment_ids"], ["seg_gather_out"], "seg_gather"),
+        helper.make_node("Add", ["word_add_pos_out", "seg_gather_out"], ["add3_out"], "add3"),
         helper.make_node(
             "LayerNormalization",
             ["add3_out", "layer_norm_weight", "layer_norm_bias"],
@@ -662,9 +580,7 @@ def GenerateModel6(model_name):
             domain="com.microsoft",
             num_heads=2,
         ),
-        helper.make_node(
-            "MatMul", ["att_out", "matmul_weight"], ["matmul_out"], "matmul"
-        ),
+        helper.make_node("MatMul", ["att_out", "matmul_weight"], ["matmul_out"], "matmul"),
         helper.make_node("Add", ["matmul_out", "add_bias"], ["add_out"], "add"),
         helper.make_node("Add", ["add_out", "layernorm_out"], ["add2_out"], "add2"),
     ]
@@ -710,12 +626,8 @@ def GenerateModel6(model_name):
             [2, 4],
             [1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0],
         ),
-        helper.make_tensor(
-            "layer_norm_weight", TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0]
-        ),
-        helper.make_tensor(
-            "layer_norm_bias", TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]
-        ),
+        helper.make_tensor("layer_norm_weight", TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor("layer_norm_bias", TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
         helper.make_tensor("qkv_weights", TensorProto.FLOAT, [4, 12], [0.1] * 4 * 12),
         helper.make_tensor("qkv_bias", TensorProto.FLOAT, [12], [0.1] * 12),
         helper.make_tensor(
@@ -754,17 +666,11 @@ def GenerateModel6(model_name):
         "EmbedLayerNorm_format6",  # name
         [  # inputs
             helper.make_tensor_value_info("input_ids", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info(
-                "segment_ids", TensorProto.INT64, ["batch", 3]
-            ),
-            helper.make_tensor_value_info(
-                "input_mask", TensorProto.INT64, ["batch", 3]
-            ),
+            helper.make_tensor_value_info("segment_ids", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("input_mask", TensorProto.INT64, ["batch", 3]),
         ],
         [  # outputs
-            helper.make_tensor_value_info(
-                "add2_out", TensorProto.FLOAT, ["batch", 3, 4]
-            ),
+            helper.make_tensor_value_info("add2_out", TensorProto.FLOAT, ["batch", 3, 4]),
         ],
         initializers,
     )
@@ -793,12 +699,8 @@ def GenerateInitializers2(hidden_size):
         helper.make_tensor("indices_1", TensorProto.INT64, [], [1]),
         helper.make_tensor("start", TensorProto.INT64, [], [0]),
         helper.make_tensor("delta", TensorProto.INT64, [], [1]),
-        helper.make_tensor(
-            "layer_norm_weight", TensorProto.FLOAT, [hidden_size], [1.0, 2.0, 3.0, 4.0]
-        ),
-        helper.make_tensor(
-            "layer_norm_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]
-        ),
+        helper.make_tensor("layer_norm_weight", TensorProto.FLOAT, [hidden_size], [1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor("layer_norm_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
         helper.make_tensor(
             "qkv_weights",
             TensorProto.FLOAT,
@@ -834,9 +736,7 @@ def GenerateInitializers2(hidden_size):
                 4.0,
             ],
         ),
-        helper.make_tensor(
-            "add_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]
-        ),
+        helper.make_tensor("add_bias", TensorProto.FLOAT, [hidden_size], [0.1, 0.2, 0.3, 0.4]),
         helper.make_tensor("axes_0", TensorProto.INT64, [1], [0]),
         helper.make_tensor("axes_1", TensorProto.INT64, [1], [1]),
     ]
@@ -854,23 +754,13 @@ def GenerateNodes2(attention_heads):
             axis=0,
         ),
         helper.make_node("Shape", ["input_ids"], ["shape0_out"], "shape0"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices_1"], ["gather0_out"], "gather0"
-        ),
-        helper.make_node(
-            "Range", ["start", "gather0_out", "delta"], ["range0_out"], "range0"
-        ),
-        helper.make_node(
-            "Unsqueeze", ["range0_out", "axes_0"], ["unsqueeze0_out"], "unsqueeze0"
-        )
+        helper.make_node("Gather", ["shape0_out", "indices_1"], ["gather0_out"], "gather0"),
+        helper.make_node("Range", ["start", "gather0_out", "delta"], ["range0_out"], "range0"),
+        helper.make_node("Unsqueeze", ["range0_out", "axes_0"], ["unsqueeze0_out"], "unsqueeze0")
         if opset_version == 13
-        else helper.make_node(
-            "Unsqueeze", ["range0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
+        else helper.make_node("Unsqueeze", ["range0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
         helper.make_node("Shape", ["input_ids"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Expand", ["unsqueeze0_out", "shape1_out"], ["expand_out"], "expand"
-        ),
+        helper.make_node("Expand", ["unsqueeze0_out", "shape1_out"], ["expand_out"], "expand"),
         helper.make_node(
             "Gather",
             ["pos_embed", "expand_out"],
@@ -878,9 +768,7 @@ def GenerateNodes2(attention_heads):
             "pos_gather",
             axis=0,
         ),
-        helper.make_node(
-            "Add", ["word_gather_out", "pos_gather_out"], ["add1_out"], "add1"
-        ),
+        helper.make_node("Add", ["word_gather_out", "pos_gather_out"], ["add1_out"], "add1"),
         helper.make_node(
             "LayerNormalization",
             ["add1_out", "layer_norm_weight", "layer_norm_bias"],
@@ -914,9 +802,7 @@ def GenerateNodes2(attention_heads):
             domain="com.microsoft",
             num_heads=attention_heads,
         ),
-        helper.make_node(
-            "MatMul", ["att_out", "matmul_weight"], ["matmul_out"], "matmul"
-        ),
+        helper.make_node("MatMul", ["att_out", "matmul_weight"], ["matmul_out"], "matmul"),
         helper.make_node("Add", ["matmul_out", "add_bias"], ["add2_out"], "add2"),
         helper.make_node("Add", ["add2_out", "layernorm_out"], ["add3_out"], "add3"),
     ]
@@ -938,12 +824,8 @@ def GenerateModel7(model_name):
         nodes,
         "EmbedLayerNorm_format7",  # name
         [  # inputs
-            helper.make_tensor_value_info(
-                "input_ids", TensorProto.INT64, [batch_size, sequence_length]
-            ),
-            helper.make_tensor_value_info(
-                "input_mask", TensorProto.INT64, [batch_size, sequence_length]
-            ),
+            helper.make_tensor_value_info("input_ids", TensorProto.INT64, [batch_size, sequence_length]),
+            helper.make_tensor_value_info("input_mask", TensorProto.INT64, [batch_size, sequence_length]),
         ],
         [  # outputs
             helper.make_tensor_value_info(
@@ -971,12 +853,8 @@ def GenerateModel8(model_name):
     del nodes[1:3]
     new_nodes = [
         helper.make_node("Shape", ["input_ids"], ["shape_out"], "shape"),
-        helper.make_node(
-            "Gather", ["shape_out", "indices_1"], ["gather0_out"], "gather0"
-        ),
-        helper.make_node(
-            "Expand", ["unsqueeze0_out", "shape_out"], ["expand_out"], "expand"
-        ),
+        helper.make_node("Gather", ["shape_out", "indices_1"], ["gather0_out"], "gather0"),
+        helper.make_node("Expand", ["unsqueeze0_out", "shape_out"], ["expand_out"], "expand"),
     ]
     nodes = nodes + new_nodes
 
@@ -986,12 +864,8 @@ def GenerateModel8(model_name):
         nodes,
         "EmbedLayerNorm_format8",  # name
         [  # inputs
-            helper.make_tensor_value_info(
-                "input_ids", TensorProto.INT64, [batch_size, sequence_length]
-            ),
-            helper.make_tensor_value_info(
-                "input_mask", TensorProto.INT64, [batch_size, sequence_length]
-            ),
+            helper.make_tensor_value_info("input_ids", TensorProto.INT64, [batch_size, sequence_length]),
+            helper.make_tensor_value_info("input_mask", TensorProto.INT64, [batch_size, sequence_length]),
         ],
         [  # outputs
             helper.make_tensor_value_info(
@@ -1020,32 +894,16 @@ def GenerateModel9(model_name):
     del nodes[1:3]
     new_nodes = [
         helper.make_node("Shape", ["input_ids"], ["shape_out"], "shape"),
-        helper.make_node(
-            "Gather", ["shape_out", "indices_1"], ["gather0_out"], "gather0"
-        ),
-        helper.make_node(
-            "Expand", ["unsqueeze0_out", "shape_out"], ["expand_out"], "expand"
-        ),
-        helper.make_node(
-            "Gather", ["shape_out", "indices_0"], ["gather1_out"], "gather1"
-        ),
-        helper.make_node(
-            "Gather", ["shape_out", "indices_1"], ["gather2_out"], "gather2"
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out", "axes_0"], ["unsqueeze1_out"], "unsqueeze1"
-        )
+        helper.make_node("Gather", ["shape_out", "indices_1"], ["gather0_out"], "gather0"),
+        helper.make_node("Expand", ["unsqueeze0_out", "shape_out"], ["expand_out"], "expand"),
+        helper.make_node("Gather", ["shape_out", "indices_0"], ["gather1_out"], "gather1"),
+        helper.make_node("Gather", ["shape_out", "indices_1"], ["gather2_out"], "gather2"),
+        helper.make_node("Unsqueeze", ["gather1_out", "axes_0"], ["unsqueeze1_out"], "unsqueeze1")
         if opset_version == 13
-        else helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather2_out", "axes_0"], ["unsqueeze2_out"], "unsqueeze2"
-        )
+        else helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather2_out", "axes_0"], ["unsqueeze2_out"], "unsqueeze2")
         if opset_version == 13
-        else helper.make_node(
-            "Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
+        else helper.make_node("Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
         helper.make_node(
             "Concat",
             ["unsqueeze1_out", "unsqueeze2_out"],
@@ -1060,9 +918,7 @@ def GenerateModel9(model_name):
             "constant_of_shape",
             value=helper.make_tensor("mask_shape", TensorProto.FLOAT, [1], [1.0]),
         ),
-        helper.make_node(
-            "Cast", ["constant_of_shape_out"], ["mask_cast_out"], "mask_cast", to=6
-        ),
+        helper.make_node("Cast", ["constant_of_shape_out"], ["mask_cast_out"], "mask_cast", to=6),
     ]
     nodes = nodes + new_nodes
 
@@ -1072,9 +928,7 @@ def GenerateModel9(model_name):
         nodes,
         "EmbedLayerNorm_format9",  # name
         [  # inputs
-            helper.make_tensor_value_info(
-                "input_ids", TensorProto.INT64, [batch_size, sequence_length]
-            ),
+            helper.make_tensor_value_info("input_ids", TensorProto.INT64, [batch_size, sequence_length]),
         ],
         [  # outputs
             helper.make_tensor_value_info(
@@ -1096,12 +950,8 @@ if opset_version == 11:
     GenerateModel5("embed_layer_norm_format5.onnx")
     GenerateModel6("embed_layer_norm_format6.onnx")
     GenerateModel7("embed_layer_norm_format7.onnx")  # distilbert
-    GenerateModel8(
-        "embed_layer_norm_format8.onnx"
-    )  # distilbert & shape nodes integration with input mask
-    GenerateModel9(
-        "embed_layer_norm_format9.onnx"
-    )  # distilbert & shape nodes integration without input mask
+    GenerateModel8("embed_layer_norm_format8.onnx")  # distilbert & shape nodes integration with input mask
+    GenerateModel9("embed_layer_norm_format9.onnx")  # distilbert & shape nodes integration without input mask
     GenerateMultipleEmbedModel("embed_layer_norm_multiple.onnx")
 else:
     GenerateModel3("embed_layer_norm_format3_opset13.onnx", True)

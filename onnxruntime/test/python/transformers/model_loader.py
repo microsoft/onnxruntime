@@ -7,8 +7,7 @@
 import os
 import unittest
 
-from onnx import (ModelProto, TensorProto, external_data_helper, load_model,
-                  numpy_helper)
+from onnx import ModelProto, TensorProto, external_data_helper, load_model, numpy_helper
 from parity_utilities import find_transformers_source
 
 if find_transformers_source():
@@ -65,9 +64,7 @@ def get_test_data_path(sub_dir: str, file: str):
 
 
 def get_fusion_test_model(file: str):
-    relative_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "testdata", "transform", "fusion", file
-    )
+    relative_path = os.path.join(os.path.dirname(__file__), "..", "..", "testdata", "transform", "fusion", file)
     if os.path.exists(relative_path):
         return relative_path
     return os.path.join(".", "testdata", "transform", "fusion", file)

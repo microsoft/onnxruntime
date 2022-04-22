@@ -22,9 +22,7 @@ class FusionSkipLayerNormalization(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
-        self.shape_infer_helper = self.model.infer_runtime_shape(
-            {"batch_size": 4, "seq_len": 7}, update=True
-        )
+        self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         add = self.model.get_parent(node, 0, output_name_to_node)
@@ -56,22 +54,14 @@ class FusionSkipLayerNormalization(Fusion):
             )
 
         gather_path = self.model.match_parent_path(add, ["Gather"], [None])
-        if (
-            gather_path is not None
-            and self.model.find_graph_input(gather_path[0].input[1]) is None
-        ):
-            if (
-                self.model.match_parent_path(gather_path[0], ["ConstantOfShape"], [1])
-                is None
-            ):
+        if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
+            if self.model.match_parent_path(gather_path[0], ["ConstantOfShape"], [1]) is None:
                 return
 
         if (
             add is not None
             and add.op_type == "Add"
-            and self.model.is_safe_to_fuse_nodes(
-                [add, node], node.output, input_name_to_nodes, output_name_to_node
-            )
+            and self.model.is_safe_to_fuse_nodes([add, node], node.output, input_name_to_nodes, output_name_to_node)
         ):
             self.nodes_to_remove.extend([add, node])
 
@@ -80,9 +70,7 @@ class FusionSkipLayerNormalization(Fusion):
                 "SkipLayerNormalization",
                 inputs=inputs,
                 outputs=[node.output[0]],
-                name=self.model.create_node_name(
-                    "SkipLayerNormalization", name_prefix="SkipLayerNorm"
-                ),
+                name=self.model.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"),
             )
             normalize_node.domain = "com.microsoft"
 
@@ -93,9 +81,7 @@ class FusionSkipLayerNormalization(Fusion):
 
             # Set default epsilon if no epsilon exists from layernorm
             if len(normalize_node.attribute) == 0:
-                normalize_node.attribute.extend(
-                    [helper.make_attribute("epsilon", 1.0e-12)]
-                )
+                normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0e-12)])
 
             self.nodes_to_add.append(normalize_node)
             self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
@@ -103,18 +89,14 @@ class FusionSkipLayerNormalization(Fusion):
 
 class FusionBiasSkipLayerNormalization(Fusion):
     def __init__(self, model: OnnxModel):
-        super().__init__(
-            model, "SkipLayerNormalization", "SkipLayerNormalization", "add bias"
-        )
+        super().__init__(model, "SkipLayerNormalization", "SkipLayerNormalization", "add bias")
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         if len(node.input) != 4:
             return
 
         return_indice = []
-        nodes = self.model.match_parent_path(
-            node, ["Add", "MatMul"], [None, None], None, return_indice
-        )
+        nodes = self.model.match_parent_path(node, ["Add", "MatMul"], [None, None], None, return_indice)
         if nodes is None:
             return
         assert len(return_indice) == 2
@@ -144,9 +126,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
         if not self.model.is_safe_to_fuse_nodes(
             subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node
         ):
-            logger.debug(
-                f"Skip fusing SkipLayerNormalization with Bias since it is not safe"
-            )
+            logger.debug(f"Skip fusing SkipLayerNormalization with Bias since it is not safe")
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
@@ -161,9 +141,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
             "SkipLayerNormalization",
             inputs=inputs,
             outputs=node.output,
-            name=self.model.create_node_name(
-                "SkipLayerNormalization", "SkipLayerNorm_AddBias_"
-            ),
+            name=self.model.create_node_name("SkipLayerNormalization", "SkipLayerNorm_AddBias_"),
         )
         new_node.domain = "com.microsoft"
 

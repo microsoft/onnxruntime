@@ -8,33 +8,35 @@ from pathlib import Path
 
 from onnx import onnx_pb as onnx_proto
 
-from .calibrate import (CalibrationDataReader, CalibrationMethod,
-                        create_calibrator)
+from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
-from .quant_utils import (QuantFormat, QuantizationMode, QuantizedInitializer,
-                          QuantizedValue, QuantizedValueType, QuantType,
-                          attribute_to_kwarg, find_by_name,
-                          generate_identified_filename, get_elem_index,
-                          get_mul_node, load_model)
+from .quant_utils import (
+    QuantFormat,
+    QuantizationMode,
+    QuantizedInitializer,
+    QuantizedValue,
+    QuantizedValueType,
+    QuantType,
+    attribute_to_kwarg,
+    find_by_name,
+    generate_identified_filename,
+    get_elem_index,
+    get_mul_node,
+    load_model,
+)
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
-def check_static_quant_arguments(
-    quant_format: QuantFormat, activation_type: QuantType, weight_type: QuantType
-):
+def check_static_quant_arguments(quant_format: QuantFormat, activation_type: QuantType, weight_type: QuantType):
     if activation_type == QuantType.QInt8 and weight_type == QuantType.QUInt8:
         raise ValueError(
             "ONNXRuntime quantization doesn't support data format:"
             "activation_type=QuantType.QInt8, weight_type = QuantType.QUInt8"
         )
 
-    if (
-        activation_type == QuantType.QInt8
-        and weight_type == QuantType.QInt8
-        and quant_format != QuantFormat.QDQ
-    ):
+    if activation_type == QuantType.QInt8 and weight_type == QuantType.QInt8 and quant_format != QuantFormat.QDQ:
         logging.warning(
             "Please use QuantFormat.QDQ for activation type QInt8 and weight type QInt8. "
             "Or it will lead to bad performance on x64."
@@ -138,9 +140,7 @@ def quantize_static(
         ("CalibMovingAverageConstant", "averaging_constant"),
     ]
     calib_extra_options = {
-        key: extra_options.get(name)
-        for (name, key) in calib_extra_options_keys
-        if name in extra_options
+        key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options
     }
     calibrator = create_calibrator(
         model,

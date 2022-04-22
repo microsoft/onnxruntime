@@ -49,9 +49,7 @@ def GenerateModel(model_name):
 
     initializers = [
         helper.make_tensor("float_1", TensorProto.FLOAT, [1], [1.0]),
-        helper.make_tensor(
-            "float16_1", TensorProto.FLOAT16, [1], [15360]
-        ),  # 15360 is the fp16 representation of 1.f
+        helper.make_tensor("float16_1", TensorProto.FLOAT16, [1], [15360]),  # 15360 is the fp16 representation of 1.f
         helper.make_tensor("int64_1", TensorProto.INT64, [1], [1]),
     ]
 

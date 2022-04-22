@@ -41,61 +41,30 @@ class FusionBartEncoderAttention(FusionAttention):
             return False
         concat_qkv_2 = concat_qkv_2_path[0]
 
-        reshape_qkv_2_path_1 = self.model.match_parent_path(
-            concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0]
-        )
-        reshape_qkv_2_path_2 = self.model.match_parent_path(
-            concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0]
-        )
-        reshape_qkv_2_path_3 = self.model.match_parent_path(
-            concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [2, 0, 0]
-        )
-        if (
-            reshape_qkv_2_path_1 is None
-            or reshape_qkv_2_path_2 is None
-            or reshape_qkv_2_path_3 is None
-        ):
+        reshape_qkv_2_path_1 = self.model.match_parent_path(concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0])
+        reshape_qkv_2_path_2 = self.model.match_parent_path(concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0])
+        reshape_qkv_2_path_3 = self.model.match_parent_path(concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [2, 0, 0])
+        if reshape_qkv_2_path_1 is None or reshape_qkv_2_path_2 is None or reshape_qkv_2_path_3 is None:
             return False
 
         _, gather_1, shape_1 = reshape_qkv_2_path_1
         _, gather_2, shape_2 = reshape_qkv_2_path_2
         _, _, shape_3 = reshape_qkv_2_path_3
 
-        if (
-            shape_1.input[0] != root_input
-            or shape_2.input[0] != root_input
-            or shape_3.input[0] != root_input
-        ):
+        if shape_1.input[0] != root_input or shape_2.input[0] != root_input or shape_3.input[0] != root_input:
             return False
 
-        reshape_qkv_1_path_1 = self.model.match_parent_path(
-            reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 0, 0]
-        )
-        reshape_qkv_1_path_2 = self.model.match_parent_path(
-            reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 2, 0]
-        )
+        reshape_qkv_1_path_1 = self.model.match_parent_path(reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 0, 0])
+        reshape_qkv_1_path_2 = self.model.match_parent_path(reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 2, 0])
         if reshape_qkv_1_path_1 is None or reshape_qkv_1_path_2 is None:
             return False
-        if (
-            reshape_qkv_1_path_1[-1].name != gather_1.name
-            or reshape_qkv_1_path_2[-1].name != gather_2.name
-        ):
+        if reshape_qkv_1_path_1[-1].name != gather_1.name or reshape_qkv_1_path_2[-1].name != gather_2.name:
             return False
 
-        reshape_q_2_path = self.model.match_parent_path(
-            reshape_q_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0]
-        )
-        reshape_k_2_path = self.model.match_parent_path(
-            reshape_k_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0]
-        )
-        reshape_v_2_path = self.model.match_parent_path(
-            reshape_v_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0]
-        )
-        if (
-            reshape_q_2_path is None
-            or reshape_k_2_path is None
-            or reshape_v_2_path is None
-        ):
+        reshape_q_2_path = self.model.match_parent_path(reshape_q_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
+        reshape_k_2_path = self.model.match_parent_path(reshape_k_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
+        reshape_v_2_path = self.model.match_parent_path(reshape_v_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
+        if reshape_q_2_path is None or reshape_k_2_path is None or reshape_v_2_path is None:
             return False
 
         mul_q = reshape_q_2_path[-1]
@@ -103,11 +72,7 @@ class FusionBartEncoderAttention(FusionAttention):
         mul_v = reshape_v_2_path[-1]
 
         gather_1_out = gather_1.output[0]
-        if (
-            mul_q.input[0] != gather_1_out
-            or mul_k.input[0] != gather_1_out
-            or mul_v.input[0] != gather_1_out
-        ):
+        if mul_q.input[0] != gather_1_out or mul_k.input[0] != gather_1_out or mul_v.input[0] != gather_1_out:
             return False
 
         return True
@@ -157,9 +122,7 @@ class FusionBartEncoderAttention(FusionAttention):
             return
         (reshape_v_2, transpose_v, reshape_v_1, add_v, matmul_v) = v_nodes
 
-        qk_nodes = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "MatMul"], [0, 0]
-        )
+        qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "MatMul"], [0, 0])
         if qk_nodes is not None:
             _, matmul_qk = qk_nodes
         else:
@@ -195,11 +158,7 @@ class FusionBartEncoderAttention(FusionAttention):
         ):
             return
 
-        if (
-            matmul_v.input[0] == root_input
-            and matmul_q.input[0] == root_input
-            and matmul_v.input[0] == root_input
-        ):
+        if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
 
             mask_nodes = []
             mask_index = None
@@ -208,9 +167,7 @@ class FusionBartEncoderAttention(FusionAttention):
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
 
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
-                logger.debug(
-                    "fuse_attention: failed to detect num_heads or hidden_size"
-                )
+                logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
                 return
 
             new_node = self.create_attention_node(
@@ -233,9 +190,7 @@ class FusionBartEncoderAttention(FusionAttention):
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
-            self.nodes_to_remove.extend(
-                [attention_last_node, transpose_qkv, matmul_qkv]
-            )
+            self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)
@@ -299,9 +254,7 @@ class FusionBartReshape(FusionReshape):
             shape.extend(input_1)
             shape.extend(input_2)
             shape.extend(input_3)
-            gemm_path = self.model.match_parent_path(
-                reshape_node, ["Add", "MatMul"], [0, 1], output_name_to_node
-            )
+            gemm_path = self.model.match_parent_path(reshape_node, ["Add", "MatMul"], [0, 1], output_name_to_node)
             if gemm_path is None:
                 return
 
@@ -351,9 +304,7 @@ class BartOnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
-        self.attention_fusion = FusionBartEncoderAttention(
-            self, self.hidden_size, self.num_heads, self.attention_mask
-        )
+        self.attention_fusion = FusionBartEncoderAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.bart_reshape_fusion_preprocess = FusionBartReshape(self)
 
     def fuse_attention(self):

@@ -1,8 +1,7 @@
 import numpy as np
 import onnx
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType,
-                           attribute_to_kwarg, quantize_nparray)
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, quantize_nparray
 from .base_operator import QuantOperatorBase
 
 
@@ -16,9 +15,7 @@ class QPad(QuantOperatorBase):
 
         # Only after version 11, it has the optional constant_value
         # If input[0] is not quantized, do not quanitize this node
-        if (self.quantizer.opset_version < 11) or (
-            node.input[0] not in self.quantizer.quantized_value_map
-        ):
+        if (self.quantizer.opset_version < 11) or (node.input[0] not in self.quantizer.quantized_value_map):
             super().quantize()
             return
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
@@ -30,29 +27,19 @@ class QPad(QuantOperatorBase):
 
         if "mode" not in kwargs or kwargs["mode"] == b"constant":
             if len(node.input) > 2:  # There is 3rd input 'constant_value'
-                zp_tensor = self.quantizer.model.get_initializer(
-                    quantized_input_value.zp_name
-                )
-                scale_tensor = self.quantizer.model.get_initializer(
-                    quantized_input_value.scale_name
-                )
+                zp_tensor = self.quantizer.model.get_initializer(quantized_input_value.zp_name)
+                scale_tensor = self.quantizer.model.get_initializer(quantized_input_value.scale_name)
                 if zp_tensor is None or scale_tensor is None:
                     super().quantize()
                     return
 
-                padding_constant_initializer = self.quantizer.model.get_initializer(
-                    node.input[2]
-                )
+                padding_constant_initializer = self.quantizer.model.get_initializer(node.input[2])
                 if padding_constant_initializer is not None:
                     zp_array = onnx.numpy_helper.to_array(zp_tensor)
                     zp_value = zp_array.item() if zp_array.ndim == 0 else zp_array[0]
                     scale_array = onnx.numpy_helper.to_array(scale_tensor)
-                    scale_value = (
-                        scale_array.item() if scale_array.ndim == 0 else scale_array[0]
-                    )
-                    padding_constant_array = onnx.numpy_helper.to_array(
-                        padding_constant_initializer
-                    )
+                    scale_value = scale_array.item() if scale_array.ndim == 0 else scale_array[0]
+                    padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
                     quantized_padding_constant_array = quantize_nparray(
                         self.quantizer.input_qType,
                         padding_constant_array,
@@ -60,19 +47,13 @@ class QPad(QuantOperatorBase):
                         zp_value,
                     )
                     quantized_padding_constant_name = node.input[2] + "_quantized"
-                    quantized_padding_constant_initializer = (
-                        onnx.numpy_helper.from_array(
-                            quantized_padding_constant_array,
-                            quantized_padding_constant_name,
-                        )
+                    quantized_padding_constant_initializer = onnx.numpy_helper.from_array(
+                        quantized_padding_constant_array,
+                        quantized_padding_constant_name,
                     )
                     # Suppose this padding constant initializer only used by the node
-                    self.quantizer.model.remove_initializer(
-                        padding_constant_initializer
-                    )
-                    self.quantizer.model.add_initializer(
-                        quantized_padding_constant_initializer
-                    )
+                    self.quantizer.model.remove_initializer(padding_constant_initializer)
+                    self.quantizer.model.add_initializer(quantized_padding_constant_initializer)
                     node.input[2] = quantized_padding_constant_name
                 else:
                     # TODO: check quantize_inputs after sub graph is supported
@@ -86,9 +67,7 @@ class QPad(QuantOperatorBase):
                     self.quantizer.new_nodes += [pad_value_qnodes]
                     node.input[2] = pad_value_qnodes.output[0]
             else:
-                node.input.extend(
-                    [quantized_input_value.zp_name]
-                )  # pad zero_point for original zero
+                node.input.extend([quantized_input_value.zp_name])  # pad zero_point for original zero
 
         # Create an entry for output quantized value
         quantized_output_value = QuantizedValue(

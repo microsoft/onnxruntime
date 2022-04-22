@@ -2,8 +2,7 @@ import random
 
 import numpy as np
 import onnx
-from onnx import (GraphProto, OperatorSetIdProto, TensorProto, helper,
-                  numpy_helper)
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 batch = 6
 hidden_size = 4
@@ -14,53 +13,29 @@ relative_attention_num_buckets = 32
 input_len = 8
 output_len = 8
 
-X = helper.make_tensor_value_info(
-    "input", TensorProto.FLOAT, [batch, input_len, hidden_size]
-)
-Y = helper.make_tensor_value_info(
-    "output", TensorProto.FLOAT, [output_len, batch, hidden_size]
-)
+X = helper.make_tensor_value_info("input", TensorProto.FLOAT, [batch, input_len, hidden_size])
+Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, [output_len, batch, hidden_size])
 
-q_weight_np_vals = (
-    0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)
-).reshape((hidden_size, hidden_size))
-q_weight_initializer = numpy_helper.from_array(
-    q_weight_np_vals, "encoder.layers.0.self_attn.q_proj.weight"
-)
+q_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
+q_weight_initializer = numpy_helper.from_array(q_weight_np_vals, "encoder.layers.0.self_attn.q_proj.weight")
 
-k_weight_np_vals = (
-    0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)
-).reshape((hidden_size, hidden_size))
-k_weight_initializer = numpy_helper.from_array(
-    k_weight_np_vals, "encoder.layers.0.self_attn.k_proj.weight"
-)
+k_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
+k_weight_initializer = numpy_helper.from_array(k_weight_np_vals, "encoder.layers.0.self_attn.k_proj.weight")
 
-v_weight_np_vals = (
-    0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)
-).reshape((hidden_size, hidden_size))
-v_weight_initializer = numpy_helper.from_array(
-    v_weight_np_vals, "encoder.layers.0.self_attn.v_proj.weight"
-)
+v_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
+v_weight_initializer = numpy_helper.from_array(v_weight_np_vals, "encoder.layers.0.self_attn.v_proj.weight")
 
 q_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)
-q_bias_initializer = numpy_helper.from_array(
-    q_bias_np_vals, "encoder.layers.0.self_attn.q_proj.bias"
-)
+q_bias_initializer = numpy_helper.from_array(q_bias_np_vals, "encoder.layers.0.self_attn.q_proj.bias")
 
 k_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)
-k_bias_initializer = numpy_helper.from_array(
-    k_bias_np_vals, "encoder.layers.0.self_attn.k_proj.bias"
-)
+k_bias_initializer = numpy_helper.from_array(k_bias_np_vals, "encoder.layers.0.self_attn.k_proj.bias")
 
 v_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)
-v_bias_initializer = numpy_helper.from_array(
-    v_bias_np_vals, "encoder.layers.0.self_attn.v_proj.bias"
-)
+v_bias_initializer = numpy_helper.from_array(v_bias_np_vals, "encoder.layers.0.self_attn.v_proj.bias")
 
 q_shape_initializer = numpy_helper.from_array(
-    np.asarray(
-        [input_len, batch * attention_head, hidden_per_attention], dtype=np.int64
-    ),
+    np.asarray([input_len, batch * attention_head, hidden_per_attention], dtype=np.int64),
     "q_shape",
 )
 k_shape_initializer = numpy_helper.from_array(
@@ -80,12 +55,8 @@ qk_shape_initializer = numpy_helper.from_array(
     "qk_shape",
 )
 
-dummy_condition_initializer = numpy_helper.from_array(
-    np.zeros((batch, input_len), dtype=bool), "dummy_cond"
-)
-inf_const_initializer = numpy_helper.from_array(
-    np.asarray([-np.inf], dtype=np.float32), "inf_const"
-)
+dummy_condition_initializer = numpy_helper.from_array(np.zeros((batch, input_len), dtype=bool), "dummy_cond")
+inf_const_initializer = numpy_helper.from_array(np.asarray([-np.inf], dtype=np.float32), "inf_const")
 
 where_shape_initializer = numpy_helper.from_array(
     np.asarray([batch * attention_head, input_len, input_len], dtype=np.int64),
@@ -103,22 +74,16 @@ shape_initializer3 = numpy_helper.from_array(
     "concat_shape_3",
 )
 
-dense_weight_np_vals = (
-    0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)
-).reshape((hidden_size, hidden_size))
-dense_weight_initializer = numpy_helper.from_array(
-    dense_weight_np_vals, "encoder.layers.0.self_attn.out_proj.weight"
+dense_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape(
+    (hidden_size, hidden_size)
 )
+dense_weight_initializer = numpy_helper.from_array(dense_weight_np_vals, "encoder.layers.0.self_attn.out_proj.weight")
 
 dense_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)
-dense_bias_initializer = numpy_helper.from_array(
-    dense_bias_np_vals, "encoder.layers.0.self_attn.out_proj.bias"
-)
+dense_bias_initializer = numpy_helper.from_array(dense_bias_np_vals, "encoder.layers.0.self_attn.out_proj.bias")
 
 
-transpose_ip = helper.make_node(
-    "Transpose", ["input"], ["transpose_ip"], name="transpose_ip", perm=[1, 0, 2]
-)
+transpose_ip = helper.make_node("Transpose", ["input"], ["transpose_ip"], name="transpose_ip", perm=[1, 0, 2])
 
 transpose_q = helper.make_node(
     "Transpose",
@@ -142,55 +107,27 @@ transpose_v = helper.make_node(
     perm=[1, 0],
 )
 
-matmul_q = helper.make_node(
-    "MatMul", ["transpose_ip", "transpose_q"], ["matmul_q"], name="matmul_q"
-)
-matmul_k = helper.make_node(
-    "MatMul", ["transpose_ip", "transpose_k"], ["matmul_k"], name="matmul_k"
-)
-matmul_v = helper.make_node(
-    "MatMul", ["transpose_ip", "transpose_v"], ["matmul_v"], name="matmul_v"
-)
+matmul_q = helper.make_node("MatMul", ["transpose_ip", "transpose_q"], ["matmul_q"], name="matmul_q")
+matmul_k = helper.make_node("MatMul", ["transpose_ip", "transpose_k"], ["matmul_k"], name="matmul_k")
+matmul_v = helper.make_node("MatMul", ["transpose_ip", "transpose_v"], ["matmul_v"], name="matmul_v")
 
 
-add_q = helper.make_node(
-    "Add", ["matmul_q", q_bias_initializer.name], ["add_q"], name="add_q"
-)
-add_k = helper.make_node(
-    "Add", ["matmul_k", k_bias_initializer.name], ["add_k"], name="add_k"
-)
-add_v = helper.make_node(
-    "Add", ["matmul_v", v_bias_initializer.name], ["add_v"], name="add_v"
-)
+add_q = helper.make_node("Add", ["matmul_q", q_bias_initializer.name], ["add_q"], name="add_q")
+add_k = helper.make_node("Add", ["matmul_k", k_bias_initializer.name], ["add_k"], name="add_k")
+add_v = helper.make_node("Add", ["matmul_v", v_bias_initializer.name], ["add_v"], name="add_v")
 
 mul_q = helper.make_node("Mul", ["add_q", "mul_const"], ["mul_q"], name="mul_q")
 
-reshape_q = helper.make_node(
-    "Reshape", ["mul_q", q_shape_initializer.name], ["reshape_q"], name="reshape_q"
-)
-reshape_k = helper.make_node(
-    "Reshape", ["add_k", k_shape_initializer.name], ["reshape_k"], name="reshape_k"
-)
-reshape_v = helper.make_node(
-    "Reshape", ["add_v", v_shape_initializer.name], ["reshape_v"], name="reshape_v"
-)
+reshape_q = helper.make_node("Reshape", ["mul_q", q_shape_initializer.name], ["reshape_q"], name="reshape_q")
+reshape_k = helper.make_node("Reshape", ["add_k", k_shape_initializer.name], ["reshape_k"], name="reshape_k")
+reshape_v = helper.make_node("Reshape", ["add_v", v_shape_initializer.name], ["reshape_v"], name="reshape_v")
 
-transpose_q2 = helper.make_node(
-    "Transpose", ["reshape_q"], ["transpose_q2"], name="transpose_q2", perm=[1, 0, 2]
-)
-transpose_k2 = helper.make_node(
-    "Transpose", ["reshape_k"], ["transpose_k2"], name="transpose_k2", perm=[1, 2, 0]
-)
-transpose_v2 = helper.make_node(
-    "Transpose", ["reshape_v"], ["transpose_v2"], name="transpose_v2", perm=[1, 0, 2]
-)
+transpose_q2 = helper.make_node("Transpose", ["reshape_q"], ["transpose_q2"], name="transpose_q2", perm=[1, 0, 2])
+transpose_k2 = helper.make_node("Transpose", ["reshape_k"], ["transpose_k2"], name="transpose_k2", perm=[1, 2, 0])
+transpose_v2 = helper.make_node("Transpose", ["reshape_v"], ["transpose_v2"], name="transpose_v2", perm=[1, 0, 2])
 
-matmul = helper.make_node(
-    "MatMul", ["transpose_q2", "transpose_k2"], ["matmul"], name="matmul"
-)
-reshape_qk = helper.make_node(
-    "Reshape", ["matmul", qk_shape_initializer.name], ["reshape_qk"], name="reshape_qk"
-)
+matmul = helper.make_node("MatMul", ["transpose_q2", "transpose_k2"], ["matmul"], name="matmul")
+reshape_qk = helper.make_node("Reshape", ["matmul", qk_shape_initializer.name], ["reshape_qk"], name="reshape_qk")
 
 
 unsqueeze = helper.make_node(
@@ -214,9 +151,7 @@ reshape_where = helper.make_node(
     name="reshape_where",
 )
 
-softmax = helper.make_node(
-    "Softmax", ["reshape_where"], ["softmax"], name="softmax", axis=2
-)
+softmax = helper.make_node("Softmax", ["reshape_where"], ["softmax"], name="softmax", axis=2)
 dropout1 = helper.make_node(
     "Dropout",
     ["softmax", dropout_initializer.name, dropout_mode_initializer.name],
@@ -224,15 +159,9 @@ dropout1 = helper.make_node(
     name="dropout1",
 )
 
-matmul2 = helper.make_node(
-    "MatMul", ["dropout1", "transpose_v2"], ["matmul2"], name="matmul2"
-)
-transpose = helper.make_node(
-    "Transpose", ["matmul2"], ["transpose"], name="transpose", perm=[1, 0, 2]
-)
-reshape = helper.make_node(
-    "Reshape", ["transpose", shape_initializer3.name], ["reshape"], name="reshape"
-)
+matmul2 = helper.make_node("MatMul", ["dropout1", "transpose_v2"], ["matmul2"], name="matmul2")
+transpose = helper.make_node("Transpose", ["matmul2"], ["transpose"], name="transpose", perm=[1, 0, 2])
+reshape = helper.make_node("Reshape", ["transpose", shape_initializer3.name], ["reshape"], name="reshape")
 
 transpose_o_weight = helper.make_node(
     "Transpose",
@@ -241,12 +170,8 @@ transpose_o_weight = helper.make_node(
     name="transpose_o_weight",
     perm=[1, 0],
 )
-matmul3 = helper.make_node(
-    "MatMul", ["reshape", "transpose_o_weight"], ["matmul3"], name="matmul3"
-)
-add3 = helper.make_node(
-    "Add", ["matmul3", dense_bias_initializer.name], ["add3"], name="add3"
-)
+matmul3 = helper.make_node("MatMul", ["reshape", "transpose_o_weight"], ["matmul3"], name="matmul3")
+add3 = helper.make_node("Add", ["matmul3", dense_bias_initializer.name], ["add3"], name="add3")
 identity = helper.make_node("Identity", ["add3"], ["output"], name="identity")
 
 # Create the graph (GraphProto)

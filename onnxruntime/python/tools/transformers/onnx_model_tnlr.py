@@ -43,15 +43,11 @@ class FusionTnlrAttention(FusionAttention):
 
         assert num_heads > 0
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(
-                f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}"
-            )
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
             return None
 
         weight = self.model.get_initializer(matmul.input[1])
-        bias = self.model.get_initializer(add.input[1]) or self.model.get_initializer(
-            add.input[0]
-        )
+        bias = self.model.get_initializer(add.input[1]) or self.model.get_initializer(add.input[0])
 
         if weight is None or bias is None:
             return None
@@ -70,11 +66,7 @@ class FusionTnlrAttention(FusionAttention):
 
         # Sometimes weights and bias are stored in fp16
         if weight.data_type == 10:
-            weight.CopyFrom(
-                numpy_helper.from_array(
-                    NumpyHelper.to_array(weight).astype(np.float16), weight.name
-                )
-            )
+            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
         self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(
@@ -84,11 +76,7 @@ class FusionTnlrAttention(FusionAttention):
             vals=qkv_bias.flatten().tolist(),
         )
         if bias.data_type == 10:
-            bias.CopyFrom(
-                numpy_helper.from_array(
-                    NumpyHelper.to_array(bias).astype(np.float16), bias.name
-                )
-            )
+            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [
@@ -159,9 +147,7 @@ class FusionTnlrAttention(FusionAttention):
         upper_nodes = self.model.match_parent_path(matmul, ["Transpose"], [0])
         transpose = upper_nodes[0]
 
-        qk_nodes = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0]
-        )
+        qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "MatMul"], [0, 0, 0])
         if qk_nodes is None:
             return
         (_, add_qk, matmul_qk) = qk_nodes
@@ -186,9 +172,7 @@ class FusionTnlrAttention(FusionAttention):
         add = k_nodes[-2]
         matmul = k_nodes[-1]
 
-        extra_add_qk_nodes = self.model.match_parent_path(
-            add_qk, ["Reshape", "Where"], [1, 0]
-        )
+        extra_add_qk_nodes = self.model.match_parent_path(add_qk, ["Reshape", "Where"], [1, 0])
         if extra_add_qk_nodes is None:
             return
 
@@ -225,9 +209,7 @@ class FusionTnlrAttention(FusionAttention):
             new_node.input[0] = transpose.input[0]
             new_node.output[0] = "back_transpose_in_" + new_node.name
 
-            self.nodes_to_remove.extend(
-                [attention_last_node, transpose_qkv, matmul_qkv]
-            )
+            self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)
@@ -242,9 +224,7 @@ class TnlrOnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
-        self.attention_fusion = FusionTnlrAttention(
-            self, self.hidden_size, self.num_heads, self.attention_mask
-        )
+        self.attention_fusion = FusionTnlrAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
 
     def fuse_attention(self):
         self.attention_fusion.apply()

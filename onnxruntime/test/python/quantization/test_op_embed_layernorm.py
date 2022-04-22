@@ -11,8 +11,7 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import (TestDataFeeds, check_model_correctness,
-                           check_op_type_count)
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
 from onnxruntime.quantization import quantize_dynamic
 
@@ -38,39 +37,23 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
 
         # Inputs to EmbedLayerNormalizationNode
         input_ids_shape = [batch, sequence_length]
-        input_ids_tensor = helper.make_tensor_value_info(
-            "input_ids", TensorProto.INT32, input_ids_shape
-        )
+        input_ids_tensor = helper.make_tensor_value_info("input_ids", TensorProto.INT32, input_ids_shape)
 
         segment_ids_shape = [batch, sequence_length]
-        segment_ids_tensor = helper.make_tensor_value_info(
-            "segment_ids", TensorProto.INT32, segment_ids_shape
-        )
+        segment_ids_tensor = helper.make_tensor_value_info("segment_ids", TensorProto.INT32, segment_ids_shape)
 
         # EmbedLayerNormalization Node Constants and Weights:
         word_embed_shape = [32, hidden_size]
-        word_embed_weights = np.random.random_sample(word_embed_shape).astype(
-            dtype="float32"
-        )
-        word_embed_initializer = onnx.numpy_helper.from_array(
-            word_embed_weights, name="word_embed"
-        )
+        word_embed_weights = np.random.random_sample(word_embed_shape).astype(dtype="float32")
+        word_embed_initializer = onnx.numpy_helper.from_array(word_embed_weights, name="word_embed")
 
         pos_embed_shape = [16, hidden_size]
-        pos_embed_weights = np.random.random_sample(pos_embed_shape).astype(
-            dtype="float32"
-        )
-        pos_embed_initializer = onnx.numpy_helper.from_array(
-            pos_embed_weights, name="pos_embed"
-        )
+        pos_embed_weights = np.random.random_sample(pos_embed_shape).astype(dtype="float32")
+        pos_embed_initializer = onnx.numpy_helper.from_array(pos_embed_weights, name="pos_embed")
 
         seg_embed_shape = [2, hidden_size]
-        seg_embed_weights = np.random.random_sample(seg_embed_shape).astype(
-            dtype="float32"
-        )
-        seg_embed_initializer = onnx.numpy_helper.from_array(
-            seg_embed_weights, name="seg_embed"
-        )
+        seg_embed_weights = np.random.random_sample(seg_embed_shape).astype(dtype="float32")
+        seg_embed_initializer = onnx.numpy_helper.from_array(seg_embed_weights, name="seg_embed")
 
         gamma_shape = [hidden_size]
         gamma = np.random.random_sample(gamma_shape).astype(dtype="float32")
@@ -82,14 +65,10 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
 
         # EmbedLayerNormalization Outputs:
         layernorm_out_shape = [batch, sequence_length, hidden_size]
-        layernorm_out_tensor = helper.make_tensor_value_info(
-            "layernorm_out", TensorProto.FLOAT, layernorm_out_shape
-        )
+        layernorm_out_tensor = helper.make_tensor_value_info("layernorm_out", TensorProto.FLOAT, layernorm_out_shape)
 
         mask_index_out_shape = [batch]
-        mask_index_out_tensor = helper.make_tensor_value_info(
-            "mask_index_out", TensorProto.INT32, mask_index_out_shape
-        )
+        mask_index_out_tensor = helper.make_tensor_value_info("mask_index_out", TensorProto.INT32, mask_index_out_shape)
 
         # EmbedLayerNormalization Node:
         embed_layer_norm_inputs = [
@@ -122,9 +101,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
             beta_initializer,
         ]
 
-        graph = helper.make_graph(
-            nodes, graph_name, inputs, outputs, initializer=initializers
-        )
+        graph = helper.make_graph(nodes, graph_name, inputs, outputs, initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 14)])
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, model_path)
@@ -154,9 +131,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         data_reader.rewind()
 
-        check_model_correctness(
-            self, model_f32_path, model_uint8_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_f32_path, model_uint8_path, data_reader.get_next())
 
     def test_quantize_batch_size_2(self):
         batch = 2
@@ -183,9 +158,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         data_reader.rewind()
 
-        check_model_correctness(
-            self, model_f32_path, model_uint8_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_f32_path, model_uint8_path, data_reader.get_next())
 
 
 if __name__ == "__main__":

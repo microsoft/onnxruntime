@@ -1,31 +1,22 @@
 import numpy as np
 import onnx
-from onnx import (AttributeProto, GraphProto, OperatorSetIdProto, TensorProto,
-                  helper, numpy_helper)
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 hidden_size = 4
 weight_dim_to_split = 16
 
-X = helper.make_tensor_value_info(
-    "input", TensorProto.FLOAT, ["batch", "seqlen", hidden_size]
-)
-Y = helper.make_tensor_value_info(
-    "output", TensorProto.FLOAT, ["batch", "seqlen", hidden_size]
-)
+X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", hidden_size])
+Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "seqlen", hidden_size])
 
-a_weight_np_vals = (
-    0.01 * np.arange(hidden_size * weight_dim_to_split, dtype=np.float32)
-).reshape((weight_dim_to_split, hidden_size))
+a_weight_np_vals = (0.01 * np.arange(hidden_size * weight_dim_to_split, dtype=np.float32)).reshape(
+    (weight_dim_to_split, hidden_size)
+)
 a_weight_initializer = numpy_helper.from_array(
     a_weight_np_vals, "encoder.t5_stack.block.1.layer.1.DenseReluDense.wi.weight"
 )
 
-a_bias_np_vals = 0.01 * np.arange(
-    weight_dim_to_split, dtype=np.float32
-)  # weight_dim_to_split numbers in total
-a_bias_initializer = numpy_helper.from_array(
-    a_bias_np_vals, "encoder.t5_stack.block.1.layer.1.DenseReluDense.wi.bias"
-)
+a_bias_np_vals = 0.01 * np.arange(weight_dim_to_split, dtype=np.float32)  # weight_dim_to_split numbers in total
+a_bias_initializer = numpy_helper.from_array(a_bias_np_vals, "encoder.t5_stack.block.1.layer.1.DenseReluDense.wi.bias")
 
 dropout_np_vals = np.asarray([0.1], dtype=np.float32).reshape(())
 dropout_initializer = numpy_helper.from_array(dropout_np_vals, "ratio")
@@ -33,19 +24,15 @@ dropout_initializer = numpy_helper.from_array(dropout_np_vals, "ratio")
 dropout_mode_np_vals = np.array([False], dtype=np.bool).reshape(())
 dropout_mode_initializer = numpy_helper.from_array(dropout_mode_np_vals, "mode")
 
-b_weight_np_vals = (
-    0.01 * np.arange(hidden_size * weight_dim_to_split, dtype=np.float32)
-).reshape((hidden_size, weight_dim_to_split))
+b_weight_np_vals = (0.01 * np.arange(hidden_size * weight_dim_to_split, dtype=np.float32)).reshape(
+    (hidden_size, weight_dim_to_split)
+)
 b_weight_initializer = numpy_helper.from_array(
     b_weight_np_vals, "encoder.t5_stack.block.1.layer.1.DenseReluDense.wo.weight"
 )
 
-b_bias_np_vals = 0.01 * np.arange(
-    hidden_size, dtype=np.float32
-)  # hidden_size numbers in total
-b_bias_initializer = numpy_helper.from_array(
-    b_bias_np_vals, "encoder.t5_stack.block.1.layer.1.DenseReluDense.wo.bias"
-)
+b_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)  # hidden_size numbers in total
+b_bias_initializer = numpy_helper.from_array(b_bias_np_vals, "encoder.t5_stack.block.1.layer.1.DenseReluDense.wo.bias")
 
 transpose1 = helper.make_node(
     "Transpose",

@@ -19,9 +19,7 @@ class FusionGeluApproximation(Fusion):
             "FastGelu",
             inputs=node.input,
             outputs=node.output,
-            name=self.model.create_node_name(
-                "FastGelu", node.op_type + "_Approximation"
-            ),
+            name=self.model.create_node_name("FastGelu", node.op_type + "_Approximation"),
         )
         new_node.domain = "com.microsoft"
         self.nodes_to_remove.append(node)

@@ -7,15 +7,12 @@ from datetime import date
 
 import numpy as np
 import onnx
-from onnx import (AttributeProto, GraphProto, TensorProto, helper,
-                  numpy_helper, utils)
+from onnx import AttributeProto, GraphProto, TensorProto, helper, numpy_helper, utils
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--output_dir", required=True, help="Path to the build directory."
-    )
+    parser.add_argument("--output_dir", required=True, help="Path to the build directory.")
     return parser.parse_args()
 
 
@@ -53,20 +50,14 @@ def generate_abs_op_test(type, X, top_test_folder):
         Y = helper.make_tensor_value_info("Y", type, X.shape)
         X_INFO = helper.make_tensor_value_info("X", type, X.shape)
         if is_raw:
-            tensor_x = onnx.helper.make_tensor(
-                name="X", data_type=type, dims=X.shape, vals=X.tobytes(), raw=True
-            )
+            tensor_x = onnx.helper.make_tensor(name="X", data_type=type, dims=X.shape, vals=X.tobytes(), raw=True)
         else:
-            tensor_x = onnx.helper.make_tensor(
-                name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False
-            )
+            tensor_x = onnx.helper.make_tensor(name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False)
         # Create a node (NodeProto)
         node_def = helper.make_node("Abs", inputs=["X"], outputs=["Y"])
 
         # Create the graph (GraphProto)
-        graph_def = helper.make_graph(
-            [node_def], "test-model", [X_INFO], [Y], [tensor_x]
-        )
+        graph_def = helper.make_graph([node_def], "test-model", [X_INFO], [Y], [tensor_x])
         # Create the model (ModelProto)
         model_def = helper.make_model(graph_def, producer_name="onnx-example")
         # final_model = infer_shapes(model_def)
@@ -86,9 +77,7 @@ def generate_size_op_test(type, X, test_folder):
     # Create one output (ValueInfoProto)
     Y = helper.make_tensor_value_info("Y", TensorProto.INT64, [])
     X_INFO = helper.make_tensor_value_info("X", type, X.shape)
-    tensor_x = onnx.helper.make_tensor(
-        name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False
-    )
+    tensor_x = onnx.helper.make_tensor(name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False)
     # Create a node (NodeProto)
     node_def = helper.make_node("Size", inputs=["X"], outputs=["Y"])
 
@@ -111,9 +100,7 @@ def generate_reducesum_op_test(X, test_folder):
     # Create one output (ValueInfoProto)
     Y = helper.make_tensor_value_info("Y", type, [])
     X_INFO = helper.make_tensor_value_info("X", type, X.shape)
-    tensor_x = onnx.helper.make_tensor(
-        name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False
-    )
+    tensor_x = onnx.helper.make_tensor(name="X", data_type=type, dims=X.shape, vals=X.ravel(), raw=False)
     # Create a node (NodeProto)
     node_def = helper.make_node("ReduceSum", inputs=["X"], outputs=["Y"], keepdims=0)
 

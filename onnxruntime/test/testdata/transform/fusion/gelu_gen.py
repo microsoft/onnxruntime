@@ -1,7 +1,6 @@
 import numpy as np
 import onnx
-from onnx import (AttributeProto, GraphProto, OperatorSetIdProto, TensorProto,
-                  helper, numpy_helper)
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 """
 Generate test model for Gelu subgraph pattern 2:
@@ -13,9 +12,7 @@ Generate test model for Gelu subgraph pattern 2:
 """
 
 has_bias = True  # change it to True to generate gelu_format2_*_with_bias.onnx
-gelu_use_graph_input = (
-    False  # change it to False to let Gelu don't have graph inputs as inputs.
-)
+gelu_use_graph_input = False  # change it to False to let Gelu don't have graph inputs as inputs.
 node_has_graph_output = True  # change it to False to let Gelu don't have graph output
 switch_order = True  # switch order of inputs for Mul and Add
 
@@ -38,9 +35,7 @@ initializer_1 = numpy_helper.from_array(value, "add1_init")
 nodes = []
 gelu_input = "input"
 if not gelu_use_graph_input:
-    leading_identity = helper.make_node(
-        "Identity", [gelu_input], ["identity_leading"], name="identity_leading"
-    )
+    leading_identity = helper.make_node("Identity", [gelu_input], ["identity_leading"], name="identity_leading")
     gelu_input = "identity_leading"
     nodes.append(leading_identity)
 
@@ -48,18 +43,14 @@ gelu_root = gelu_input
 if has_bias:
     add0 = helper.make_node(
         "Add",
-        [gelu_input, bias_initializer.name]
-        if switch_order
-        else [bias_initializer.name, gelu_input],
+        [gelu_input, bias_initializer.name] if switch_order else [bias_initializer.name, gelu_input],
         ["add0"],
         name="add0_node",
     )
     gelu_root = "add0"
     nodes.append(add0)
 
-div = helper.make_node(
-    "Div", [gelu_root, initializer_sqrt_2.name], ["div"], name="div_node"
-)
+div = helper.make_node("Div", [gelu_root, initializer_sqrt_2.name], ["div"], name="div_node")
 nodes.append(div)
 
 erf = helper.make_node("Erf", ["div"], ["erf"], name="erf_node")
@@ -89,9 +80,7 @@ mul2 = helper.make_node(
 )
 nodes.append(mul2)
 
-ending_identity = helper.make_node(
-    "Identity", ["mul2"], ["output"], name="identity_ending"
-)
+ending_identity = helper.make_node("Identity", ["mul2"], ["output"], name="identity_ending")
 nodes.append(ending_identity)
 
 initializers = []
@@ -101,9 +90,7 @@ if has_bias:
 initializers.extend([initializer_sqrt_2, initializer_1, initializer_0_5])
 
 # Create the graph (GraphProto)
-graph_def = helper.make_graph(
-    nodes, "gelu_pattern_2", [X], [Y, Z] if node_has_graph_output else [Y], initializers
-)
+graph_def = helper.make_graph(nodes, "gelu_pattern_2", [X], [Y, Z] if node_has_graph_output else [Y], initializers)
 
 opsets = []
 onnxdomain = OperatorSetIdProto()

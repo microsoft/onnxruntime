@@ -18,17 +18,12 @@ class FusionUtils:
 
     def cast_graph_input_to_int32(self, input_name: str) -> Tuple[bool, str]:
         graph_input = self.model.find_graph_input(input_name)
-        if (
-            graph_input is not None
-            and graph_input.type.tensor_type.elem_type != TensorProto.INT32
-        ):
+        if graph_input is not None and graph_input.type.tensor_type.elem_type != TensorProto.INT32:
             cast_output, cast_node = self.cast_input_to_int32(input_name)
             logger.debug(f"Casted graph input {input_name} to int32")
             return True, cast_output
 
-        logger.debug(
-            f"Did not cast graph input {input_name} to int32: found {graph_input is not None}"
-        )
+        logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")
         return False, input_name
 
     def cast_input_to_int32(self, input_name: str):
@@ -43,9 +38,7 @@ class FusionUtils:
                 inputs = [parent_node.input[0]]
 
         cast_node = helper.make_node("Cast", inputs=inputs, outputs=[cast_output])
-        cast_node.attribute.extend(
-            [helper.make_attribute("to", int(TensorProto.INT32))]
-        )
+        cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.INT32))])
         self.model.add_node(cast_node)
 
         return cast_output, cast_node
@@ -66,9 +59,7 @@ class FusionUtils:
                     self.model.replace_input_of_all_nodes(output_name, input_name)
 
     @staticmethod
-    def check_node_attribute(
-        node, attribute_name: str, expected_value, default_value=None
-    ):
+    def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
         """Verify that a node has expected value for an attribute.
 
         Args:
@@ -86,9 +77,9 @@ class FusionUtils:
                 value = helper.get_attribute_value(attr)
 
         if isinstance(expected_value, list):
-            return (
-                isinstance(value, ndarray) or isinstance(value, list)
-            ) and array_equal(expected_value, value, equal_nan=False)
+            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
+                expected_value, value, equal_nan=False
+            )
         else:
             return value == expected_value
 
@@ -108,9 +99,9 @@ class FusionUtils:
         value = self.model.get_constant_value(node.input[input_index])
 
         if isinstance(expected_value, list):
-            return (
-                isinstance(value, ndarray) or isinstance(value, list)
-            ) and array_equal(expected_value, value, equal_nan=False)
+            return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
+                expected_value, value, equal_nan=False
+            )
         else:
             return value == expected_value
 
@@ -173,17 +164,13 @@ class FusionUtils:
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
                     if not bool(set(node.input) & graph_input_names):
-                        self.model.replace_output_of_all_nodes(
-                            node.input[0], node.output[0]
-                        )
+                        self.model.replace_output_of_all_nodes(node.input[0], node.output[0])
                     else:
                         continue
                 else:
                     self.model.replace_input_of_all_nodes(node.output[0], node.input[0])
                 self.model.remove_node(node)
-        logger.info(
-            f"Removed {len(nodes_to_remove)} Cast nodes with output type same as input"
-        )
+        logger.info(f"Removed {len(nodes_to_remove)} Cast nodes with output type same as input")
 
     def remove_useless_reshape_nodes(self):
         """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape"""
@@ -208,9 +195,7 @@ class FusionUtils:
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
                     if not bool(set(node.input) & graph_input_names):
-                        self.model.replace_output_of_all_nodes(
-                            node.input[0], node.output[0]
-                        )
+                        self.model.replace_output_of_all_nodes(node.input[0], node.output[0])
                     else:
                         continue
                 else:

@@ -29,12 +29,8 @@ class TestOrtTrainer(unittest.TestCase):
         )
 
         rtol = 1e-02
-        assert_allclose(
-            expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch"
-        )
-        assert_array_equal(
-            expected_all_finites, actual_all_finites, "all_finite mismatch"
-        )
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
         assert_allclose(
             expected_eval_loss,
             actual_eval_loss,
@@ -63,9 +59,7 @@ class TestOrtTrainer(unittest.TestCase):
         )
 
         rtol = 1e-02
-        assert_allclose(
-            expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch"
-        )
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
         assert_allclose(
             expected_eval_loss,
             actual_eval_loss,
@@ -94,12 +88,8 @@ class TestOrtTrainer(unittest.TestCase):
         )
 
         rtol = 1e-02
-        assert_allclose(
-            expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch"
-        )
-        assert_array_equal(
-            expected_all_finites, actual_all_finites, "all_finite mismatch"
-        )
+        assert_allclose(expected_losses, actual_losses, rtol=rtol, err_msg="loss mismatch")
+        assert_array_equal(expected_all_finites, actual_all_finites, "all_finite mismatch")
         assert_allclose(
             expected_eval_loss,
             actual_eval_loss,

@@ -43,9 +43,7 @@ class LayerNorm(nn.Module):
         y = x - u
         s = y.pow(2).mean(-1, keepdim=True)
         z = y / torch.sqrt(s + self.epsilon)
-        return (
-            self.layer_norm.weight.data * z.to(input_dtype) + self.layer_norm.bias.data
-        )
+        return self.layer_norm.weight.data * z.to(input_dtype) + self.layer_norm.bias.data
 
     def forward(self, x):
         if self.cast_fp16 and x.dtype == torch.float16:
@@ -77,19 +75,11 @@ def optimize_fp16_onnx_with_cast(input_onnx_path, optimized_onnx_path, epsilon):
     onnx_model = OnnxModel(m)
     weight_name = get_weight(onnx_model)
     bias_name = get_bias(onnx_model)
-    nodes_to_remove = [
-        n
-        for n in onnx_model.nodes()
-        if n.output[0] != weight_name and n.output[0] != bias_name
-    ]
+    nodes_to_remove = [n for n in onnx_model.nodes() if n.output[0] != weight_name and n.output[0] != bias_name]
     nodes_to_add = [
         onnx.helper.make_node("Cast", ["input"], ["fp32_input"], "cast_input", to=1),
-        onnx.helper.make_node(
-            "Cast", [weight_name], ["fp32_layer_norm.weight"], "cast_weight", to=1
-        ),
-        onnx.helper.make_node(
-            "Cast", [bias_name], ["fp32_layer_norm.bias"], "cast_bias", to=1
-        ),
+        onnx.helper.make_node("Cast", [weight_name], ["fp32_layer_norm.weight"], "cast_weight", to=1),
+        onnx.helper.make_node("Cast", [bias_name], ["fp32_layer_norm.bias"], "cast_bias", to=1),
         onnx.helper.make_node(
             "LayerNormalization",
             ["fp32_input", "fp32_layer_norm.weight", "fp32_layer_norm.bias"],
@@ -97,9 +87,7 @@ def optimize_fp16_onnx_with_cast(input_onnx_path, optimized_onnx_path, epsilon):
             "layer_norm",
             epsilon=epsilon,
         ),  # use fp32 epsilon
-        onnx.helper.make_node(
-            "Cast", ["fp32_output"], ["output"], "cast_output", to=10
-        ),
+        onnx.helper.make_node("Cast", ["fp32_output"], ["output"], "cast_output", to=10),
     ]
 
     onnx_model.remove_nodes(nodes_to_remove)
@@ -114,11 +102,7 @@ def optimize_fp16_onnx_no_cast(input_onnx_path, optimized_onnx_path, epsilon):
 
     weight_name = get_weight(onnx_model)
     bias_name = get_bias(onnx_model)
-    nodes_to_remove = [
-        n
-        for n in onnx_model.nodes()
-        if n.output[0] != weight_name and n.output[0] != bias_name
-    ]
+    nodes_to_remove = [n for n in onnx_model.nodes() if n.output[0] != weight_name and n.output[0] != bias_name]
 
     nodes_to_remove = onnx_model.nodes()
     node_to_add = onnx.helper.make_node(
@@ -165,15 +149,11 @@ def run(
         model.half()
 
     # Do not re-use onnx file from previous test since weights of model are random.
-    onnx_model_path = "./temp/layer_norm_{}_formula{}.onnx".format(
-        "fp16" if float16 else "fp32", formula
-    )
+    onnx_model_path = "./temp/layer_norm_{}_formula{}.onnx".format("fp16" if float16 else "fp32", formula)
     export_onnx(model, onnx_model_path, float16, hidden_size, device)
 
     if optimized:
-        optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format(
-            "fp16" if float16 else "fp32", formula
-        )
+        optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format("fp16" if float16 else "fp32", formula)
         if (not float16) or cast_fp16:
             optimize_onnx(
                 onnx_model_path,
@@ -182,13 +162,9 @@ def run(
             )
         else:
             if cast_onnx_only:
-                optimize_fp16_onnx_with_cast(
-                    onnx_model_path, optimized_onnx_path, epsilon=epsilon
-                )
+                optimize_fp16_onnx_with_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)
             else:
-                optimize_fp16_onnx_no_cast(
-                    onnx_model_path, optimized_onnx_path, epsilon=epsilon
-                )
+                optimize_fp16_onnx_no_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)
 
         onnx_path = optimized_onnx_path
     else:
@@ -217,9 +193,7 @@ def run(
 
 class TestLayerNormParity(unittest.TestCase):
     def setUp(self):
-        self.optimized = (
-            True  # Change it to False if you want to test parity of non optimized ONNX
-        )
+        self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 100  # Number of test cases per test run
         self.sequence_length = 2
         self.hidden_size = 768
@@ -326,9 +300,7 @@ class TestLayerNormParity(unittest.TestCase):
             pytest.skip("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
-            self.run_one(
-                self.optimized, gpu, hidden_size=self.hidden_size, run_extra_tests=True
-            )
+            self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, run_extra_tests=True)
 
 
 if __name__ == "__main__":

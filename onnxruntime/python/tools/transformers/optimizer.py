@@ -78,23 +78,15 @@ def optimize_by_onnxruntime(
 
     sess_options = onnxruntime.SessionOptions()
     if opt_level == 1:
-        sess_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-        )
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
     elif opt_level == 2:
-        sess_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        )
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     else:
-        sess_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     if optimized_model_path is None:
         path_prefix = onnx_model_path[:-5]  # remove .onnx suffix
-        optimized_model_path = "{}_o{}_{}.onnx".format(
-            path_prefix, opt_level, "gpu" if use_gpu else "cpu"
-        )
+        optimized_model_path = "{}_o{}_{}.onnx".format(path_prefix, opt_level, "gpu" if use_gpu else "cpu")
 
     sess_options.optimized_model_filepath = optimized_model_path
 
@@ -110,14 +102,10 @@ def optimize_by_onnxruntime(
         session = onnxruntime.InferenceSession(
             onnx_model_path, sess_options, providers=["CUDAExecutionProvider"], **kwargs
         )
-        assert (
-            "CUDAExecutionProvider" in session.get_providers()
-        )  # Make sure there is GPU
+        assert "CUDAExecutionProvider" in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
-    logger.debug(
-        "Save optimized model by onnxruntime to {}".format(optimized_model_path)
-    )
+    logger.debug("Save optimized model by onnxruntime to {}".format(optimized_model_path))
     return optimized_model_path
 
 
@@ -148,9 +136,7 @@ def optimize_by_fusion(
         object of an optimizer class.
     """
     if model_type != "bert" and (num_heads == 0 or hidden_size == 0):
-        logger.warning(
-            "Please specify parameters of num_heads and hidden_size when model_type is not 'bert'"
-        )
+        logger.warning("Please specify parameters of num_heads and hidden_size when model_type is not 'bert'")
 
     (optimizer_class, producer, _) = MODEL_TYPES[model_type]
 
@@ -225,9 +211,7 @@ def optimize_model(
     assert opt_level is None or opt_level in [0, 1, 2, 99]
 
     if model_type != "bert" and (num_heads == 0 or hidden_size == 0):
-        logger.warning(
-            "Please specify parameters of num_heads and hidden_size when model_type is not 'bert'"
-        )
+        logger.warning("Please specify parameters of num_heads and hidden_size when model_type is not 'bert'")
 
     (optimizer_class, producer, default_opt_level) = MODEL_TYPES[model_type]
 
@@ -259,18 +243,14 @@ def optimize_model(
         temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
 
     if only_onnxruntime and not temp_model_path:
-        logger.warning(
-            "Please specify a positive value for opt_level when only_onnxruntime is True"
-        )
+        logger.warning("Please specify a positive value for opt_level when only_onnxruntime is True")
 
     model = load_model(temp_model_path or input)
 
     if only_onnxruntime:
         optimizer = optimizer_class(model, num_heads, hidden_size)
     else:
-        optimizer = optimize_by_fusion(
-            model, model_type, num_heads, hidden_size, optimization_options
-        )
+        optimizer = optimize_by_fusion(model, model_type, num_heads, hidden_size, optimization_options)
 
     # Remove the temporary model.
     if temp_model_path:
@@ -299,13 +279,9 @@ def _parse_arguments():
     parser = argparse.ArgumentParser(
         description="Graph optimization tool for ONNX Runtime. It transforms ONNX graph to use optimized operators for Transformer models."
     )
-    parser.add_argument(
-        "--input", required=True, type=str, help="input onnx model path"
-    )
+    parser.add_argument("--input", required=True, type=str, help="input onnx model path")
 
-    parser.add_argument(
-        "--output", required=True, type=str, help="optimized onnx model path"
-    )
+    parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
 
     parser.add_argument(
         "--model_type",
@@ -350,9 +326,7 @@ def _parse_arguments():
 
     FusionOptions.add_arguments(parser)
 
-    parser.add_argument(
-        "--verbose", required=False, action="store_true", help="show debug information."
-    )
+    parser.add_argument("--verbose", required=False, action="store_true", help="show debug information.")
     parser.set_defaults(verbose=False)
 
     parser.add_argument(
@@ -411,9 +385,7 @@ def main():
     logger.debug(f"arguments:{args}")
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
-        logger.warning(
-            f"Specified the same input and output path. Note that this may overwrite the original model"
-        )
+        logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
 
     optimization_options = FusionOptions.parse(args)
 

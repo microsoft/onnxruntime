@@ -39,9 +39,7 @@ class T5EncoderDecoderInit(torch.nn.Module):
         super().__init__()
         self.config = config
         self.t5_encoder = T5Encoder(encoder, config)
-        self.t5_decoder_init = T5DecoderInit(
-            decoder, lm_head, config, decoder_start_token_id
-        )
+        self.t5_decoder_init = T5DecoderInit(decoder, lm_head, config, decoder_start_token_id)
 
     def forward(
         self,
@@ -49,9 +47,7 @@ class T5EncoderDecoderInit(torch.nn.Module):
         encoder_attention_mask: torch.Tensor,
         decoder_input_ids: torch.Tensor = None,
     ):
-        encoder_hidden_states: torch.FloatTensor = self.t5_encoder(
-            encoder_input_ids, encoder_attention_mask
-        )
+        encoder_hidden_states: torch.FloatTensor = self.t5_encoder(encoder_input_ids, encoder_attention_mask)
         lm_logits, past_self, past_cross = self.t5_decoder_init(
             decoder_input_ids, encoder_attention_mask, encoder_hidden_states
         )
@@ -59,9 +55,7 @@ class T5EncoderDecoderInit(torch.nn.Module):
 
 
 class T5EncoderDecoderInitInputs:
-    def __init__(
-        self, encoder_input_ids, encoder_attention_mask, decoder_input_ids=None
-    ):
+    def __init__(self, encoder_input_ids, encoder_attention_mask, decoder_input_ids=None):
         self.encoder_input_ids: torch.LongTensor = encoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
@@ -80,13 +74,10 @@ class T5EncoderDecoderInitInputs:
         decoder_input_ids = None
         if use_decoder_input_ids:
             decoder_input_ids = (
-                torch.ones((batch_size, 1), dtype=torch.long, device=device)
-                * config.decoder_start_token_id
+                torch.ones((batch_size, 1), dtype=torch.long, device=device) * config.decoder_start_token_id
             )
 
-        return T5EncoderDecoderInitInputs(
-            encoder_inputs.input_ids, encoder_inputs.attention_mask, decoder_input_ids
-        )
+        return T5EncoderDecoderInitInputs(encoder_inputs.input_ids, encoder_inputs.attention_mask, decoder_input_ids)
 
     def to_list(self) -> List:
         input_list = [self.encoder_input_ids, self.encoder_attention_mask]
@@ -126,9 +117,7 @@ class T5EncoderDecoderInitHelper:
         input_list = inputs.to_list()
         outputs = model(*input_list)
 
-        present_names = PastKeyValuesHelper.get_past_names(
-            model.config.num_layers, present=True
-        )
+        present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
 
         output_names = ["logits", "encoder_hidden_states"] + present_names
 
@@ -205,17 +194,11 @@ class T5EncoderDecoderInitHelper:
         logger.debug(f"start onnxruntime_inference")
 
         ort_inputs = {
-            "encoder_input_ids": numpy.ascontiguousarray(
-                inputs.encoder_input_ids.cpu().numpy()
-            ),
-            "encoder_attention_mask": numpy.ascontiguousarray(
-                inputs.encoder_attention_mask.cpu().numpy()
-            ),
+            "encoder_input_ids": numpy.ascontiguousarray(inputs.encoder_input_ids.cpu().numpy()),
+            "encoder_attention_mask": numpy.ascontiguousarray(inputs.encoder_attention_mask.cpu().numpy()),
         }
         if inputs.decoder_input_ids is not None:
-            ort_inputs["decoder_input_ids"] = numpy.ascontiguousarray(
-                inputs.decoder_input_ids.cpu().numpy()
-            )
+            ort_inputs["decoder_input_ids"] = numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy())
 
         ort_outputs = ort_session.run(None, ort_inputs)
         return ort_outputs
@@ -242,40 +225,29 @@ class T5EncoderDecoderInitHelper:
                 device=device,
             )
 
-            ort_outputs = T5EncoderDecoderInitHelper.onnxruntime_inference(
-                ort_session, inputs
-            )
+            ort_outputs = T5EncoderDecoderInitHelper.onnxruntime_inference(ort_session, inputs)
 
             # Run inference of PyTorch model
             input_list = inputs.to_list()
             torch_outputs = model(*input_list)
 
             assert torch_outputs[0].cpu().numpy().shape == ort_outputs[0].shape
-            max_diff = numpy.amax(
-                numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0])
-            )
+            max_diff = numpy.amax(numpy.abs(torch_outputs[0].cpu().numpy() - ort_outputs[0]))
             logger.debug(f"logits max_diff={max_diff}")
             max_diff_all = max_diff
 
             assert torch_outputs[1].cpu().numpy().shape == ort_outputs[1].shape
-            max_diff = numpy.amax(
-                numpy.abs(torch_outputs[1].cpu().numpy() - ort_outputs[1])
-            )
+            max_diff = numpy.amax(numpy.abs(torch_outputs[1].cpu().numpy() - ort_outputs[1]))
             logger.debug(f"encoder_hidden_states max_diff={max_diff}")
             max_diff_all = max(max_diff_all, max_diff)
 
             for i in range(2 * model.config.num_layers):
-                max_diff = numpy.amax(
-                    numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[2 + i])
-                )
+                max_diff = numpy.amax(numpy.abs(torch_outputs[2][i].cpu().numpy() - ort_outputs[2 + i]))
                 logger.debug(f"self attention past state {i} max_diff={max_diff}")
 
             for i in range(2 * model.config.num_layers):
                 max_diff = numpy.amax(
-                    numpy.abs(
-                        torch_outputs[3][i].cpu().numpy()
-                        - ort_outputs[2 + 2 * model.config.num_layers + i]
-                    )
+                    numpy.abs(torch_outputs[3][i].cpu().numpy() - ort_outputs[2 + 2 * model.config.num_layers + i])
                 )
                 logger.debug(f"cross attention past state {i} max_diff={max_diff}")
                 max_diff_all = max(max_diff_all, max_diff)

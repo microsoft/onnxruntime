@@ -106,9 +106,7 @@ def main():
                     command.extend(["--trtexec", trtexec])
 
             if len(args.cuda_ep_options):
-                command.extend(
-                    ["--cuda_ep_options", dict_to_args(args.cuda_ep_options)]
-                )
+                command.extend(["--cuda_ep_options", dict_to_args(args.cuda_ep_options)])
 
             if len(args.trt_ep_options):
                 command.extend(["--trt_ep_options", dict_to_args(args.trt_ep_options)])
@@ -139,13 +137,9 @@ def main():
 
             if p.returncode != 0:
                 error_type = "runtime error"
-                error_message = "Benchmark script exited with returncode = " + str(
-                    p.returncode
-                )
+                error_message = "Benchmark script exited with returncode = " + str(p.returncode)
                 logger.error(error_message)
-                update_fail_model_map(
-                    model_to_fail_ep, model, ep, error_type, error_message
-                )
+                update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)
                 write_map_to_file(model_to_fail_ep, FAIL_MODEL_FILE)
                 logger.info(model_to_fail_ep)
 
@@ -165,9 +159,7 @@ def main():
         if os.path.exists(METRICS_FILE):
             model_to_metrics = read_map_from_file(METRICS_FILE)
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
-            logger.info(
-                "\nSaved model metrics results to {}".format(benchmark_metrics_csv)
-            )
+            logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv))
 
     elif args.running_mode == "benchmark":
         logger.info("\n=========================================")
@@ -177,12 +169,8 @@ def main():
         if os.path.exists(SESSION_FILE):
             model_to_session = read_map_from_file(SESSION_FILE)
             pretty_print(pp, model_to_session)
-            output_session_creation(
-                model_to_session, os.path.join(path, benchmark_session_csv)
-            )
-            logger.info(
-                "\nSaved session creation results to {}".format(benchmark_session_csv)
-            )
+            output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))
+            logger.info("\nSaved session creation results to {}".format(benchmark_session_csv))
 
         logger.info("\n=========================================================")
         logger.info("========== Failing Models/EPs (accumulated) ==============")
@@ -192,9 +180,7 @@ def main():
             model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
             output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
             logger.info(model_to_fail_ep)
-            logger.info(
-                "\nSaved model failing results to {}".format(benchmark_fail_csv)
-            )
+            logger.info("\nSaved model failing results to {}".format(benchmark_fail_csv))
 
         logger.info("\n=======================================================")
         logger.info("=========== Models/EPs Status (accumulated) ===========")
@@ -226,9 +212,7 @@ def main():
             pretty_print(pp, model_to_latency)
 
             output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
-            logger.info(
-                "\nSaved model latency results to {}".format(benchmark_latency_csv)
-            )
+            logger.info("\nSaved model latency results to {}".format(benchmark_latency_csv))
 
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")

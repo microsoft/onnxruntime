@@ -11,9 +11,17 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
-from onnx import (AttributeProto, ModelProto, NodeProto, TensorProto,
-                  external_data_helper, helper, numpy_helper, onnx_pb,
-                  save_model)
+from onnx import (
+    AttributeProto,
+    ModelProto,
+    NodeProto,
+    TensorProto,
+    external_data_helper,
+    helper,
+    numpy_helper,
+    onnx_pb,
+    save_model,
+)
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
@@ -25,9 +33,7 @@ class OnnxModel:
 
     def initialize(self, model):
         self.model = model
-        self._node_name_suffix: Dict[
-            str, int
-        ] = {}  # key is node name prefix, value is the last suffix generated
+        self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper = None
         self.all_graphs = None
 
@@ -253,9 +259,7 @@ class OnnxModel:
                 if parent.op_type == parent_op_type and parent not in exclude:
                     return parent, i
                 else:
-                    logger.debug(
-                        f"To find first {parent_op_type}, current {parent.op_type}"
-                    )
+                    logger.debug(f"To find first {parent_op_type}, current {parent.op_type}")
         return None, None
 
     def match_parent(
@@ -289,9 +293,7 @@ class OnnxModel:
             output_name_to_node = self.output_name_to_node()
 
         if input_index is None:
-            parent, index = self.match_first_parent(
-                node, parent_op_type, output_name_to_node, exclude
-            )
+            parent, index = self.match_first_parent(node, parent_op_type, output_name_to_node, exclude)
             if return_indice is not None:
                 return_indice.append(index)
             return parent
@@ -301,11 +303,7 @@ class OnnxModel:
             return None
 
         parent = self.get_parent(node, input_index, output_name_to_node)
-        if (
-            parent is not None
-            and parent.op_type == parent_op_type
-            and parent not in exclude
-        ):
+        if parent is not None and parent.op_type == parent_op_type and parent not in exclude:
             return parent
 
         if parent is not None:
@@ -317,9 +315,7 @@ class OnnxModel:
         for i, path in enumerate(paths):
             assert isinstance(path, List) or isinstance(path, Tuple)
             return_indice = []
-            matched = self.match_parent_path(
-                node, path[0], path[1], output_name_to_node, return_indice
-            )
+            matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:
                 return i, matched, return_indice
         return -1, None, None
@@ -374,9 +370,7 @@ class OnnxModel:
 
         return matched_parents
 
-    def find_first_child_by_type(
-        self, node, child_type, input_name_to_nodes=None, recursive=True
-    ):
+    def find_first_child_by_type(self, node, child_type, input_name_to_nodes=None, recursive=True):
         children = self.get_children(node, input_name_to_nodes)
         dq = deque(children)
         while len(dq) > 0:
@@ -391,9 +385,7 @@ class OnnxModel:
 
         return None
 
-    def find_first_parent_by_type(
-        self, node, parent_type, output_name_to_node=None, recursive=True
-    ):
+    def find_first_parent_by_type(self, node, parent_type, output_name_to_node=None, recursive=True):
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
 
@@ -436,27 +428,19 @@ class OnnxModel:
 
     def find_constant_input(self, node, expected_value, delta=0.000001):
         i, value = self.get_constant_input(node)
-        if (
-            value is not None
-            and value.size == 1
-            and abs(value - expected_value) < delta
-        ):
+        if value is not None and value.size == 1 and abs(value - expected_value) < delta:
             return i
 
         return -1
 
-    def is_constant_with_specified_dimension(
-        self, output_name, dimensions, description
-    ):
+    def is_constant_with_specified_dimension(self, output_name, dimensions, description):
         value = self.get_constant_value(output_name)
         if value is None:
             logger.debug(f"{description} {output_name} is not initializer.")
             return False
 
         if len(value.shape) != dimensions:
-            logger.debug(
-                f"{description} {output_name} shall have {dimensions} dimensions. Got shape {value.shape}"
-            )
+            logger.debug(f"{description} {output_name} shall have {dimensions} dimensions. Got shape {value.shape}")
             return False
 
         return True
@@ -464,9 +448,7 @@ class OnnxModel:
     def has_constant_input(self, node, expected_value, delta=0.000001):
         return self.find_constant_input(node, expected_value, delta) >= 0
 
-    def get_children_subgraph_nodes(
-        self, root_node, stop_nodes, input_name_to_nodes=None
-    ):
+    def get_children_subgraph_nodes(self, root_node, stop_nodes, input_name_to_nodes=None):
         if input_name_to_nodes is None:
             input_name_to_nodes = self.input_name_to_nodes()
 
@@ -532,9 +514,7 @@ class OnnxModel:
         logger.warning(
             "The function convert_model_float32_to_float16 is deprecated. Use convert_float_to_float16 instead!"
         )
-        self.convert_float_to_float16(
-            use_symbolic_shape_infer=True, keep_io_types=cast_input_output
-        )
+        self.convert_float_to_float16(use_symbolic_shape_infer=True, keep_io_types=cast_input_output)
 
     def convert_float_to_float16(self, use_symbolic_shape_infer=True, **kwargs):
         """Convert a model to half (default) or mixed precision.
@@ -578,9 +558,7 @@ class OnnxModel:
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
             shape_infer_helper = SymbolicShapeInferenceHelper(model)
-            model = shape_infer_helper.infer_shapes(
-                model, auto_merge=True, guess_output_rank=False
-            )
+            model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
         parameters = {"disable_shape_infer": use_symbolic_shape_infer}
         parameters.update(
@@ -609,12 +587,8 @@ class OnnxModel:
             if node.op_type == "Cast":
                 parent = self.get_parent(node, 0)
                 if parent and parent.op_type == "Cast":
-                    if (
-                        self.get_children(parent) == 1
-                    ):  # cannot be removed if its output is used by multiple nodes
-                        self.replace_input_of_all_nodes(
-                            parent.output[0], parent.input[0]
-                        )
+                    if self.get_children(parent) == 1:  # cannot be removed if its output is used by multiple nodes
+                        self.replace_input_of_all_nodes(parent.output[0], parent.input[0])
                         nodes_to_remove.append(parent)
 
         # Remove the second cast node.
@@ -812,9 +786,7 @@ class OnnxModel:
         for node in graph.node:
             if node.op_type in ["Loop", "Scan", "If"]:
                 # TODO: handle inner graph
-                logger.debug(
-                    f"Skip update_graph since graph has operator: {node.op_type}"
-                )
+                logger.debug(f"Skip update_graph since graph has operator: {node.op_type}")
                 return
             if node.op_type != "Constant":
                 for input_name in node.input:
@@ -838,10 +810,7 @@ class OnnxModel:
         weights_to_remove = []
         weights_to_keep = []
         for initializer in graph.initializer:
-            if (
-                initializer.name not in remaining_input_names
-                and not self.find_graph_output(initializer.name)
-            ):
+            if initializer.name not in remaining_input_names and not self.find_graph_output(initializer.name):
                 weights_to_remove.append(initializer)
             else:
                 weights_to_keep.append(initializer.name)
@@ -849,17 +818,13 @@ class OnnxModel:
             graph.initializer.remove(initializer)
 
         names_to_remove = [initializer.name for initializer in weights_to_remove]
-        logger.debug(
-            f"remove {len(weights_to_remove)} unused initializers: {names_to_remove}"
-        )
+        logger.debug(f"remove {len(weights_to_remove)} unused initializers: {names_to_remove}")
         if verbose:
             logger.debug(f"remaining initializers:{weights_to_keep}")
 
         self.remove_unused_constant()
 
-    def is_safe_to_fuse_nodes(
-        self, nodes_to_remove, keep_outputs, input_name_to_nodes, output_name_to_node
-    ):
+    def is_safe_to_fuse_nodes(self, nodes_to_remove, keep_outputs, input_name_to_nodes, output_name_to_node):
         for node_to_remove in nodes_to_remove:
             for output_to_remove in node_to_remove.output:
                 if output_to_remove in keep_outputs:
@@ -932,9 +897,7 @@ class OnnxModel:
         #    self.graph_topological_sort(graph)
         OnnxModel.graph_topological_sort(self.model.graph)
 
-    def save_model_to_file(
-        self, output_path, use_external_data_format=False, all_tensors_to_one_file=True
-    ):
+    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True):
         logger.info(f"Sort graphs in topological order")
         self.topological_sort()
 
@@ -949,11 +912,7 @@ class OnnxModel:
             if use_external_data_format:
                 output_dir = Path(output_path).parent
                 output_dir.mkdir(parents=True, exist_ok=True)
-                location = (
-                    Path(output_path).name + ".data"
-                    if all_tensors_to_one_file
-                    else None
-                )
+                location = Path(output_path).name + ".data" if all_tensors_to_one_file else None
 
                 # Show warnings of potential confliction of existing external data file.
                 if all_tensors_to_one_file:

@@ -23,9 +23,7 @@ def prepare_dir(path):
 def _extract_value_info(arr, name, ele_type=None):
     return onnx.helper.make_tensor_value_info(
         name=name,
-        elem_type=ele_type
-        if ele_type
-        else onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[arr.dtype],
+        elem_type=ele_type if ele_type else onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[arr.dtype],
         shape=arr.shape,
     )
 
@@ -73,9 +71,7 @@ def expect(
         _extract_value_info(arr, arr_name, output_type)
         for arr, arr_name, output_type in zip(outputs, present_outputs, output_types)
     ]
-    graph = onnx.helper.make_graph(
-        nodes=[node], name=name, inputs=inputs_vi, outputs=outputs_vi
-    )
+    graph = onnx.helper.make_graph(nodes=[node], name=name, inputs=inputs_vi, outputs=outputs_vi)
 
     generate_data(graph, inputs, outputs, name)
 

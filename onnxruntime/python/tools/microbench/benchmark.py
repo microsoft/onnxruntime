@@ -75,11 +75,7 @@ def get_default_provider():
 
 class Benchmark:
     def __init__(self, model, inputs, outputs, args):
-        self.provider = (
-            get_default_provider()
-            if args.provider == None
-            else provider_name(args.provider)
-        )
+        self.provider = get_default_provider() if args.provider == None else provider_name(args.provider)
         logger.info(f"Execution provider: {self.provider}")
         self.profiling = args.profiling
         self.model = model
@@ -88,19 +84,10 @@ class Benchmark:
         self.outputs = outputs
 
     def create_input_output_tensors(self):
-        on_gpu = (
-            self.provider == "CUDAExecutionProvider"
-            or self.provider == "ROCMExecutionProvider"
-        )
+        on_gpu = self.provider == "CUDAExecutionProvider" or self.provider == "ROCMExecutionProvider"
         device = "cuda" if on_gpu else "cpu"
-        input_tensors = {
-            name: torch.from_numpy(array).to(device)
-            for name, array in self.inputs.items()
-        }
-        output_tensors = {
-            name: torch.from_numpy(array).to(device)
-            for name, array in self.outputs.items()
-        }
+        input_tensors = {name: torch.from_numpy(array).to(device) for name, array in self.inputs.items()}
+        output_tensors = {name: torch.from_numpy(array).to(device) for name, array in self.outputs.items()}
         return input_tensors, output_tensors
 
     @classmethod
@@ -129,9 +116,7 @@ class Benchmark:
     def create_session(self):
         sess_opt = ort.SessionOptions()
         sess_opt.enable_profiling = self.profiling
-        sess = ort.InferenceSession(
-            self.model, sess_options=sess_opt, providers=[self.provider]
-        )
+        sess = ort.InferenceSession(self.model, sess_options=sess_opt, providers=[self.provider])
         return sess
 
     def benchmark(self):

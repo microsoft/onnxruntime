@@ -1,7 +1,6 @@
 import numpy as np
 import onnx
-from onnx import (GraphProto, OperatorSetIdProto, TensorProto, helper,
-                  numpy_helper)
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, [2, 4, 8])
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, [2, 4, 16])
@@ -11,35 +10,19 @@ matmul_weight_initializer = numpy_helper.from_array(matmul_weight_vals, "matmul_
 gather_constant_zero = numpy_helper.from_array(np.int64(0), name="gather_constant_zero")
 gather_constant_one = numpy_helper.from_array(np.int64(1), name="gather_constant_one")
 div_constant_two = numpy_helper.from_array(np.int64(2), name="div_constant_two")
-unsqueeze_constant_16 = numpy_helper.from_array(
-    np.int64(16), name="unsqueeze_constant_16"
-)
+unsqueeze_constant_16 = numpy_helper.from_array(np.int64(16), name="unsqueeze_constant_16")
 
 shape1 = helper.make_node("Shape", ["input"], ["shape1"], name="shape1")
-constant_of_shape = helper.make_node(
-    "ConstantOfShape", ["shape1"], ["constant_of_shape"], name="constant_of_shape"
-)
-transpose = helper.make_node(
-    "Transpose", ["constant_of_shape"], ["transpose"], name="transpose", perm=[0, 2, 1]
-)
-matmul1 = helper.make_node(
-    "MatMul", ["transpose", matmul_weight_initializer.name], ["matmul1"], name="matmul1"
-)
+constant_of_shape = helper.make_node("ConstantOfShape", ["shape1"], ["constant_of_shape"], name="constant_of_shape")
+transpose = helper.make_node("Transpose", ["constant_of_shape"], ["transpose"], name="transpose", perm=[0, 2, 1])
+matmul1 = helper.make_node("MatMul", ["transpose", matmul_weight_initializer.name], ["matmul1"], name="matmul1")
 matmul2 = helper.make_node("MatMul", ["matmul1", "input"], ["matmul2"], name="matmul2")
 shape2 = helper.make_node("Shape", ["matmul2"], ["shape2"], name="shape2")
-gather1 = helper.make_node(
-    "Gather", ["shape2", gather_constant_zero.name], ["gather1"], name="gather1", axis=0
-)
-gather2 = helper.make_node(
-    "Gather", ["shape2", gather_constant_one.name], ["gather2"], name="gather2", axis=0
-)
+gather1 = helper.make_node("Gather", ["shape2", gather_constant_zero.name], ["gather1"], name="gather1", axis=0)
+gather2 = helper.make_node("Gather", ["shape2", gather_constant_one.name], ["gather2"], name="gather2", axis=0)
 div = helper.make_node("Div", ["gather2", div_constant_two.name], ["div"], name="div")
-unsqueeze1 = helper.make_node(
-    "Unsqueeze", ["gather1"], ["unsqueeze1"], name="unsqueeze1", axes=[0]
-)
-unsqueeze2 = helper.make_node(
-    "Unsqueeze", ["div"], ["unsqueeze2"], name="unsqueeze2", axes=[0]
-)
+unsqueeze1 = helper.make_node("Unsqueeze", ["gather1"], ["unsqueeze1"], name="unsqueeze1", axes=[0])
+unsqueeze2 = helper.make_node("Unsqueeze", ["div"], ["unsqueeze2"], name="unsqueeze2", axes=[0])
 unsqueeze3 = helper.make_node(
     "Unsqueeze",
     [unsqueeze_constant_16.name],
@@ -110,13 +93,9 @@ Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1])
 
 squeeze = helper.make_node("Squeeze", ["input"], ["squeeze"], name="squeeze", axes=[0])
 shape = helper.make_node("Shape", ["squeeze"], ["shape"], name="shape")
-constant_of_shape = helper.make_node(
-    "ConstantOfShape", ["shape"], ["constant_of_shape"], name="constant_of_shape"
-)
+constant_of_shape = helper.make_node("ConstantOfShape", ["shape"], ["constant_of_shape"], name="constant_of_shape")
 add = helper.make_node("Add", ["squeeze", "constant_of_shape"], ["add"], name="add")
-unsqueeze = helper.make_node(
-    "Unsqueeze", ["add"], ["output"], name="unsqueeze", axes=[0]
-)
+unsqueeze = helper.make_node("Unsqueeze", ["add"], ["output"], name="unsqueeze", axes=[0])
 
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(

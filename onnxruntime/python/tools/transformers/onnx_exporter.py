@@ -12,17 +12,14 @@ from pathlib import Path
 import numpy
 import torch
 from affinity_helper import AffinitySetting
-from benchmark_helper import (OptimizerInfo, Precision,
-                              create_onnxruntime_session)
+from benchmark_helper import OptimizerInfo, Precision, create_onnxruntime_session
 from huggingface_models import MODEL_CLASSES
 from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
-from transformers import (AutoConfig, AutoTokenizer, LxmertConfig,
-                          TransfoXLConfig)
+from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import (PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState,
-                         TFGPT2ModelNoPastState)
+from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -51,12 +48,8 @@ def restore_torch_functions():
     torch.triu = torch_func["triu"]
 
 
-def create_onnxruntime_input(
-    vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64
-):
-    input_ids = numpy.random.randint(
-        low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type
-    )
+def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
+    input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
 
     inputs = {"input_ids": input_ids}
 
@@ -72,16 +65,12 @@ def create_onnxruntime_input(
         inputs["decoder_input_ids"] = input_ids
 
     if isinstance(config, LxmertConfig):
-        inputs["visual_feats"] = numpy.random.randn(
-            1, 1, config.visual_feat_dim
-        ).astype(numpy.float32)
-        inputs["visual_pos"] = numpy.random.randn(1, 1, config.visual_pos_dim).astype(
-            numpy.float32
-        )
+        inputs["visual_feats"] = numpy.random.randn(1, 1, config.visual_feat_dim).astype(numpy.float32)
+        inputs["visual_pos"] = numpy.random.randn(1, 1, config.visual_pos_dim).astype(numpy.float32)
     if isinstance(config, TransfoXLConfig):
-        inputs[
-            "tf_transfo_xl_model/transformer/pos_emb/einsum/Einsum/inputs_1:0"
-        ] = numpy.zeros([config.hidden_size], dtype=numpy.float32)
+        inputs["tf_transfo_xl_model/transformer/pos_emb/einsum/Einsum/inputs_1:0"] = numpy.zeros(
+            [config.hidden_size], dtype=numpy.float32
+        )
     return inputs
 
 
@@ -94,25 +83,19 @@ def filter_inputs(inputs, input_names):
 
 
 def flatten(inputs):
-    return [
-        [flatten(i) for i in inputs] if isinstance(inputs, (list, tuple)) else inputs
-    ]
+    return [[flatten(i) for i in inputs] if isinstance(inputs, (list, tuple)) else inputs]
 
 
 def update_flatten_list(inputs, res_list):
     for i in inputs:
-        res_list.append(i) if not isinstance(i, (list, tuple)) else update_flatten_list(
-            i, res_list
-        )
+        res_list.append(i) if not isinstance(i, (list, tuple)) else update_flatten_list(i, res_list)
     return res_list
 
 
 def build_dynamic_axes(example_inputs, outputs_flatten):
     sequence_length = example_inputs["input_ids"].shape[-1]
 
-    dynamic_axes = {
-        key: {0: "batch_size", 1: "seq_len"} for key in example_inputs.keys()
-    }
+    dynamic_axes = {key: {0: "batch_size", 1: "seq_len"} for key in example_inputs.keys()}
 
     output_names = ["output_" + str(i + 1) for i in range(len(outputs_flatten))]
     for i, output_name in enumerate(output_names):
@@ -132,9 +115,7 @@ def validate_onnx_model(
     fp16,
     output_names=None,
 ):
-    test_session = create_onnxruntime_session(
-        onnx_model_path, use_gpu, enable_all_optimization=False
-    )
+    test_session = create_onnxruntime_session(onnx_model_path, use_gpu, enable_all_optimization=False)
     if test_session is None:
         logger.error(f"{onnx_model_path} is an invalid ONNX model")
         return False
@@ -151,9 +132,7 @@ def validate_onnx_model(
         return False
 
     for i in range(len(example_outputs_flatten)):
-        abs_diff = numpy.amax(
-            numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu().numpy())
-        )
+        abs_diff = numpy.amax(numpy.abs(example_ort_outputs[i] - example_outputs_flatten[i].cpu().numpy()))
         if abs_diff > 1e-4:
             logger.info(f"Max absolute diff={abs_diff} for output tensor {i}")
 
@@ -217,9 +196,7 @@ def add_filename_suffix(file_path: str, suffix: str) -> str:
     return str(path.parent.joinpath(path.stem + suffix).with_suffix(path.suffix))
 
 
-def optimize_onnx_model_by_ort(
-    onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics
-):
+def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics):
     if overwrite or not os.path.exists(ort_model_path):
         Path(ort_model_path).parent.mkdir(parents=True, exist_ok=True)
         from optimizer import get_fusion_statistics, optimize_by_onnxruntime
@@ -281,9 +258,7 @@ def optimize_onnx_model(
         if model_type == "bert_keras" or model_type == "bert_tf":
             opt_model.use_dynamic_axes()
 
-        model_fusion_statistics[
-            optimized_model_path
-        ] = opt_model.get_fused_operator_statistics()
+        model_fusion_statistics[optimized_model_path] = opt_model.get_fused_operator_statistics()
 
         if Precision.FLOAT16 == precision:
             opt_model.convert_float_to_float16(keep_io_types=True)
@@ -315,20 +290,14 @@ def modelclass_dispatcher(model_name, custom_model_class):
     return "AutoModel"
 
 
-def load_pretrained_model(
-    model_name, config, cache_dir, custom_model_class, is_tf_model=False
-):
+def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_tf_model=False):
     model_class_name = modelclass_dispatcher(model_name, custom_model_class)
 
     if model_class_name == "GPT2ModelNoPastState":
         if is_tf_model:
-            return TFGPT2ModelNoPastState.from_pretrained(
-                model_name, config=config, cache_dir=cache_dir
-            )
+            return TFGPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
         else:
-            return GPT2ModelNoPastState.from_pretrained(
-                model_name, config=config, cache_dir=cache_dir
-            )
+            return GPT2ModelNoPastState.from_pretrained(model_name, config=config, cache_dir=cache_dir)
 
     if is_tf_model:
         model_class_name = "TF" + model_class_name
@@ -347,9 +316,7 @@ def load_pt_model(model_name, model_class, cache_dir, config_modifier):
 
     config_modifier.modify(config)
 
-    model = load_pretrained_model(
-        model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class
-    )
+    model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
 
     return config, model
 
@@ -419,9 +386,7 @@ def validate_and_optimize_onnx(
         return onnx_model_path, is_valid_onnx_model, config.vocab_size
 
     if (
-        optimize_info == OptimizerInfo.BYSCRIPT
-        or precision == Precision.FLOAT16
-        or precision == Precision.INT8
+        optimize_info == OptimizerInfo.BYSCRIPT or precision == Precision.FLOAT16 or precision == Precision.INT8
     ):  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(
             onnx_dir,
@@ -462,9 +427,7 @@ def validate_and_optimize_onnx(
 
         if precision == Precision.INT8:
             logger.info(f"Quantizing model: {onnx_model_path}")
-            QuantizeHelper.quantize_onnx_model(
-                onnx_model_path, onnx_model_path, use_external_data_format
-            )
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             logger.info(f"Finished quantizing model: {onnx_model_path}")
 
     if optimize_info == OptimizerInfo.BYORT:  # Use OnnxRuntime to optimize
@@ -507,22 +470,16 @@ def export_onnx_model_from_pt(
 
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     max_input_size = (
-        tokenizer.max_model_input_sizes[model_name]
-        if model_name in tokenizer.max_model_input_sizes
-        else 1024
+        tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
     )
 
-    example_inputs = tokenizer.encode_plus(
-        "This is a sample input", return_tensors="pt"
-    )
+    example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
 
     example_outputs = model(**example_inputs)
 
-    assert isinstance(
-        example_outputs, (list, tuple)
-    ), f"type of output is not list or tuple: {type(example_outputs)}"
+    assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
 
     # Flatten is needed for gpt2 and distilgpt2.
     example_outputs_flatten = flatten(example_outputs)
@@ -543,9 +500,7 @@ def export_onnx_model_from_pt(
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        dynamic_axes, output_names = build_dynamic_axes(
-            example_inputs, example_outputs_flatten
-        )
+        dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         replace_torch_functions()
         torch_onnx_export(
@@ -616,9 +571,7 @@ def export_onnx_model_from_tf(
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     max_input_size = (
-        tokenizer.max_model_input_sizes[model_name]
-        if model_name in tokenizer.max_model_input_sizes
-        else 1024
+        tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
     )
 
     config, model = load_tf_model(model_name, model_class, cache_dir, config_modifier)
@@ -642,9 +595,7 @@ def export_onnx_model_from_tf(
             truncation=True,
         ).input_ids
     if model_name == "unc-nlp/lxmert-base-uncased":
-        example_inputs["visual_feats"] = tf.random.normal(
-            [1, 1, config.visual_feat_dim]
-        )
+        example_inputs["visual_feats"] = tf.random.normal([1, 1, config.visual_feat_dim])
         example_inputs["visual_pos"] = tf.random.normal([1, 1, config.visual_pos_dim])
 
     try:
@@ -677,9 +628,7 @@ def export_onnx_model_from_tf(
         False,
         use_external_data_format,
     )
-    tf_internal_model_path = (
-        onnx_model_path[:-5] if use_external_data_format else onnx_model_path
-    )
+    tf_internal_model_path = onnx_model_path[:-5] if use_external_data_format else onnx_model_path
 
     if overwrite or not os.path.exists(tf_internal_model_path):
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
@@ -706,9 +655,7 @@ def export_onnx_model_from_tf(
             # need to unpack the zip for run_onnxruntime()
             with zipfile.ZipFile(tf_internal_model_path, "r") as z:
                 z.extractall(os.path.dirname(tf_internal_model_path))
-            tf_internal_model_path = os.path.join(
-                os.path.dirname(tf_internal_model_path), "__MODEL_PROTO.onnx"
-            )
+            tf_internal_model_path = os.path.join(os.path.dirname(tf_internal_model_path), "__MODEL_PROTO.onnx")
             if os.path.exists(onnx_model_path):
                 os.remove(onnx_model_path)
             os.rename(tf_internal_model_path, onnx_model_path)
@@ -717,12 +664,7 @@ def export_onnx_model_from_tf(
         logger.info(f"Skip export since model existed: {onnx_model_path}")
 
     model_type = model_type + "_tf"
-    (
-        opt_onnx_model_file,
-        onnx_model_file,
-        is_valid_onnx_model,
-        vocab_size,
-    ) = validate_and_optimize_onnx(
+    (opt_onnx_model_file, onnx_model_file, is_valid_onnx_model, vocab_size,) = validate_and_optimize_onnx(
         model_name,
         use_external_data_format,
         model_type,

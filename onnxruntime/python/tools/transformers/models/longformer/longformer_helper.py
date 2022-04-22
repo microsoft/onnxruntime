@@ -30,16 +30,10 @@ class LongformerInputs:
     def __init__(self, input_ids, attention_mask, global_attention_mask):
         self.input_ids: torch.LongTensor = input_ids
         self.attention_mask: Union[torch.FloatTensor, torch.HalfTensor] = attention_mask
-        self.global_attention_mask: Union[
-            torch.FloatTensor, torch.HalfTensor
-        ] = global_attention_mask
+        self.global_attention_mask: Union[torch.FloatTensor, torch.HalfTensor] = global_attention_mask
 
     def to_list(self) -> List:
-        return [
-            v
-            for v in [self.input_ids, self.attention_mask, self.global_attention_mask]
-            if v is not None
-        ]
+        return [v for v in [self.input_ids, self.attention_mask, self.global_attention_mask] if v is not None]
 
     def to_tuple(self) -> Tuple:
         return tuple(v for v in self.to_list())
@@ -47,12 +41,8 @@ class LongformerInputs:
     def get_ort_inputs(self) -> Dict:
         return {
             "input_ids": numpy.ascontiguousarray(self.input_ids.cpu().numpy()),
-            "attention_mask": numpy.ascontiguousarray(
-                self.attention_mask.cpu().numpy()
-            ),
-            "global_attention_mask": numpy.ascontiguousarray(
-                self.global_attention_mask.cpu().numpy()
-            ),
+            "attention_mask": numpy.ascontiguousarray(self.attention_mask.cpu().numpy()),
+            "global_attention_mask": numpy.ascontiguousarray(self.global_attention_mask.cpu().numpy()),
         }
 
 
@@ -79,17 +69,13 @@ class LongformerHelper:
             device=device,
         )
         attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=device)
-        global_attention_mask = torch.zeros(
-            input_ids.shape, dtype=torch.long, device=device
-        )
+        global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=device)
         global_token_index = list(range(num_global_tokens))
         global_attention_mask[:, global_token_index] = 1
         return LongformerInputs(input_ids, attention_mask, global_attention_mask)
 
     @staticmethod
-    def get_output_shapes(
-        batch_size: int, sequence_length: int, hidden_size: int
-    ) -> Dict[str, List[int]]:
+    def get_output_shapes(batch_size: int, sequence_length: int, hidden_size: int) -> Dict[str, List[int]]:
         """Returns a dictionary with output name as key, and shape as value."""
         return {
             "last_state": [batch_size, sequence_length, hidden_size],

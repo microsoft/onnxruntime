@@ -1,8 +1,7 @@
 import os
 
 import onnx
-from onnx import (AttributeProto, GraphProto, TensorProto, helper,
-                  shape_inference)
+from onnx import AttributeProto, GraphProto, TensorProto, helper, shape_inference
 
 _this_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -42,18 +41,10 @@ def cse1():
                 outputs=["MatMul2"],
                 name="matmul_2",
             ),
-            helper.make_node(
-                op_type="Add", inputs=["MatMul1", "b"], outputs=["Add1"], name="add_1"
-            ),
-            helper.make_node(
-                op_type="Add", inputs=["MatMul2", "b"], outputs=["Add2"], name="add_2"
-            ),
-            helper.make_node(
-                op_type="Relu", inputs=["Add1"], outputs=["Relu1"], name="relu_1"
-            ),
-            helper.make_node(
-                op_type="Relu", inputs=["Add2"], outputs=["Relu2"], name="relu_2"
-            ),
+            helper.make_node(op_type="Add", inputs=["MatMul1", "b"], outputs=["Add1"], name="add_1"),
+            helper.make_node(op_type="Add", inputs=["MatMul2", "b"], outputs=["Add2"], name="add_2"),
+            helper.make_node(op_type="Relu", inputs=["Add1"], outputs=["Relu1"], name="relu_1"),
+            helper.make_node(op_type="Relu", inputs=["Add2"], outputs=["Relu2"], name="relu_2"),
             helper.make_node(
                 op_type="Add",
                 inputs=["Relu1", "Relu2"],
@@ -75,12 +66,8 @@ def cse1():
 def cse_graph_output():
     graph_def = helper.make_graph(
         nodes=[
-            helper.make_node(
-                op_type="Add", inputs=["x", "b"], outputs=["res1"], name="add_1"
-            ),
-            helper.make_node(
-                op_type="Add", inputs=["x", "b"], outputs=["res2"], name="add_2"
-            ),
+            helper.make_node(op_type="Add", inputs=["x", "b"], outputs=["res1"], name="add_1"),
+            helper.make_node(op_type="Add", inputs=["x", "b"], outputs=["res2"], name="add_2"),
         ],
         name="cse_graph_output",
         inputs=[helper.make_tensor_value_info("x", TensorProto.FLOAT, [5])],
@@ -100,12 +87,8 @@ def cse_optional_args():
     n = 5
     graph_def = helper.make_graph(
         nodes=[
-            helper.make_node(
-                op_type="Clip", inputs=["x"], outputs=["Clipped0"], name="clip_0"
-            ),
-            helper.make_node(
-                op_type="Clip", inputs=["x", ""], outputs=["Clipped1"], name="clip_1"
-            ),
+            helper.make_node(op_type="Clip", inputs=["x"], outputs=["Clipped0"], name="clip_0"),
+            helper.make_node(op_type="Clip", inputs=["x", ""], outputs=["Clipped1"], name="clip_1"),
             helper.make_node(
                 op_type="Clip",
                 inputs=["x", "", ""],
@@ -305,21 +288,11 @@ def cse_merge_constants():
     n = 3
     graph_def = helper.make_graph(
         nodes=[
-            helper.make_node(
-                op_type="Add", inputs=["c", "c"], outputs=["Add1"], name="add_1"
-            ),
-            helper.make_node(
-                op_type="Add", inputs=["c", "c"], outputs=["Add2"], name="add_2"
-            ),
-            helper.make_node(
-                op_type="Add", inputs=["Add1", "x"], outputs=["Add3"], name="add_3"
-            ),
-            helper.make_node(
-                op_type="Add", inputs=["Add2", "x"], outputs=["Add4"], name="add_4"
-            ),
-            helper.make_node(
-                op_type="Add", inputs=["Add3", "Add4"], outputs=["Result"], name="add_5"
-            ),
+            helper.make_node(op_type="Add", inputs=["c", "c"], outputs=["Add1"], name="add_1"),
+            helper.make_node(op_type="Add", inputs=["c", "c"], outputs=["Add2"], name="add_2"),
+            helper.make_node(op_type="Add", inputs=["Add1", "x"], outputs=["Add3"], name="add_3"),
+            helper.make_node(op_type="Add", inputs=["Add2", "x"], outputs=["Add4"], name="add_4"),
+            helper.make_node(op_type="Add", inputs=["Add3", "Add4"], outputs=["Result"], name="add_5"),
         ],
         name="cse_merge_constants",
         inputs=[helper.make_tensor_value_info("x", TensorProto.FLOAT, [n])],

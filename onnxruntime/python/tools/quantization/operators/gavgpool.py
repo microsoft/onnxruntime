@@ -1,7 +1,6 @@
 import onnx
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType,
-                           attribute_to_kwarg, ms_domain)
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 
 
@@ -29,16 +28,8 @@ class QGlobalAveragePool(QuantOperatorBase):
             _,
         ) = self.quantizer._get_quantization_params(node.output[0])
         # Just use input scale and zp if parameters for output is not specified.
-        output_scale_name = (
-            output_scale_name_from_parameter
-            if data_found
-            else quantized_input_value.scale_name
-        )
-        output_zp_name = (
-            output_zp_name_from_parameter
-            if data_found
-            else quantized_input_value.zp_name
-        )
+        output_scale_name = output_scale_name_from_parameter if data_found else quantized_input_value.scale_name
+        output_zp_name = output_zp_name_from_parameter if data_found else quantized_input_value.zp_name
         quantized_output_value = QuantizedValue(
             node.output[0],
             node.output[0] + "_quantized",

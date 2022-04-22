@@ -38,9 +38,7 @@ def fake_input_ids_data(
         TensorProto.INT64,
     ]
 
-    data = np.random.randint(
-        dictionary_size, size=(batch_size, sequence_length), dtype=np.int32
-    )
+    data = np.random.randint(dictionary_size, size=(batch_size, sequence_length), dtype=np.int32)
 
     if input_ids.type.tensor_type.elem_type == TensorProto.FLOAT:
         data = np.float32(data)
@@ -50,9 +48,7 @@ def fake_input_ids_data(
     return data
 
 
-def fake_segment_ids_data(
-    segment_ids: TensorProto, batch_size: int, sequence_length: int
-) -> np.ndarray:
+def fake_segment_ids_data(segment_ids: TensorProto, batch_size: int, sequence_length: int) -> np.ndarray:
     """Create input tensor based on the graph input of segment_ids
 
     Args:
@@ -180,20 +176,14 @@ def fake_test_data(
 
     all_inputs = []
     for test_case in range(test_cases):
-        input_1 = fake_input_ids_data(
-            input_ids, batch_size, sequence_length, dictionary_size
-        )
+        input_1 = fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
         inputs = {input_ids.name: input_1}
 
         if segment_ids:
-            inputs[segment_ids.name] = fake_segment_ids_data(
-                segment_ids, batch_size, sequence_length
-            )
+            inputs[segment_ids.name] = fake_segment_ids_data(segment_ids, batch_size, sequence_length)
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(
-                input_mask, batch_size, sequence_length, random_mask_length
-            )
+            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
 
         if verbose and len(all_inputs) == 0:
             print("Example inputs", inputs)
@@ -303,16 +293,12 @@ def find_bert_inputs(
 
         expected_inputs = 1 + (1 if segment_ids else 0) + (1 if input_mask else 0)
         if len(graph_inputs) != expected_inputs:
-            raise ValueError(
-                f"Expect the graph to have {expected_inputs} inputs. Got {len(graph_inputs)}"
-            )
+            raise ValueError(f"Expect the graph to have {expected_inputs} inputs. Got {len(graph_inputs)}")
 
         return input_ids, segment_ids, input_mask
 
     if len(graph_inputs) != 3:
-        raise ValueError(
-            "Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs))
-        )
+        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
 
     embed_nodes = onnx_model.get_nodes_by_op_type("EmbedLayerNormalization")
     if len(embed_nodes) == 1:
@@ -337,9 +323,7 @@ def find_bert_inputs(
     input_mask = None
     for input in graph_inputs:
         input_name_lower = input.name.lower()
-        if (
-            "mask" in input_name_lower
-        ):  # matches input with name like "attention_mask" or "input_mask"
+        if "mask" in input_name_lower:  # matches input with name like "attention_mask" or "input_mask"
             input_mask = input
         elif (
             "token" in input_name_lower or "segment" in input_name_lower
@@ -377,17 +361,13 @@ def get_bert_inputs(
         model.ParseFromString(f.read())
 
     onnx_model = OnnxModel(model)
-    return find_bert_inputs(
-        onnx_model, input_ids_name, segment_ids_name, input_mask_name
-    )
+    return find_bert_inputs(onnx_model, input_ids_name, segment_ids_name, input_mask_name)
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--model", required=True, type=str, help="bert onnx model path."
-    )
+    parser.add_argument("--model", required=True, type=str, help="bert onnx model path.")
 
     parser.add_argument(
         "--output_dir",
@@ -397,9 +377,7 @@ def parse_arguments():
         help="output test data path. Default is current directory.",
     )
 
-    parser.add_argument(
-        "--batch_size", required=False, type=int, default=1, help="batch size of input"
-    )
+    parser.add_argument("--batch_size", required=False, type=int, default=1, help="batch size of input")
 
     parser.add_argument(
         "--sequence_length",
@@ -439,9 +417,7 @@ def parse_arguments():
         help="number of test cases to be generated",
     )
 
-    parser.add_argument(
-        "--seed", required=False, type=int, default=3, help="random seed"
-    )
+    parser.add_argument("--seed", required=False, type=int, default=3, help="random seed")
 
     parser.add_argument(
         "--verbose",
@@ -491,9 +467,7 @@ def create_and_save_test_data(
         input_mask_name (str): graph input name of input_mask
         only_input_tensors (bool): only save input tensors
     """
-    input_ids, segment_ids, input_mask = get_bert_inputs(
-        model, input_ids_name, segment_ids_name, input_mask_name
-    )
+    input_ids, segment_ids, input_mask = get_bert_inputs(model, input_ids_name, segment_ids_name, input_mask_name)
 
     all_inputs = generate_test_data(
         batch_size,
@@ -523,9 +497,7 @@ def create_and_save_test_data(
         dir = os.path.join(output_dir, "test_data_set_" + str(i))
         result = sess.run(output_names, inputs)
         for i, output_name in enumerate(output_names):
-            tensor_result = numpy_helper.from_array(
-                np.asarray(result[i]), output_names[i]
-            )
+            tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_names[i])
             with open(os.path.join(dir, "output_{}.pb".format(i)), "wb") as f:
                 f.write(tensor_result.SerializeToString())
 
@@ -537,9 +509,7 @@ def main():
     if output_dir is None:
         # Default output directory is a sub-directory under the directory of model.
         p = Path(args.model)
-        output_dir = os.path.join(
-            p.parent, "batch_{}_seq_{}".format(args.batch_size, args.sequence_length)
-        )
+        output_dir = os.path.join(p.parent, "batch_{}_seq_{}".format(args.batch_size, args.sequence_length))
 
     if output_dir is not None:
         # create the output directory if not existed

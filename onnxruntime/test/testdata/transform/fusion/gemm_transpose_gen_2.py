@@ -14,9 +14,7 @@ opsets = [onnxdomain, msdomain]
 def save(model_path, nodes, inputs, outputs, initializers):
     graph = helper.make_graph(nodes, "TransposeGemmTest", inputs, outputs, initializers)
 
-    model = helper.make_model(
-        graph, opset_imports=opsets, producer_name="onnxruntime-test"
-    )
+    model = helper.make_model(graph, opset_imports=opsets, producer_name="onnxruntime-test")
 
     onnx.save(model, model_path)
 
@@ -26,9 +24,7 @@ def gemm_transpose_2outputs_from_transpose(model_path):
     nodes = [
         helper.make_node("Transpose", ["A"], ["tp0"], "TransposeA"),
         helper.make_node("Transpose", ["B"], ["tp1"], "TransposeB"),
-        helper.make_node(
-            "Gemm", ["tp0", "tp1"], ["output"], "Gemm", alpha=3.0, transA=1
-        ),
+        helper.make_node("Gemm", ["tp0", "tp1"], ["output"], "Gemm", alpha=3.0, transA=1),
         helper.make_node("Identity", ["tp0"], ["output2"], "IdentityAt"),
     ]
 
@@ -50,12 +46,8 @@ def gemm_transpose_2outputs_from_transpose_to_2gemms(model_path):
     nodes = [
         helper.make_node("Transpose", ["A"], ["tp0"], "TransposeA"),
         helper.make_node("Transpose", ["B"], ["tp1"], "TransposeB"),
-        helper.make_node(
-            "Gemm", ["tp0", "tp1"], ["output"], "Gemm1", alpha=3.0, transA=1
-        ),
-        helper.make_node(
-            "Gemm", ["tp1", "C"], ["output3"], "Gemm2", alpha=3.0, transA=1
-        ),
+        helper.make_node("Gemm", ["tp0", "tp1"], ["output"], "Gemm1", alpha=3.0, transA=1),
+        helper.make_node("Gemm", ["tp1", "C"], ["output3"], "Gemm2", alpha=3.0, transA=1),
         helper.make_node("Identity", ["tp0"], ["output2"], "IdentityAt"),
     ]
 
@@ -75,6 +67,4 @@ def gemm_transpose_2outputs_from_transpose_to_2gemms(model_path):
 
 
 gemm_transpose_2outputs_from_transpose("gemm_transpose_2outputs_from_transpose.onnx")
-gemm_transpose_2outputs_from_transpose_to_2gemms(
-    "gemm_transpose_2outputs_from_transpose_to_2gemms.onnx"
-)
+gemm_transpose_2outputs_from_transpose_to_2gemms("gemm_transpose_2outputs_from_transpose_to_2gemms.onnx")

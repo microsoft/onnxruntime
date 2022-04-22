@@ -11,8 +11,7 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper
-from op_test_utils import (TestDataFeeds, check_model_correctness,
-                           check_op_type_count, check_qtype_by_node_type)
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
@@ -23,9 +22,7 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         for i in range(n):
             inputs = {}
             for name, shape in name2shape.items():
-                inputs.update(
-                    {name: np.random.randint(-1, 2, shape).astype(np.float32)}
-                )
+                inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
         dr = TestDataFeeds(input_data_list)
         return dr
@@ -51,44 +48,22 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         #                       add2
         #                         |
         #                      (output)
-        input_tensor = helper.make_tensor_value_info(
-            "input", TensorProto.FLOAT, conv_input_shape
-        )
+        input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, conv_input_shape)
 
-        conv1_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(
-            np.float32
-        )
-        conv1_weight_initializer = onnx.numpy_helper.from_array(
-            conv1_weight_arr, name="conv1_weight"
-        )
-        conv1_node = onnx.helper.make_node(
-            "Conv", ["input", "conv1_weight"], ["conv1_output"], name="conv1_node"
-        )
+        conv1_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(np.float32)
+        conv1_weight_initializer = onnx.numpy_helper.from_array(conv1_weight_arr, name="conv1_weight")
+        conv1_node = onnx.helper.make_node("Conv", ["input", "conv1_weight"], ["conv1_output"], name="conv1_node")
 
-        conv2_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(
-            np.float32
-        )
-        conv2_weight_initializer = onnx.numpy_helper.from_array(
-            conv2_weight_arr, name="conv2_weight"
-        )
-        conv2_node = onnx.helper.make_node(
-            "Conv", ["input", "conv2_weight"], ["conv2_output"], name="conv2_node"
-        )
+        conv2_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(np.float32)
+        conv2_weight_initializer = onnx.numpy_helper.from_array(conv2_weight_arr, name="conv2_weight")
+        conv2_node = onnx.helper.make_node("Conv", ["input", "conv2_weight"], ["conv2_output"], name="conv2_node")
 
-        conv3_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(
-            np.float32
-        )
-        conv3_weight_initializer = onnx.numpy_helper.from_array(
-            conv3_weight_arr, name="conv3_weight"
-        )
-        conv3_node = onnx.helper.make_node(
-            "Conv", ["input", "conv3_weight"], ["conv3_output"], name="conv3_node"
-        )
+        conv3_weight_arr = np.random.randint(-1, 2, conv_weight_shape).astype(np.float32)
+        conv3_weight_initializer = onnx.numpy_helper.from_array(conv3_weight_arr, name="conv3_weight")
+        conv3_node = onnx.helper.make_node("Conv", ["input", "conv3_weight"], ["conv3_output"], name="conv3_node")
 
         if opset >= 13:
-            squeeze_axes_initializer = onnx.numpy_helper.from_array(
-                np.array([0], dtype=np.int64), name="squeeze_axes"
-            )
+            squeeze_axes_initializer = onnx.numpy_helper.from_array(np.array([0], dtype=np.int64), name="squeeze_axes")
             squeeze1_node = helper.make_node(
                 "Squeeze",
                 ["conv1_output", "squeeze_axes"],
@@ -139,12 +114,8 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
                 axes=[0],
             )
 
-        output_tensor = helper.make_tensor_value_info(
-            "output", TensorProto.FLOAT, conv_output_shape
-        )
-        add2_node = helper.make_node(
-            "Add", ["unsqueeze_output", "conv3_output"], ["output"], name="add2_node"
-        )
+        output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, conv_output_shape)
+        add2_node = helper.make_node("Add", ["unsqueeze_output", "conv3_output"], ["output"], name="add2_node")
 
         initializers = [
             conv1_weight_initializer,
@@ -183,23 +154,13 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         np.random.seed(1)
 
         model_fp32_path = "squeezes_opset{}_fp32.onnx".format(opset)
-        self.construct_model_conv_squeezes(
-            model_fp32_path, [1, 2, 26, 42], [3, 2, 3, 3], [1, 3, 24, 40], opset=opset
-        )
+        self.construct_model_conv_squeezes(model_fp32_path, [1, 2, 26, 42], [3, 2, 3, 3], [1, 3, 24, 40], opset=opset)
 
-        activation_proto_qtype = (
-            TensorProto.UINT8
-            if activation_type == QuantType.QUInt8
-            else TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = "squeezes_opset{}_{}{}.onnx".format(
-            opset, activation_type_str, weight_type_str
-        )
-        model_uint8_qdq_path = "squeezes_opset{}_{}{}_qdq.onnx".format(
-            opset, activation_type_str, weight_type_str
-        )
+        model_uint8_path = "squeezes_opset{}_{}{}.onnx".format(opset, activation_type_str, weight_type_str)
+        model_uint8_qdq_path = "squeezes_opset{}_{}{}_qdq.onnx".format(opset, activation_type_str, weight_type_str)
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})

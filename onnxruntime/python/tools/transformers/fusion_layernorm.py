@@ -53,9 +53,7 @@ class FusionLayerNormalization(Fusion):
 
         div_node = None
         for child in children:
-            div_node = self.model.find_first_child_by_type(
-                child, "Div", input_name_to_nodes, recursive=False
-            )
+            div_node = self.model.find_first_child_by_type(child, "Div", input_name_to_nodes, recursive=False)
             if div_node is not None:
                 break
         if div_node is None:
@@ -111,20 +109,12 @@ class FusionLayerNormalization(Fusion):
             logger.debug(f"It is not safe to fuse LayerNormalization node. Skip")
             return
 
-        weight_input = mul_node.input[
-            1 - self.model.input_index(div_node.output[0], mul_node)
-        ]
-        if not self.model.is_constant_with_specified_dimension(
-            weight_input, 1, "layernorm weight"
-        ):
+        weight_input = mul_node.input[1 - self.model.input_index(div_node.output[0], mul_node)]
+        if not self.model.is_constant_with_specified_dimension(weight_input, 1, "layernorm weight"):
             return
 
-        bias_input = last_add_node.input[
-            1 - self.model.input_index(mul_node.output[0], last_add_node)
-        ]
-        if not self.model.is_constant_with_specified_dimension(
-            bias_input, 1, "layernorm bias"
-        ):
+        bias_input = last_add_node.input[1 - self.model.input_index(mul_node.output[0], last_add_node)]
+        if not self.model.is_constant_with_specified_dimension(bias_input, 1, "layernorm bias"):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
@@ -133,13 +123,9 @@ class FusionLayerNormalization(Fusion):
             "LayerNormalization",
             inputs=[node.input[0], weight_input, bias_input],
             outputs=[last_add_node.output[0]],
-            name=self.model.create_node_name(
-                "LayerNormalization", name_prefix="LayerNorm"
-            ),
+            name=self.model.create_node_name("LayerNormalization", name_prefix="LayerNorm"),
         )
-        normalize_node.attribute.extend(
-            [helper.make_attribute("epsilon", float(add_weight))]
-        )
+        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
         self.nodes_to_add.append(normalize_node)
         self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
@@ -207,14 +193,8 @@ class FusionLayerNormalizationTF(Fusion):
             return
 
         assert len(return_indice) == 3
-        if not (
-            return_indice[0] in [0, 1]
-            and return_indice[1] in [0, 1]
-            and return_indice[2] in [0, 1]
-        ):
-            logger.debug(
-                "return indice is exepected in [0, 1], but got {return_indice}"
-            )
+        if not (return_indice[0] in [0, 1] and return_indice[1] in [0, 1] and return_indice[2] in [0, 1]):
+            logger.debug("return indice is exepected in [0, 1], but got {return_indice}")
             return
 
         (
@@ -225,9 +205,7 @@ class FusionLayerNormalizationTF(Fusion):
             sqrt_node,
             add_node_0,
         ) = parent_nodes[:6]
-        reduce_mean_node_0, mul_node_2, sub_node_1, reduce_mean_node_1 = parent_nodes[
-            -4:
-        ]
+        reduce_mean_node_0, mul_node_2, sub_node_1, reduce_mean_node_1 = parent_nodes[-4:]
 
         cast_node_3 = None
         if len(parent_nodes) == 11:
@@ -239,9 +217,7 @@ class FusionLayerNormalizationTF(Fusion):
             logger.debug("mul_node_3 not found")
             return
 
-        node_before_reduce = self.model.get_parent(
-            reduce_mean_node_1, 0, output_name_to_node
-        )
+        node_before_reduce = self.model.get_parent(reduce_mean_node_1, 0, output_name_to_node)
         root_node = (
             node_before_reduce
             if cast_node_3 is None
@@ -252,24 +228,18 @@ class FusionLayerNormalizationTF(Fusion):
             return
 
         i, epsilon = self.model.get_constant_input(add_node_0)
-        if (
-            epsilon is None
-            or epsilon <= 0
-            or (epsilon > 1.0e-5 and cast_node_3 is None)
-        ):
+        if epsilon is None or epsilon <= 0 or (epsilon > 1.0e-5 and cast_node_3 is None):
             logger.debug("epsilon is not matched")
             return
 
         if cast_node_3 is None and (
-            reduce_mean_node_1.input[0] not in mul_node_3.input
-            or reduce_mean_node_1.input[0] not in sub_node_1.input
+            reduce_mean_node_1.input[0] not in mul_node_3.input or reduce_mean_node_1.input[0] not in sub_node_1.input
         ):
             logger.debug("reduce_mean_node_1 and mul_node_3 shall link from root node")
             return
 
         if cast_node_3 is not None and (
-            node_before_reduce.input[0] not in mul_node_3.input
-            or reduce_mean_node_1.input[0] not in sub_node_1.input
+            node_before_reduce.input[0] not in mul_node_3.input or reduce_mean_node_1.input[0] not in sub_node_1.input
         ):
             logger.debug("reduce_mean_node_1 and mul_node_3 shall link from root node")
             return
@@ -294,9 +264,7 @@ class FusionLayerNormalizationTF(Fusion):
         ]
 
         if cast_node_3 is not None:
-            cast_node_2 = self.model.match_parent(
-                mul_node_0, "Cast", 0, output_name_to_node
-            )
+            cast_node_2 = self.model.match_parent(mul_node_0, "Cast", 0, output_name_to_node)
             if cast_node_2 is None:
                 logger.debug("cast_node_2 not found")
                 return
@@ -321,9 +289,7 @@ class FusionLayerNormalizationTF(Fusion):
             "LayerNormalization",
             inputs=[mul_node_3.input[0], weight_input, bias_input],
             outputs=[node.output[0]],
-            name=self.model.create_node_name(
-                "LayerNormalization", name_prefix="LayerNorm"
-            ),
+            name=self.model.create_node_name("LayerNormalization", name_prefix="LayerNorm"),
         )
         fused_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
         self.nodes_to_add.append(fused_node)

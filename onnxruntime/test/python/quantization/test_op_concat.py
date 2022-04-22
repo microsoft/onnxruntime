@@ -8,8 +8,12 @@ import unittest
 
 import numpy as np
 from onnx import TensorProto, helper, numpy_helper, save
-from op_test_utils import (InputFeedsNegOneZeroOne, check_model_correctness,
-                           check_op_type_count, check_qtype_by_node_type)
+from op_test_utils import (
+    InputFeedsNegOneZeroOne,
+    check_model_correctness,
+    check_op_type_count,
+    check_qtype_by_node_type,
+)
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
@@ -31,39 +35,29 @@ class TestONNXModel(unittest.TestCase):
         #              |
         #           (output)
         initializers = []
-        input = helper.make_tensor_value_info(
-            "input", TensorProto.FLOAT, [1, 3, 15, 15]
-        )
-        output = helper.make_tensor_value_info(
-            "output", TensorProto.FLOAT, [1, 13, 13, 13]
-        )
+        input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 15, 15])
+        output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 13, 13, 13])
 
         # Conv1 output [1, 2, 13, 13]
         conv1_weight_initializer = numpy_helper.from_array(
             np.random.randint(-1, 2, [2, 3, 3, 3]).astype(np.float32),
             name="conv1_weight",
         )
-        conv1_node = helper.make_node(
-            "Conv", ["input", "conv1_weight"], ["conv1_output"], name="conv1_node"
-        )
+        conv1_node = helper.make_node("Conv", ["input", "conv1_weight"], ["conv1_output"], name="conv1_node")
 
         # Conv2 output [1, 5, 13, 13]
         conv2_weight_initializer = numpy_helper.from_array(
             np.random.randint(-1, 2, [5, 3, 3, 3]).astype(np.float32),
             name="conv2_weight",
         )
-        conv2_node = helper.make_node(
-            "Conv", ["input", "conv2_weight"], ["conv2_output"], name="conv2_node"
-        )
+        conv2_node = helper.make_node("Conv", ["input", "conv2_weight"], ["conv2_output"], name="conv2_node")
 
         # Conv3 output [1, 6, 13, 13]
         conv3_weight_initializer = numpy_helper.from_array(
             np.random.randint(-1, 2, [6, 3, 3, 3]).astype(np.float32),
             name="conv3_weight",
         )
-        conv3_node = helper.make_node(
-            "Conv", ["input", "conv3_weight"], ["conv3_output"], name="conv3_node"
-        )
+        conv3_node = helper.make_node("Conv", ["input", "conv3_weight"], ["conv3_output"], name="conv3_node")
 
         concat_node = helper.make_node(
             "Concat",
@@ -73,9 +67,7 @@ class TestONNXModel(unittest.TestCase):
             axis=1,
         )
 
-        identity_node = helper.make_node(
-            "Identity", ["concat_output"], ["output"], name="identity_node"
-        )
+        identity_node = helper.make_node("Identity", ["concat_output"], ["output"], name="identity_node")
 
         initializers = [
             conv1_weight_initializer,
@@ -98,17 +90,11 @@ class TestONNXModel(unittest.TestCase):
         self.construct_model(model_fp32_path)
         data_reader = InputFeedsNegOneZeroOne(1, {"input": [1, 3, 15, 15]})
 
-        activation_proto_qtype = (
-            TensorProto.UINT8
-            if activation_type == QuantType.QUInt8
-            else TensorProto.INT8
-        )
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_q8_path = "concat_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_path = "concat_{}{}_qdq.onnx".format(
-            activation_type_str, weight_type_str
-        )
+        model_q8_qdq_path = "concat_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
 
         # Verify QOperator mode
         data_reader.rewind()
@@ -146,9 +132,7 @@ class TestONNXModel(unittest.TestCase):
         )
         check_qtype_by_node_type(self, model_q8_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(
-            self, model_fp32_path, model_q8_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_fp32_path, model_q8_path, data_reader.get_next())
 
         # Verify QDQ mode
         data_reader.rewind()
@@ -176,9 +160,7 @@ class TestONNXModel(unittest.TestCase):
         }
         check_qtype_by_node_type(self, model_q8_qdq_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(
-            self, model_fp32_path, model_q8_qdq_path, data_reader.get_next()
-        )
+        check_model_correctness(self, model_fp32_path, model_q8_qdq_path, data_reader.get_next())
 
     def test_quantize_concat(self):
         self.quantize_concat_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={})

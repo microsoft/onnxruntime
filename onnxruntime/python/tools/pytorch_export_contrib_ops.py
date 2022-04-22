@@ -12,8 +12,7 @@ try:
     from torch.onnx import register_custom_op_symbolic
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
-        "This module is only useful in combination with PyTorch. "
-        "To install PyTorch see https://pytorch.org/."
+        "This module is only useful in combination with PyTorch. " "To install PyTorch see https://pytorch.org/."
     )
 import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
@@ -78,16 +77,12 @@ def register():
     _reg(gelu)
 
     def triu(g, self, diagonal):
-        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1).setType(
-            self.type()
-        )
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1).setType(self.type())
 
     _reg(triu)
 
     def tril(g, self, diagonal):
-        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(
-            self.type()
-        )
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(self.type())
 
     _reg(tril)
 
@@ -99,7 +94,5 @@ def unregister():
     for name in _registered_ops:
         ns, kind = name.split("::")
         for version in sym_help._onnx_stable_opsets:
-            if version >= _OPSET_VERSION and sym_registry.is_registered_op(
-                kind, ns, version
-            ):
+            if version >= _OPSET_VERSION and sym_registry.is_registered_op(kind, ns, version):
                 del sym_registry._registry[(ns, version)][kind]

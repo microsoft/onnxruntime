@@ -56,9 +56,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
         attention_node.attribute.extend(
             [
                 helper.make_attribute("num_heads", self.num_heads),
-                helper.make_attribute(
-                    "unidirectional", 0
-                ),  # unidirectional shall not be ON for 4D attention mask
+                helper.make_attribute("unidirectional", 0),  # unidirectional shall not be ON for 4D attention mask
             ]
         )
 
@@ -83,15 +81,11 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
         (mul_mask, sub_mask, last_slice_mask, slice_mask) = mask_nodes
 
         if mul_qk.input[1] != last_slice_mask.output[0]:
-            logger.debug(
-                "fuse_attention failed: mul_qk.input[1] != last_slice_mask.output[0]"
-            )
+            logger.debug("fuse_attention failed: mul_qk.input[1] != last_slice_mask.output[0]")
             return None
 
         if not self.utils.check_node_input_value(mul_mask, 1, 10000.0):
-            logger.debug(
-                "fuse_attention failed: mul_mask input 1 is not constant 10000.0"
-            )
+            logger.debug("fuse_attention failed: mul_mask input 1 is not constant 10000.0")
             return None
 
         if not self.utils.check_node_input_value(sub_mask, 0, 1.0):
@@ -103,33 +97,23 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             return None
 
         if not self.utils.check_node_input_value(last_slice_mask, 1, [0]):
-            logger.debug(
-                "fuse_attention failed: last_slice_mask input 1 (starts) is not constant [0]"
-            )
+            logger.debug("fuse_attention failed: last_slice_mask input 1 (starts) is not constant [0]")
             return None
 
         if not self.utils.check_node_input_value(last_slice_mask, 3, [3]):
-            logger.debug(
-                "fuse_attention failed: last_slice_mask input 3 (axes) is not constant [3]"
-            )
+            logger.debug("fuse_attention failed: last_slice_mask input 3 (axes) is not constant [3]")
             return False
 
         if not self.utils.check_node_input_value(last_slice_mask, 4, [1]):
-            logger.debug(
-                "fuse_attention failed: last_slice_mask input 4 (steps) is not constant [1]"
-            )
+            logger.debug("fuse_attention failed: last_slice_mask input 4 (steps) is not constant [1]")
             return False
 
         if not self.utils.check_node_input_value(slice_mask, 3, [2]):
-            logger.debug(
-                "fuse_attention failed: slice_mask input 3 (axes) is not constant [2]"
-            )
+            logger.debug("fuse_attention failed: slice_mask input 3 (axes) is not constant [2]")
             return None
 
         if not self.utils.check_node_input_value(slice_mask, 4, [1]):
-            logger.debug(
-                "fuse_attention failed: slice_mask input 4 (steps) is not constant [1]"
-            )
+            logger.debug("fuse_attention failed: slice_mask input 4 (steps) is not constant [1]")
             return None
 
         last_slice_path = self.model.match_parent_path(
@@ -160,10 +144,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             ["Unsqueeze", "Sub", "Gather", "Shape", "LayerNormalization"],
             [1, 0, 1, 0, 0],
         )
-        if (
-            first_slice_sub_1 is None
-            or first_slice_sub_1[-1] != layernorm_before_attention
-        ):
+        if first_slice_sub_1 is None or first_slice_sub_1[-1] != layernorm_before_attention:
             logger.debug("fuse_attention: failed to match last slice sub path 1")
             return None
 
@@ -218,14 +199,10 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             layernorm_before_attention,
         ) = v_nodes
         if skip_input != layernorm_before_attention.input[0]:
-            logger.debug(
-                "fuse_attention: skip_input != layernorm_before_attention.input[0]"
-            )
+            logger.debug("fuse_attention: skip_input != layernorm_before_attention.input[0]")
             return
 
-        qk_nodes = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Sub", "Mul", "MatMul"], [0, 0, 0, 0]
-        )
+        qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Sub", "Mul", "MatMul"], [0, 0, 0, 0])
         if qk_nodes is None:
             logger.debug("fuse_attention: failed to match qk path")
             return None
@@ -234,13 +211,9 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             logger.debug("fuse_attention failed: softmax_qk axis != 3")
             return None
 
-        attention_mask = self.match_mask(
-            sub_qk, mul_qk, matmul_qk, layernorm_before_attention
-        )
+        attention_mask = self.match_mask(sub_qk, mul_qk, matmul_qk, layernorm_before_attention)
 
-        q_nodes = self.model.match_parent_path(
-            matmul_qk, ["Div", "Transpose", "Reshape", "Split"], [0, 0, 0, 0]
-        )
+        q_nodes = self.model.match_parent_path(matmul_qk, ["Div", "Transpose", "Reshape", "Split"], [0, 0, 0, 0])
         if q_nodes is None:
             logger.debug("fuse_attention: failed to match q path")
             return
@@ -276,25 +249,19 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
 
         num_heads = value[2]
         if num_heads != self.num_heads:
-            logger.info(
-                f"Detected num_heads={num_heads}. Ignore user specified value {self.num_heads}"
-            )
+            logger.info(f"Detected num_heads={num_heads}. Ignore user specified value {self.num_heads}")
             self.num_heads = num_heads
 
         hidden_size_per_head = value[3]
         i, value = self.model.get_constant_input(div_k)
         expected_value = float(np.sqrt(np.sqrt(hidden_size_per_head)))
         if not is_close(value, expected_value):
-            logger.debug(
-                f"fuse_attention: div_k value={value} expected={expected_value}"
-            )
+            logger.debug(f"fuse_attention: div_k value={value} expected={expected_value}")
             return
 
         i, value = self.model.get_constant_input(div_q)
         if not is_close(value, expected_value):
-            logger.debug(
-                f"fuse_attention: div_q value={value} expected={expected_value}"
-            )
+            logger.debug(f"fuse_attention: div_q value={value} expected={expected_value}")
             return
 
         # Match past and present paths

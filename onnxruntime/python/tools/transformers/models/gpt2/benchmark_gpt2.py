@@ -22,8 +22,7 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import (Precision, create_onnxruntime_session,
-                              prepare_environment, setup_logger)
+from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
@@ -37,8 +36,7 @@ def parse_arguments(argv=None):
         "--model_name_or_path",
         required=True,
         type=str,
-        help="Model path, or pretrained model name selected in the list: "
-        + ", ".join(PRETRAINED_GPT2_MODELS),
+        help="Model path, or pretrained model name selected in the list: " + ", ".join(PRETRAINED_GPT2_MODELS),
     )
 
     parser.add_argument(
@@ -91,9 +89,7 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(optimize_onnx=False)
 
-    parser.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU for inference"
-    )
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
@@ -105,14 +101,10 @@ def parse_arguments(argv=None):
         help="Precision of model to run. fp32 for full precision, fp16 for half precision, and int8 for quantization",
     )
 
-    parser.add_argument(
-        "--torchscript", required=False, action="store_true", help="use Torchscript"
-    )
+    parser.add_argument("--torchscript", required=False, action="store_true", help="use Torchscript")
     parser.set_defaults(torchscript=False)
 
-    parser.add_argument(
-        "-b", "--batch_sizes", nargs="+", type=int, default=[1], help="batch size"
-    )
+    parser.add_argument("-b", "--batch_sizes", nargs="+", type=int, default=[1], help="batch size")
     parser.add_argument(
         "--beam_size",
         type=int,
@@ -145,21 +137,15 @@ def parse_arguments(argv=None):
         help="CSV file for saving summary results.",
     )
 
-    parser.add_argument(
-        "--thread_num", required=False, type=int, default=-1, help="Threads to use"
-    )
+    parser.add_argument("--thread_num", required=False, type=int, default=-1, help="Threads to use")
 
-    parser.add_argument(
-        "--include_copy_output_latency", required=False, action="store_true"
-    )
+    parser.add_argument("--include_copy_output_latency", required=False, action="store_true")
     parser.set_defaults(include_copy_output_latency=False)
 
     parser.add_argument("--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
 
-    search_option_group = parser.add_argument_group(
-        "configurable one step search options"
-    )
+    search_option_group = parser.add_argument_group("configurable one step search options")
 
     search_option_group.add_argument(
         "--ignore_eos",
@@ -205,9 +191,7 @@ def parse_arguments(argv=None):
         default=0.95,
         help="Nuclear/top-p sampling accumulation probability.",
     )
-    sampling_option_group.add_argument(
-        "--do_sample_top_k", type=int, default=0, help="Use top-k if non-zero."
-    )
+    sampling_option_group.add_argument("--do_sample_top_k", type=int, default=0, help="Use top-k if non-zero.")
 
     args = parser.parse_args(argv)
 
@@ -224,16 +208,12 @@ def main(args):
 
     logger.info(f"Arguments:{args}")
     if args.precision == Precision.FLOAT16:
-        assert (
-            args.optimize_onnx and args.use_gpu
-        ), "fp16 requires --optimize_onnx --use_gpu"
+        assert args.optimize_onnx and args.use_gpu, "fp16 requires --optimize_onnx --use_gpu"
 
     if args.precision == Precision.INT8:
         assert not args.use_gpu, "quantization only supports CPU"
 
-    torch.set_num_threads(
-        psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num
-    )
+    torch.set_num_threads(psutil.cpu_count(logical=True) if args.thread_num <= 0 else args.thread_num)
     print(torch.__config__.parallel_info())
 
     cache_dir = args.cache_dir
@@ -249,9 +229,7 @@ def main(args):
         model_type = "default"
 
     gpt2helper = Gpt2HelperFactory.create_helper(model_type)
-    config = AutoConfig.from_pretrained(
-        args.model_name_or_path, torchscript=args.torchscript, cache_dir=cache_dir
-    )
+    config = AutoConfig.from_pretrained(args.model_name_or_path, torchscript=args.torchscript, cache_dir=cache_dir)
     if model_type == "beam_search_step":
         model = model_class.from_pretrained(
             args.model_name_or_path,
@@ -277,9 +255,7 @@ def main(args):
             cache_dir=cache_dir,
         )
     else:
-        model = model_class.from_pretrained(
-            args.model_name_or_path, config=config, cache_dir=cache_dir
-        )
+        model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     # This scirpt does not support float16 for PyTorch.
     # if args.float16:
@@ -287,9 +263,7 @@ def main(args):
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.to(device)
-    use_external_data_format = (
-        config.n_layer > 24
-    )  # TODO: find a way to check model size > 2GB
+    use_external_data_format = config.n_layer > 24  # TODO: find a way to check model size > 2GB
     onnx_model_paths = gpt2helper.get_onnx_paths(
         output_dir,
         args.model_name_or_path,
@@ -311,9 +285,7 @@ def main(args):
     )
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
-        onnx_model_path = onnx_model_paths[
-            str(args.precision) if args.precision != Precision.INT8 else "fp32"
-        ]
+        onnx_model_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else "fp32"]
         gpt2helper.optimize_onnx(
             onnx_model_paths["raw"],
             onnx_model_path,
@@ -326,9 +298,7 @@ def main(args):
 
         if args.precision == Precision.INT8:
             logger.info("quantizing model...")
-            QuantizeHelper.quantize_onnx_model(
-                onnx_model_path, onnx_model_paths["int8"], use_external_data_format
-            )
+            QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_paths["int8"], use_external_data_format)
             model = QuantizeHelper.quantize_torch_model(model)
             logger.info("finished quantizing model")
             onnx_model_path = onnx_model_paths["int8"]
@@ -365,9 +335,7 @@ def main(args):
             model_class=args.model_class,
         )
 
-        output_buffers = gpt2helper.get_output_buffers(
-            max_output_shapes, device, args.precision == Precision.FLOAT16
-        )
+        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     else:
         max_output_shapes = gpt2helper.get_output_shapes(
@@ -377,13 +345,9 @@ def main(args):
             config,
             args.model_class,
         )
-        output_buffers = gpt2helper.get_output_buffers(
-            max_output_shapes, device, args.precision == Precision.FLOAT16
-        )
+        output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
-    csv_filename = args.result_csv or "benchmark_result_{}.csv".format(
-        datetime.now().strftime("%Y%m%d-%H%M%S")
-    )
+    csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
     with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = [
             "model_name",
@@ -405,18 +369,11 @@ def main(args):
         for batch_size in args.batch_sizes:
             for sequence_length in args.sequence_lengths:
                 for past_sequence_length in args.past_sequence_lengths:
-                    assert (
-                        batch_size > 0
-                        and sequence_length > 0
-                        and past_sequence_length >= 0
-                    )
+                    assert batch_size > 0 and sequence_length > 0 and past_sequence_length >= 0
                     logger.debug(
                         f"Running test for batch_size={batch_size} sequence_length={sequence_length} past_sequence_length={past_sequence_length}..."
                     )
-                    if (
-                        model_type == "beam_search_step"
-                        or model_type == "configurable_one_step_search"
-                    ):
+                    if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
                         dummy_inputs = gpt2helper.get_dummy_inputs(
                             batch_size,
                             past_sequence_length,
@@ -463,16 +420,12 @@ def main(args):
                         )
 
                     try:
-                        outputs, torch_latency = gpt2helper.pytorch_inference(
-                            model, dummy_inputs, args.test_times
-                        )
+                        outputs, torch_latency = gpt2helper.pytorch_inference(model, dummy_inputs, args.test_times)
 
                         # Dump Torch output shape
                         for i, value in enumerate(outputs):
                             if isinstance(value, tuple):
-                                logger.debug(
-                                    f"torch output {i} is tuple of size {len(value)}, shape {value[0].shape}"
-                                )
+                                logger.debug(f"torch output {i} is tuple of size {len(value)}, shape {value[0].shape}")
                             else:
                                 logger.debug(f"torch output {i} shape {value.shape}")
 
@@ -480,10 +433,7 @@ def main(args):
                             session, dummy_inputs, args.test_times
                         )
 
-                        (
-                            ort_io_outputs,
-                            ort_io_latency,
-                        ) = gpt2helper.onnxruntime_inference_with_binded_io(
+                        (ort_io_outputs, ort_io_latency,) = gpt2helper.onnxruntime_inference_with_binded_io(
                             session,
                             dummy_inputs,
                             output_buffers,

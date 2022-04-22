@@ -45,9 +45,9 @@ class MyGPT2Attention(nn.Module):
         max_positions = max_position_embeddings
         self.register_buffer(
             "bias",
-            torch.tril(
-                torch.ones((max_positions, max_positions), dtype=torch.uint8)
-            ).view(1, 1, max_positions, max_positions),
+            torch.tril(torch.ones((max_positions, max_positions), dtype=torch.uint8)).view(
+                1, 1, max_positions, max_positions
+            ),
         )
         self.register_buffer("masked_bias", torch.tensor(-1e4))
         self.embed_dim = hidden_size
@@ -82,12 +82,8 @@ class MyGPT2Attention(nn.Module):
             norm_qk = qk / (float(value.size(-1)) ** 0.5)
 
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[
-            :, :, key_length - query_length : key_length, :key_length
-        ].bool()
-        attn_weights = torch.where(
-            causal_mask, norm_qk, self.masked_bias.to(norm_qk.dtype)
-        )
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
+        attn_weights = torch.where(causal_mask, norm_qk, self.masked_bias.to(norm_qk.dtype))
 
         if attention_mask is not None:
             attn_weights = attn_weights + attention_mask
@@ -141,14 +137,10 @@ class MyGPT2Attention(nn.Module):
         else:
             present = None
 
-        mask = MyGPT2Attention.process_mask(
-            attention_mask, dtype=query.dtype
-        )  # mask processing is moved to here.
+        mask = MyGPT2Attention.process_mask(attention_mask, dtype=query.dtype)  # mask processing is moved to here.
 
         if self.debug:
-            attn_output, qk, norm_qk, softmax, attn_weights = self._attn(
-                query, key, value, mask
-            )
+            attn_output, qk, norm_qk, softmax, attn_weights = self._attn(query, key, value, mask)
         else:
             attn_output = self._attn(query, key, value, mask)
 
@@ -192,9 +184,7 @@ def create_inputs(
 
     total_sequence_length = past_sequence_length + sequence_length
 
-    attention_mask = torch.ones(
-        [batch_size, total_sequence_length], dtype=torch.int32, device=device
-    )
+    attention_mask = torch.ones([batch_size, total_sequence_length], dtype=torch.int32, device=device)
     if padding_length > 0:
         padding_position = total_sequence_length - padding_length
         attention_mask[:, padding_position:] = 0
@@ -204,9 +194,7 @@ def create_inputs(
             attention_mask[i, padding_position] = 0
 
     input_hidden_states = (
-        torch.normal(mean=0.0, std=0.1, size=(batch_size, sequence_length, hidden_size))
-        .to(float_type)
-        .to(device)
+        torch.normal(mean=0.0, std=0.1, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
     )
     return input_hidden_states, attention_mask, layer_past
 
@@ -218,9 +206,7 @@ def get_output_names(debug=False):
     return outputs
 
 
-def export_onnx(
-    model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device
-):
+def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device):
     from pathlib import Path
 
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
@@ -233,9 +219,7 @@ def export_onnx(
     )
 
     with torch.no_grad():
-        outputs = model(
-            input_hidden_states, attention_mask=attention_mask, layer_past=layer_past
-        )
+        outputs = model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
 
     dynamic_axes = {
         "input_hidden_states": {0: "batch_size", 1: "seq_len"},
@@ -277,11 +261,7 @@ def optimize_onnx(input_onnx_path, optimized_onnx_path, num_heads, debug):
     onnx_model = OnnxModel(m)
 
     nodes_to_remove = onnx_model.nodes()
-    output_names = (
-        ["attn_output", "present"] + DEBUG_OUTPUTS
-        if debug
-        else ["attn_output", "present"]
-    )
+    output_names = ["attn_output", "present"] + DEBUG_OUTPUTS if debug else ["attn_output", "present"]
     node_to_add = helper.make_node(
         "Attention",
         [
@@ -308,9 +288,7 @@ def onnxruntime_inference(ort_session, input_hidden_states, attention_mask, past
     ort_inputs = {
         "past": numpy.ascontiguousarray(past.cpu().numpy()),
         "attention_mask": numpy.ascontiguousarray(attention_mask.cpu().numpy()),
-        "input_hidden_states": numpy.ascontiguousarray(
-            input_hidden_states.cpu().numpy()
-        ),
+        "input_hidden_states": numpy.ascontiguousarray(input_hidden_states.cpu().numpy()),
     }
 
     ort_outputs = ort_session.run(None, ort_inputs)
@@ -357,14 +335,10 @@ def verify_attention(
                 attention_mask=attention_mask,
             )
 
-        ort_outputs = onnxruntime_inference(
-            ort_session, input_hidden_states, attention_mask, layer_past
-        )
+        ort_outputs = onnxruntime_inference(ort_session, input_hidden_states, attention_mask, layer_past)
 
         tolerance = 1e-03 if float16 else 1e-05
-        is_all_close, max_diff = compare_outputs(
-            torch_outputs, ort_outputs, atol=tolerance, verbose=True
-        )
+        is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance, verbose=True)
         max_diffs.append(max_diff)
         if is_all_close:
             passed_cases += 1
@@ -372,41 +346,29 @@ def verify_attention(
     max_diff = max(max_diffs)
     diff_count = len([i for i in max_diffs if i > 0])
     success_flag = "[FAILED]" if passed_cases < test_cases else "[OK]"
-    print(
-        f"{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}"
-    )
+    print(f"{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}")
     return test_cases - passed_cases
 
 
-def run(
-    batch_size, float16, optimized, hidden_size, num_attention_heads, device, test_cases
-):
+def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device, test_cases):
     test_name = f"batch_size={batch_size}, float16={float16}, optimized={optimized}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}"
     print(f"\nTesting ONNX parity: {test_name}")
 
     debug = (
         not optimized
     )  # or DEBUG_OUTPUTS==["softmax"] when you add an extra output for softmax result in Attention operator
-    model = MyGPT2Attention(
-        hidden_size=hidden_size, num_attention_heads=num_attention_heads, debug=debug
-    )
+    model = MyGPT2Attention(hidden_size=hidden_size, num_attention_heads=num_attention_heads, debug=debug)
     model.eval()
     model.to(device)
     if float16:
         model.half()
 
     # Do not re-use onnx file from previous test since weights of model are random.
-    onnx_model_path = "./temp/gpt_attention_{}.onnx".format(
-        "fp16" if float16 else "fp32"
-    )
-    export_onnx(
-        model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device
-    )
+    onnx_model_path = "./temp/gpt_attention_{}.onnx".format("fp16" if float16 else "fp32")
+    export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device)
 
     if optimized:
-        optimized_onnx_path = "./temp/gpt_attention_opt_{}.onnx".format(
-            "fp16" if float16 else "fp32"
-        )
+        optimized_onnx_path = "./temp/gpt_attention_opt_{}.onnx".format("fp16" if float16 else "fp32")
         optimize_onnx(onnx_model_path, optimized_onnx_path, num_attention_heads, debug)
         onnx_path = optimized_onnx_path
     else:
@@ -480,14 +442,10 @@ def run(
 
 class TestGptAttentionHuggingfaceParity(unittest.TestCase):
     def setUp(self):
-        self.optimized = (
-            True  # Change it to False if you want to test parity of non optimized ONNX
-        )
+        self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 10  # Number of test cases per test run
 
-    def run_test(
-        self, batch_size, float16, optimized, hidden_size, num_attention_heads, device
-    ):
+    def run_test(self, batch_size, float16, optimized, hidden_size, num_attention_heads, device):
         if float16 and device.type == "cpu":  # CPU does not support FP16
             return
         num_failure, test_name = run(

@@ -8,9 +8,7 @@ from onnx.external_data_helper import set_external_data
 from onnx.numpy_helper import from_array
 
 
-def create_external_data_tensor(
-    value, tensor_name
-):  # type: (List[Any], Text) -> TensorProto
+def create_external_data_tensor(value, tensor_name):  # type: (List[Any], Text) -> TensorProto
     tensor = from_array(value)
     tensor.name = tensor_name
     tensor_filename = "{}.bin".format(tensor_name)

@@ -140,28 +140,18 @@ class Gpt2Inputs:
     def __init__(self, input_ids, position_ids, attention_mask, past):
         self.input_ids: torch.LongTensor = input_ids
         self.position_ids: torch.LongTensor = position_ids
-        self.attention_mask: Union[
-            torch.LongTensor, torch.FloatTensor, torch.HalfTensor
-        ] = attention_mask
+        self.attention_mask: Union[torch.LongTensor, torch.FloatTensor, torch.HalfTensor] = attention_mask
         self.past: Union[List[torch.FloatTensor], List[torch.HalfTensor]] = past
 
     def to_list(self) -> List:
-        input_list = [
-            v
-            for v in [self.input_ids, self.position_ids, self.attention_mask]
-            if v is not None
-        ]
+        input_list = [v for v in [self.input_ids, self.position_ids, self.attention_mask] if v is not None]
         if self.past:
             input_list.extend(self.past)
 
         return input_list
 
     def to_tuple(self) -> Tuple:
-        return tuple(
-            v
-            for v in [self.input_ids, self.position_ids, self.attention_mask, self.past]
-            if v is not None
-        )
+        return tuple(v for v in [self.input_ids, self.position_ids, self.attention_mask, self.past] if v is not None)
 
     def to_fp32(self):
         # For attention mask, only convert fp16 to fp32, and keep the original type if it is integer.
@@ -209,10 +199,7 @@ class Gpt2Helper:
             int(hidden_size / num_attention_heads),
         ]
 
-        past = [
-            (torch.rand(past_shape, dtype=float_type, device=device) * 2.0 - 1.0)
-            for _ in range(num_layer)
-        ]
+        past = [(torch.rand(past_shape, dtype=float_type, device=device) * 2.0 - 1.0) for _ in range(num_layer)]
         input_ids = torch.randint(
             low=0,
             high=vocab_size - 1,
@@ -230,9 +217,7 @@ class Gpt2Helper:
                 device=device,
             )
             if total_sequence_length >= 2:
-                padding_position = random.randint(
-                    0, total_sequence_length - 1
-                )  # test input with padding.
+                padding_position = random.randint(0, total_sequence_length - 1)  # test input with padding.
                 attention_mask[:, padding_position] = 0
 
         # Deduce position_ids from attention mask
@@ -298,9 +283,7 @@ class Gpt2Helper:
 
         output_buffers = {}
         for name, shape in output_shapes.items():
-            output_buffers[name] = torch.empty(
-                numpy.prod(shape), dtype=data_type, device=device
-            )
+            output_buffers[name] = torch.empty(numpy.prod(shape), dtype=data_type, device=device)
         return output_buffers
 
     @staticmethod
@@ -318,12 +301,8 @@ class Gpt2Helper:
         """Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
         Note: need kwargs since Gpt2BeamSearchHelper.compare_outputs has an extra parameter model_class
         """
-        is_close = numpy.allclose(
-            ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol
-        )
-        logger.debug(
-            f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}"
-        )
+        is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol)
+        logger.debug(f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}")
 
         is_all_close = is_close
         num_layers = len(ort_outputs) - 1
@@ -335,16 +314,12 @@ class Gpt2Helper:
                 rtol=rtol,
                 atol=atol,
             )
-            logger.debug(
-                f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}"
-            )
+            logger.debug(f"PyTorch and OnnxRuntime layer {layer} state (present_{layer}) are close:{is_close}")
             is_all_close = is_all_close and is_close
 
         if not is_all_close:
             max_abs_diff = Gpt2Helper.diff_outputs(torch_outputs, ort_outputs)
-            logger.info(
-                f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}"
-            )
+            logger.info(f"PyTorch and OnnxRuntime results are not all close: max_abs_diff={max_abs_diff:.5f}")
 
         return is_all_close
 
@@ -368,9 +343,7 @@ class Gpt2Helper:
         messages = []
         for i in range(len(ort_outputs)):
             ort_output = ort_outputs[i]
-            torch_output = (
-                (torch_outputs[0] if i == 0 else torch_outputs[1][i - 1]).cpu().numpy()
-            )
+            torch_output = (torch_outputs[0] if i == 0 else torch_outputs[1][i - 1]).cpu().numpy()
             is_close = numpy.allclose(ort_output, torch_output, atol=atol, rtol=0)
             max_diffs.append(numpy.amax(numpy.abs(torch_output - ort_output)))
             is_all_close = is_all_close and is_close
@@ -391,12 +364,8 @@ class Gpt2Helper:
             )
 
             if i == 0:  # logits
-                ort_max_index = numpy.unravel_index(
-                    numpy.argmax(ort_output, axis=None), ort_output.shape
-                )
-                torch_max_index = numpy.unravel_index(
-                    numpy.argmax(torch_output, axis=None), torch_output.shape
-                )
+                ort_max_index = numpy.unravel_index(numpy.argmax(ort_output, axis=None), ort_output.shape)
+                torch_max_index = numpy.unravel_index(numpy.argmax(torch_output, axis=None), torch_output.shape)
                 is_top1_matched = numpy.array_equal(ort_max_index, torch_max_index)
 
         max_diff_output_index = max_diffs.index(max(max_diffs))
@@ -449,13 +418,8 @@ class Gpt2Helper:
         present_names = [f"present_{i}" for i in range(num_layer)]
 
         # GPT2Model outputs last_state; GPT2LMHeadModel outputs logits (prediction_scores)
-        assert (
-            outputs[0].shape[2] == config.vocab_size
-            or outputs[0].shape[2] == config.hidden_size
-        )
-        output_names = [
-            "logits" if outputs[0].shape[2] == config.vocab_size else "last_state"
-        ] + present_names
+        assert outputs[0].shape[2] == config.vocab_size or outputs[0].shape[2] == config.hidden_size
+        output_names = ["logits" if outputs[0].shape[2] == config.vocab_size else "last_state"] + present_names
 
         # Shape of input tensors:
         #    input_ids: (batch_size, seq_len)
@@ -582,14 +546,10 @@ class Gpt2Helper:
             # when the max difference of value after converting float to float16 is lower than a threshold (1e-6),
             # we can deduce that the weights are stored in float16 precision.
             max_diff = float_to_float16_max_diff(initializer)
-            logger.debug(
-                f"max diff of converting weights in last MatMul node {node.name}: {max_diff}"
-            )
+            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
             is_weight_fp16_precision = max_diff < 1e-6
         else:
-            logger.warning(
-                f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}"
-            )
+            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
 
         keep_io_types = []
         node_block_list = []
@@ -636,9 +596,7 @@ class Gpt2Helper:
                 latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug(
-            "PyTorch inference time = {} ms".format(format(average_latency, ".2f"))
-        )
+        logger.debug("PyTorch inference time = {} ms".format(format(average_latency, ".2f")))
 
         return outputs, average_latency
 
@@ -647,23 +605,17 @@ class Gpt2Helper:
         """Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs."""
         logger.debug(f"start onnxruntime_inference")
 
-        ort_inputs = {
-            "input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())
-        }
+        ort_inputs = {"input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())}
 
         if inputs.past is not None:
             for i, past_i in enumerate(inputs.past):
                 ort_inputs[f"past_{i}"] = numpy.ascontiguousarray(past_i.cpu().numpy())
 
         if inputs.attention_mask is not None:
-            ort_inputs["attention_mask"] = numpy.ascontiguousarray(
-                inputs.attention_mask.cpu().numpy()
-            )
+            ort_inputs["attention_mask"] = numpy.ascontiguousarray(inputs.attention_mask.cpu().numpy())
 
         if inputs.position_ids is not None:
-            ort_inputs["position_ids"] = numpy.ascontiguousarray(
-                inputs.position_ids.cpu().numpy()
-            )
+            ort_inputs["position_ids"] = numpy.ascontiguousarray(inputs.position_ids.cpu().numpy())
 
         ort_outputs = ort_session.run(None, ort_inputs)
         if total_runs == 0:
@@ -676,9 +628,7 @@ class Gpt2Helper:
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug(
-            "OnnxRuntime Inference time = {} ms".format(format(average_latency, ".2f"))
-        )
+        logger.debug("OnnxRuntime Inference time = {} ms".format(format(average_latency, ".2f")))
 
         return ort_outputs, average_latency
 
@@ -704,9 +654,7 @@ class Gpt2Helper:
         )
 
     @staticmethod
-    def get_outputs_from_io_binding_buffer(
-        ort_session, output_buffers, output_shapes, return_numpy=True
-    ):
+    def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """Copy results to cpu. Returns a list of numpy array."""
         return IOBindingHelper.get_outputs_from_io_binding_buffer(
             ort_session, output_buffers, output_shapes, return_numpy
@@ -759,11 +707,7 @@ class Gpt2Helper:
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug(
-            "OnnxRuntime with IO binding inference time = {} ms".format(
-                format(average_latency, ".2f")
-            )
-        )
+        logger.debug("OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f")))
 
         return ort_outputs, average_latency
 
@@ -820,9 +764,7 @@ class Gpt2Helper:
             max_output_shapes = Gpt2Helper.get_output_shapes(
                 max_batch_size, max_past_seq_len, max_seq_len, config, model_class
             )
-            output_buffers = Gpt2Helper.get_output_buffers(
-                max_output_shapes, device, is_float16
-            )
+            output_buffers = Gpt2Helper.get_output_buffers(max_output_shapes, device, is_float16)
 
         passed_test_cases = 0
         top1_matched_cases = 0
@@ -857,9 +799,7 @@ class Gpt2Helper:
             )
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
-                ort_outputs = Gpt2Helper.onnxruntime_inference(
-                    ort_session, dummy_inputs
-                )
+                ort_outputs = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs)
             else:
                 output_shapes = Gpt2Helper.get_output_shapes(
                     batch_size,
@@ -892,44 +832,32 @@ class Gpt2Helper:
                     f"test_case={i} batch_size={batch_size} past_sequence_length={past_sequence_length} sequence_length={sequence_length} MaxDiff={max_abs_diff}"
                 )
                 for i, message in enumerate(messages):
-                    logger.info(
-                        f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}"
-                    )
+                    logger.info(f"\t{i}: Name={ort_session.get_outputs()[i].name}, {message}")
 
             # Collect data for debugging
-            if enable_pickle_output and (
-                numpy.isnan(max_abs_diff) or max_abs_diff > 100 * atol
-            ):
+            if enable_pickle_output and (numpy.isnan(max_abs_diff) or max_abs_diff > 100 * atol):
                 Gpt2Helper.save_inputs(i, dummy_inputs)
                 Gpt2Helper.save_outputs(i, ort_outputs, outputs)
 
         if max_abs_diff_list:
             result = {
-                f"max_diff_percentile_{p}": "{:.5f}".format(
-                    numpy.percentile(max_abs_diff_list, p)
-                )
+                f"max_diff_percentile_{p}": "{:.5f}".format(numpy.percentile(max_abs_diff_list, p))
                 for p in [50, 90, 95, 99]
             }
         else:
             result = {f"max_diff_percentile_{p}": "nan" for p in [50, 90, 95, 99]}
 
         result["top1_match_rate"] = top1_matched_cases * 1.0 / total_test_cases
-        result["top1_match_rate_per_run"] = [
-            x * 1.0 / test_cases_per_run for x in top1_matched_cases_per_run
-        ]
+        result["top1_match_rate_per_run"] = [x * 1.0 / test_cases_per_run for x in top1_matched_cases_per_run]
         result["diff_pass_rate"] = passed_test_cases * 1.0 / total_test_cases
-        result["nan_rate"] = (
-            (total_test_cases - len(max_abs_diff_list)) * 1.0 / total_test_cases
-        )
+        result["nan_rate"] = (total_test_cases - len(max_abs_diff_list)) * 1.0 / total_test_cases
 
         logger.info(
             f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}; Nan={total_test_cases-len(max_abs_diff_list)}; Top1_Matched={top1_matched_cases}"
         )
 
         if passed_test_cases > 0.95 * total_test_cases:
-            logger.info(
-                f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%"
-            )
+            logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")
 
         return result
 
@@ -960,9 +888,7 @@ class Gpt2Helper:
             output_shapes = Gpt2Helper.get_output_shapes(
                 batch_size, past_sequence_length, sequence_length, config, model_class
             )
-            output_buffers = Gpt2Helper.get_output_buffers(
-                output_shapes, device, is_float16
-            )
+            output_buffers = Gpt2Helper.get_output_buffers(output_shapes, device, is_float16)
 
         dummy_inputs = Gpt2Helper.get_dummy_inputs(
             batch_size,
@@ -982,9 +908,7 @@ class Gpt2Helper:
         )
 
         if use_io_binding:
-            _, latency = Gpt2Helper.onnxruntime_inference(
-                ort_session, dummy_inputs, total_runs
-            )
+            _, latency = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs, total_runs)
         else:
             _, latency = Gpt2Helper.onnxruntime_inference_with_binded_io(
                 ort_session, dummy_inputs, output_buffers, output_shapes, total_runs
@@ -993,9 +917,7 @@ class Gpt2Helper:
         return latency
 
     @staticmethod
-    def torchscript(
-        model, config, device, has_position_ids=True, has_attention_mask=True
-    ):
+    def torchscript(model, config, device, has_position_ids=True, has_attention_mask=True):
         """JIT trace for TorchScript."""
         input_list = Gpt2Helper.get_dummy_inputs(
             batch_size=1,
@@ -1045,17 +967,13 @@ class Gpt2Helper:
                             shutil.rmtree(new_dir)
                             logger.info(f"Removed the existed directory: {new_dir}")
                         except OSError as e:
-                            logger.info(
-                                f"Failed to remove the directory {new_dir}: {e.strerror}"
-                            )
+                            logger.info(f"Failed to remove the directory {new_dir}: {e.strerror}")
                     else:
                         logger.info(f"Directory for {model_type} existed: {new_dir}")
 
             # store each model to its own directory (for external data format).
             return {
-                "raw": os.path.join(
-                    os.path.join(output_dir, model_name), model_name + ".onnx"
-                ),
+                "raw": os.path.join(os.path.join(output_dir, model_name), model_name + ".onnx"),
                 "fp32": os.path.join(
                     os.path.join(output_dir, model_name + "_fp32"),
                     model_name + "_fp32.onnx",

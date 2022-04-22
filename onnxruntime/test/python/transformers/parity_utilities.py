@@ -37,13 +37,7 @@ def create_inputs(
     device=torch.device("cuda"),
 ):
     float_type = torch.float16 if float16 else torch.float32
-    input = (
-        torch.normal(
-            mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)
-        )
-        .to(float_type)
-        .to(device)
-    )
+    input = torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
     return input
 
 
@@ -52,9 +46,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
 
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-    input_hidden_states = create_inputs(
-        hidden_size=hidden_size, float16=float16, device=device
-    )
+    input_hidden_states = create_inputs(hidden_size=hidden_size, float16=float16, device=device)
     with torch.no_grad():
         outputs = model(input_hidden_states)
 
@@ -88,9 +80,7 @@ def optimize_onnx(
     else:
         from onnxruntime.transformers.optimizer import optimize_model
 
-    onnx_model = optimize_model(
-        input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level
-    )
+    onnx_model = optimize_model(input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level)
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:
@@ -121,16 +111,12 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
     """
     same = numpy.asarray(
         [
-            numpy.allclose(
-                ort_outputs[i], torch_outputs[i].cpu().numpy(), atol=atol, rtol=0
-            )
+            numpy.allclose(ort_outputs[i], torch_outputs[i].cpu().numpy(), atol=atol, rtol=0)
             for i in range(len(ort_outputs))
         ]
     )
 
-    max_abs_diff = [
-        diff_outputs(torch_outputs, ort_outputs, i) for i in range(len(ort_outputs))
-    ]
+    max_abs_diff = [diff_outputs(torch_outputs, ort_outputs, i) for i in range(len(ort_outputs))]
 
     is_all_close = same.all()
     if (not is_all_close) and verbose:
@@ -145,22 +131,15 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
 
 
 def create_ort_session(onnx_model_path, use_gpu=True):
-    from onnxruntime import (GraphOptimizationLevel, InferenceSession,
-                             SessionOptions)
+    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
     from onnxruntime import __version__ as onnxruntime_version
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
     sess_options.intra_op_num_threads = 2
     sess_options.log_severity_level = 2
-    execution_providers = (
-        ["CPUExecutionProvider"]
-        if not use_gpu
-        else ["CUDAExecutionProvider", "CPUExecutionProvider"]
-    )
-    return InferenceSession(
-        onnx_model_path, sess_options, providers=execution_providers
-    )
+    execution_providers = ["CPUExecutionProvider"] if not use_gpu else ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 
 
 def onnxruntime_inference(ort_session, input):
@@ -187,9 +166,7 @@ def run_parity(
     printed = False  # print only one sample
     ort_session = create_ort_session(onnx_model_path, device.type == "cuda")
     for i in range(test_cases):
-        input_hidden_states = create_inputs(
-            batch_size, sequence_length, hidden_size, float16, device
-        )
+        input_hidden_states = create_inputs(batch_size, sequence_length, hidden_size, float16, device)
 
         with torch.no_grad():
             torch_outputs = model(input_hidden_states)
@@ -198,9 +175,7 @@ def run_parity(
 
         if tolerance is None:
             tolerance = 2e-03 if float16 else 1e-05
-        is_all_close, max_diff = compare_outputs(
-            torch_outputs, ort_outputs, atol=tolerance, verbose=verbose
-        )
+        is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance, verbose=verbose)
         max_diffs.append(max_diff)
         if is_all_close:
             passed_cases += 1
@@ -215,7 +190,5 @@ def run_parity(
     max_diff = max(max_diffs)
     diff_count = len([i for i in max_diffs if i > 0])
     success_flag = "[FAILED]" if passed_cases < test_cases else "[OK]"
-    print(
-        f"{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}"
-    )
+    print(f"{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}")
     return test_cases - passed_cases

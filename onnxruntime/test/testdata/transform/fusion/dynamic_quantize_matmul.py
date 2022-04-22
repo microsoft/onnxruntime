@@ -15,25 +15,17 @@ def GenerateModel(model_name, b_has_zp=True, has_bias=False, bias_ND=False):
         ),
         helper.make_node(
             "MatMulInteger",
-            ["a_quantized", "b_quantized", "a_zp", "b_zp"]
-            if b_has_zp
-            else ["a_quantized", "b_quantized", "a_zp"],
+            ["a_quantized", "b_quantized", "a_zp", "b_zp"] if b_has_zp else ["a_quantized", "b_quantized", "a_zp"],
             ["matmul_output_int32"],
             "MatMulInteger",
         ),
         helper.make_node("Mul", ["a_scale", "b_scale"], ["multiplier"], "mul_right"),
-        helper.make_node(
-            "Cast", ["matmul_output_int32"], ["matmul_output_float"], "cast", to=1
-        ),
-        helper.make_node(
-            "Mul", ["matmul_output_float", "multiplier"], [mul_output], "mul_bottom"
-        ),
+        helper.make_node("Cast", ["matmul_output_int32"], ["matmul_output_float"], "cast", to=1),
+        helper.make_node("Mul", ["matmul_output_float", "multiplier"], [mul_output], "mul_bottom"),
     ]
 
     if has_bias:
-        nodes.extend(
-            [helper.make_node("Add", [mul_output, "bias"], ["output"], "bias_add")]
-        )
+        nodes.extend([helper.make_node("Add", [mul_output, "bias"], ["output"], "bias_add")])
 
     initializers = []
 

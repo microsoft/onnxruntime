@@ -125,9 +125,7 @@ if __name__ == "__main__":
         "ArgMax",
         "ArgMin",
     ]
-    print(
-        "// Please don't manually edit this file. Generated from reduction_test_cases_generator.py"
-    )
+    print("// Please don't manually edit this file. Generated from reduction_test_cases_generator.py")
     PrintDisableOptimizations()
     print("ReductionTestCases testcases = {")
     print("// input_data")

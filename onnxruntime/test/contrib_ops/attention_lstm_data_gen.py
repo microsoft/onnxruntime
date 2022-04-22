@@ -82,16 +82,12 @@ with tf.variable_scope(root_variable_scope):
         ),
     )
 
-    memSeqLen = tf.Variable(
-        tf.constant([memMaxStep, memMaxStep - 1], dtype=tf.int32), name="mem_seq_len"
-    )
+    memSeqLen = tf.Variable(tf.constant([memMaxStep, memMaxStep - 1], dtype=tf.int32), name="mem_seq_len")
 
     with tf.variable_scope("fwBahdanau"):
         fw_mem_layer_weights = tf.get_variable(
             "memory_layer/kernel",
-            initializer=tf.constant(
-                [4.0, 2.0, 0.5, -8.0, -2.0, -2.0], shape=[memDepth, am_attn_size]
-            ),
+            initializer=tf.constant([4.0, 2.0, 0.5, -8.0, -2.0, -2.0], shape=[memDepth, am_attn_size]),
         )
 
     fw_query_layer_weights = tf.get_variable(
@@ -231,9 +227,7 @@ with tf.variable_scope(root_variable_scope):
     with tf.variable_scope("bwBahdanau"):
         fw_mem_layer_weights = tf.get_variable(
             "memory_layer/kernel",
-            initializer=tf.constant(
-                [4.0, 2.0, 0.5, -8.0, -2.0, -2.0], shape=[memDepth, am_attn_size]
-            ),
+            initializer=tf.constant([4.0, 2.0, 0.5, -8.0, -2.0, -2.0], shape=[memDepth, am_attn_size]),
         )
 
     bw_query_layer_weights = tf.get_variable(
@@ -407,33 +401,19 @@ with tf.Session() as sess:
     attention = fw_state.attention
     alignments = fw_state.alignments
     sess.run(tf.Print(cell, [cell], "====FinalState(fw)", summarize=10000))
-    sess.run(
-        tf.Print(alignments, [alignments], "====Final Alignment(fw)", summarize=10000)
-    )
-    sess.run(
-        tf.Print(
-            attention, [attention], "====Final Attention Context(fw)", summarize=10000
-        )
-    )
+    sess.run(tf.Print(alignments, [alignments], "====Final Alignment(fw)", summarize=10000))
+    sess.run(tf.Print(attention, [attention], "====Final Attention Context(fw)", summarize=10000))
 
     bw_state = states[1]  # output_state_bw
     cell = bw_state.cell_state.c
     attention = bw_state.attention
     alignments = bw_state.alignments
     sess.run(tf.Print(cell, [cell], "====FinalState(bw)", summarize=10000))
-    sess.run(
-        tf.Print(alignments, [alignments], "====Final Alignment(bw)", summarize=10000)
-    )
-    sess.run(
-        tf.Print(
-            attention, [attention], "====Final Attention Context(bw)", summarize=10000
-        )
-    )
+    sess.run(tf.Print(alignments, [alignments], "====Final Alignment(bw)", summarize=10000))
+    sess.run(tf.Print(attention, [attention], "====Final Attention Context(bw)", summarize=10000))
 
     for t in tensors:
-        shape_str = (
-            "[" + ",".join(list(map(lambda x: str(x.__int__()), t.get_shape()))) + "]"
-        )
+        shape_str = "[" + ",".join(list(map(lambda x: str(x.__int__()), t.get_shape()))) + "]"
         sess.run(
             tf.Print(
                 t,

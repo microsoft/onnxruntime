@@ -15,8 +15,7 @@ if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
 else:
     sys.path.append(os.path.join(file_path, ".."))
 
-from symbolic_shape_infer import (SymbolicShapeInference,
-                                  get_shape_from_type_proto, sympy)
+from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy
 
 
 class SymbolicShapeInferenceHelper(SymbolicShapeInference):
@@ -39,9 +38,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         if self.inferred_:
             return self.all_shapes_inferred_
 
-        self.dynamic_axis_mapping_ = (
-            dynamic_axis_mapping  # e.g {"batch_size" : 4, "seq_len" :7}
-        )
+        self.dynamic_axis_mapping_ = dynamic_axis_mapping  # e.g {"batch_size" : 4, "seq_len" :7}
 
         self._preprocess(self.model_)
         while self.run_:
@@ -61,9 +58,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
                 [
                     (
                         i.name,
-                        onnx.helper.make_tensor_value_info(
-                            i.name, i.data_type, list(i.dims)
-                        ),
+                        onnx.helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)),
                     )
                     for i in self.out_mp_.graph.initializer
                 ]

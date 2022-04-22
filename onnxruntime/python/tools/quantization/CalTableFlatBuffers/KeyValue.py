@@ -52,9 +52,7 @@ def KeyValueStart(builder):
 
 
 def AddKey(builder, key):
-    builder.PrependUOffsetTRelativeSlot(
-        0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0
-    )
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0)
 
 
 def KeyValueAddKey(builder, key):
@@ -63,9 +61,7 @@ def KeyValueAddKey(builder, key):
 
 
 def AddValue(builder, value):
-    builder.PrependUOffsetTRelativeSlot(
-        1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0
-    )
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
 
 
 def KeyValueAddValue(builder, value):

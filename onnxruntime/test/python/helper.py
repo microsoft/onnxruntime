@@ -12,6 +12,4 @@ def get_name(name):
     res = os.path.join(data, name)
     if os.path.exists(res):
         return res
-    raise FileNotFoundError(
-        "Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res)
-    )
+    raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))

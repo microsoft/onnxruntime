@@ -32,8 +32,7 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import (Precision, create_onnxruntime_session,
-                              prepare_environment, setup_logger)
+from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
@@ -47,8 +46,7 @@ def parse_arguments(argv=None):
         "--model_name_or_path",
         required=True,
         type=str,
-        help="Model path, or pretrained model name in the list: "
-        + ", ".join(PRETRAINED_GPT2_MODELS),
+        help="Model path, or pretrained model name in the list: " + ", ".join(PRETRAINED_GPT2_MODELS),
     )
 
     parser.add_argument(
@@ -85,9 +83,7 @@ def parse_arguments(argv=None):
     )
     parser.set_defaults(optimize_onnx=False)
 
-    parser.add_argument(
-        "--use_gpu", required=False, action="store_true", help="use GPU for inference"
-    )
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
@@ -137,9 +133,7 @@ def parse_arguments(argv=None):
     parser.add_argument("--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
 
-    parser.add_argument(
-        "-e", "--use_external_data_format", required=False, action="store_true"
-    )
+    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
 
     parser.add_argument(
@@ -157,9 +151,7 @@ def parse_arguments(argv=None):
         help="Beam size if greedy/top-p/top-k sampling is needed",
     )
 
-    search_option_group = parser.add_argument_group(
-        "configurable one step search options"
-    )
+    search_option_group = parser.add_argument_group("configurable one step search options")
 
     search_option_group.add_argument(
         "--ignore_eos",
@@ -205,9 +197,7 @@ def parse_arguments(argv=None):
         default=0.95,
         help="Nuclear/top-p sampling accumulation probability.",
     )
-    sampling_option_group.add_argument(
-        "--do_sample_top_k", type=int, default=0, help="Use top-k if non-zero."
-    )
+    sampling_option_group.add_argument("--do_sample_top_k", type=int, default=0, help="Use top-k if non-zero.")
 
     fp16_option_group = parser.add_argument_group(
         'float to float16 conversion parameters that works when "--precision fp16" is specified'
@@ -275,9 +265,7 @@ def get_latency_name():
     return "average_latency(batch_size=8,sequence_length=1,past_sequence_length=32)"
 
 
-def main(
-    argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"
-):
+def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_results.csv"):
     result = {}
     from transformers import __version__ as transformers_version
 
@@ -300,11 +288,7 @@ def main(
     logger.info(f"Arguments:{args}")
 
     cache_dir = args.cache_dir
-    output_dir = (
-        args.output
-        if not args.output.endswith(".onnx")
-        else os.path.dirname(args.output)
-    )
+    output_dir = args.output if not args.output.endswith(".onnx") else os.path.dirname(args.output)
     prepare_environment(cache_dir, output_dir, args.use_gpu)
 
     if args.precision != Precision.FLOAT32:
@@ -317,9 +301,7 @@ def main(
         assert not args.use_gpu, "quantization only supports CPU"
 
     if args.use_external_data_format:
-        assert not args.output.endswith(
-            ".onnx"
-        ), "output shall be a directory for --use_external_data_format"
+        assert not args.output.endswith(".onnx"), "output shall be a directory for --use_external_data_format"
 
     model_class = MODEL_CLASSES[args.model_class][0]
     use_padding = MODEL_CLASSES[args.model_class][2]
@@ -359,9 +341,7 @@ def main(
             cache_dir=cache_dir,
         )
     else:
-        model = model_class.from_pretrained(
-            args.model_name_or_path, config=config, cache_dir=cache_dir
-        )
+        model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
     device = torch.device("cuda:0" if args.use_gpu else "cpu")
     model.eval().to(device)
@@ -409,9 +389,7 @@ def main(
     is_io_float16 = args.precision == Precision.FLOAT16 and not args.keep_io_types
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
-        output_path = onnx_model_paths[
-            str(args.precision) if args.precision != Precision.INT8 else "fp32"
-        ]
+        output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else "fp32"]
 
         logger.info(f"Optimizing model to {output_path}")
         gpt2helper.optimize_onnx(
@@ -429,31 +407,21 @@ def main(
 
     if args.precision == Precision.INT8:
         logger.info("quantizing model...")
-        QuantizeHelper.quantize_onnx_model(
-            output_path, onnx_model_paths["int8"], args.use_external_data_format
-        )
+        QuantizeHelper.quantize_onnx_model(output_path, onnx_model_paths["int8"], args.use_external_data_format)
         model = QuantizeHelper.quantize_torch_model(model)
         logger.info("finished quantizing model")
         output_path = onnx_model_paths["int8"]
 
-    if (
-        args.output.endswith(".onnx")
-        and output_path != args.output
-        and not args.use_external_data_format
-    ):
+    if args.output.endswith(".onnx") and output_path != args.output and not args.use_external_data_format:
         import shutil
 
         shutil.move(output_path, args.output)
         output_path = args.output
 
     logger.info(f"Output path: {output_path}")
-    model_size_in_MB = int(
-        get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024
-    )
+    model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)
 
-    session = create_onnxruntime_session(
-        output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose
-    )
+    session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if args.model_class == "GPT2LMHeadModel" and session is not None:
         parity_result = gpt2helper.test_parity(
             session,
@@ -577,59 +545,40 @@ def main(
             for _, line in enumerate(read_f):
                 line = line.rstrip()
                 data = json.loads(line)
-                input_ids = torch.from_numpy(
-                    numpy.asarray(data["input_ids"], dtype=numpy.int64)
-                ).to(device)
+                input_ids = torch.from_numpy(numpy.asarray(data["input_ids"], dtype=numpy.int64)).to(device)
 
                 if use_padding:
                     if "attention_mask" in data:
                         numpy_float = numpy.float16 if is_io_float16 else numpy.float32
-                        attention_mask = torch.from_numpy(
-                            numpy.asarray(data["attention_mask"], dtype=numpy_float)
-                        ).to(device)
+                        attention_mask = torch.from_numpy(numpy.asarray(data["attention_mask"], dtype=numpy_float)).to(
+                            device
+                        )
                     else:
                         padding = -1
-                        attention_mask = (input_ids != padding).type(
-                            torch.float16 if is_io_float16 else torch.float32
-                        )
+                        attention_mask = (input_ids != padding).type(torch.float16 if is_io_float16 else torch.float32)
                         input_ids.masked_fill_(input_ids == padding, 0)
 
                     if "position_ids" in data:
-                        position_ids = torch.from_numpy(
-                            numpy.asarray(data["position_ids"], dtype=numpy.int64)
-                        ).to(device)
+                        position_ids = torch.from_numpy(numpy.asarray(data["position_ids"], dtype=numpy.int64)).to(
+                            device
+                        )
                     else:
                         position_ids = attention_mask.long().cumsum(-1) - 1
                         position_ids.masked_fill_(position_ids < 0, 0)
 
                     inputs = {
-                        "input_ids": input_ids.to(torch.int32)
-                        if args.use_int32_inputs
-                        else input_ids,
-                        "position_ids": position_ids.to(torch.int32)
-                        if args.use_int32_inputs
-                        else position_ids,
-                        "attention_mask": attention_mask.to(torch.int32)
-                        if args.use_int32_inputs
-                        else attention_mask,
+                        "input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids,
+                        "position_ids": position_ids.to(torch.int32) if args.use_int32_inputs else position_ids,
+                        "attention_mask": attention_mask.to(torch.int32) if args.use_int32_inputs else attention_mask,
                     }
                 else:
-                    inputs = {
-                        "input_ids": input_ids.to(torch.int32)
-                        if args.use_int32_inputs
-                        else input_ids
-                    }
+                    inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids}
 
-                if (
-                    model_type == "beam_search_step"
-                    or model_type == "configurable_one_step_search"
-                ):
+                if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
                     beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
 
                     input_log_probs = torch.zeros([input_ids.shape[0], 1])
-                    input_unfinished_sents = torch.ones(
-                        [input_ids.shape[0], 1], dtype=torch.bool
-                    )
+                    input_unfinished_sents = torch.ones([input_ids.shape[0], 1], dtype=torch.bool)
                     inputs.update(
                         {
                             "beam_select_idx": beam_select_idx,

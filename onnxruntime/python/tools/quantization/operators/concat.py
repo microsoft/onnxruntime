@@ -1,7 +1,6 @@
 import onnx
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType,
-                           attribute_to_kwarg, ms_domain)
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -25,9 +24,7 @@ class QLinearConcat(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(
-            node, [*range(0, len(node.input))], initializer_use_weight_qType=False
-        )
+        ) = self.quantizer.quantize_inputs(node, [*range(0, len(node.input))], initializer_use_weight_qType=False)
         if not data_found or q_input_names is None:
             return super().quantize()
 
@@ -50,15 +47,9 @@ class QLinearConcat(QuantOperatorBase):
 
         qlconcat_inputs = [output_scale_name, output_zp_name]
         for i in range(0, len(q_input_names)):
-            qlconcat_inputs.extend(
-                [q_input_names[i], scale_names[i], zero_point_names[i]]
-            )
+            qlconcat_inputs.extend([q_input_names[i], scale_names[i], zero_point_names[i]])
         qlconcat_node = onnx.helper.make_node(
-            "QLinearConcat",
-            qlconcat_inputs,
-            [quantized_output_value.q_name],
-            qnode_name,
-            **kwargs
+            "QLinearConcat", qlconcat_inputs, [quantized_output_value.q_name], qnode_name, **kwargs
         )
 
         self.quantizer.new_nodes += nodes

@@ -10,9 +10,7 @@ import onnx
 from onnx_contrib_ops_helper import expect
 
 
-def torch_embedding_reference_implementation(
-    weight, indices, padding_idx=None, scale=False
-):
+def torch_embedding_reference_implementation(weight, indices, padding_idx=None, scale=False):
     return np.take(weight, indices, axis=0)
 
 

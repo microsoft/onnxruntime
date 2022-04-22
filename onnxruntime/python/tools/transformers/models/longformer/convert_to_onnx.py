@@ -68,9 +68,7 @@ def my_longformer_attention(
 
 
 # namespace is onnxruntime which is registered in longformer_attention.cpp
-register_custom_op_symbolic(
-    "onnxruntime::LongformerAttention", my_longformer_attention, 9
-)
+register_custom_op_symbolic("onnxruntime::LongformerAttention", my_longformer_attention, 9)
 
 # TODO: search the directory to find correct output filename of "python setup.py install" when python version is not 3.8
 torch.ops.load_library(
@@ -126,9 +124,7 @@ def parse_arguments():
 def get_dummy_inputs(config, export_padding, device):
 
     # When sequence length is multiple of windows size, there is no padding logic in ONNX graph
-    sequence_length = (
-        config.attention_window[0] + 1 if export_padding else config.attention_window[0]
-    )
+    sequence_length = config.attention_window[0] + 1 if export_padding else config.attention_window[0]
 
     # Create dummy inputs
     input_ids = torch.arange(sequence_length).unsqueeze(0).to(device)
@@ -136,9 +132,7 @@ def get_dummy_inputs(config, export_padding, device):
     attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=device)
     attention_mask[:, sequence_length - 1] = 0  # last token is masked
 
-    global_attention_mask = torch.zeros(
-        input_ids.shape, dtype=torch.long, device=device
-    )
+    global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=device)
     global_attention_mask[:, 0] = 1  # first token is global token
 
     return input_ids, attention_mask, global_attention_mask
@@ -201,9 +195,7 @@ def my_longformer_self_attention_forward_4(
     )
     global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
-    global_bias = torch.stack(
-        (self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0
-    )
+    global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
     global_bias = global_bias.reshape(3 * self.embed_dim)
 
     attn_output = torch.ops.onnxruntime.LongformerAttention(
@@ -366,9 +358,7 @@ def main(args):
 
     if args.optimize_onnx or args.precision != "fp32":
         fp32_model_path = model_name + "_fp32.onnx"
-        fp16_model_path = (
-            model_name + "_fp16.onnx" if args.precision == "fp16" else None
-        )
+        fp16_model_path = model_name + "_fp16.onnx" if args.precision == "fp16" else None
         optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path)
 
 

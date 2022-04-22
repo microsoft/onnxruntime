@@ -15,11 +15,16 @@ from typing import Dict, List, Tuple, Union
 
 import cpuinfo
 import psutil
-from py3nvml.py3nvml import (NVMLError, nvmlDeviceGetCount,
-                             nvmlDeviceGetHandleByIndex,
-                             nvmlDeviceGetMemoryInfo, nvmlDeviceGetName,
-                             nvmlInit, nvmlShutdown,
-                             nvmlSystemGetDriverVersion)
+from py3nvml.py3nvml import (
+    NVMLError,
+    nvmlDeviceGetCount,
+    nvmlDeviceGetHandleByIndex,
+    nvmlDeviceGetMemoryInfo,
+    nvmlDeviceGetName,
+    nvmlInit,
+    nvmlShutdown,
+    nvmlSystemGetDriverVersion,
+)
 
 
 class MachineInfo:
@@ -109,9 +114,7 @@ class MachineInfo:
             nvmlShutdown()
         except NVMLError as error:
             if not self.silent:
-                self.logger.error(
-                    "Error fetching GPU information using nvml: %s", error
-                )
+                self.logger.error("Error fetching GPU information using nvml: %s", error)
             return None
 
         result = {"driver_version": driver_version, "devices": gpu_info_list}
@@ -139,9 +142,7 @@ class MachineInfo:
             "numpy",
             "onnxconverter-common",
         ]
-        related_packages_list = {
-            i.key: i.version for i in installed_packages if i.key in related_packages
-        }
+        related_packages_list = {i.key: i.version for i in installed_packages if i.key in related_packages}
         return related_packages_list
 
     def get_onnxruntime_info(self) -> Dict:
@@ -150,8 +151,7 @@ class MachineInfo:
 
             return {
                 "version": onnxruntime.__version__,
-                "support_gpu": "CUDAExecutionProvider"
-                in onnxruntime.get_available_providers(),
+                "support_gpu": "CUDAExecutionProvider" in onnxruntime.get_available_providers(),
             }
         except ImportError as error:
             if not self.silent:

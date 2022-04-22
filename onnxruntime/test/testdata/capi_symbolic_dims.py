@@ -9,9 +9,7 @@ print(dim)
 
 graph_def = helper.make_graph(
     nodes=[
-        helper.make_node(
-            op_type="Reshape", inputs=["A", "B"], outputs=["C"], name="reshape"
-        ),
+        helper.make_node(op_type="Reshape", inputs=["A", "B"], outputs=["C"], name="reshape"),
     ],
     name="test-model",
     inputs=[

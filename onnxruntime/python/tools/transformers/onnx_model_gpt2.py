@@ -43,9 +43,7 @@ class Gpt2OnnxModel(BertOnnxModel):
             )
 
             return_indice = []
-            nodes = self.match_parent_path(
-                gemm_node, ["Reshape", "FastGelu"], [0, 0], output_name_to_node
-            )
+            nodes = self.match_parent_path(gemm_node, ["Reshape", "FastGelu"], [0, 0], output_name_to_node)
             if nodes is None:
                 nodes = self.match_parent_path(
                     gemm_node,
@@ -73,19 +71,13 @@ class Gpt2OnnxModel(BertOnnxModel):
                 name=add_node_name,
             )
 
-            self.replace_input_of_all_nodes(
-                reshape_after_gemm.output[0], add_node_name + "_output"
-            )
+            self.replace_input_of_all_nodes(reshape_after_gemm.output[0], add_node_name + "_output")
 
             # Link root node output with MatMul
-            self.replace_input_of_all_nodes(
-                root_node.output[0], matmul_node_name + "_input"
-            )
+            self.replace_input_of_all_nodes(root_node.output[0], matmul_node_name + "_input")
             root_node.output[0] = matmul_node_name + "_input"
 
-            self.replace_input_of_all_nodes(
-                reshape_after_gemm.output[0], add_node_name + "_output"
-            )
+            self.replace_input_of_all_nodes(reshape_after_gemm.output[0], add_node_name + "_output")
 
             self.add_node(matmul_node)
             self.add_node(add_node)

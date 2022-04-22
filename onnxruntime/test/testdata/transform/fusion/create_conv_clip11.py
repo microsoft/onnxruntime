@@ -5,14 +5,10 @@ graph = helper.make_graph(
     [  # nodes
         # fusable, min/max from constant inputs.
         helper.make_node("Conv", ["X0", "W"], ["conv0_out"], "Conv0"),
-        helper.make_node(
-            "Clip", ["conv0_out", "const_min", "const_max"], ["clip0_out"], "Clip0"
-        ),
+        helper.make_node("Clip", ["conv0_out", "const_min", "const_max"], ["clip0_out"], "Clip0"),
         # mutable input. no fusion.
         helper.make_node("Conv", ["X1", "W"], ["conv1_out"], "Conv1"),
-        helper.make_node(
-            "Clip", ["conv1_out", "mutable_min", "const_max"], ["clip1_out"], "Clip1"
-        ),
+        helper.make_node("Clip", ["conv1_out", "mutable_min", "const_max"], ["clip1_out"], "Clip1"),
         # fusable. default min/max.
         helper.make_node("Conv", ["X2", "W"], ["conv2_out"], "Conv2"),
         helper.make_node("Clip", ["conv2_out"], ["clip2_out"], "Clip2"),

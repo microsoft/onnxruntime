@@ -51,9 +51,7 @@ def MakeSubGraph(suffix, has_bias):
 
 def MakeInitializer(suffix):
     return [
-        helper.make_tensor(
-            "b_quantized" + suffix, TensorProto.UINT8, [2, 3], [2, 4, 5, 6, 7, 8]
-        ),
+        helper.make_tensor("b_quantized" + suffix, TensorProto.UINT8, [2, 3], [2, 4, 5, 6, 7, 8]),
         helper.make_tensor("b_zp" + suffix, TensorProto.UINT8, [], [128]),
         helper.make_tensor("b_scale" + suffix, TensorProto.FLOAT, [], [1.8]),
     ]
@@ -79,9 +77,7 @@ def GenerateModel(model_name):
     initializers.extend(
         [
             helper.make_tensor("bias_1", TensorProto.FLOAT, [3], [2, 4, 5]),
-            helper.make_tensor(
-                "bias_2", TensorProto.FLOAT, [3, 3], [1, 2, 3, 4, 5, 6, 7, 8, 9]
-            ),
+            helper.make_tensor("bias_2", TensorProto.FLOAT, [3, 3], [1, 2, 3, 4, 5, 6, 7, 8, 9]),
         ]
     )
 

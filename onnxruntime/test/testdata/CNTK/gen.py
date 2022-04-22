@@ -71,9 +71,7 @@ def Save(dir, func, feed, outputs):
         [feed[var] for var in func.arguments],
         cntk_to_actual_names,
     )
-    SaveData(
-        test_data_dir, "output", func.outputs, [outputs[var] for var in func.outputs]
-    )
+    SaveData(test_data_dir, "output", func.outputs, [outputs[var] for var in func.outputs])
 
 
 def GenSimple():
@@ -155,9 +153,7 @@ def LSTM(cell_dim, use_scan=True):
         if use_scan:
             LSTM_func_root = C.as_composite(LSTM_func.outputs[0].owner.block_root)
             args = LSTM_func_root.arguments
-            LSTM_func = LSTM_func_root.clone(
-                C.CloneMethod.share, {args[0]: input, args[1]: dh, args[2]: dc}
-            )
+            LSTM_func = LSTM_func_root.clone(C.CloneMethod.share, {args[0]: input, args[1]: dh, args[2]: dc})
         return LSTM_func
 
     return func
@@ -185,9 +181,7 @@ def GenLSTMx4(use_scan):
 def GenScan():
     np.random.seed(0)
     feature = C.sequence.input_variable((3,), np.float32)
-    model = C.layers.For(range(4), lambda: C.layers.Recurrence(LSTM(2, use_scan=True)))(
-        feature
-    )
+    model = C.layers.For(range(4), lambda: C.layers.Recurrence(LSTM(2, use_scan=True)))(feature)
 
     data_feature = np.random.rand(2, 5, 3).astype(np.float32)
     data_output = np.asarray(model.eval(data_feature))
@@ -211,28 +205,20 @@ def GenScan():
             shape[0] = 2
             aa = np.zeros(shape, dtype=np.float32)
             tp = numpy_helper.from_array(aa, i.name)
-            with open(
-                "test_Scan/test_data_set_0/input_" + str(num_inputs) + ".pb", "wb"
-            ) as ff:
+            with open("test_Scan/test_data_set_0/input_" + str(num_inputs) + ".pb", "wb") as ff:
                 ff.write(tp.SerializeToString())
             num_inputs = num_inputs + 1
         else:
             out_mp.graph.initializer.add().CopyFrom(i)
 
-    for vi in (
-        list(out_mp.graph.input)
-        + list(out_mp.graph.output)
-        + list(out_mp.graph.value_info)
-    ):
+    for vi in list(out_mp.graph.input) + list(out_mp.graph.output) + list(out_mp.graph.value_info):
         dim = vi.type.tensor_type.shape.dim
         dim[len(dim) - 2].dim_param = "batch"
 
     for n in out_mp.graph.node:
         if n.op_type == "Scan":
             body = [attr for attr in n.attribute if attr.name == "body"][0]
-            for vi in (
-                list(body.g.input) + list(body.g.output) + list(body.g.value_info)
-            ):
+            for vi in list(body.g.input) + list(body.g.output) + list(body.g.value_info):
                 dim = vi.type.tensor_type.shape.dim
                 dim[0].dim_param = "batch"
 

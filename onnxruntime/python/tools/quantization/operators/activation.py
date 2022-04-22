@@ -1,8 +1,7 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType,
-                           attribute_to_kwarg, ms_domain)
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -48,9 +47,7 @@ class QLinearActivation(QuantOperatorBase):
             output_zp_name,
             _,
             _,
-        ) = self.quantizer._get_quantization_params(
-            node.output[0], use_scale, use_zeropoint
-        )
+        ) = self.quantizer._get_quantization_params(node.output[0], use_scale, use_zeropoint)
         (
             quantized_input_names,
             zero_point_names,

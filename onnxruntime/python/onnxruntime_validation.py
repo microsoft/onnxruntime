@@ -54,13 +54,11 @@ def check_distro_info():
 
         if int(__my_distro_ver__.split(".")[0]) < 11:
             warnings.warn(
-                "Unsupported macOS version (%s). ONNX Runtime supports macOS 11.0 or later."
-                % (__my_distro_ver__)
+                "Unsupported macOS version (%s). ONNX Runtime supports macOS 11.0 or later." % (__my_distro_ver__)
             )
     else:
         warnings.warn(
-            "Unsupported platform (%s). ONNX Runtime supports Linux, macOS and Windows platforms, only."
-            % __my_system__
+            "Unsupported platform (%s). ONNX Runtime supports Linux, macOS and Windows platforms, only." % __my_system__
         )
 
 
@@ -80,8 +78,7 @@ def validate_build_package_info():
         # for any exception other than not having ortmodule, we want to continue
         # device version validation and raise the exception after.
         try:
-            from onnxruntime.training.ortmodule._fallback import \
-                ORTModuleInitException
+            from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
 
             if isinstance(e, ORTModuleInitException):
                 # ORTModule is present but not ready to run yet
@@ -114,54 +111,29 @@ def validate_build_package_info():
                 try:
                     from .build_and_package_info import cudart_version
                 except:  # noqa
-                    warnings.warn(
-                        "WARNING: failed to get cudart_version from onnxruntime build info."
-                    )
+                    warnings.warn("WARNING: failed to get cudart_version from onnxruntime build info.")
                     cudart_version = None
 
                 def print_build_package_info():
-                    warnings.warn(
-                        "onnxruntime training package info: package_name: %s"
-                        % package_name
-                    )
-                    warnings.warn(
-                        "onnxruntime training package info: __version__: %s" % version
-                    )
-                    warnings.warn(
-                        "onnxruntime training package info: cuda_version: %s"
-                        % cuda_version
-                    )
-                    warnings.warn(
-                        "onnxruntime build info: cudart_version: %s" % cudart_version
-                    )
+                    warnings.warn("onnxruntime training package info: package_name: %s" % package_name)
+                    warnings.warn("onnxruntime training package info: __version__: %s" % version)
+                    warnings.warn("onnxruntime training package info: cuda_version: %s" % cuda_version)
+                    warnings.warn("onnxruntime build info: cudart_version: %s" % cudart_version)
 
                 # collection cuda library info from current environment.
-                from onnxruntime.capi.onnxruntime_collect_build_info import \
-                    find_cudart_versions
+                from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions
 
-                local_cudart_versions = find_cudart_versions(
-                    build_env=False, build_cuda_version=cuda_version
-                )
-                if (
-                    cudart_version
-                    and local_cudart_versions
-                    and cudart_version not in local_cudart_versions
-                ):
+                local_cudart_versions = find_cudart_versions(build_env=False, build_cuda_version=cuda_version)
+                if cudart_version and local_cudart_versions and cudart_version not in local_cudart_versions:
                     print_build_package_info()
-                    warnings.warn(
-                        "WARNING: failed to find cudart version that matches onnxruntime build info"
-                    )
-                    warnings.warn(
-                        "WARNING: found cudart versions: %s" % local_cudart_versions
-                    )
+                    warnings.warn("WARNING: failed to find cudart version that matches onnxruntime build info")
+                    warnings.warn("WARNING: found cudart versions: %s" % local_cudart_versions)
             else:
                 # TODO: rcom
                 pass
 
         except Exception as e:  # noqa
-            warnings.warn(
-                "WARNING: failed to collect onnxruntime version and build info"
-            )
+            warnings.warn("WARNING: failed to collect onnxruntime version and build info")
             print(e)
 
     if import_ortmodule_exception:

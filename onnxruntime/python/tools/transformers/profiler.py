@@ -124,9 +124,7 @@ def parse_arguments(argv=None):
         help="Type of model inputs. The default will create dummy inputs with ones.",
     )
 
-    parser.add_argument(
-        "-g", "--use_gpu", required=False, action="store_true", help="use GPU"
-    )
+    parser.add_argument("-g", "--use_gpu", required=False, action="store_true", help="use GPU")
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
@@ -159,9 +157,7 @@ def parse_arguments(argv=None):
     return parser.parse_args(argv)
 
 
-def run_profile(
-    onnx_model_path, use_gpu, provider, basic_optimization, thread_num, all_inputs
-):
+def run_profile(onnx_model_path, use_gpu, provider, basic_optimization, thread_num, all_inputs):
     from benchmark_helper import create_onnxruntime_session
 
     session = create_onnxruntime_session(
@@ -213,12 +209,7 @@ def parse_kernel_results(sess_time, threshold=0):
         if not session_init:
             continue
 
-        if (
-            item["cat"] == "Kernel"
-            and "dur" in item
-            and "args" in item
-            and "op_name" in item["args"]
-        ):
+        if item["cat"] == "Kernel" and "dur" in item and "args" in item and "op_name" in item["args"]:
             kernel_name = item["name"]
 
             op_name = item["args"]["op_name"]
@@ -247,18 +238,14 @@ def parse_kernel_results(sess_time, threshold=0):
     lines.append(f"\nTop expensive kernels with Time% >= {threshold*100:.2f}:")
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tCalls\tAvg(μs)\tKernel")
-    for kernel_name, duration in sorted(
-        kernel_time.items(), key=lambda x: x[1], reverse=True
-    ):
+    for kernel_name, duration in sorted(kernel_time.items(), key=lambda x: x[1], reverse=True):
         ratio = duration / total
         if ratio < threshold:
             continue
 
         calls = kernel_freq[kernel_name]
         avg_time = duration / float(calls)
-        lines.append(
-            f"{duration:10d}\t{ratio * 100.0:5.2f}\t{calls:5d}\t{avg_time:8.1f}\t{kernel_name}"
-        )
+        lines.append(f"{duration:10d}\t{ratio * 100.0:5.2f}\t{calls:5d}\t{avg_time:8.1f}\t{kernel_name}")
 
     # Group by operator
     op_time = {}
@@ -296,17 +283,9 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
     node_provider = {}
     total = 0
     for item in sess_time:
-        if (
-            item["cat"] == "Node"
-            and "dur" in item
-            and "args" in item
-            and "op_name" in item["args"]
-        ):
+        if item["cat"] == "Node" and "dur" in item and "args" in item and "op_name" in item["args"]:
             node_name = (
-                item["name"]
-                .replace("_kernel_time", "")
-                .replace("_fence_before", "")
-                .replace("_fence_after", "")
+                item["name"].replace("_kernel_time", "").replace("_fence_before", "").replace("_fence_after", "")
             )
 
             if "provider" in item["args"]:
@@ -360,9 +339,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
     lines.append(f"\nTop expensive nodes with Time% >= {threshold*100:.2f}:")
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tAvg(μs)\tCalls\tProvider\tNode")
-    for node_name, duration in sorted(
-        node_time.items(), key=lambda x: x[1], reverse=True
-    ):
+    for node_name, duration in sorted(node_time.items(), key=lambda x: x[1], reverse=True):
         ratio = duration / total
         if ratio < threshold:
             continue
@@ -371,9 +348,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
         avg_time = duration / float(calls)
         percentage = (duration / total) * 100.0
         provider = node_provider[node_name] if node_name in node_provider else ""
-        lines.append(
-            f"{duration:10d}\t{percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}"
-        )
+        lines.append(f"{duration:10d}\t{percentage:5.2f}\t{avg_time:8.1f}\t{calls:5d}\t{provider:8s}\t{node_name}")
 
     return lines
 
@@ -402,12 +377,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
 
     provider_counter = {}
     for item in sess_time:
-        if (
-            item["cat"] == "Node"
-            and "dur" in item
-            and "args" in item
-            and "op_name" in item["args"]
-        ):
+        if item["cat"] == "Node" and "dur" in item and "args" in item and "op_name" in item["args"]:
             op_name = item["args"]["op_name"]
 
             # TODO: shall we have a separated group for nodes with subgraph?
@@ -453,12 +423,8 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
 
     lines = ["", "Grouped by operator"]
     lines.append("-" * 64)
-    lines.append(
-        "Total(μs)\tTime%\tKernel(μs)\tKernel%\tCalls\tAvgKernel(μs)\tFence(μs)\tOperator"
-    )
-    for op_name, kernel_time in sorted(
-        op_kernel_time.items(), key=lambda x: x[1], reverse=True
-    ):
+    lines.append("Total(μs)\tTime%\tKernel(μs)\tKernel%\tCalls\tAvgKernel(μs)\tFence(μs)\tOperator")
+    for op_name, kernel_time in sorted(op_kernel_time.items(), key=lambda x: x[1], reverse=True):
         fence_time = op_fence_time[op_name] if op_name in op_fence_time else 0
         kernel_time_ratio = kernel_time / total_kernel_time
         total_time = kernel_time + fence_time
@@ -472,9 +438,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
     lines += ["", "Grouped by provider + operator"]
     lines.append("-" * 64)
     lines.append("Kernel(μs)\tProvider%\tCalls\tAvgKernel(μs)\tProvider\tOperator")
-    for key, kernel_time in sorted(
-        provider_op_kernel_time.items(), key=lambda x: x[1], reverse=True
-    ):
+    for key, kernel_time in sorted(provider_op_kernel_time.items(), key=lambda x: x[1], reverse=True):
         parts = key.split(":")
         provider = parts[0]
         op_name = parts[1]
@@ -490,11 +454,7 @@ def group_node_results(sess_time, kernel_time_only, use_gpu):
 
 
 def get_dim_from_type_proto(dim):
-    return (
-        getattr(dim, dim.WhichOneof("value"))
-        if type(dim.WhichOneof("value")) == str
-        else None
-    )
+    return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) == str else None
 
 
 def get_shape_from_type_proto(type_proto):
@@ -568,9 +528,7 @@ def create_bert_inputs(
     """
     from bert_test_data import find_bert_inputs, generate_test_data
 
-    input_ids, segment_ids, input_mask = find_bert_inputs(
-        onnx_model, input_ids_name, segment_ids_name, input_mask_name
-    )
+    input_ids, segment_ids, input_mask = find_bert_inputs(onnx_model, input_ids_name, segment_ids_name, input_mask_name)
     all_inputs = generate_test_data(
         batch_size,
         sequence_length,
@@ -586,9 +544,7 @@ def create_bert_inputs(
     return all_inputs
 
 
-def create_gpt2_inputs(
-    onnx_model, batch_size, sequence_length, past_sequence_length, samples
-):
+def create_gpt2_inputs(onnx_model, batch_size, sequence_length, past_sequence_length, samples):
     """Create dummy inputs for GPT-2 model.
 
     Args:
@@ -636,9 +592,7 @@ def create_gpt2_inputs(
     return all_inputs
 
 
-def create_longformer_inputs(
-    onnx_model, batch_size, sequence_length, global_length, samples
-):
+def create_longformer_inputs(onnx_model, batch_size, sequence_length, global_length, samples):
     """Create dummy inputs for Longformer model.
 
     Args:
@@ -698,9 +652,7 @@ def process_results(profile_file, args):
 
 
 def run(args):
-    num_threads = (
-        args.thread_num if args.thread_num > 0 else psutil.cpu_count(logical=False)
-    )
+    num_threads = args.thread_num if args.thread_num > 0 else psutil.cpu_count(logical=False)
 
     # Set OMP environment variable before importing onnxruntime. Needed for cpu only, and no impact for onnxruntime-gpu package.
     if "OMP_NUM_THREADS" not in os.environ:
@@ -739,9 +691,7 @@ def run(args):
             args.samples,
         )
     else:  # default
-        all_inputs = create_dummy_inputs(
-            onnx_model, args.batch_size, args.sequence_length, args.samples
-        )
+        all_inputs = create_dummy_inputs(onnx_model, args.batch_size, args.sequence_length, args.samples)
 
     profile_file = run_profile(
         args.model,
@@ -764,9 +714,7 @@ if __name__ == "__main__":
     setup_logger(arguments.verbose)
 
     if not arguments.input:
-        assert (
-            arguments.model
-        ), "requires either --model to run profiling or --input to read profiling results"
+        assert arguments.model, "requires either --model to run profiling or --input to read profiling results"
         profile_file = run(arguments)
     else:
         profile_file = arguments.input

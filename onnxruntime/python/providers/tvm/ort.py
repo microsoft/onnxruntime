@@ -49,8 +49,7 @@ def onnx_compile(
             lib = relay.build(irmod, target=target, params=params)
         else:
             log.error(
-                "Executor type {} is unsupported. ".format(executor)
-                + 'Only "vm" and "graph" types are supported'
+                "Executor type {} is unsupported. ".format(executor) + 'Only "vm" and "graph" types are supported'
             )
             return None
         return lib
@@ -66,9 +65,7 @@ def onnx_compile(
     net_feed_input_names = list(set(all_input_names) - set(all_initializer))
 
     # Match names and input shapes
-    all_input_mapping = [
-        (name, shape) for (name, shape) in zip(all_input_names, input_shapes)
-    ]
+    all_input_mapping = [(name, shape) for (name, shape) in zip(all_input_names, input_shapes)]
     # Using an ordereddict maintains input ordering.
     shape_dict = collections.OrderedDict(all_input_mapping)
     # Get only feed input pairs
@@ -76,9 +73,7 @@ def onnx_compile(
     for name in net_feed_input_names:
         feed_shape_dict[name] = shape_dict[name]
 
-    irmod, params = relay.frontend.from_onnx(
-        model, feed_shape_dict, opset=opset, freeze_params=freeze_params
-    )
+    irmod, params = relay.frontend.from_onnx(model, feed_shape_dict, opset=opset, freeze_params=freeze_params)
     irmod = relay.transform.DynamicToStatic()(irmod)
 
     # Tuning file can be set by client through ep options

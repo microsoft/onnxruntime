@@ -19,16 +19,13 @@ from parity_utilities import find_transformers_source
 if find_transformers_source():
     from benchmark_helper import OptimizerInfo, Precision
     from huggingface_models import MODELS
-    from onnx_exporter import (export_onnx_model_from_pt,
-                               export_onnx_model_from_tf)
+    from onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnx_model import OnnxModel
     from optimizer import optimize_model
 else:
-    from onnxruntime.transformers.benchmark_helper import (OptimizerInfo,
-                                                           Precision)
+    from onnxruntime.transformers.benchmark_helper import OptimizerInfo, Precision
     from onnxruntime.transformers.huggingface_models import MODELS
-    from onnxruntime.transformers.onnx_exporter import (
-        export_onnx_model_from_pt, export_onnx_model_from_tf)
+    from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_model
 
@@ -62,11 +59,7 @@ class TestBertOptimization(unittest.TestCase):
             if len(bert_model.get_nodes_by_op_type(op_type)) != count:
                 print(f"Counters is not expected in test: {test_name}")
                 for op, counter in expected_node_count.items():
-                    print(
-                        "{}: {} expected={}".format(
-                            op, len(bert_model.get_nodes_by_op_type(op)), counter
-                        )
-                    )
+                    print("{}: {} expected={}".format(op, len(bert_model.get_nodes_by_op_type(op)), counter))
 
                 self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
@@ -117,9 +110,7 @@ class TestBertOptimization(unittest.TestCase):
             self.assertEqual(is_valid_onnx_model, True)
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
 
-    def _test_optimizer_on_tf_model(
-        self, model_name, expected_fusion_result_list, inputs_count, validate_model=True
-    ):
+    def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
         # Remove cached model so that CI machine will have space
         import shutil
 
@@ -203,12 +194,8 @@ class TestBertOptimization(unittest.TestCase):
 
     def test_gpt2_past_fp16(self):
         input_model_path = _get_test_model_path("gpt2_past")
-        model = OnnxModel(
-            load_model(input_model_path, format=None, load_external_data=True)
-        )
-        model.convert_float_to_float16(
-            keep_io_types=False, use_symbolic_shape_infer=False
-        )
+        model = OnnxModel(load_model(input_model_path, format=None, load_external_data=True))
+        model.convert_float_to_float16(keep_io_types=False, use_symbolic_shape_infer=False)
         for input in model.graph().input[1:]:
             self.assertEqual(input.type.tensor_type.elem_type, TensorProto.FLOAT16)
         for output in model.graph().output:
@@ -276,27 +263,19 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_bert_fusion_1(self):
-        self._test_optimizer_on_huggingface_model(
-            "bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1
-        )
+        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
 
     @pytest.mark.slow
     def test_huggingface_bert_fusion_2(self):
-        self._test_optimizer_on_huggingface_model(
-            "bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2
-        )
+        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2)
 
     @pytest.mark.slow
     def test_huggingface_bert_fusion_3(self):
-        self._test_optimizer_on_huggingface_model(
-            "bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3
-        )
+        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3)
 
     @pytest.mark.slow
     def test_huggingface_openaigpt_fusion(self):
-        self._test_optimizer_on_huggingface_model(
-            "openai-gpt", [0, 12, 0, 12, 0, 24, 0]
-        )
+        self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
 
     # @pytest.mark.slow
     # def test_huggingface_gpt2_fusion(self):
@@ -304,24 +283,16 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_xlm_fusion(self):
-        self._test_optimizer_on_huggingface_model(
-            "xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13]
-        )
+        self._test_optimizer_on_huggingface_model("xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13])
 
     @pytest.mark.slow
     def test_huggingface_roberta_fusion(self):
-        self._test_optimizer_on_huggingface_model(
-            "roberta-base", [0, 12, 0, 0, 12, 1, 24]
-        )
+        self._test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     def test_huggingface_distillbert_fusion(self):
-        self._test_optimizer_on_huggingface_model(
-            "distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=1
-        )
-        self._test_optimizer_on_huggingface_model(
-            "distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=2
-        )
+        self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=1)
+        self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=2)
 
     # @pytest.mark.slow
     # def test_huggingface_camembert_fusion(self):
@@ -330,9 +301,7 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_albert_fusion(self):
-        self._test_optimizer_on_huggingface_model(
-            "albert-base-v1", [0, 12, 0, 0, 12, 1, 24]
-        )
+        self._test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 1, 24])
 
     # @pytest.mark.slow
     # def test_huggingface_t5_fusion(self):
@@ -340,9 +309,7 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_xlmroberta_fusion(self):
-        self._test_optimizer_on_huggingface_model(
-            "xlm-roberta-base", [0, 12, 0, 0, 12, 1, 24]
-        )
+        self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     def test_huggingface_flaubert_fusion(self):
@@ -364,9 +331,7 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_bart_fusion(self):
-        self._test_optimizer_on_huggingface_model(
-            "facebook/bart-base", [0, 0, 0, 0, 12, 2, 30]
-        )
+        self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
     @pytest.mark.slow
     def test_huggingface_bert_base_cased_from_tf2onnx_1(self):
@@ -390,27 +355,19 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_gpt2_from_tf2onnx(self):
-        self._test_optimizer_on_tf_model(
-            "gpt2", [0, 0, 0, 0, 0, 24, 1], 1, validate_model=False
-        )
+        self._test_optimizer_on_tf_model("gpt2", [0, 0, 0, 0, 0, 24, 1], 1, validate_model=False)
 
     @pytest.mark.slow
     def test_huggingface_roberta_from_tf2onnx(self):
-        self._test_optimizer_on_tf_model(
-            "roberta-base", [0, 12, 0, 0, 0, 0, 25], 1, validate_model=False
-        )
+        self._test_optimizer_on_tf_model("roberta-base", [0, 12, 0, 0, 0, 0, 25], 1, validate_model=False)
 
     @pytest.mark.slow
     def test_huggingface_distilbert_from_tf2onnx(self):
-        self._test_optimizer_on_tf_model(
-            "distilbert-base-uncased", [0, 0, 0, 0, 0, 0, 13], 1, validate_model=False
-        )
+        self._test_optimizer_on_tf_model("distilbert-base-uncased", [0, 0, 0, 0, 0, 0, 13], 1, validate_model=False)
 
     @pytest.mark.slow
     def test_huggingface_xlm_from_tf2onnx(self):
-        self._test_optimizer_on_tf_model(
-            "xlm-mlm-ende-1024", [0, 0, 0, 0, 0, 1, 12], 1, validate_model=False
-        )
+        self._test_optimizer_on_tf_model("xlm-mlm-ende-1024", [0, 0, 0, 0, 0, 1, 12], 1, validate_model=False)
 
 
 if __name__ == "__main__":

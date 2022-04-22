@@ -22,9 +22,7 @@ def get_ort_device_type(device):
         raise Exception("Unsupported device type: " + device_type)
 
 
-def check_and_normalize_provider_args(
-    providers, provider_options, available_provider_names
-):
+def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
     """
     Validates the 'providers' and 'provider_options' arguments and returns a
         normalized version.
@@ -56,9 +54,7 @@ def check_and_normalize_provider_args(
         if name not in available_provider_names:
             warnings.warn(
                 "Specified provider '{}' is not in available provider names."
-                "Available providers: '{}'".format(
-                    name, ", ".join(available_provider_names)
-                )
+                "Available providers: '{}'".format(name, ", ".join(available_provider_names))
             )
 
         if name in provider_name_to_options:
@@ -76,21 +72,12 @@ def check_and_normalize_provider_args(
             raise ValueError("'provider_options' should be a sequence.")
 
         if len(providers) != len(provider_options):
-            raise ValueError(
-                "'providers' and 'provider_options' should be the same length if both are given."
-            )
+            raise ValueError("'providers' and 'provider_options' should be the same length if both are given.")
 
         if not all([isinstance(provider, str) for provider in providers]):
-            raise ValueError(
-                "Only string values for 'providers' are supported if 'provider_options' is given."
-            )
+            raise ValueError("Only string values for 'providers' are supported if 'provider_options' is given.")
 
-        if not all(
-            [
-                isinstance(options_for_provider, dict)
-                for options_for_provider in provider_options
-            ]
-        ):
+        if not all([isinstance(options_for_provider, dict) for options_for_provider in provider_options]):
             raise ValueError("'provider_options' values must be dicts.")
 
         for name, options in zip(providers, provider_options):
@@ -108,13 +95,9 @@ def check_and_normalize_provider_args(
             ):
                 set_provider_options(provider[0], provider[1])
             else:
-                raise ValueError(
-                    "'providers' values must be either strings or (string, dict) tuples."
-                )
+                raise ValueError("'providers' values must be either strings or (string, dict) tuples.")
 
-    return list(provider_name_to_options.keys()), list(
-        provider_name_to_options.values()
-    )
+    return list(provider_name_to_options.keys()), list(provider_name_to_options.values())
 
 
 class Session:
@@ -209,11 +192,7 @@ class Session:
         num_inputs = len(input_feed)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError(
-                "Model requires {} inputs. Input Feed contains {}".format(
-                    num_required_inputs, num_inputs
-                )
-            )
+            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -221,9 +200,7 @@ class Session:
         except C.EPFail as err:
             if self._enable_fallback:
                 print("EP Error: {} using {}".format(str(err), self._providers))
-                print(
-                    "Falling back to {} and retrying.".format(self._fallback_providers)
-                )
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
@@ -231,9 +208,7 @@ class Session:
             else:
                 raise
 
-    def run_with_ort_values(
-        self, output_names, input_dict_ort_values, run_options=None
-    ):
+    def run_with_ort_values(self, output_names, input_dict_ort_values, run_options=None):
         """
         Compute the predictions.
 
@@ -261,11 +236,7 @@ class Session:
         num_inputs = len(input_dict_ort_values)
         # the graph may have optional inputs used to override initializers. allow for that.
         if num_inputs < num_required_inputs:
-            raise ValueError(
-                "Model requires {} inputs. Input Feed contains {}".format(
-                    num_required_inputs, num_inputs
-                )
-            )
+            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -273,15 +244,11 @@ class Session:
         except C.EPFail as err:
             if self._enable_fallback:
                 print("EP Error: {} using {}".format(str(err), self._providers))
-                print(
-                    "Falling back to {} and retrying.".format(self._fallback_providers)
-                )
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self.set_providers(self._fallback_providers)
                 # Fallback only once.
                 self.disable_fallback()
-                return invoke(
-                    self._sess, output_names, input_dict_ort_values, run_options
-                )
+                return invoke(self._sess, output_names, input_dict_ort_values, run_options)
             else:
                 raise
 
@@ -322,14 +289,7 @@ class InferenceSession(Session):
     This is the main class used to run a model.
     """
 
-    def __init__(
-        self,
-        path_or_bytes,
-        sess_options=None,
-        providers=None,
-        provider_options=None,
-        **kwargs
-    ):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kwargs):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param sess_options: session options
@@ -370,41 +330,29 @@ class InferenceSession(Session):
             self._model_path = None
             self._model_bytes = path_or_bytes  # TODO: This is bad as we're holding the memory indefinitely
         else:
-            raise TypeError(
-                "Unable to load from type '{0}'".format(type(path_or_bytes))
-            )
+            raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
-        self._read_config_from_model = (
-            os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
-        )
+        self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
 
         # internal parameters that we don't expect to be used in general so aren't documented
-        disabled_optimizers = (
-            kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
-        )
+        disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
 
         try:
-            self._create_inference_session(
-                providers, provider_options, disabled_optimizers
-            )
+            self._create_inference_session(providers, provider_options, disabled_optimizers)
         except ValueError:
             if self._enable_fallback:
                 print("EP Error using {}".format(providers))
-                print(
-                    "Falling back to {} and retrying.".format(self._fallback_providers)
-                )
+                print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
                 self.disable_fallback()
             else:
                 raise
 
-    def _create_inference_session(
-        self, providers, provider_options, disabled_optimizers=None
-    ):
+    def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
@@ -425,24 +373,14 @@ class InferenceSession(Session):
                 "This ORT build has {} enabled. ".format(available_providers)
                 + "Since ORT 1.9, you are required to explicitly set "
                 + "the providers parameter when instantiating InferenceSession. For example, "
-                "onnxruntime.InferenceSession(..., providers={}, ...)".format(
-                    available_providers
-                )
+                "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers)
             )
 
-        session_options = (
-            self._sess_options
-            if self._sess_options
-            else C.get_default_session_options()
-        )
+        session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
-            sess = C.InferenceSession(
-                session_options, self._model_path, True, self._read_config_from_model
-            )
+            sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
-            sess = C.InferenceSession(
-                session_options, self._model_bytes, False, self._read_config_from_model
-            )
+            sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
 
         if disabled_optimizers is None:
             disabled_optimizers = set()
@@ -569,9 +507,7 @@ class IOBinding:
             )
         else:
             if element_type is None or shape is None:
-                raise ValueError(
-                    "`element_type` and `shape` are to be provided if pre-allocated memory is provided"
-                )
+                raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
@@ -633,8 +569,7 @@ class OrtValue:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided ortvalue` needs to be of type "
-                + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
+                "`Provided ortvalue` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
             )
 
     def _get_c_value(self):
@@ -666,9 +601,7 @@ class OrtValue:
         )
 
     @staticmethod
-    def ortvalue_from_shape_and_type(
-        shape=None, element_type=None, device_type="cpu", device_id=0
-    ):
+    def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type="cpu", device_id=0):
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
 
@@ -678,9 +611,7 @@ class OrtValue:
         :param device_id: device id, e.g. 0
         """
         if shape is None or element_type is None:
-            raise ValueError(
-                "`element_type` and `shape` are to be provided if pre-allocated memory is provided"
-            )
+            raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
 
         return OrtValue(
             C.OrtValue.ortvalue_from_shape_and_type(
@@ -700,9 +631,7 @@ class OrtValue:
         The function will construct an OrtValue instance from a valid SparseTensor
         The new instance of OrtValue will assume the ownership of sparse_tensor
         """
-        return OrtValue(
-            C.OrtValue.ort_value_from_sparse_tensor(sparse_tensor._get_c_tensor())
-        )
+        return OrtValue(C.OrtValue.ort_value_from_sparse_tensor(sparse_tensor._get_c_tensor()))
 
     def as_sparse_tensor(self):
         """
@@ -798,8 +727,7 @@ class OrtDevice:
             self._ort_device = c_ort_device
         else:
             raise ValueError(
-                "`Provided object` needs to be of type "
-                + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
+                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
             )
 
     def _get_c_device(self):
@@ -842,8 +770,7 @@ class SparseTensor:
         else:
             # An end user won't hit this error
             raise ValueError(
-                "`Provided object` needs to be of type "
-                + "`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
+                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
             )
 
     def _get_c_tensor(self):
@@ -872,15 +799,11 @@ class SparseTensor:
         on other devices and their memory can not be mapped.
         """
         return SparseTensor(
-            C.SparseTensor.sparse_coo_from_numpy(
-                dense_shape, values, coo_indices, ort_device._get_c_device()
-            )
+            C.SparseTensor.sparse_coo_from_numpy(dense_shape, values, coo_indices, ort_device._get_c_device())
         )
 
     @staticmethod
-    def sparse_csr_from_numpy(
-        dense_shape, values, inner_indices, outer_indices, ort_device
-    ):
+    def sparse_csr_from_numpy(dense_shape, values, inner_indices, outer_indices, ort_device):
         """
         Factory method to construct a SparseTensor in CSR format from given arguments
 

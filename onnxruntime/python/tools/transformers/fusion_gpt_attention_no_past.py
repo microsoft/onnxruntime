@@ -99,17 +99,10 @@ class FusionGptAttentionNoPast(Fusion):
             reshape_before_gemm,
         ) = v_nodes
 
-        layernorm_before_attention = self.model.get_parent(
-            reshape_before_gemm, 0, output_name_to_node
-        )
-        if (
-            layernorm_before_attention is None
-            or layernorm_before_attention.op_type != "LayerNormalization"
-        ):
+        layernorm_before_attention = self.model.get_parent(reshape_before_gemm, 0, output_name_to_node)
+        if layernorm_before_attention is None or layernorm_before_attention.op_type != "LayerNormalization":
             if layernorm_before_attention.op_type != "Add":
-                logger.debug(
-                    f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}"
-                )
+                logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
                 return
 
         if not another_input in layernorm_before_attention.input:
@@ -118,9 +111,7 @@ class FusionGptAttentionNoPast(Fusion):
                 logger.debug("Add and LayerNormalization shall have one same input")
                 return
 
-        qk_nodes = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Sub", "Mul", "Div", "MatMul"], [0, 0, 0, 0, 0]
-        )
+        qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Sub", "Mul", "Div", "MatMul"], [0, 0, 0, 0, 0])
         if qk_nodes is not None:
             (softmax_qk, sub_qk, mul_qk, div_qk, matmul_qk) = qk_nodes
             mask_nodes = self.model.match_parent_path(
@@ -149,9 +140,7 @@ class FusionGptAttentionNoPast(Fusion):
                 return
         else:
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
-            qk_nodes = self.model.match_parent_path(
-                matmul_qkv, ["Softmax", "Where", "Div", "MatMul"], [0, 0, 1, 0]
-            )
+            qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Where", "Div", "MatMul"], [0, 0, 1, 0])
             if qk_nodes is not None:
                 (softmax_qk, where_qk, div_qk, matmul_qk) = qk_nodes
                 mask_nodes = self.model.match_parent_path(
@@ -202,9 +191,7 @@ class FusionGptAttentionNoPast(Fusion):
                     logger.debug("fuse_attention: skip since div_qk != div_mask")
                     return
 
-        q_nodes = self.model.match_parent_path(
-            matmul_qk, ["Transpose", "Reshape", "Split"], [0, 0, 0]
-        )
+        q_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Split"], [0, 0, 0])
         if q_nodes is None:
             logger.debug("fuse_attention: failed to match q path")
             return
@@ -213,9 +200,7 @@ class FusionGptAttentionNoPast(Fusion):
             logger.debug("fuse_attention: skip since split_v != split_q")
             return
 
-        k_nodes = self.model.match_parent_path(
-            matmul_qk, ["Transpose", "Reshape", "Split"], [1, 0, 0]
-        )
+        k_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Split"], [1, 0, 0])
         if k_nodes is None:
             logger.debug("fuse_attention: failed to match k path")
             return
@@ -224,9 +209,7 @@ class FusionGptAttentionNoPast(Fusion):
             logger.debug("fuse_attention: skip since split_v != split_k")
             return
 
-        self.create_attention_node(
-            gemm, gemm_qkv, layernorm_before_attention.output[0], reshape_qkv.output[0]
-        )
+        self.create_attention_node(gemm, gemm_qkv, layernorm_before_attention.output[0], reshape_qkv.output[0])
 
         # we rely on prune_graph() to clean old subgraph nodes:
         # qk_nodes + q_nodes + k_nodes + v_nodes + mask_nodes + [reshape_qkv, transpose_qkv, matmul_qkv]

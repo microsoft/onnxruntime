@@ -47,9 +47,7 @@ def check_op_type_order(testcase, model_to_check, ops):
         testcase.assertEqual(
             ops[node_idx],
             node.op_type,
-            "op {} is not in order. Expected: {}, Actual: {}".format(
-                node_idx, ops[node_idx], node.op_type
-            ),
+            "op {} is not in order. Expected: {}, Actual: {}".format(node_idx, ops[node_idx], node.op_type),
         )
 
 
@@ -69,13 +67,9 @@ def check_op_type_count(testcase, model_path, **kwargs):
         )
 
 
-def check_model_correctness(
-    testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05
-):
+def check_model_correctness(testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05):
     sess_options = onnxruntime.SessionOptions()
-    sess_options.graph_optimization_level = (
-        onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-    )
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
     origin_sess = onnxruntime.InferenceSession(
         model_path_origin, sess_options=sess_options, providers=["CPUExecutionProvider"]
     )
@@ -86,9 +80,7 @@ def check_model_correctness(
         providers=["CPUExecutionProvider"],
     )
     target_results = target_sess.run([], inputs)
-    testcase.assertEqual(
-        len(origin_results), len(target_results), "result count are different"
-    )
+    testcase.assertEqual(len(origin_results), len(target_results), "result count are different")
     for idx, ref_output in enumerate(origin_results):
         output = target_results[idx]
         np.testing.assert_allclose(ref_output, output, rtol=rtol, atol=atol)
@@ -115,14 +107,8 @@ def check_qtype_by_node_type(testcase, model_to_check, check_list):
         if node.op_type in check_list:
             input_output_check_list = check_list[node.op_type]
             for check_item in input_output_check_list:
-                tensor_name = (
-                    node.input[check_item[1]]
-                    if check_item[0] == "i"
-                    else node.output[check_item[1]]
-                )
-                testcase.assertTrue(
-                    (tensor_name in value_infos) or (tensor_name in initializers)
-                )
+                tensor_name = node.input[check_item[1]] if check_item[0] == "i" else node.output[check_item[1]]
+                testcase.assertTrue((tensor_name in value_infos) or (tensor_name in initializers))
                 if tensor_name in value_infos:
                     vi = value_infos[tensor_name]
                     testcase.assertTrue(vi.type.HasField("tensor_type"))

@@ -11,9 +11,13 @@ import unittest
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from op_test_utils import (TestDataFeeds, check_model_correctness,
-                           check_op_type_count, check_op_type_order,
-                           check_qtype_by_node_type)
+from op_test_utils import (
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_op_type_order,
+    check_qtype_by_node_type,
+)
 
 import onnxruntime
 from onnxruntime.quantization import QuantType, quantize_dynamic
@@ -43,23 +47,15 @@ class TestONNXModel(unittest.TestCase):
         #       (output)
         initializers = []
         input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [4, 2, 8, 8])
-        output = helper.make_tensor_value_info(
-            "output", TensorProto.FLOAT, [4, 2, 8, 8]
-        )
+        output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [4, 2, 8, 8])
 
         initializers.append(generate_input_initializer([2, 2, 1, 1], np.float32, "W1"))
         initializers.append(generate_input_initializer([2, 2, 1, 1], np.float32, "W2"))
         initializers.append(generate_input_initializer([2], np.float32, "B"))
-        conv_node_1 = onnx.helper.make_node(
-            "Conv", ["input", "W1", "B"], ["Conv1_O"], name="Conv1"
-        )
-        conv_node_2 = onnx.helper.make_node(
-            "Conv", ["input", "W2", "B"], ["Conv2_O"], name="Conv2"
-        )
+        conv_node_1 = onnx.helper.make_node("Conv", ["input", "W1", "B"], ["Conv1_O"], name="Conv1")
+        conv_node_2 = onnx.helper.make_node("Conv", ["input", "W2", "B"], ["Conv2_O"], name="Conv2")
         relu_node = onnx.helper.make_node("Relu", ["Conv1_O"], ["Relu_O"], name="Relu")
-        add_node = onnx.helper.make_node(
-            "Add", ["Relu_O", "Conv2_O"], ["output"], name="Add"
-        )
+        add_node = onnx.helper.make_node("Add", ["Relu_O", "Conv2_O"], ["output"], name="Add")
         graph = helper.make_graph(
             [conv_node_1, relu_node, conv_node_2, add_node],
             "onnx_model_test",
@@ -78,9 +74,7 @@ class TestONNXModel(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "conv_bias.quant.{}{}.onnx".format(
-            activation_type_str, weight_type_str
-        )
+        model_int8_path = "conv_bias.quant.{}{}.onnx".format(activation_type_str, weight_type_str)
 
         quantize_dynamic(
             model_fp32_path,

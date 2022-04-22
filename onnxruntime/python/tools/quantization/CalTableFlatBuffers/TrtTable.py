@@ -34,8 +34,7 @@ class TrtTable(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from onnxruntime.quantization.CalTableFlatBuffers.KeyValue import \
-                KeyValue
+            from onnxruntime.quantization.CalTableFlatBuffers.KeyValue import KeyValue
 
             obj = KeyValue()
             obj.Init(self._tab.Bytes, x)
@@ -65,9 +64,7 @@ def TrtTableStart(builder):
 
 
 def AddDict(builder, dict):
-    builder.PrependUOffsetTRelativeSlot(
-        0, flatbuffers.number_types.UOffsetTFlags.py_type(dict), 0
-    )
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(dict), 0)
 
 
 def TrtTableAddDict(builder, dict):

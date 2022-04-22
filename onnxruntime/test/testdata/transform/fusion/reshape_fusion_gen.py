@@ -12,24 +12,12 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices2"], ["gather2_out"], "gather2", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape2_out", "indices3"], ["gather3_out"], "gather3", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather3_out"], ["unsqueeze3_out"], "unsqueeze3", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape1_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices2"], ["gather2_out"], "gather2", axis=0),
+        helper.make_node("Gather", ["shape2_out", "indices3"], ["gather3_out"], "gather3", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather3_out"], ["unsqueeze3_out"], "unsqueeze3", axes=[0]),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "a1", "unsqueeze2_out", "unsqueeze3_out", "a4"],
@@ -37,20 +25,14 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
-        helper.make_tensor_value_info(
-            "SubgraphRoot", TensorProto.FLOAT, ["unk_0", 256, "unk_2", "unk_3"]
-        ),
+        helper.make_tensor_value_info("SubgraphRoot", TensorProto.FLOAT, ["unk_0", 256, "unk_2", "unk_3"]),
     ],
     [  # outputs
-        helper.make_tensor_value_info(
-            "Result", TensorProto.FLOAT, ["unk_1", 128, "unk_2", "unk_3", "unk_4"]
-        ),
+        helper.make_tensor_value_info("Result", TensorProto.FLOAT, ["unk_1", 128, "unk_2", "unk_3", "unk_4"]),
         helper.make_tensor_value_info("gather3_out", TensorProto.INT64, []),
     ],
     [  # initializers
@@ -69,18 +51,10 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "unsqueeze1_out", "a"],
@@ -88,9 +62,7 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
@@ -112,27 +84,17 @@ save_model(graph, "reshape_fusion_internal_node_is_graph_output.onnx")
 graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
-        helper.make_node(
-            "Gather", ["shape2_out", "indices2"], ["gather2_out"], "gather2", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
-        helper.make_node(
-            "Concat", ["a", "unsqueeze2_out"], ["concat_out"], "concat", axis=0
-        ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Gather", ["shape2_out", "indices2"], ["gather2_out"], "gather2", axis=0),
+        helper.make_node("Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+        helper.make_node("Concat", ["a", "unsqueeze2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
         helper.make_tensor_value_info("SubgraphRoot", TensorProto.FLOAT, [10, 20, 30]),
     ],
     [  # outputs
-        helper.make_tensor_value_info(
-            "Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]
-        ),
+        helper.make_tensor_value_info("Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]),
     ],
     [  # initializers
         helper.make_tensor("a", TensorProto.INT64, [2], [1, 200]),
@@ -145,27 +107,17 @@ save_model(graph, "reshape_fusion_multiple_values_in_initializer_tensor_1.onnx")
 graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
-        helper.make_node(
-            "Gather", ["shape2_out", "indices2"], ["gather2_out"], "gather2", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
-        helper.make_node(
-            "Concat", ["a", "unsqueeze2_out"], ["concat_out"], "concat", axis=0
-        ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Gather", ["shape2_out", "indices2"], ["gather2_out"], "gather2", axis=0),
+        helper.make_node("Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+        helper.make_node("Concat", ["a", "unsqueeze2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
         helper.make_tensor_value_info("SubgraphRoot", TensorProto.FLOAT, [10, 20, 30]),
     ],
     [  # outputs
-        helper.make_tensor_value_info(
-            "Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]
-        ),
+        helper.make_tensor_value_info("Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]),
     ],
     [  # initializers
         helper.make_tensor("a", TensorProto.INT64, [2], [1, 200]),
@@ -178,18 +130,10 @@ save_model(graph, "reshape_fusion_multiple_values_in_initializer_tensor_2.onnx")
 graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["AnotherInput"], ["shape2_out"], "shape2"),
-        helper.make_node(
-            "Gather", ["shape2_out", "indices2"], ["gather2_out"], "gather2", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
-        helper.make_node(
-            "Concat", ["a", "unsqueeze2_out"], ["concat_out"], "concat", axis=0
-        ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Gather", ["shape2_out", "indices2"], ["gather2_out"], "gather2", axis=0),
+        helper.make_node("Unsqueeze", ["gather2_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
+        helper.make_node("Concat", ["a", "unsqueeze2_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
@@ -201,9 +145,7 @@ graph = helper.make_graph(
         ),
     ],
     [  # outputs
-        helper.make_tensor_value_info(
-            "Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]
-        ),
+        helper.make_tensor_value_info("Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]),
     ],
     [  # initializers
         helper.make_tensor("a", TensorProto.INT64, [2], [1, 200]),
@@ -216,9 +158,7 @@ save_model(graph, "reshape_fusion_input_is_graph_input.onnx")
 graph = helper.make_graph(
     [  # nodes
         helper.make_node("Concat", ["a"], ["concat_out"], "concat", axis=0),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
@@ -226,9 +166,7 @@ graph = helper.make_graph(
         helper.make_tensor_value_info("a", TensorProto.INT64, [3]),
     ],
     [  # outputs
-        helper.make_tensor_value_info(
-            "Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]
-        ),
+        helper.make_tensor_value_info("Result", TensorProto.FLOAT, ["unk_0", "unk_1", "unk_2"]),
     ],
     [  # initializers
         helper.make_tensor("a", TensorProto.INT64, [3], [1, 1, 2 * 3 * 4]),
@@ -240,18 +178,10 @@ save_model(graph, "reshape_fusion_overridable_initializer.onnx")
 graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["query"], ["shape0_out"], "shape0"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Concat", ["a", "unsqueeze0_out"], ["concat_out"], "concat", axis=0
-        ),
-        helper.make_node(
-            "Reshape", ["doc_word_mask", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Concat", ["a", "unsqueeze0_out"], ["concat_out"], "concat", axis=0),
+        helper.make_node("Reshape", ["doc_word_mask", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
@@ -273,18 +203,10 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
         helper.make_node(
             "Slice",
@@ -299,9 +221,7 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
@@ -324,22 +244,12 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
-        helper.make_node(
-            "Slice", ["shape2_out"], ["slice_out"], "slice1", starts=[2], ends=[3]
-        ),
+        helper.make_node("Slice", ["shape2_out"], ["slice_out"], "slice1", starts=[2], ends=[3]),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "unsqueeze1_out", "slice_out"],
@@ -347,9 +257,7 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
@@ -370,18 +278,10 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node("Shape", ["unsqueeze0_out"], ["dummy_out"], "dummy"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
         helper.make_node(
@@ -397,9 +297,7 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
@@ -423,18 +321,10 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
         helper.make_node(
             "Slice",
@@ -442,9 +332,7 @@ graph = helper.make_graph(
             ["slice_out"],
             "slice1",
         ),
-        helper.make_node(
-            "Pad", ["slice_out", "pads"], ["pad0_out"], "pad0", mode="constant"
-        ),
+        helper.make_node("Pad", ["slice_out", "pads"], ["pad0_out"], "pad0", mode="constant"),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "unsqueeze1_out", "pad0_out"],
@@ -452,17 +340,13 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
         helper.make_tensor_value_info("SubgraphRoot", TensorProto.FLOAT, [10, 20, 30]),
     ],
-    [  # outputs
-        helper.make_tensor_value_info("Result", TensorProto.FLOAT, [10, 20, "unk"])
-    ],
+    [helper.make_tensor_value_info("Result", TensorProto.FLOAT, [10, 20, "unk"])],  # outputs
     [  # initializers
         helper.make_tensor("indices0", TensorProto.INT64, [], [0]),
         helper.make_tensor("indices1", TensorProto.INT64, [], [1]),
@@ -478,18 +362,10 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
         helper.make_node(
             "Slice",
@@ -497,13 +373,9 @@ graph = helper.make_graph(
             ["slice_out"],
             "slice1",
         ),
-        helper.make_node(
-            "Squeeze", ["slice_out"], ["squeeze0_out"], "squeeze0", axes=[0]
-        ),
+        helper.make_node("Squeeze", ["slice_out"], ["squeeze0_out"], "squeeze0", axes=[0]),
         helper.make_node("Div", ["squeeze0_out", "div_init"], ["div_out"], "div"),
-        helper.make_node(
-            "Unsqueeze", ["div_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
+        helper.make_node("Unsqueeze", ["div_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "unsqueeze1_out", "unsqueeze2_out"],
@@ -511,17 +383,13 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
         helper.make_tensor_value_info("SubgraphRoot", TensorProto.FLOAT, [10, 20, 30]),
     ],
-    [  # outputs
-        helper.make_tensor_value_info("Result", TensorProto.FLOAT, [10, 20, "unk"])
-    ],
+    [helper.make_tensor_value_info("Result", TensorProto.FLOAT, [10, 20, "unk"])],  # outputs
     [  # initializers
         helper.make_tensor("indices0", TensorProto.INT64, [], [0]),
         helper.make_tensor("indices1", TensorProto.INT64, [], [1]),
@@ -537,18 +405,10 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Shape", ["SubgraphRoot"], ["shape0_out"], "shape0"),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape1_out"], "shape1"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Gather", ["shape1_out", "indices1"], ["gather1_out"], "gather1", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
+        helper.make_node("Unsqueeze", ["gather1_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[0]),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape2_out"], "shape2"),
         helper.make_node(
             "Slice",
@@ -556,9 +416,7 @@ graph = helper.make_graph(
             ["slice0_out"],
             "slice0",
         ),
-        helper.make_node(
-            "Squeeze", ["slice0_out"], ["squeeze0_out"], "squeeze0", axes=[0]
-        ),
+        helper.make_node("Squeeze", ["slice0_out"], ["squeeze0_out"], "squeeze0", axes=[0]),
         helper.make_node("Shape", ["SubgraphRoot"], ["shape3_out"], "shape3"),
         helper.make_node(
             "Slice",
@@ -566,13 +424,9 @@ graph = helper.make_graph(
             ["slice1_out"],
             "slice1",
         ),
-        helper.make_node(
-            "Squeeze", ["slice1_out"], ["squeeze1_out"], "squeeze1", axes=[0]
-        ),
+        helper.make_node("Squeeze", ["slice1_out"], ["squeeze1_out"], "squeeze1", axes=[0]),
         helper.make_node("Mul", ["squeeze0_out", "squeeze1_out"], ["mul_out"], "mul"),
-        helper.make_node(
-            "Unsqueeze", ["mul_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]
-        ),
+        helper.make_node("Unsqueeze", ["mul_out"], ["unsqueeze2_out"], "unsqueeze2", axes=[0]),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "unsqueeze1_out", "unsqueeze2_out"],
@@ -580,17 +434,13 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"
-        ),
+        helper.make_node("Reshape", ["SubgraphRoot", "concat_out"], ["Result"], "reshape"),
     ],
     "Reshape_Fusion",  # name
     [  # inputs
         helper.make_tensor_value_info("SubgraphRoot", TensorProto.FLOAT, [10, 20, 30]),
     ],
-    [  # outputs
-        helper.make_tensor_value_info("Result", TensorProto.FLOAT, [10, 20, "unk"])
-    ],
+    [helper.make_tensor_value_info("Result", TensorProto.FLOAT, [10, 20, "unk"])],  # outputs
     [  # initializers
         helper.make_tensor("indices0", TensorProto.INT64, [], [0]),
         helper.make_tensor("indices1", TensorProto.INT64, [], [1]),
@@ -685,12 +535,8 @@ graph = helper.make_graph(
     [  # nodes
         helper.make_node("Add", ["Input", "Bias"], ["add0_out"], "add0"),
         helper.make_node("Shape", ["add0_out"], ["shape0_out"], "shape0"),
-        helper.make_node(
-            "Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0
-        ),
-        helper.make_node(
-            "Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]
-        ),
+        helper.make_node("Gather", ["shape0_out", "indices0"], ["gather0_out"], "gather0", axis=0),
+        helper.make_node("Unsqueeze", ["gather0_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[0]),
         helper.make_node(
             "Concat",
             ["unsqueeze0_out", "dim_-1", "dim_2", "dim_4"],
@@ -698,9 +544,7 @@ graph = helper.make_graph(
             "concat",
             axis=0,
         ),
-        helper.make_node(
-            "MatMul", ["add0_out", "matmul_weight"], ["matmul_out"], "matmul"
-        ),
+        helper.make_node("MatMul", ["add0_out", "matmul_weight"], ["matmul_out"], "matmul"),
         helper.make_node("Add", ["matmul_out", "add_weight"], ["add1_out"], "add1"),
         helper.make_node("Reshape", ["add1_out", "concat_out"], ["Result"], "reshape"),
     ],

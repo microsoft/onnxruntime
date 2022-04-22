@@ -52,29 +52,19 @@ class QuantizeHelper:
         TODO: mix of in-place and return, but results are different
         """
         conv1d_to_linear(model)
-        quantized_model = torch.quantization.quantize_dynamic(
-            model, {torch.nn.Linear}, dtype=dtype
-        )
-        logger.info(
-            f"Size of full precision Torch model(MB):{_get_size_of_pytorch_model(model)}"
-        )
-        logger.info(
-            f"Size of quantized Torch model(MB):{_get_size_of_pytorch_model(quantized_model)}"
-        )
+        quantized_model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=dtype)
+        logger.info(f"Size of full precision Torch model(MB):{_get_size_of_pytorch_model(model)}")
+        logger.info(f"Size of quantized Torch model(MB):{_get_size_of_pytorch_model(quantized_model)}")
         return quantized_model
 
     @staticmethod
-    def quantize_onnx_model(
-        onnx_model_path, quantized_model_path, use_external_data_format=False
-    ):
+    def quantize_onnx_model(onnx_model_path, quantized_model_path, use_external_data_format=False):
         from pathlib import Path
 
         from onnxruntime.quantization import quantize_dynamic
 
         Path(quantized_model_path).parent.mkdir(parents=True, exist_ok=True)
-        logger.info(
-            f"Size of full precision ONNX model(MB):{os.path.getsize(onnx_model_path)/(1024*1024)}"
-        )
+        logger.info(f"Size of full precision ONNX model(MB):{os.path.getsize(onnx_model_path)/(1024*1024)}")
         quantize_dynamic(
             onnx_model_path,
             quantized_model_path,
@@ -82,6 +72,4 @@ class QuantizeHelper:
         )
         logger.info(f"quantized model saved to:{quantized_model_path}")
         # TODO: inlcude external data in total model size.
-        logger.info(
-            f"Size of quantized ONNX model(MB):{os.path.getsize(quantized_model_path)/(1024*1024)}"
-        )
+        logger.info(f"Size of quantized ONNX model(MB):{os.path.getsize(quantized_model_path)/(1024*1024)}")

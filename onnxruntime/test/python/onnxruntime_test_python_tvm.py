@@ -1,16 +1,12 @@
 import numpy
 from numpy.testing import assert_almost_equal
 from onnx import TensorProto, numpy_helper
-from onnx.helper import (make_graph, make_model, make_node, make_tensor,
-                         make_tensor_value_info, set_model_props)
+from onnx.helper import make_graph, make_model, make_node, make_tensor, make_tensor_value_info, set_model_props
 
 import onnxruntime
 
 if "TvmExecutionProvider" not in onnxruntime.get_available_providers():
-    raise AssertionError(
-        "Unable to find 'TvmExecutionProvider' in %r."
-        % onnxruntime.get_available_providers()
-    )
+    raise AssertionError("Unable to find 'TvmExecutionProvider' in %r." % onnxruntime.get_available_providers())
 
 X = make_tensor_value_info("X", TensorProto.FLOAT, [None, None])
 A = make_tensor_value_info("A", TensorProto.FLOAT, [None, None])
@@ -26,9 +22,7 @@ b = numpy.random.randn(1, 2).astype(numpy.float32)
 x = numpy.random.randn(1, 2).astype(numpy.float32)
 data = {"A": a, "B": b, "X": x}
 
-sess = onnxruntime.InferenceSession(
-    onnx_model.SerializeToString(), providers=["CPUExecutionProvider"]
-)
+sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), providers=["CPUExecutionProvider"])
 
 y = sess.run(None, data)[0]
 
@@ -40,9 +34,7 @@ provider_options = dict(
     tuning_file_path="",
     tuning_type="Ansor",
     input_names=" ".join(i.name for i in sess.get_inputs()),
-    input_shapes=" ".join(
-        str(numpy.array(data[i.name].shape)) for i in sess.get_inputs()
-    ),
+    input_shapes=" ".join(str(numpy.array(data[i.name].shape)) for i in sess.get_inputs()),
 )
 
 so = onnxruntime.SessionOptions()

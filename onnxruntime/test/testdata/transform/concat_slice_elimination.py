@@ -2,8 +2,7 @@ import random
 
 import numpy as np
 import onnx
-from onnx import (GraphProto, OperatorSetIdProto, TensorProto, helper,
-                  numpy_helper)
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 batch = 3
 hidden_size = 4
@@ -14,75 +13,37 @@ relative_attention_num_buckets = 32
 input_len = 8
 output_len = 8
 
-X = helper.make_tensor_value_info(
-    "input", TensorProto.FLOAT, [batch, input_len, hidden_size]
-)
-Y = helper.make_tensor_value_info(
-    "output", TensorProto.FLOAT, [batch, output_len, hidden_size]
-)
+X = helper.make_tensor_value_info("input", TensorProto.FLOAT, [batch, input_len, hidden_size])
+Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch, output_len, hidden_size])
 
-q_weight_np_vals = (
-    0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)
-).reshape((hidden_size, hidden_size))
-q_weight_initializer = numpy_helper.from_array(
-    q_weight_np_vals, "encoder.layer.0.SelfAttention.q.weight"
-)
+q_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
+q_weight_initializer = numpy_helper.from_array(q_weight_np_vals, "encoder.layer.0.SelfAttention.q.weight")
 
-k_weight_np_vals = (
-    0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)
-).reshape((hidden_size, hidden_size))
-k_weight_initializer = numpy_helper.from_array(
-    k_weight_np_vals, "encoder.layer.0.SelfAttention.k.weight"
-)
+k_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
+k_weight_initializer = numpy_helper.from_array(k_weight_np_vals, "encoder.layer.0.SelfAttention.k.weight")
 
-v_weight_np_vals = (
-    0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)
-).reshape((hidden_size, hidden_size))
-v_weight_initializer = numpy_helper.from_array(
-    v_weight_np_vals, "encoder.layer.0.SelfAttention.v.weight"
-)
+v_weight_np_vals = (0.01 * np.arange(hidden_size * hidden_size, dtype=np.float32)).reshape((hidden_size, hidden_size))
+v_weight_initializer = numpy_helper.from_array(v_weight_np_vals, "encoder.layer.0.SelfAttention.v.weight")
 
 q_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)
-q_bias_initializer = numpy_helper.from_array(
-    q_bias_np_vals, "encoder.layer.0.SelfAttention.q.bias"
-)
+q_bias_initializer = numpy_helper.from_array(q_bias_np_vals, "encoder.layer.0.SelfAttention.q.bias")
 
 k_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)
-k_bias_initializer = numpy_helper.from_array(
-    k_bias_np_vals, "encoder.layer.0.SelfAttention.k.bias"
-)
+k_bias_initializer = numpy_helper.from_array(k_bias_np_vals, "encoder.layer.0.SelfAttention.k.bias")
 
 v_bias_np_vals = 0.01 * np.arange(hidden_size, dtype=np.float32)
-v_bias_initializer = numpy_helper.from_array(
-    v_bias_np_vals, "encoder.layer.0.SelfAttention.v.bias"
-)
+v_bias_initializer = numpy_helper.from_array(v_bias_np_vals, "encoder.layer.0.SelfAttention.v.bias")
 
-q_starts_initializer = numpy_helper.from_array(
-    np.asarray([0], dtype=np.int64), "q_starts"
-)
-k_starts_initializer = numpy_helper.from_array(
-    np.asarray([hidden_size], dtype=np.int64), "k_starts"
-)
-v_starts_initializer = numpy_helper.from_array(
-    np.asarray([2 * hidden_size], dtype=np.int64), "v_starts"
-)
+q_starts_initializer = numpy_helper.from_array(np.asarray([0], dtype=np.int64), "q_starts")
+k_starts_initializer = numpy_helper.from_array(np.asarray([hidden_size], dtype=np.int64), "k_starts")
+v_starts_initializer = numpy_helper.from_array(np.asarray([2 * hidden_size], dtype=np.int64), "v_starts")
 
-q_ends_initializer = numpy_helper.from_array(
-    np.asarray([hidden_size], dtype=np.int64), "q_ends"
-)
-k_ends_initializer = numpy_helper.from_array(
-    np.asarray([2 * hidden_size], dtype=np.int64), "k_ends"
-)
-v_ends_initializer = numpy_helper.from_array(
-    np.asarray([9223372036854775807], dtype=np.int64), "v_ends"
-)
+q_ends_initializer = numpy_helper.from_array(np.asarray([hidden_size], dtype=np.int64), "q_ends")
+k_ends_initializer = numpy_helper.from_array(np.asarray([2 * hidden_size], dtype=np.int64), "k_ends")
+v_ends_initializer = numpy_helper.from_array(np.asarray([9223372036854775807], dtype=np.int64), "v_ends")
 
-slice_axes_initializer = numpy_helper.from_array(
-    np.asarray([0], dtype=np.int64), "slice_axes"
-)
-slice_steps_initializer = numpy_helper.from_array(
-    np.asarray([1], dtype=np.int64), "slice_steps"
-)
+slice_axes_initializer = numpy_helper.from_array(np.asarray([0], dtype=np.int64), "slice_axes")
+slice_steps_initializer = numpy_helper.from_array(np.asarray([1], dtype=np.int64), "slice_steps")
 
 
 transpose_q = helper.make_node(
@@ -107,15 +68,9 @@ transpose_v = helper.make_node(
     perm=[1, 0],
 )
 
-matmul_q = helper.make_node(
-    "MatMul", ["input", "transpose_q"], ["matmul_q"], name="matmul_q"
-)
-matmul_k = helper.make_node(
-    "MatMul", ["input", "transpose_k"], ["matmul_k"], name="matmul_k"
-)
-matmul_v = helper.make_node(
-    "MatMul", ["input", "transpose_v"], ["matmul_v"], name="matmul_v"
-)
+matmul_q = helper.make_node("MatMul", ["input", "transpose_q"], ["matmul_q"], name="matmul_q")
+matmul_k = helper.make_node("MatMul", ["input", "transpose_k"], ["matmul_k"], name="matmul_k")
+matmul_v = helper.make_node("MatMul", ["input", "transpose_v"], ["matmul_v"], name="matmul_v")
 
 concat_bias = helper.make_node(
     "Concat",

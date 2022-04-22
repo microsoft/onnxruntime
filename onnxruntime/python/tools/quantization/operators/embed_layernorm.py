@@ -23,9 +23,7 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
         assert node.op_type == "EmbedLayerNormalization"
 
         if len(node.output) > 2:
-            logging.info(
-                f"Quantization is not applied to {node.name} since it has 3 outputs"
-            )
+            logging.info(f"Quantization is not applied to {node.name} since it has 3 outputs")
             return super().quantize()
 
         """

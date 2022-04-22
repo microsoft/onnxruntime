@@ -87,14 +87,10 @@ class TypeHelper:
         """Create a mapping from input/output name to numpy data type"""
         name_to_numpy_type = {}
         for input in ort_session.get_inputs():
-            name_to_numpy_type[input.name] = TypeHelper.ort_type_to_numpy_type(
-                input.type
-            )
+            name_to_numpy_type[input.name] = TypeHelper.ort_type_to_numpy_type(input.type)
 
         for output in ort_session.get_outputs():
-            name_to_numpy_type[output.name] = TypeHelper.ort_type_to_numpy_type(
-                output.type
-            )
+            name_to_numpy_type[output.name] = TypeHelper.ort_type_to_numpy_type(output.type)
         return name_to_numpy_type
 
 
@@ -106,9 +102,7 @@ class IOBindingHelper:
         for name, shape in output_shapes.items():
             ort_type = TypeHelper.get_output_type(ort_session, name)
             torch_type = TypeHelper.ort_type_to_torch_type(ort_type)
-            output_buffers[name] = torch.empty(
-                numpy.prod(shape), dtype=torch_type, device=device
-            )
+            output_buffers[name] = torch.empty(numpy.prod(shape), dtype=torch_type, device=device)
         return output_buffers
 
     @staticmethod
@@ -185,9 +179,7 @@ class IOBindingHelper:
         for output in ort_session.get_outputs():
             output_name = output.name
             output_buffer = output_buffers[output_name]
-            logger.debug(
-                f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}"
-            )
+            logger.debug(f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}")
             io_binding.bind_output(
                 output_name,
                 output_buffer.device.type,
@@ -200,9 +192,7 @@ class IOBindingHelper:
         return io_binding
 
     @staticmethod
-    def get_outputs_from_io_binding_buffer(
-        ort_session, output_buffers, output_shapes, return_numpy=True
-    ):
+    def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """Copy results to cpu. Returns a list of numpy array."""
         ort_outputs = []
         for output in ort_session.get_outputs():

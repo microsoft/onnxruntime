@@ -68,16 +68,12 @@ class TestInferenceSessionKeras(unittest.TestCase):
         self.assertIsNotNone(actual)
 
         # conversion
-        converted_model = onnxmltools.convert_keras(
-            model, custom_conversion_functions={ScaledTanh: custom_activation}
-        )
+        converted_model = onnxmltools.convert_keras(model, custom_conversion_functions={ScaledTanh: custom_activation})
         self.assertIsNotNone(converted_model)
 
         # runtime
         content = converted_model.SerializeToString()
-        rt = onnxrt.InferenceSession(
-            content, providers=onnxrt.get_available_providers()
-        )
+        rt = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
         input = {rt.get_inputs()[0].name: x}
         actual_rt = rt.run(None, input)
         self.assertEqual(len(actual_rt), 1)

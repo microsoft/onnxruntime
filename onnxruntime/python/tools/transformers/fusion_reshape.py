@@ -43,11 +43,7 @@ class FusionReshape(Fusion):
             return
 
         concat_node = output_name_to_node[reshape_node.input[1]]
-        if (
-            concat_node.op_type != "Concat"
-            or len(concat_node.input) < 3
-            or len(concat_node.input) > 4
-        ):
+        if concat_node.op_type != "Concat" or len(concat_node.input) < 3 or len(concat_node.input) > 4:
             return
 
         path0 = self.model.match_parent_path(
@@ -86,10 +82,7 @@ class FusionReshape(Fusion):
         path2 = []
         path3 = []
         shape_nodes = [shape_0, shape_1]
-        if (
-            len(concat_node.input) == 3
-            and self.model.get_initializer(concat_node.input[2]) is None
-        ):
+        if len(concat_node.input) == 3 and self.model.get_initializer(concat_node.input[2]) is None:
             path2 = self.model.match_parent_path(
                 concat_node,
                 ["Unsqueeze", "Mul", "Gather", "Shape"],
@@ -134,10 +127,7 @@ class FusionReshape(Fusion):
             else:
                 shape.append(concat_value)
 
-        if (
-            len(concat_node.input) == 4
-            and self.model.get_initializer(concat_node.input[3]) is None
-        ):
+        if len(concat_node.input) == 4 and self.model.get_initializer(concat_node.input[3]) is None:
             if -1 in shape:
                 return
 

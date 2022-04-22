@@ -4,9 +4,7 @@ from onnx import TensorProto, helper
 if_body = helper.make_graph(
     [
         # need to use main_graph_initializer in a way that can't be constant folded
-        helper.make_node(
-            "Add", ["state_var_in", "main_graph_initializer"], ["add_out"], "If_add"
-        ),
+        helper.make_node("Add", ["state_var_in", "main_graph_initializer"], ["add_out"], "If_add"),
         helper.make_node("Cast", ["add_out"], ["output"], to=TensorProto.BOOL),
     ],
     "if_branch_body",
@@ -14,9 +12,7 @@ if_body = helper.make_graph(
         # no explicit inputs
     ],
     [
-        helper.make_tensor_value_info(
-            "output", TensorProto.BOOL, [1]
-        ),  # how is this getting a type of float?
+        helper.make_tensor_value_info("output", TensorProto.BOOL, [1]),  # how is this getting a type of float?
     ],
 )
 
@@ -31,9 +27,7 @@ body = helper.make_graph(
             ["initializer_sum"],
             "Add1",
         ),
-        helper.make_node(
-            "Add", ["initializer_sum", "loop_state_in"], ["loop_state_out"], "Add2"
-        ),
+        helper.make_node("Add", ["initializer_sum", "loop_state_in"], ["loop_state_out"], "Add2"),
         # If node to create usage of main_graph_initializer another level down
         helper.make_node(
             "If",

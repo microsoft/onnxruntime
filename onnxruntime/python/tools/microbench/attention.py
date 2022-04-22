@@ -25,19 +25,15 @@ class BenchmarkAttention(BenchmarkOp):
 
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
-        input_data = np.random.rand(
-            op_param.batch_size, op_param.seq_len, op_param.hidden_size
-        ).astype(op_param.data_type)
-        weight = np.random.rand(op_param.hidden_size, op_param.length).astype(
+        input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
             op_param.data_type
         )
+        weight = np.random.rand(op_param.hidden_size, op_param.length).astype(op_param.data_type)
         bias = np.random.rand(op_param.length).astype(op_param.data_type)
-        mask_index = np.random.rand(op_param.batch_size, op_param.seq_len).astype(
-            np.int32
+        mask_index = np.random.rand(op_param.batch_size, op_param.seq_len).astype(np.int32)
+        output_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
+            op_param.data_type
         )
-        output_data = np.random.rand(
-            op_param.batch_size, op_param.seq_len, op_param.hidden_size
-        ).astype(op_param.data_type)
         inputs = {
             "INPUT": input_data,
             "WEIGHT": weight,
@@ -48,11 +44,7 @@ class BenchmarkAttention(BenchmarkOp):
         return inputs, outputs
 
     def create_cases(self):
-        model = (
-            "models/attention_fp16.onnx"
-            if self.args.precision == "fp16"
-            else "models/attention_fp32.onnx"
-        )
+        model = "models/attention_fp16.onnx" if self.args.precision == "fp16" else "models/attention_fp32.onnx"
         data_type = np.float16 if self.args.precision == "fp16" else np.float32
         # bert-base
         op_param = OpParam(1, 384, 768, 768 * 3, data_type)

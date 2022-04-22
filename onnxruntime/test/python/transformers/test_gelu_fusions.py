@@ -30,11 +30,7 @@ class MegatronGelu(torch.nn.Module):
 
 class MegatronFastGelu(torch.nn.Module):
     def forward(self, x):
-        return (
-            0.5
-            * x
-            * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
-        )
+        return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
 
 test_cases = [
@@ -51,11 +47,7 @@ class TestGeluFusions(unittest.TestCase):
             if len(bert_model.get_nodes_by_op_type(op_type)) != count:
                 print(f"Counters is not expected in test: {test_name}")
                 for op, counter in expected_node_count.items():
-                    print(
-                        "{}: {} expected={}".format(
-                            op, len(bert_model.get_nodes_by_op_type(op)), counter
-                        )
-                    )
+                    print("{}: {} expected={}".format(op, len(bert_model.get_nodes_by_op_type(op)), counter))
             self.assertEqual(len(bert_model.get_nodes_by_op_type(op_type)), count)
 
     def test_fusions(self):

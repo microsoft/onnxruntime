@@ -74,13 +74,9 @@ def generate_qat_model(model_names):
         [helper.make_tensor_value_info("A", TensorProto.FLOAT, ["unk_1"])],  # input
         [helper.make_tensor_value_info("B", TensorProto.FLOAT, [1024])],  # output
         [  # initializers
-            helper.make_tensor(
-                "quant0_scale_const", TensorProto.FLOAT, [], [0.01961481384932995]
-            ),
+            helper.make_tensor("quant0_scale_const", TensorProto.FLOAT, [], [0.01961481384932995]),
             helper.make_tensor("quant0_zp_const", TensorProto.INT8, [], [0]),
-            helper.make_tensor(
-                "dequant0_scale_const", TensorProto.FLOAT, [], [0.01961481384932995]
-            ),
+            helper.make_tensor("dequant0_scale_const", TensorProto.FLOAT, [], [0.01961481384932995]),
             helper.make_tensor("dequant0_zp_const", TensorProto.INT8, [], [0]),
         ],
     )
@@ -120,9 +116,7 @@ def generate_qat_model(model_names):
     graph = helper.make_graph(
         [
             # nodes
-            helper.make_node(
-                "MaxPool", ["A"], ["maxpool_out"], "maxpool", kernel_shape=[1, 1]
-            ),
+            helper.make_node("MaxPool", ["A"], ["maxpool_out"], "maxpool", kernel_shape=[1, 1]),
             helper.make_node(
                 "QuantizeLinear",
                 ["maxpool_out", "quant0_scale_const", "quant0_zp_const"],
@@ -162,42 +156,26 @@ def generate_qat_model(model_names):
             helper.make_node("Add", ["conv0_out", "conv1_out"], ["B"], "add"),
         ],
         "QAT_model_2",  # name
-        [  # input
-            helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 64, 256, 256])
-        ],
-        [  # output
-            helper.make_tensor_value_info("B", TensorProto.FLOAT, [1, 256, 256, 256])
-        ],
+        [helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 64, 256, 256])],  # input
+        [helper.make_tensor_value_info("B", TensorProto.FLOAT, [1, 256, 256, 256])],  # output
         [  # initializers
-            helper.make_tensor(
-                "quant0_scale_const", TensorProto.FLOAT, [], [0.2062656134366989]
-            ),
+            helper.make_tensor("quant0_scale_const", TensorProto.FLOAT, [], [0.2062656134366989]),
             helper.make_tensor("quant0_zp_const", TensorProto.UINT8, [], [165]),
-            helper.make_tensor(
-                "dequant0_scale_const", TensorProto.FLOAT, [], [0.2062656134366989]
-            ),
+            helper.make_tensor("dequant0_scale_const", TensorProto.FLOAT, [], [0.2062656134366989]),
             helper.make_tensor("dequant0_zp_const", TensorProto.UINT8, [], [165]),
-            helper.make_tensor(
-                "quant1_scale_const", TensorProto.FLOAT, [], [0.10088317096233368]
-            ),
+            helper.make_tensor("quant1_scale_const", TensorProto.FLOAT, [], [0.10088317096233368]),
             helper.make_tensor("quant1_zp_const", TensorProto.UINT8, [], [132]),
-            helper.make_tensor(
-                "dequant1_scale_const", TensorProto.FLOAT, [], [0.10088317096233368]
-            ),
+            helper.make_tensor("dequant1_scale_const", TensorProto.FLOAT, [], [0.10088317096233368]),
             helper.make_tensor("dequant1_zp_const", TensorProto.UINT8, [], [132]),
         ],
     )
 
-    conv_weight_0 = generate_input_initializer(
-        [256, 64, 1, 1], np.float32, "conv_weight_0"
-    )
+    conv_weight_0 = generate_input_initializer([256, 64, 1, 1], np.float32, "conv_weight_0")
     conv_bias_0 = generate_input_initializer([256], np.float32, "conv_bias_0")
     graph.initializer.add().CopyFrom(conv_weight_0)
     graph.initializer.add().CopyFrom(conv_bias_0)
 
-    conv_weight_1 = generate_input_initializer(
-        [256, 64, 1, 1], np.float32, "conv_weight_1"
-    )
+    conv_weight_1 = generate_input_initializer([256, 64, 1, 1], np.float32, "conv_weight_1")
     conv_bias_1 = generate_input_initializer([256], np.float32, "conv_bias_1")
     graph.initializer.add().CopyFrom(conv_weight_1)
     graph.initializer.add().CopyFrom(conv_bias_1)
@@ -291,12 +269,8 @@ def generate_qat_support_model(model_names, test_initializers):
             helper.make_node("Add", ["conv0_out", "conv1_out"], ["B"], "add"),
         ],
         "QAT_support_model_2",  # name
-        [  # input
-            helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 64, 256, 256])
-        ],
-        [  # output
-            helper.make_tensor_value_info("B", TensorProto.FLOAT, [1, 256, 256, 256])
-        ],
+        [helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 64, 256, 256])],  # input
+        [helper.make_tensor_value_info("B", TensorProto.FLOAT, [1, 256, 256, 256])],  # output
     )
 
     # initializers
@@ -331,20 +305,12 @@ def compare_two_models(model_1, model_2):
                 node_found = True
                 if node_2.input != node_1.input or node_2.output != node_1.output:
                     check_1 = False
-                    print(
-                        "Error: Node {} in test model dismatch with the expected model.".format(
-                            node_2.name
-                        )
-                    )
+                    print("Error: Node {} in test model dismatch with the expected model.".format(node_2.name))
                 break
 
         if not node_found:
             check_1 = False
-            print(
-                "Error:Node {} in the expected model not found in test model.".format(
-                    node_1.name
-                )
-            )
+            print("Error:Node {} in the expected model not found in test model.".format(node_1.name))
             break
 
     # check initializers:
@@ -358,19 +324,13 @@ def compare_two_models(model_1, model_2):
                 if not np.array_equal(init1_arr, init2_arr):
                     check_2 = False
                     print(
-                        "Error:  Initializer {} in test model dismatches with the expected model.".format(
-                            init_2.name
-                        )
+                        "Error:  Initializer {} in test model dismatches with the expected model.".format(init_2.name)
                     )
                 break
 
         if not init_found:
             check_2 = False
-            print(
-                "Error: Initializer {} in the expected model not found in test model.".format(
-                    init_1.name
-                )
-            )
+            print("Error: Initializer {} in the expected model not found in test model.".format(init_1.name))
             break
 
     return check_1 and check_2
@@ -386,9 +346,7 @@ class TestQAT(unittest.TestCase):
         ]
 
         test_models, test_initializers = generate_qat_model(model_names)
-        qat_support_models_expected = generate_qat_support_model(
-            qat_support_model_names, test_initializers
-        )
+        qat_support_models_expected = generate_qat_support_model(qat_support_model_names, test_initializers)
 
         for i in range(len(test_models)):
             quantizer = ONNXQuantizer(
@@ -407,9 +365,7 @@ class TestQAT(unittest.TestCase):
             # test remove editting to the graph
             qat_support_model_actual = quantizer.remove_fake_quantized_nodes()
 
-            assert compare_two_models(
-                qat_support_models_expected[i], qat_support_model_actual
-            )
+            assert compare_two_models(qat_support_models_expected[i], qat_support_model_actual)
             print("TEST_MODEL {} finished:  ".format(i) + qat_support_model_names[i])
 
 

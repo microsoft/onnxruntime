@@ -17,8 +17,7 @@ from parity_utilities import find_transformers_source
 if find_transformers_source(sub_dir_paths=["models", "gpt2"]):
     from benchmark_gpt2 import main, parse_arguments
 else:
-    from onnxruntime.transformers.models.gpt2.benchmark_gpt2 import (
-        main, parse_arguments)
+    from onnxruntime.transformers.models.gpt2.benchmark_gpt2 import main, parse_arguments
 
 
 class TestGpt2(unittest.TestCase):
@@ -35,22 +34,16 @@ class TestGpt2(unittest.TestCase):
 
     @pytest.mark.slow
     def test_gpt2_fp32(self):
-        self.run_benchmark_gpt2(
-            "-m gpt2 --precision fp32 -v -b 1 --sequence_lengths 2 -s 3"
-        )
+        self.run_benchmark_gpt2("-m gpt2 --precision fp32 -v -b 1 --sequence_lengths 2 -s 3")
 
     @pytest.mark.slow
     def test_gpt2_fp16(self):
         if self.test_cuda:
-            self.run_benchmark_gpt2(
-                "-m gpt2 --precision fp16 -o -b 1 --sequence_lengths 2 -s 3 --use_gpu"
-            )
+            self.run_benchmark_gpt2("-m gpt2 --precision fp16 -o -b 1 --sequence_lengths 2 -s 3 --use_gpu")
 
     @pytest.mark.slow
     def test_gpt2_int8(self):
-        self.run_benchmark_gpt2(
-            "-m gpt2 --precision int8 -o  -b 1 --sequence_lengths 2 -s 3"
-        )
+        self.run_benchmark_gpt2("-m gpt2 --precision int8 -o  -b 1 --sequence_lengths 2 -s 3")
 
     @pytest.mark.slow
     def test_gpt2_beam_search_step_fp32(self):

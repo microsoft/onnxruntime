@@ -1,8 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 from typing import Any, Tuple
 
@@ -50,30 +49,22 @@ class LSTM_Helper:
         B = (
             params["B"]
             if "B" in params
-            else np.zeros(num_directions * 8 * hidden_size).reshape(
-                num_directions, 8 * hidden_size
-            )
+            else np.zeros(num_directions * 8 * hidden_size).reshape(num_directions, 8 * hidden_size)
         )
         P = (
             params["P"]
             if "P" in params
-            else np.zeros(num_directions * 3 * hidden_size).reshape(
-                num_directions, 3 * hidden_size
-            )
+            else np.zeros(num_directions * 3 * hidden_size).reshape(num_directions, 3 * hidden_size)
         )
         h_0 = (
             params["initial_h"]
             if "initial_h" in params
-            else np.zeros((num_directions, batch_size, hidden_size)).reshape(
-                num_directions, batch_size, hidden_size
-            )
+            else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
         )
         c_0 = (
             params["initial_c"]
             if "initial_c" in params
-            else np.zeros((num_directions, batch_size, hidden_size)).reshape(
-                num_directions, batch_size, hidden_size
-            )
+            else np.zeros((num_directions, batch_size, hidden_size)).reshape(num_directions, batch_size, hidden_size)
         )
 
         f = params["f"] if "f" in params else ActivationFuncs.sigmoid
@@ -86,14 +77,10 @@ class LSTM_Helper:
 
         if num_directions == 1:
             if self.direction == "forward":
-                self.one = OneDirectionLSTM(
-                    X, W, R, B, P, h_0, c_0, f, g, h, input_forget, clip
-                )
+                self.one = OneDirectionLSTM(X, W, R, B, P, h_0, c_0, f, g, h, input_forget, clip)
             else:
                 # flip input so we process in reverse
-                self.one = OneDirectionLSTM(
-                    np.flip(X, 0), W, R, B, P, h_0, c_0, f, g, h, input_forget, clip
-                )
+                self.one = OneDirectionLSTM(np.flip(X, 0), W, R, B, P, h_0, c_0, f, g, h, input_forget, clip)
 
             self.two = None
 
@@ -106,9 +93,7 @@ class LSTM_Helper:
             h_0fw, h_0bw = np.vsplit(h_0, 2)
             c_0fw, c_0bw = np.vsplit(c_0, 2)
 
-            self.one = OneDirectionLSTM(
-                X, Wfw, Rfw, Bfw, Pfw, h_0fw, c_0fw, f, g, h, input_forget, clip
-            )
+            self.one = OneDirectionLSTM(X, Wfw, Rfw, Bfw, Pfw, h_0fw, c_0fw, f, g, h, input_forget, clip)
             self.two = OneDirectionLSTM(
                 np.flip(X, 0),
                 Wbw,
@@ -286,17 +271,11 @@ class LSTM:  # Base):
         )
 
         weight_scale = 0.1
-        R = weight_scale * np.ones(
-            (1, number_of_gates * hidden_size, hidden_size)
-        ).astype(np.float32)
+        R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
 
         if direction == "bidirectional":
-            W = W = np.tile(W, (2, 1)).reshape(
-                2, number_of_gates * hidden_size, input_size
-            )
-            R = R = np.tile(R, (2, 1)).reshape(
-                2, number_of_gates * hidden_size, hidden_size
-            )
+            W = W = np.tile(W, (2, 1)).reshape(2, number_of_gates * hidden_size, input_size)
+            R = R = np.tile(R, (2, 1)).reshape(2, number_of_gates * hidden_size, hidden_size)
 
         lstm = LSTM_Helper(X=input, W=W, R=R, direction=direction)
 
@@ -329,9 +308,7 @@ class LSTM:  # Base):
         )
 
         weight_scale = 0.1
-        R = weight_scale * np.ones(
-            (1, number_of_gates * hidden_size, hidden_size)
-        ).astype(np.float32)
+        R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
 
         lstm = LSTM_Helper(X=input, W=W, R=R, clip=clip)
 
@@ -348,11 +325,7 @@ class LSTM:  # Base):
         hidden_size = 2
         number_of_gates = 4
 
-        input = (
-            np.array([1, 2])
-            .astype(np.float32)
-            .reshape(seq_length, batch_size, input_size)
-        )
+        input = np.array([1, 2]).astype(np.float32).reshape(seq_length, batch_size, input_size)
 
         W = (
             np.array([0.1, 0.2, 0.3, 0.4, 1, 2, 3, 4])
@@ -361,9 +334,7 @@ class LSTM:  # Base):
         )
 
         weight_scale = 0.1
-        R = weight_scale * np.ones(
-            (1, number_of_gates * hidden_size, hidden_size)
-        ).astype(np.float32)
+        R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
 
         lstm = LSTM_Helper(X=input, W=W, R=R)
 
@@ -375,9 +346,7 @@ class LSTM:  # Base):
 
         print(LSTM.export_initial_bias.__name__)
 
-        input = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]).astype(
-            np.float32
-        )
+        input = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]).astype(np.float32)
 
         input_size = 3
         hidden_size = 4
@@ -392,17 +361,11 @@ class LSTM:  # Base):
         #     hidden_size=hidden_size
         # )
 
-        W = weight_scale * np.ones(
-            (1, number_of_gates * hidden_size, input_size)
-        ).astype(np.float32)
-        R = weight_scale * np.ones(
-            (1, number_of_gates * hidden_size, hidden_size)
-        ).astype(np.float32)
+        W = weight_scale * np.ones((1, number_of_gates * hidden_size, input_size)).astype(np.float32)
+        R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
 
         # Adding custom bias
-        W_B = custom_bias * np.ones((1, number_of_gates * hidden_size)).astype(
-            np.float32
-        )
+        W_B = custom_bias * np.ones((1, number_of_gates * hidden_size)).astype(np.float32)
         R_B = np.zeros((1, number_of_gates * hidden_size)).astype(np.float32)
         B = np.concatenate((W_B, R_B), 1)
 
@@ -413,9 +376,7 @@ class LSTM:  # Base):
 
     @staticmethod
     def export_peepholes():  # type: () -> None
-        input = np.array([[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]]).astype(
-            np.float32
-        )
+        input = np.array([[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]]]).astype(np.float32)
 
         input_size = 4
         hidden_size = 3
@@ -431,23 +392,15 @@ class LSTM:  # Base):
         # )
 
         # Initializing Inputs
-        W = weight_scale * np.ones(
-            (1, number_of_gates * hidden_size, input_size)
-        ).astype(np.float32)
-        R = weight_scale * np.ones(
-            (1, number_of_gates * hidden_size, hidden_size)
-        ).astype(np.float32)
+        W = weight_scale * np.ones((1, number_of_gates * hidden_size, input_size)).astype(np.float32)
+        R = weight_scale * np.ones((1, number_of_gates * hidden_size, hidden_size)).astype(np.float32)
         B = np.zeros((1, 2 * number_of_gates * hidden_size)).astype(np.float32)
         seq_lens = np.repeat(input.shape[0], input.shape[1]).astype(np.int32)
         init_h = np.zeros((1, input.shape[1], hidden_size)).astype(np.float32)
         init_c = np.zeros((1, input.shape[1], hidden_size)).astype(np.float32)
-        P = weight_scale * np.ones((1, number_of_peepholes * hidden_size)).astype(
-            np.float32
-        )
+        P = weight_scale * np.ones((1, number_of_peepholes * hidden_size)).astype(np.float32)
 
-        lstm = LSTM_Helper(
-            X=input, W=W, R=R, B=B, P=P, initial_c=init_c, initial_h=init_h
-        )
+        lstm = LSTM_Helper(X=input, W=W, R=R, B=B, P=P, initial_c=init_c, initial_h=init_h)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
         # expect(node, inputs=[input, W, R, B, seq_lens, init_h, init_c, P], outputs=[Y_h.astype(np.float32)],
@@ -594,9 +547,7 @@ class ONNXRuntimeUnitTests:
 
     @staticmethod
     def ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes():
-        print(
-            ONNXRuntimeUnitTests.ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes.__name__
-        )
+        print(ONNXRuntimeUnitTests.ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes.__name__)
         input = ONNXRuntimeTestContext.DefaultInput()
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
         lstm = LSTM_Helper(X=input, W=W, R=R, P=P)  # no bias
@@ -652,9 +603,7 @@ class ONNXRuntimeUnitTests:
         W, R, B, P = ONNXRuntimeTestContext.OneDirectionWeights()
         initial_h = np.array([0.34, 0.72]).reshape(1, 1, 2).astype(np.float32)
         initial_c = np.array([0.63, 0.21]).reshape(1, 1, 2).astype(np.float32)
-        lstm = LSTM_Helper(
-            X=input, W=W, R=R, B=B, initial_h=initial_h, initial_c=initial_c
-        )
+        lstm = LSTM_Helper(X=input, W=W, R=R, B=B, initial_h=initial_h, initial_c=initial_c)
         Y, Y_h, Y_c = lstm.run()
         print_results(Y, Y_h, Y_c)
 

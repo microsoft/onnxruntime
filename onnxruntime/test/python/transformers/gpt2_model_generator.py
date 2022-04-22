@@ -14,17 +14,13 @@ from onnx import TensorProto, helper
 from packaging import version
 
 
-def create_gpt2_attention(
-    hidden_size=64, num_heads=4, max_seq_len=32, switch_add_inputs=False
-):
+def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_add_inputs=False):
     # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
     is_opset_13_or_newer = version.parse(onnx.__version__) >= version.parse("1.8.0")
 
     # nodes in attention subgraph
     nodes = [
-        helper.make_node(
-            "Add", ["input_1", "input_2"], ["layernorm_input"], "add_layernorm"
-        ),
+        helper.make_node("Add", ["input_1", "input_2"], ["layernorm_input"], "add_layernorm"),
         helper.make_node(
             "LayerNormalization",
             ["layernorm_input", "layer_norm_weight", "layer_norm_bias"],
@@ -45,9 +41,7 @@ def create_gpt2_attention(
             ["fc_out"],
             "add_fc",
         ),
-        helper.make_node(
-            "Split", ["fc_out", "split_q_k_v"], ["q", "k", "v"], "split_qkv", axis=2
-        )
+        helper.make_node("Split", ["fc_out", "split_q_k_v"], ["q", "k", "v"], "split_qkv", axis=2)
         if is_opset_13_or_newer
         else helper.make_node(
             "Split",
@@ -58,9 +52,7 @@ def create_gpt2_attention(
             split=[hidden_size, hidden_size, hidden_size],
         ),
         # q nodes
-        helper.make_node(
-            "Reshape", ["q", "reshape_x_shape"], ["reshape_q_out"], "reshape_q"
-        ),
+        helper.make_node("Reshape", ["q", "reshape_x_shape"], ["reshape_q_out"], "reshape_q"),
         helper.make_node(
             "Transpose",
             ["reshape_q_out"],
@@ -69,9 +61,7 @@ def create_gpt2_attention(
             perm=[0, 2, 1, 3],
         ),
         # k nodes
-        helper.make_node(
-            "Reshape", ["k", "reshape_x_shape"], ["reshape_k_out"], "reshape_k"
-        ),
+        helper.make_node("Reshape", ["k", "reshape_x_shape"], ["reshape_k_out"], "reshape_k"),
         helper.make_node(
             "Transpose",
             ["reshape_k_out"],
@@ -80,9 +70,7 @@ def create_gpt2_attention(
             perm=[0, 2, 1, 3],
         ),
         # v nodes
-        helper.make_node(
-            "Reshape", ["v", "reshape_x_shape"], ["reshape_v_out"], "reshape_v"
-        ),
+        helper.make_node("Reshape", ["v", "reshape_x_shape"], ["reshape_v_out"], "reshape_v"),
         helper.make_node(
             "Transpose",
             ["reshape_v_out"],
@@ -91,9 +79,7 @@ def create_gpt2_attention(
             perm=[0, 2, 1, 3],
         ),
         # past
-        helper.make_node(
-            "Split", ["past", "split_1_1"], ["split_k", "split_v"], "split_past", axis=0
-        )
+        helper.make_node("Split", ["past", "split_1_1"], ["split_k", "split_v"], "split_past", axis=0)
         if is_opset_13_or_newer
         else helper.make_node(
             "Split",
@@ -105,9 +91,7 @@ def create_gpt2_attention(
         ),
         helper.make_node("Squeeze", ["split_k", "axes_0"], ["past_k"], "squeeze_past_k")
         if is_opset_13_or_newer
-        else helper.make_node(
-            "Squeeze", ["split_k"], ["past_k"], "squeeze_past_k", axes=[0]
-        ),
+        else helper.make_node("Squeeze", ["split_k"], ["past_k"], "squeeze_past_k", axes=[0]),
         helper.make_node(
             "Concat",
             ["past_k", "transpose_k_out"],
@@ -124,9 +108,7 @@ def create_gpt2_attention(
         ),
         helper.make_node("Squeeze", ["split_v", "axes_0"], ["past_v"], "squeeze_past_v")
         if is_opset_13_or_newer
-        else helper.make_node(
-            "Squeeze", ["split_v"], ["past_v"], "squeeze_past_v", axes=[0]
-        ),
+        else helper.make_node("Squeeze", ["split_v"], ["past_v"], "squeeze_past_v", axes=[0]),
         helper.make_node(
             "Concat",
             ["past_v", "transpose_v_out"],
@@ -170,9 +152,7 @@ def create_gpt2_attention(
             "concat_present",
             axis=0,
         ),
-        helper.make_node(
-            "Shape", ["transpose_q_out"], ["transpose_q_shape_out"], "transpose_q_shape"
-        ),
+        helper.make_node("Shape", ["transpose_q_out"], ["transpose_q_shape_out"], "transpose_q_shape"),
         helper.make_node(
             "Slice",
             ["transpose_q_shape_out", "starts_n2", "ends_n1", "axes_0"],
@@ -193,9 +173,7 @@ def create_gpt2_attention(
             "transpose_q_shape_slice_squeeze",
             axes=[0],
         ),
-        helper.make_node(
-            "Shape", ["concat_k_out"], ["concat_k_shape_out"], "concat_k_shape"
-        ),
+        helper.make_node("Shape", ["concat_k_out"], ["concat_k_shape_out"], "concat_k_shape"),
         helper.make_node(
             "Slice",
             ["concat_k_shape_out", "starts_n2", "ends_n1", "axes_0"],
@@ -222,13 +200,9 @@ def create_gpt2_attention(
             ["sub_out"],
             "sub",
         ),
-        helper.make_node(
-            "Unsqueeze", ["sub_out", "axes_0"], ["sub_unsqueeze_out"], "sub_unsqueeze"
-        )
+        helper.make_node("Unsqueeze", ["sub_out", "axes_0"], ["sub_unsqueeze_out"], "sub_unsqueeze")
         if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze", ["sub_out"], ["sub_unsqueeze_out"], "sub_unsqueeze", axes=[0]
-        ),
+        else helper.make_node("Unsqueeze", ["sub_out"], ["sub_unsqueeze_out"], "sub_unsqueeze", axes=[0]),
         helper.make_node(
             "Unsqueeze",
             ["concat_k_shape_slice_squeeze_out", "axes_0"],
@@ -295,19 +269,11 @@ def create_gpt2_attention(
             "unsqueeze0",
             axes=[1],
         ),
-        helper.make_node(
-            "Unsqueeze", ["unsqueeze0_out", "axes_2"], ["unsqueeze1_out"], "unsqueeze1"
-        )
+        helper.make_node("Unsqueeze", ["unsqueeze0_out", "axes_2"], ["unsqueeze1_out"], "unsqueeze1")
         if is_opset_13_or_newer
-        else helper.make_node(
-            "Unsqueeze", ["unsqueeze0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[2]
-        ),
-        helper.make_node(
-            "Sub", ["sub_weight", "unsqueeze1_out"], ["mask_sub_out"], "sub_mask"
-        ),
-        helper.make_node(
-            "Mul", ["mask_sub_out", "mul_weight"], ["mul_mask_out"], "mul_mask"
-        ),
+        else helper.make_node("Unsqueeze", ["unsqueeze0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[2]),
+        helper.make_node("Sub", ["sub_weight", "unsqueeze1_out"], ["mask_sub_out"], "sub_mask"),
+        helper.make_node("Mul", ["mask_sub_out", "mul_weight"], ["mul_mask_out"], "mul_mask"),
         # qk nodes
         helper.make_node(
             "MatMul",
@@ -328,9 +294,7 @@ def create_gpt2_attention(
             ["add_mask_out"],
             "add_mask",
         ),
-        helper.make_node(
-            "Softmax", ["add_mask_out"], ["softmax_out"], "softmax", axis=3
-        ),
+        helper.make_node("Softmax", ["add_mask_out"], ["softmax_out"], "softmax", axis=3),
         # qkv nodes
         helper.make_node(
             "MatMul",
@@ -481,9 +445,7 @@ def create_gpt2_attention(
 
     head_size = int(hidden_size // num_heads)
     unidir_mask = (
-        numpy.tril(numpy.ones((max_seq_len, max_seq_len)))
-        .reshape([max_seq_len * max_seq_len])
-        .astype(numpy.uint8)
+        numpy.tril(numpy.ones((max_seq_len, max_seq_len))).reshape([max_seq_len * max_seq_len]).astype(numpy.uint8)
     )
     initializers = [  # initializers
         float_tensor("layer_norm_weight", [hidden_size]),
@@ -516,18 +478,12 @@ def create_gpt2_attention(
         helper.make_tensor("indices_0", TensorProto.INT64, [], [0]),
         helper.make_tensor("indices_1", TensorProto.INT64, [], [1]),
         helper.make_tensor("qkv_hidden", TensorProto.INT64, [1], [hidden_size]),
-        helper.make_tensor(
-            "reshape_x_shape", TensorProto.INT64, [4], [0, 0, num_heads, head_size]
-        ),
-        helper.make_tensor(
-            "reshape_weight_qkv", TensorProto.INT64, [3], [0, 0, hidden_size]
-        ),
+        helper.make_tensor("reshape_x_shape", TensorProto.INT64, [4], [0, 0, num_heads, head_size]),
+        helper.make_tensor("reshape_weight_qkv", TensorProto.INT64, [3], [0, 0, hidden_size]),
     ]
 
     if is_opset_13_or_newer:
-        initializers.append(
-            helper.make_tensor("split_1_1", TensorProto.INT64, [2], [1, 1])
-        )
+        initializers.append(helper.make_tensor("split_1_1", TensorProto.INT64, [2], [1, 1]))
         initializers.append(
             helper.make_tensor(
                 "split_q_k_v",

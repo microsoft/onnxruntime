@@ -21,9 +21,7 @@ graph = helper.make_graph(
         helper.make_tensor_value_info("X", TensorProto.FLOAT, ["unk_5", "unk_6", 3072]),
     ],
     [  # outputs
-        helper.make_tensor_value_info(
-            "D", TensorProto.FLOAT, ["unk_3", "unk_4", "unk_5"]
-        ),
+        helper.make_tensor_value_info("D", TensorProto.FLOAT, ["unk_3", "unk_4", "unk_5"]),
     ],
     [  # initializers
         helper.make_tensor("div_const", TensorProto.FLOAT, [], [1.4142135381698608]),

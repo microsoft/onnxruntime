@@ -44,9 +44,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         )
         return mask_nodes
 
-    def check_attention_input(
-        self, matmul_q, matmul_k, matmul_v, parent, output_name_to_node
-    ):
+    def check_attention_input(self, matmul_q, matmul_k, matmul_v, parent, output_name_to_node):
         reshape_nodes = []
 
         for x in [matmul_q, matmul_k, matmul_v]:
@@ -54,15 +52,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             root_node = output_name_to_node[root_input]
             if root_node == parent:
                 continue
-            if (
-                root_node.op_type == "Reshape"
-                and root_node.input[0] == parent.output[0]
-            ):
+            if root_node.op_type == "Reshape" and root_node.input[0] == parent.output[0]:
                 reshape_nodes.append(root_node)
                 continue
-            logger.debug(
-                f"Check attention input failed:{root_input}, {parent.output[0]}"
-            )
+            logger.debug(f"Check attention input failed:{root_input}, {parent.output[0]}")
             return False, []
 
         return True, reshape_nodes
@@ -89,16 +82,12 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                         "EmbedLayerNormalization",
                     ]:
                         logger.debug(
-                            "First input for skiplayernorm: {}".format(
-                                parent.op_type if parent is not None else None
-                            )
+                            "First input for skiplayernorm: {}".format(parent.op_type if parent is not None else None)
                         )
                         continue
                 else:
                     logger.debug(
-                        "First input for skiplayernorm: {}".format(
-                            parent.op_type if parent is not None else None
-                        )
+                        "First input for skiplayernorm: {}".format(parent.op_type if parent is not None else None)
                     )
                     continue
             else:
@@ -133,9 +122,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 continue
             (transpose_v, reshape_v, add_v, extra_reshape_1, matmul_v) = v_nodes
 
-            qk_nodes = self.match_parent_path(
-                matmul_qkv, ["Softmax", "Sub", "MatMul"], [0, 0, 0]
-            )
+            qk_nodes = self.match_parent_path(matmul_qkv, ["Softmax", "Sub", "MatMul"], [0, 0, 0])
             if qk_nodes is not None:
                 (softmax_qk, sub_qk, matmul_qk) = qk_nodes
                 q_nodes = self.match_parent_path(
@@ -154,13 +141,9 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                     ) = q_nodes
 
             else:
-                qk_nodes = self.match_parent_path(
-                    matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, None]
-                )
+                qk_nodes = self.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, None])
                 if qk_nodes is None:
-                    qk_nodes = self.match_parent_path(
-                        matmul_qkv, ["Softmax", "Add", "Div", "MatMul"], [0, 0, 0, None]
-                    )
+                    qk_nodes = self.match_parent_path(matmul_qkv, ["Softmax", "Add", "Div", "MatMul"], [0, 0, 0, None])
                     if qk_nodes is None:
                         logger.debug("Failed to match qk path")
                         continue
@@ -193,9 +176,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 logger.debug("Failed to match mask path")
                 continue
             if not self.has_constant_input(mask_nodes[1], 1):
-                logger.debug(
-                    "Sub node expected to have an input with constant value 1.0."
-                )
+                logger.debug("Sub node expected to have an input with constant value 1.0.")
                 continue
 
             is_same_root, reshape_nodes = self.check_attention_input(
@@ -232,9 +213,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 nodes_to_remove.extend(mask_nodes)
                 nodes_to_remove.extend(reshape_nodes)
                 nodes_to_remove.append(extra_reshape_0)
-                self.replace_node_input(
-                    add, extra_reshape_0.output[0], matmul.output[0]
-                )
+                self.replace_node_input(add, extra_reshape_0.output[0], matmul.output[0])
             else:
                 logger.debug("Root node not matched.")
                 continue
@@ -267,12 +246,8 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
     def fuse_embedding(self, node, output_name_to_node):
         assert node.op_type == "LayerNormalization"
-        logger.debug(
-            f"start fusing embedding from node with output={node.output[0]}..."
-        )
-        word_embed_path = self.match_parent_path(
-            node, ["Add", "Add", "Gather"], [0, 0, 0], output_name_to_node
-        )
+        logger.debug(f"start fusing embedding from node with output={node.output[0]}...")
+        word_embed_path = self.match_parent_path(node, ["Add", "Add", "Gather"], [0, 0, 0], output_name_to_node)
         if word_embed_path is None:
             logger.debug("failed to match word_embed_path")
             return False
@@ -286,45 +261,27 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(word_initializer)
         if len(temp.shape) == 2:
-            logger.info(
-                "Found word embedding. name:{}, shape:{}".format(
-                    word_initializer.name, temp.shape
-                )
-            )
+            logger.info("Found word embedding. name:{}, shape:{}".format(word_initializer.name, temp.shape))
             word_embedding = word_initializer.name
         else:
-            logger.info(
-                "Failed to find word embedding. name:{}, shape:{}".format(
-                    word_initializer.name, temp.shape
-                )
-            )
+            logger.info("Failed to find word embedding. name:{}, shape:{}".format(word_initializer.name, temp.shape))
             return False
 
         pos_initializer = self.get_initializer(add_node.input[1])
         if pos_initializer is not None:
             temp = numpy_helper.to_array(pos_initializer)
             if len(temp.shape) == 3 and temp.shape[0] == 1:
-                tensor = numpy_helper.from_array(
-                    temp.reshape((temp.shape[1], temp.shape[2])), "position_embedding"
-                )
+                tensor = numpy_helper.from_array(temp.reshape((temp.shape[1], temp.shape[2])), "position_embedding")
                 self.add_initializer(tensor)
-                logger.info(
-                    "Found position embedding. name:{}, shape:{}".format(
-                        pos_initializer.name, temp.shape[1:]
-                    )
-                )
+                logger.info("Found position embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape[1:]))
                 position_embedding = "position_embedding"
             else:
                 logger.info(
-                    "Failed to find position embedding. name:{}, shape:{}".format(
-                        pos_initializer.name, temp.shape
-                    )
+                    "Failed to find position embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape)
                 )
                 return False
         else:
-            pos_embed_path = self.match_parent_path(
-                add_node, ["Gather", "Slice"], [1, 1], output_name_to_node
-            )
+            pos_embed_path = self.match_parent_path(add_node, ["Gather", "Slice"], [1, 1], output_name_to_node)
             if pos_embed_path is None:
                 logger.debug("failed to match pos_embed_path")
                 return False
@@ -337,17 +294,11 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
             temp = numpy_helper.to_array(pos_initializer)
             if len(temp.shape) == 2:
-                logger.info(
-                    "Found word embedding. name:{}, shape:{}".format(
-                        pos_initializer.name, temp.shape
-                    )
-                )
+                logger.info("Found word embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape))
                 position_embedding = pos_initializer.name
             else:
                 logger.info(
-                    "Failed to find position embedding. name:{}, shape:{}".format(
-                        pos_initializer.name, temp.shape
-                    )
+                    "Failed to find position embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape)
                 )
                 return False
 
@@ -363,24 +314,16 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(segment_initializer)
         if len(temp.shape) == 2:
-            logger.info(
-                "Found segment embedding. name:{}, shape:{}".format(
-                    segment_initializer.name, temp.shape
-                )
-            )
+            logger.info("Found segment embedding. name:{}, shape:{}".format(segment_initializer.name, temp.shape))
             segment_embedding = segment_initializer.name
         else:
             logger.info(
-                "Failed to find segment embedding. name:{}, shape:{}".format(
-                    segment_initializer.name, temp.shape
-                )
+                "Failed to find segment embedding. name:{}, shape:{}".format(segment_initializer.name, temp.shape)
             )
             return False
 
         logger.info("Create Embedding node")
-        self.create_embedding_subgraph(
-            node, word_embedding, segment_embedding, position_embedding
-        )
+        self.create_embedding_subgraph(node, word_embedding, segment_embedding, position_embedding)
         return True
 
     def process_embedding(self):
@@ -399,20 +342,14 @@ class BertOnnxModelKeras(BertOnnxModelTF):
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == "Mul" and self.has_constant_input(node, -10000):
-                mask_path = self.match_parent_path(
-                    node, ["Sub", "Cast", "Slice", "Unsqueeze"], [0, 1, 0, 0]
-                )
+                mask_path = self.match_parent_path(node, ["Sub", "Cast", "Slice", "Unsqueeze"], [0, 1, 0, 0])
                 if mask_path is None:
                     continue
                 sub_node, cast_node, slice_node, unsqueeze_node = mask_path
 
                 mask_input_name = self.attention_mask.get_first_mask()
                 if unsqueeze_node.input[0] != mask_input_name:
-                    print(
-                        "Cast input {} is not mask input {}".format(
-                            unsqueeze_node.input[0], mask_input_name
-                        )
-                    )
+                    print("Cast input {} is not mask input {}".format(unsqueeze_node.input[0], mask_input_name))
                     continue
 
                 unsqueeze_added_1 = onnx.helper.make_node(
@@ -438,9 +375,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                     outputs=["mask_fuse_cast_output"],
                 )
                 cast_node_2.attribute.extend([onnx.helper.make_attribute("to", 1)])
-                self.replace_node_input(
-                    sub_node, sub_node.input[1], "mask_fuse_cast_output"
-                )
+                self.replace_node_input(sub_node, sub_node.input[1], "mask_fuse_cast_output")
 
                 nodes_to_remove.extend([slice_node, unsqueeze_node, cast_node])
                 self.add_node(unsqueeze_added_1)

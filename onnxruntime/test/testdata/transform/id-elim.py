@@ -1,7 +1,6 @@
 import numpy as np
 import onnx
-from onnx import (GraphProto, OperatorSetIdProto, TensorProto, helper,
-                  numpy_helper)
+from onnx import GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 X1 = helper.make_tensor_value_info("x1", TensorProto.INT64, [4, 4])
 X2 = helper.make_tensor_value_info("x2", TensorProto.INT64, [4, 4])
@@ -14,9 +13,7 @@ id1 = helper.make_node("Identity", ["add1"], ["output1"], name="id1")
 id2 = helper.make_node("Identity", ["add2"], ["output2"], name="id2")
 
 # Create the graph (GraphProto)
-graph_def = helper.make_graph(
-    [add1, add2, id1, id2], "identity_elimination_model", [X1, X2], [Y1, Y2]
-)
+graph_def = helper.make_graph([add1, add2, id1, id2], "identity_elimination_model", [X1, X2], [Y1, Y2])
 
 opsets = []
 onnxdomain = OperatorSetIdProto()

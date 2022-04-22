@@ -4,9 +4,7 @@ import numpy as np
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType,
-                           attribute_to_kwarg, find_by_name, get_mul_node,
-                           ms_domain)
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, find_by_name, get_mul_node, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -51,18 +49,13 @@ class QLinearGemm(QuantOperatorBase):
             _,
         ) = self.quantizer._get_quantization_params(node.output[0])
 
-        if (
-            self.quantizer.is_input_a_weight(node.input[1])
-            and self.quantizer.is_per_channel()
-        ):
+        if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
             (
                 quantized_input_names,
                 zero_point_names,
                 scale_names,
                 nodes,
-            ) = self.quantizer.quantize_inputs(
-                node, [0], reduce_range=self.quantizer.reduce_range
-            )
+            ) = self.quantizer.quantize_inputs(node, [0], reduce_range=self.quantizer.reduce_range)
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
                 node.input[1],
                 onnx_proto.TensorProto.INT8,
@@ -77,9 +70,7 @@ class QLinearGemm(QuantOperatorBase):
                 zero_point_names,
                 scale_names,
                 nodes,
-            ) = self.quantizer.quantize_inputs(
-                node, [0, 1], reduce_range=self.quantizer.reduce_range
-            )
+            ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         if not data_found or quantized_input_names is None:
             return super().quantize()
@@ -105,15 +96,11 @@ class QLinearGemm(QuantOperatorBase):
         # generate input
         qgemm_inputs = []
         for i in range(2):
-            qgemm_inputs.extend(
-                [quantized_input_names[i], scale_names[i], zero_point_names[i]]
-            )
+            qgemm_inputs.extend([quantized_input_names[i], scale_names[i], zero_point_names[i]])
 
         qgemm_inputs.extend([quantized_bias_name, output_scale_name, output_zp_name])
 
-        qgemm_node = onnx.helper.make_node(
-            "QGemm", qgemm_inputs, [qgemm_output], qgemm_name, **kwargs
-        )
+        qgemm_node = onnx.helper.make_node("QGemm", qgemm_inputs, [qgemm_output], qgemm_name, **kwargs)
         nodes.append(qgemm_node)
 
         # Create an entry for this quantized value
@@ -142,17 +129,13 @@ class QDQGemm(QDQOperatorBase):
             self.quantizer.quantize_tensor(node.output[0])
 
         if self.quantizer.is_per_channel():
-            self.quantizer.quantize_tensor_per_channel(
-                node.input[1], 0 if is_B_transposed(node) else 1
-            )
+            self.quantizer.quantize_tensor_per_channel(node.input[1], 0 if is_B_transposed(node) else 1)
         else:
             self.quantizer.quantize_tensor(node.input[1])
 
         if len(node.input) == 3:
             if self.quantizer.is_input_a_weight(node.input[2]):
-                self.quantizer.quantize_bias_tensor(
-                    node.input[2], node.input[0], node.input[1], get_beta(self.node)
-                )
+                self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], get_beta(self.node))
                 set_default_beta(self.node)
             else:
                 logging.warning(

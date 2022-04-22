@@ -48,30 +48,13 @@ class Gelu(nn.Module):
             return x * 0.5 * (torch.erf(x / 1.41421).to(dtype=x.dtype) + 1.0)
         elif self.formula == 3:
             # gelu_new in huggingface transformers
-            return (
-                0.5
-                * x
-                * (
-                    1.0
-                    + torch.tanh(
-                        math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))
-                    )
-                )
-            )
+            return 0.5 * x * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * torch.pow(x, 3.0))))
         elif self.formula == 4:
             # gelu_fast in huggingface transformers with lower precision in a constant (0.7978845608)
-            return (
-                0.5
-                * x
-                * (1.0 + torch.tanh(x * 0.7978845608 * (1.0 + 0.044715 * x * x)))
-            )
+            return 0.5 * x * (1.0 + torch.tanh(x * 0.7978845608 * (1.0 + 0.044715 * x * x)))
         else:
             # openai_gelu in Megatron
-            return (
-                0.5
-                * x
-                * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
-            )
+            return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
     @staticmethod
     def get_fused_op(formula):
@@ -113,15 +96,11 @@ def run(
         model.half()
 
     # Do not re-use onnx file from previous test since weights of model are random.
-    onnx_model_path = "./temp/gelu_{}_{}.onnx".format(
-        formula, "fp16" if float16 else "fp32"
-    )
+    onnx_model_path = "./temp/gelu_{}_{}.onnx".format(formula, "fp16" if float16 else "fp32")
     export_onnx(model, onnx_model_path, float16, hidden_size, device)
 
     if optimized:
-        optimized_onnx_path = "./temp/gelu_{}_opt_{}.onnx".format(
-            formula, "fp16" if float16 else "fp32"
-        )
+        optimized_onnx_path = "./temp/gelu_{}_opt_{}.onnx".format(formula, "fp16" if float16 else "fp32")
         use_gpu = float16 and not fp32_gelu_op
         optimize_onnx(
             onnx_model_path,
@@ -157,9 +136,7 @@ def run(
 
 class TestGeluParity(unittest.TestCase):
     def setUp(self):
-        self.optimized = (
-            True  # Change it to False if you want to test parity of non optimized ONNX
-        )
+        self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 100  # Number of test cases per test run
         self.sequence_length = 2
         self.hidden_size = 768
@@ -246,9 +223,7 @@ class TestGeluParity(unittest.TestCase):
         else:
             gpu = torch.device("cuda")
             for i in self.formula_to_test:
-                self.run_one(
-                    self.optimized, gpu, hidden_size=self.hidden_size, formula=i
-                )
+                self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, formula=i)
 
 
 if __name__ == "__main__":

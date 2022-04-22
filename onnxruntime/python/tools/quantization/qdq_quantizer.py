@@ -14,17 +14,27 @@ import onnx.numpy_helper
 from onnx import TensorProto
 from onnx import onnx_pb as onnx_proto
 
-from onnxruntime import (GraphOptimizationLevel, InferenceSession,
-                         SessionOptions)
+from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 
 from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
-from .quant_utils import (QuantizationMode, QuantizedInitializer,
-                          QuantizedValue, QuantizedValueType, QuantType,
-                          __producer__, __version__, attribute_to_kwarg,
-                          find_by_name, generate_identified_filename,
-                          get_elem_index, get_mul_node, onnx_domain,
-                          quantize_nparray, type_to_name)
+from .quant_utils import (
+    QuantizationMode,
+    QuantizedInitializer,
+    QuantizedValue,
+    QuantizedValueType,
+    QuantType,
+    __producer__,
+    __version__,
+    attribute_to_kwarg,
+    find_by_name,
+    generate_identified_filename,
+    get_elem_index,
+    get_mul_node,
+    onnx_domain,
+    quantize_nparray,
+    type_to_name,
+)
 from .registry import CreateQDQQuantizer
 
 
@@ -79,17 +89,13 @@ class QDQQuantizer(ONNXQuantizer):
         # In some cases, for example QDQ BERT model for TensorRT, QDQ should always appear as a pair.
         # Therefore, we need to disable this optimization and add qdq pair to weight.
         self.add_qdq_pair_to_weight = (
-            False
-            if "AddQDQPairToWeight" not in extra_options
-            else extra_options["AddQDQPairToWeight"]
+            False if "AddQDQPairToWeight" not in extra_options else extra_options["AddQDQPairToWeight"]
         )
 
         # The default behavior is that multiple nodes can share a QDQ pair as their inputs.
         # In TRT, QDQ pair can’t be shared between nodes, so it will create dedicated QDQ pairs for each node.
         self.dedicated_qdq_pair = (
-            False
-            if "DedicatedQDQPair" not in extra_options
-            else extra_options["DedicatedQDQPair"]
+            False if "DedicatedQDQPair" not in extra_options else extra_options["DedicatedQDQPair"]
         )
         if self.dedicated_qdq_pair:
             self.tensor_to_its_receiving_nodes = {}
@@ -108,10 +114,7 @@ class QDQQuantizer(ONNXQuantizer):
                 self.tensors_to_quantize.append(tensor_name)
         elif tensor_name in self.value_infos.keys():
             vi = self.value_infos[tensor_name]
-            if (
-                vi.type.HasField("tensor_type")
-                and vi.type.tensor_type.elem_type == TensorProto.FLOAT
-            ):
+            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type == TensorProto.FLOAT:
                 self.tensors_to_quantize.append(tensor_name)
         else:
             logging.warning(
@@ -208,15 +211,11 @@ class QDQQuantizer(ONNXQuantizer):
                         [tensor_name + "_DequantizeLinear"],
                         tensor_name + "_DequantizeLinear",
                     )
-                    self.model.replace_input_of_all_nodes(
-                        tensor_name, tensor_name + "_DequantizeLinear"
-                    )
+                    self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
 
                     self.model.add_nodes([qlinear_node, dequant_node])
                 else:
-                    q_weight_name, zp_name, scale_name = self.quantize_weight(
-                        initializer, self.weight_qType
-                    )
+                    q_weight_name, zp_name, scale_name = self.quantize_weight(initializer, self.weight_qType)
                     inputs = [q_weight_name, scale_name, zp_name]
                     output_name = tensor_name + "_DequantizeLinear"
                     node = onnx.helper.make_node(
@@ -226,13 +225,9 @@ class QDQQuantizer(ONNXQuantizer):
                         tensor_name + "_DequantizeLinear",
                     )
                     self.model.add_node(node)
-                    self.model.replace_input_of_all_nodes(
-                        tensor_name, tensor_name + "_DequantizeLinear"
-                    )
+                    self.model.replace_input_of_all_nodes(tensor_name, tensor_name + "_DequantizeLinear")
             else:
-                data_found, scale_name, zp_name, _, _ = self._get_quantization_params(
-                    tensor_name
-                )
+                data_found, scale_name, zp_name, _, _ = self._get_quantization_params(tensor_name)
 
                 if data_found == False:
                     raise ValueError(
@@ -247,9 +242,7 @@ class QDQQuantizer(ONNXQuantizer):
                     and tensor_name in self.tensor_to_its_receiving_nodes
                     and len(self.tensor_to_its_receiving_nodes[tensor_name]) > 1
                 ):
-                    num_dedicated_qdq_pair = len(
-                        self.tensor_to_its_receiving_nodes[tensor_name]
-                    )
+                    num_dedicated_qdq_pair = len(self.tensor_to_its_receiving_nodes[tensor_name])
                     for i in range(num_dedicated_qdq_pair):
                         postfix = str(i + 1)
                         q_input = tensor_name
@@ -326,9 +319,7 @@ class QDQQuantizer(ONNXQuantizer):
                 continue
             # Quantize the input
             self.quantize_bias_static(bias_name, input_name, weight_name, beta)
-            self.model.remove_initializer(
-                find_by_name(bias_name, self.model.initializer())
-            )
+            self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
             inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
             if quant_value.axis is not None:
@@ -350,9 +341,7 @@ class QDQQuantizer(ONNXQuantizer):
 
     def quantize_weights_per_channel(self):
         if self.opset_version < 13 and len(self.tensors_to_quantize_per_channel) > 0:
-            raise ValueError(
-                "Per-Channel support with QDQ format requires onnx opset version 13 or above."
-            )
+            raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
         for weight_name, axis in self.tensors_to_quantize_per_channel:
             if self.add_qdq_pair_to_weight:
                 q_name, zp_name, scale_name = self.quantize_weight_per_channel(
@@ -375,9 +364,7 @@ class QDQQuantizer(ONNXQuantizer):
                     weight_name + "_DequantizeLinear",
                     axis=axis,
                 )
-                self.model.replace_input_of_all_nodes(
-                    weight_name, weight_name + "_DequantizeLinear"
-                )
+                self.model.replace_input_of_all_nodes(weight_name, weight_name + "_DequantizeLinear")
 
                 self.model.add_nodes([qlinear_node, dequant_node])
             else:

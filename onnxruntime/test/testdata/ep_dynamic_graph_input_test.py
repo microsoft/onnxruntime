@@ -29,18 +29,14 @@ def GenerateModel(model_name):
     ]
 
     inputs = [
-        helper.make_tensor_value_info(
-            "X", TensorProto.FLOAT, ["1", "1", "N", "N"]
-        ),  # used dim_param here
+        helper.make_tensor_value_info("X", TensorProto.FLOAT, ["1", "1", "N", "N"]),  # used dim_param here
     ]
 
     outputs = [
         helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 3, 3]),
     ]
 
-    graph = helper.make_graph(
-        nodes, "EP_Dynamic_Graph_Input_Test", inputs, outputs, initializers
-    )
+    graph = helper.make_graph(nodes, "EP_Dynamic_Graph_Input_Test", inputs, outputs, initializers)
 
     model = helper.make_model(graph)
     onnx.save(model, model_name)

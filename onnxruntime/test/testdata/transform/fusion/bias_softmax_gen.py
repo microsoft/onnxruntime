@@ -13,17 +13,11 @@ onnx.save(
             [add, softmax1],
             "Add_Softmax_Fusion",
             [
-                helper.make_tensor_value_info(
-                    "input", TensorProto.FLOAT, ["d_1", "d_2"]
-                ),
-                helper.make_tensor_value_info(
-                    "bias", TensorProto.FLOAT, ["d_1", "d_2"]
-                ),
+                helper.make_tensor_value_info("input", TensorProto.FLOAT, ["d_1", "d_2"]),
+                helper.make_tensor_value_info("bias", TensorProto.FLOAT, ["d_1", "d_2"]),
             ],
             [
-                helper.make_tensor_value_info(
-                    "output", TensorProto.FLOAT, ["d_1", "d_2"]
-                ),
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, ["d_1", "d_2"]),
             ],
             [],
         )
@@ -133,9 +127,7 @@ onnx.save(
                     TensorProto.FLOAT,
                     ["d_0", "d_1", "d_2", "d_3", "d_4", "d_5", "d_6", "d_7", "d_8"],
                 ),
-                helper.make_tensor_value_info(
-                    "bias", TensorProto.FLOAT, [1, 1, 1, 1, 1, 1, "d_6", "d_7", "d_8"]
-                ),
+                helper.make_tensor_value_info("bias", TensorProto.FLOAT, [1, 1, 1, 1, 1, 1, "d_6", "d_7", "d_8"]),
             ],
             [
                 helper.make_tensor_value_info(
@@ -161,9 +153,7 @@ onnx.save(
                     TensorProto.FLOAT,
                     ["d_0", "d_1", "d_2", "d_3", "d_4", "d_5", "d_6", "d_7", "d_8"],
                 ),
-                helper.make_tensor_value_info(
-                    "bias", TensorProto.FLOAT, [1, 1, "d_6", "d_7", "d_8"]
-                ),
+                helper.make_tensor_value_info("bias", TensorProto.FLOAT, [1, 1, "d_6", "d_7", "d_8"]),
             ],
             [
                 helper.make_tensor_value_info(
@@ -189,9 +179,7 @@ onnx.save(
                     TensorProto.FLOAT,
                     ["d_0", "d_1", "d_2", "d_3", "d_4", "d_5", "d_6", "d_7", "d_8"],
                 ),
-                helper.make_tensor_value_info(
-                    "bias", TensorProto.FLOAT, ["d_6", "d_7", "d_8"]
-                ),
+                helper.make_tensor_value_info("bias", TensorProto.FLOAT, ["d_6", "d_7", "d_8"]),
             ],
             [
                 helper.make_tensor_value_info(

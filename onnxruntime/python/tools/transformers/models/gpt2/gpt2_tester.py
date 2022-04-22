@@ -63,11 +63,7 @@ class Gpt2Metric:
                 if key == 0:
                     print("\t{}:         \t{:.2f} ms".format(key, average))
                 else:
-                    print(
-                        "\t[{}, {}]:\t{:.2f} ms".format(
-                            2**key, 2 ** (key + 1) - 1, average
-                        )
-                    )
+                    print("\t[{}, {}]:\t{:.2f} ms".format(2**key, 2 ** (key + 1) - 1, average))
                 total += average * len(self.seq_len_latency[key])
                 count += len(self.seq_len_latency[key])
             print("Average Latency: {:.2f} ms".format(total / count))
@@ -88,13 +84,9 @@ class Gpt2Metric:
 
     def eval_batch(self, baseline, treatment, past_seq_len, verbose=True):
         self._eval_topk(baseline.top_1_tokens, treatment.top_1_tokens, 1, verbose)
-        self._eval_topk(
-            baseline.top_k_tokens, treatment.top_k_tokens, self.top_k, verbose
-        )
+        self._eval_topk(baseline.top_k_tokens, treatment.top_k_tokens, self.top_k, verbose)
 
-        max_diff = self.diff_logits(
-            baseline.logits, treatment.logits, past_seq_len == 0
-        )
+        max_diff = self.diff_logits(baseline.logits, treatment.logits, past_seq_len == 0)
         if verbose:
             print(f"Max logits diffs of {self.name}: {max_diff}")
 
@@ -103,20 +95,14 @@ class Gpt2Metric:
             if top_k == 1:
                 if verbose:
                     print(f"Generated tokens not matched for {self.name}")
-                self.batch_top1_error |= torch.eq(
-                    baseline_topk, treatment_topk
-                ).logical_not()
+                self.batch_top1_error |= torch.eq(baseline_topk, treatment_topk).logical_not()
             else:
                 if verbose:
                     print(
                         f"Top {top_k} tokens not matched for {self.name}. This will lead to wrong beam search results"
                     )
                 self.batch_topk_error |= (
-                    torch.eq(baseline_topk, treatment_topk)
-                    .logical_not()
-                    .sum(1)
-                    .unsqueeze(dim=1)
-                    > 0
+                    torch.eq(baseline_topk, treatment_topk).logical_not().sum(1).unsqueeze(dim=1) > 0
                 )
 
     def end_batch(self):
@@ -166,9 +152,7 @@ class Gpt2Tester:
             hidden_size // num_attention_heads,
         ]
         for i in range(num_layer):
-            empty_past = torch.empty(past_shape).type(
-                torch.float16 if is_fp16 else torch.float32
-            )
+            empty_past = torch.empty(past_shape).type(torch.float16 if is_fp16 else torch.float32)
             self.past.append(empty_past.to(device))
 
         self.logits = None
@@ -178,9 +162,7 @@ class Gpt2Tester:
         self.top_k_required_order = top_k_required_order
 
     def get_inputs(self) -> Gpt2Inputs:
-        return Gpt2Inputs(
-            self.input_ids, self.position_ids, self.attention_mask, self.past
-        )
+        return Gpt2Inputs(self.input_ids, self.position_ids, self.attention_mask, self.past)
 
     def save_test_data(self, session, output, save_test_data_dir, test_case_id):
         from onnx import numpy_helper
@@ -193,9 +175,7 @@ class Gpt2Tester:
         os.makedirs(path, exist_ok=True)
 
         def add_tensor(input_tensors, torch_tensor, name):
-            input_tensors.append(
-                numpy_helper.from_array(torch_tensor.clone().cpu().numpy(), name)
-            )
+            input_tensors.append(numpy_helper.from_array(torch_tensor.clone().cpu().numpy(), name))
 
         input_tensors = []
         add_tensor(input_tensors, self.input_ids, "input_ids")
@@ -216,9 +196,7 @@ class Gpt2Tester:
         output_names = [output.name for output in session.get_outputs()]
         for i, name in enumerate(output_names):
             tensor = numpy_helper.from_array(
-                output[i]
-                if isinstance(output[i], numpy.ndarray)
-                else output[i].clone().cpu().numpy()
+                output[i] if isinstance(output[i], numpy.ndarray) else output[i].clone().cpu().numpy()
             )
             with open(os.path.join(path, "output_{}.pb".format(i)), "wb") as f:
                 f.write(tensor.SerializeToString())
@@ -230,26 +208,17 @@ class Gpt2Tester:
         Update the inputs for next inference.
         """
         self.logits = (
-            torch.from_numpy(output[0])
-            if isinstance(output[0], numpy.ndarray)
-            else output[0].clone().detach().cpu()
+            torch.from_numpy(output[0]) if isinstance(output[0], numpy.ndarray) else output[0].clone().detach().cpu()
         )
 
         self.top_1_tokens = Gpt2Tester.predict_next_token(self.logits)
-        self.top_k_tokens = Gpt2Tester.predict_next_token(
-            self.logits, self.top_k, self.top_k_required_order
-        )
+        self.top_k_tokens = Gpt2Tester.predict_next_token(self.logits, self.top_k, self.top_k_required_order)
 
-        self.input_ids = (
-            self.top_1_tokens.clone().detach().reshape([self.batch_size, 1]).to(device)
-        )
+        self.input_ids = self.top_1_tokens.clone().detach().reshape([self.batch_size, 1]).to(device)
 
         if self.has_position_ids:
             self.position_ids = (
-                torch.tensor([self.input_length + step - 1])
-                .unsqueeze(0)
-                .repeat(self.batch_size, 1)
-                .to(device)
+                torch.tensor([self.input_length + step - 1]).unsqueeze(0).repeat(self.batch_size, 1).to(device)
             )
 
         if self.has_attention_mask:
@@ -361,8 +330,7 @@ class Gpt2Tester:
         from onnx import load
 
         model = load(onnx_model_path)
-        from onnxruntime.quantization.quantize import \
-            __producer__ as quantize_producer
+        from onnxruntime.quantization.quantize import __producer__ as quantize_producer
 
         return model.producer_name == quantize_producer
 
@@ -410,17 +378,13 @@ class Gpt2Tester:
             config=model.config,
             model_class=model_class,
         )
-        output_buffers = Gpt2Helper.get_output_buffers(
-            init_output_shapes, device, is_float16=is_float16
-        )
+        output_buffers = Gpt2Helper.get_output_buffers(init_output_shapes, device, is_float16=is_float16)
 
         baseline_name = "Torch"
         treatment_name = "Quantized Onnx" if precision == Precision.INT8 else "Onnx"
         torch_metric = Gpt2Metric(baseline_name, baseline_name, top_k)
         onnx_metric = Gpt2Metric(treatment_name, baseline_name, top_k)
-        onnx_io_metric = Gpt2Metric(
-            treatment_name + " with IO Binding", baseline_name, top_k
-        )
+        onnx_io_metric = Gpt2Metric(treatment_name + " with IO Binding", baseline_name, top_k)
 
         for i, inputs in enumerate(test_inputs):
             if max_inputs > 0 and i == max_inputs:
@@ -429,9 +393,7 @@ class Gpt2Tester:
                 print(f"{i}")
             input_ids = inputs["input_ids"]
             position_ids = inputs["position_ids"] if "position_ids" in inputs else None
-            attention_mask = (
-                inputs["attention_mask"] if "attention_mask" in inputs else None
-            )
+            attention_mask = inputs["attention_mask"] if "attention_mask" in inputs else None
 
             onnx_runner = Gpt2Tester(
                 input_ids,
@@ -481,12 +443,8 @@ class Gpt2Tester:
                     past_seq_len = list(onnx_runner.past[0].size())[3]
 
                     start_time = timeit.default_timer()
-                    pytorch_output = Gpt2Helper.pytorch_inference(
-                        model, torch_runner.get_inputs()
-                    )
-                    torch_metric.add_latency(
-                        past_seq_len, timeit.default_timer() - start_time
-                    )
+                    pytorch_output = Gpt2Helper.pytorch_inference(model, torch_runner.get_inputs())
+                    torch_metric.add_latency(past_seq_len, timeit.default_timer() - start_time)
                     torch_runner.update(pytorch_output, step, device)
 
                     onnx_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference(
@@ -504,10 +462,7 @@ class Gpt2Tester:
                     )
                     Gpt2Helper.auto_increase_buffer_size(output_buffers, output_shapes)
 
-                    (
-                        onnx_io_output,
-                        avg_latency_ms,
-                    ) = Gpt2Helper.onnxruntime_inference_with_binded_io(
+                    (onnx_io_output, avg_latency_ms,) = Gpt2Helper.onnxruntime_inference_with_binded_io(
                         session,
                         onnx_io_runner.get_inputs(),
                         output_buffers,
@@ -519,9 +474,7 @@ class Gpt2Tester:
                     onnx_io_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
 
                     if test_data_saved < save_test_data:
-                        onnx_io_runner.save_test_data(
-                            session, onnx_io_output, save_test_data_dir, test_data_saved
-                        )
+                        onnx_io_runner.save_test_data(session, onnx_io_output, save_test_data_dir, test_data_saved)
                         test_data_saved += 1
 
                     onnx_io_runner.update(onnx_io_output, step, device)
@@ -535,12 +488,8 @@ class Gpt2Tester:
                         print("\tONNX", onnx_runner.top_1_tokens)
                         print("\tONNX with IO binding", onnx_io_runner.top_1_tokens)
 
-                    onnx_metric.eval_batch(
-                        torch_runner, onnx_runner, past_seq_len, verbose=verbose
-                    )
-                    onnx_io_metric.eval_batch(
-                        torch_runner, onnx_io_runner, past_seq_len, verbose=verbose
-                    )
+                    onnx_metric.eval_batch(torch_runner, onnx_runner, past_seq_len, verbose=verbose)
+                    onnx_io_metric.eval_batch(torch_runner, onnx_io_runner, past_seq_len, verbose=verbose)
 
                     done = done | (torch_runner.top_1_tokens == eos_token_id).any()
                     if torch.all(done):

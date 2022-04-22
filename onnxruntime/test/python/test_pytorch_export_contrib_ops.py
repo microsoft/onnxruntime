@@ -27,19 +27,14 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
     inputs = list(map(to_numpy, input))
     outputs = list(map(to_numpy, output))
 
-    ort_inputs = dict(
-        (ort_sess.get_inputs()[i].name, input) for i, input in enumerate(inputs)
-    )
+    ort_inputs = dict((ort_sess.get_inputs()[i].name, input) for i, input in enumerate(inputs))
     ort_outs = ort_sess.run(None, ort_inputs)
 
     # compare onnxruntime and PyTorch results
     assert len(outputs) == len(ort_outs), "number of outputs differ"
 
     # compare onnxruntime and PyTorch results
-    [
-        np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol)
-        for out, ort_out in zip(outputs, ort_outs)
-    ]
+    [np.testing.assert_allclose(out, ort_out, rtol=rtol, atol=atol) for out, ort_out in zip(outputs, ort_outs)]
 
 
 # These set of tests verify ONNX model export and compares outputs between
@@ -99,9 +94,7 @@ class ONNXExporterTest(unittest.TestCase):
             )
 
             # compute onnxruntime output prediction
-            ort_sess = onnxruntime.InferenceSession(
-                f.getvalue(), providers=onnxruntime.get_available_providers()
-            )
+            ort_sess = onnxruntime.InferenceSession(f.getvalue(), providers=onnxruntime.get_available_providers())
             input_copy = copy.deepcopy(input)
             ort_test_with_input(ort_sess, input_copy, output, rtol, atol)
 

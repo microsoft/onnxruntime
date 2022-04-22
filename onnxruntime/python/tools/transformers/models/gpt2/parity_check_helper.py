@@ -35,9 +35,7 @@ def environ_setting_nodes(node_name_filter=None, node_type_filter=None):
     elif node_type_filter is not None:
         os.environ["ORT_DEBUG_NODE_IO_OP_TYPE_FILTER"] = node_type_filter
     else:
-        os.environ[
-            "ORT_DEBUG_NODE_IO_DUMPING_DATA_TO_FILES_FOR_ALL_NODES_IS_OK"
-        ] = NON_ZERO_VALUE
+        os.environ["ORT_DEBUG_NODE_IO_DUMPING_DATA_TO_FILES_FOR_ALL_NODES_IS_OK"] = NON_ZERO_VALUE
 
 
 def environ_setting_paths(output_path):
@@ -65,9 +63,7 @@ def inference(model_path, dummy_inputs, outputs_path, use_gpu):
     environ_reset()
     environ_setting_nodes()
     environ_setting_paths(outputs_path)
-    session = create_onnxruntime_session(
-        model_path, use_gpu, enable_all_optimization=False
-    )
+    session = create_onnxruntime_session(model_path, use_gpu, enable_all_optimization=False)
     Gpt2Helper.onnxruntime_inference(session, dummy_inputs)
 
 
@@ -79,9 +75,7 @@ def generate_outputs_files(model_path, dummy_inputs, outputs_path, use_gpu):
         shutil.rmtree(outputs_path)
     dir_path.mkdir(parents=True, exist_ok=True)
 
-    process = multiprocessing.Process(
-        target=inference, args=(model_path, dummy_inputs, outputs_path, use_gpu)
-    )
+    process = multiprocessing.Process(target=inference, args=(model_path, dummy_inputs, outputs_path, use_gpu))
     process.start()
     process.join()
 
@@ -107,15 +101,11 @@ def post_processing(outputs_path, outputs_path_other):
                 array_other = numpy_helper.to_array(tensor_other)
                 if array_other.size == 0:
                     continue
-                diff = numpy.average(
-                    numpy.abs(array_other - array) / (numpy.abs(array_other) + 1e-6)
-                )
+                diff = numpy.average(numpy.abs(array_other - array) / (numpy.abs(array_other) + 1e-6))
                 if math.isnan(diff):
                     continue
                 record[Path(filename).name.split(".")[0]] = diff
-                if_close[Path(filename).name.split(".")[0]] = numpy.allclose(
-                    array, array_other, rtol=1e-04, atol=1e-04
-                )
+                if_close[Path(filename).name.split(".")[0]] = numpy.allclose(array, array_other, rtol=1e-04, atol=1e-04)
 
     results = [f"Node\tDiff\tClose"]
     for k, v in sorted(record.items(), key=lambda x: x[1], reverse=True):
@@ -147,22 +137,14 @@ if __name__ == "__main__":
     dummy_inputs_fp32 = dummy_inputs_fp16.to_fp32()
 
     # Get GPT-2 model from huggingface using convert_to_onnx.py
-    os.system(
-        "python convert_to_onnx.py -m gpt2 --output gpt2_fp32.onnx -o -p fp32 --use_gpu"
-    )
-    os.system(
-        "python convert_to_onnx.py -m gpt2 --output gpt2_fp16.onnx -o -p fp16 --use_gpu"
-    )
+    os.system("python convert_to_onnx.py -m gpt2 --output gpt2_fp32.onnx -o -p fp32 --use_gpu")
+    os.system("python convert_to_onnx.py -m gpt2 --output gpt2_fp16.onnx -o -p fp16 --use_gpu")
 
     # Specify the directory to dump the node's I/O
     outputs_path_fp32_gpu = "./fp32_gpu"
     outputs_path_fp16_gpu = "./fp16_gpu"
-    generate_outputs_files(
-        "./gpt2_fp32.onnx", dummy_inputs_fp32, outputs_path_fp32_gpu, use_gpu=True
-    )
-    generate_outputs_files(
-        "./gpt2_fp16.onnx", dummy_inputs_fp16, outputs_path_fp16_gpu, use_gpu=True
-    )
+    generate_outputs_files("./gpt2_fp32.onnx", dummy_inputs_fp32, outputs_path_fp32_gpu, use_gpu=True)
+    generate_outputs_files("./gpt2_fp16.onnx", dummy_inputs_fp16, outputs_path_fp16_gpu, use_gpu=True)
 
     # Compare each node's I/O value and sort based on average rtol
     post_processing(outputs_path_fp16_gpu, outputs_path_fp32_gpu)

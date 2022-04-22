@@ -135,11 +135,7 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
 
     parent_path = tf_checkpoint_path.rpartition("/")[0]
     config_path = glob.glob(parent_path + "/*config.json")
-    config = (
-        model_config()
-        if len(config_path) == 0
-        else model_config.from_json_file(str(config_path[0]))
-    )
+    config = model_config() if len(config_path) == 0 else model_config.from_json_file(str(config_path[0]))
 
     if TFMODELS[model_name][2] == "":
         from transformers import AutoModelForPreTraining
@@ -153,9 +149,7 @@ def init_pytorch_model(model_name, tf_checkpoint_path):
     return config, init_model
 
 
-def convert_tf_checkpoint_to_pytorch(
-    model_name, config, init_model, tf_checkpoint_path, is_tf2
-):
+def convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoint_path, is_tf2):
     load_tf_weight_func_name = "load_tf_weights_in_" + TFMODELS[model_name][0]
 
     module = __import__("transformers", fromlist=[load_tf_weight_func_name])
@@ -165,12 +159,9 @@ def convert_tf_checkpoint_to_pytorch(
     else:
         if TFMODELS[model_name][0] != "bert":
             raise NotImplementedError("Only support tf2 ckeckpoint for Bert model")
-        from transformers import \
-            convert_bert_original_tf2_checkpoint_to_pytorch
+        from transformers import convert_bert_original_tf2_checkpoint_to_pytorch
 
-        load_tf_weight_func = (
-            convert_bert_original_tf2_checkpoint_to_pytorch.load_tf2_weights_in_bert
-        )
+        load_tf_weight_func = convert_bert_original_tf2_checkpoint_to_pytorch.load_tf2_weights_in_bert
 
     # Expect transformers team will unify the order of signature in the future
     model = (
@@ -187,9 +178,7 @@ def tf2pt_pipeline(model_name, is_tf2=False):
         raise NotImplementedError(model_name + " not implemented")
     tf_checkpoint_path = download_tf_checkpoint(model_name)
     config, init_model = init_pytorch_model(model_name, tf_checkpoint_path)
-    model = convert_tf_checkpoint_to_pytorch(
-        model_name, config, init_model, tf_checkpoint_path, is_tf2
-    )
+    model = convert_tf_checkpoint_to_pytorch(model_name, config, init_model, tf_checkpoint_path, is_tf2)
     # Could then use the model in Benchmark
     return config, model
 
@@ -205,9 +194,7 @@ def tf2pt_pipeline_test():
         config, model = tf2pt_pipeline(model_name)
         assert config.model_type is TFMODELS[model_name][0]
 
-        input = torch.randint(
-            low=0, high=config.vocab_size - 1, size=(4, 128), dtype=torch.long
-        )
+        input = torch.randint(low=0, high=config.vocab_size - 1, size=(4, 128), dtype=torch.long)
         try:
             model(input)
         except RuntimeError as e:

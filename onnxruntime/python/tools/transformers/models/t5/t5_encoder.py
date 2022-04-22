@@ -63,9 +63,7 @@ class T5EncoderInputs:
             device=device,
         )
 
-        attention_mask = torch.ones(
-            [batch_size, sequence_length], dtype=torch.int64, device=device
-        )
+        attention_mask = torch.ones([batch_size, sequence_length], dtype=torch.int64, device=device)
         if sequence_length >= 2:
             for i in range(batch_size):
                 padding_position = random.randint(0, sequence_length - 1)
@@ -127,17 +125,13 @@ class T5EncoderHelper:
         """Run inference of ONNX model."""
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy()),
-            "attention_mask": numpy.ascontiguousarray(
-                inputs.attention_mask.cpu().numpy()
-            ),
+            "attention_mask": numpy.ascontiguousarray(inputs.attention_mask.cpu().numpy()),
         }
 
         return ort_session.run(None, ort_inputs)
 
     @staticmethod
-    def verify_onnx(
-        model: T5Encoder, ort_session: InferenceSession, device: torch.device
-    ):
+    def verify_onnx(model: T5Encoder, ort_session: InferenceSession, device: torch.device):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         inputs = T5EncoderInputs.create_dummy(
             batch_size=4,

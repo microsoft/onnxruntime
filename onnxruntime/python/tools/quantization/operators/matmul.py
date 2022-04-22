@@ -3,8 +3,7 @@ import itertools
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType, find_by_name,
-                           get_mul_node)
+from ..quant_utils import QuantizedValue, QuantizedValueType, find_by_name, get_mul_node
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -26,9 +25,7 @@ class MatMulInteger(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(
-            node, [0, 1], reduce_range=True, op_level_per_channel=True
-        )
+        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
 
         matmul_integer_output = node.output[0] + "_output_quantized"
         matmul_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -61,9 +58,7 @@ class MatMulInteger(QuantOperatorBase):
 
         scales_mul_node = find_by_name(scales_mul_op, self.quantizer.new_nodes)
         if scales_mul_node is None:
-            scales_mul_node = get_mul_node(
-                scale_names, scales_mul_op + ":0", scales_mul_op
-            )
+            scales_mul_node = get_mul_node(scale_names, scales_mul_op + ":0", scales_mul_op)
             nodes.append(scales_mul_node)
 
         scales_mul_op_output = scales_mul_node.output[0]
@@ -101,9 +96,7 @@ class QLinearMatMul(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(
-            node, [0, 1], reduce_range=True, op_level_per_channel=True
-        )
+        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
         (
             data_found,
             output_scale_name,
@@ -166,14 +159,8 @@ class QDQMatMul(QDQOperatorBase):
 
         for tensor_name in nodes_to_iterate:
             # only support per-channel quantization on weight
-            if self.quantizer.is_per_channel() and find_by_name(
-                tensor_name, self.quantizer.model.initializer()
-            ):
-                channel_axis = (
-                    self.quantizer.qdq_op_type_per_channel_support_to_axis.get(
-                        node.op_type, 1
-                    )
-                )
+            if self.quantizer.is_per_channel() and find_by_name(tensor_name, self.quantizer.model.initializer()):
+                channel_axis = self.quantizer.qdq_op_type_per_channel_support_to_axis.get(node.op_type, 1)
                 self.quantizer.quantize_tensor_per_channel(tensor_name, channel_axis)
             else:
                 self.quantizer.quantize_tensor(tensor_name)

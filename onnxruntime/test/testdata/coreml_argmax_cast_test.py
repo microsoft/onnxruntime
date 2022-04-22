@@ -9,12 +9,8 @@ from onnx import TensorProto, helper
 
 def GenerateModel(model_name):
     nodes = [
-        helper.make_node(
-            "ArgMax", ["X"], ["argmax_output_int64"], "argmax", axis=1, keepdims=1
-        ),
-        helper.make_node(
-            "Cast", ["argmax_output_int64"], ["Y"], "cast", to=6
-        ),  # cast to int32 type
+        helper.make_node("ArgMax", ["X"], ["argmax_output_int64"], "argmax", axis=1, keepdims=1),
+        helper.make_node("Cast", ["argmax_output_int64"], ["Y"], "cast", to=6),  # cast to int32 type
     ]
 
     graph = helper.make_graph(

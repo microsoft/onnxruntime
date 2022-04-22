@@ -1,7 +1,6 @@
 import numpy as np
 import onnx
-from onnx import (AttributeProto, GraphProto, OperatorSetIdProto, TensorProto,
-                  helper, numpy_helper)
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 vocab_size = 256  # 30258
 
@@ -11,67 +10,43 @@ unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
     TensorProto.INT64,
     ["batch", "dynamic_prediction_count", 1],
 )
-Y = helper.make_tensor_value_info(
-    "output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", vocab_size]
-)
-Gather_Y = helper.make_tensor_value_info(
-    "gather_output", TensorProto.FLOAT, ["batch", 128]
-)
+Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", vocab_size])
+Gather_Y = helper.make_tensor_value_info("gather_output", TensorProto.FLOAT, ["batch", 128])
 
-layer_norm1_weight_np_vals = (
-    np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-)
+layer_norm1_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
 layer_norm1_weight_initializer = numpy_helper.from_array(
     layer_norm1_weight_np_vals, "bert.encoder.layer.2.output.LayerNorm.weight"
 )
 
-layer_norm1_bias_np_vals = (
-    np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-)
+layer_norm1_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
 layer_norm1_bias_initializer = numpy_helper.from_array(
     layer_norm1_bias_np_vals, "bert.encoder.layer.2.output.LayerNorm.bias"
 )
 
-matmul1_np_vals = (
-    np.random.uniform(0.0, 1.0, (128, 128)).astype(np.float32).reshape((128, 128))
-)
+matmul1_np_vals = np.random.uniform(0.0, 1.0, (128, 128)).astype(np.float32).reshape((128, 128))
 matmul1_initializer = numpy_helper.from_array(matmul1_np_vals, "matmul1_initializer")
 
 add1_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
 add1_initializer = numpy_helper.from_array(add1_np_vals, "add1_initializerr")
 
-layer_norm2_weight_np_vals = (
-    np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-)
+layer_norm2_weight_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
 layer_norm2_weight_initializer = numpy_helper.from_array(
     layer_norm2_weight_np_vals, "cls.predictions.transform.LayerNorm.weight"
 )
 
-layer_norm2_bias_np_vals = (
-    np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
-)
+layer_norm2_bias_np_vals = np.random.uniform(0.0, 1.0, (128)).astype(np.float32).reshape((128))
 layer_norm2_bias_initializer = numpy_helper.from_array(
     layer_norm2_bias_np_vals, "cls.predictions.transform.LayerNorm.bias"
 )
 
-matmul2_np_vals = (
-    np.random.uniform(0.0, 1.0, (128, vocab_size))
-    .astype(np.float32)
-    .reshape((128, vocab_size))
-)
-matmul2_initializer = numpy_helper.from_array(
-    matmul2_np_vals, "bert.embeddings.word_embeddings.weight_transposed"
-)
+matmul2_np_vals = np.random.uniform(0.0, 1.0, (128, vocab_size)).astype(np.float32).reshape((128, vocab_size))
+matmul2_initializer = numpy_helper.from_array(matmul2_np_vals, "bert.embeddings.word_embeddings.weight_transposed")
 
-add2_np_vals = (
-    np.random.uniform(0.0, 1.0, (vocab_size)).astype(np.float32).reshape((vocab_size))
-)
+add2_np_vals = np.random.uniform(0.0, 1.0, (vocab_size)).astype(np.float32).reshape((vocab_size))
 add2_initializer = numpy_helper.from_array(add2_np_vals, "cls.predictions.bias")
 
 gather_indice_np_vals = np.asarray([0]).astype(np.int64).reshape(())
-gather_indice_initializer = numpy_helper.from_array(
-    gather_indice_np_vals, "gather_indice_initializer"
-)
+gather_indice_initializer = numpy_helper.from_array(gather_indice_np_vals, "gather_indice_initializer")
 
 nodes = []
 layer_norm1 = helper.make_node(
@@ -93,19 +68,13 @@ gather1 = helper.make_node(
 )
 nodes.append(gather1)
 
-matmul1 = helper.make_node(
-    "MatMul", ["layer_norm1", matmul1_initializer.name], ["matmul1"], name="matmul_1"
-)
+matmul1 = helper.make_node("MatMul", ["layer_norm1", matmul1_initializer.name], ["matmul1"], name="matmul_1")
 nodes.append(matmul1)
 
-add1 = helper.make_node(
-    "Add", [add1_initializer.name, "matmul1"], ["add1"], name="add_1"
-)
+add1 = helper.make_node("Add", [add1_initializer.name, "matmul1"], ["add1"], name="add_1")
 nodes.append(add1)
 
-gelu1 = helper.make_node(
-    "Gelu", ["add1"], ["gelu1"], name="gelu_1", domain="com.microsoft"
-)
+gelu1 = helper.make_node("Gelu", ["add1"], ["gelu1"], name="gelu_1", domain="com.microsoft")
 nodes.append(gelu1)
 
 layer_norm2 = helper.make_node(
@@ -118,14 +87,10 @@ layer_norm2 = helper.make_node(
 )
 nodes.append(layer_norm2)
 
-matmul2 = helper.make_node(
-    "MatMul", ["layer_norm2", matmul2_initializer.name], ["matmul2"], name="matmul_2"
-)
+matmul2 = helper.make_node("MatMul", ["layer_norm2", matmul2_initializer.name], ["matmul2"], name="matmul_2")
 nodes.append(matmul2)
 
-add2 = helper.make_node(
-    "Add", ["matmul2", add2_initializer.name], ["add2"], name="add_2"
-)
+add2 = helper.make_node("Add", ["matmul2", add2_initializer.name], ["add2"], name="add_2")
 nodes.append(add2)
 
 gathernd1 = helper.make_node(

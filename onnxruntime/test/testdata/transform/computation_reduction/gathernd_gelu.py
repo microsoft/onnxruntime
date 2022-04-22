@@ -1,7 +1,6 @@
 import numpy as np
 import onnx
-from onnx import (AttributeProto, GraphProto, OperatorSetIdProto, TensorProto,
-                  helper, numpy_helper)
+from onnx import AttributeProto, GraphProto, OperatorSetIdProto, TensorProto, helper, numpy_helper
 
 X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen", 128])
 unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
@@ -9,15 +8,11 @@ unsqueezed_masked_lm_positions = helper.make_tensor_value_info(
     TensorProto.INT64,
     ["batch", "dynamic_prediction_count", 1],
 )
-Y = helper.make_tensor_value_info(
-    "output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128]
-)
+Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "dynamic_prediction_count", 128])
 nodes = []
 
 # case 1
-gelu1 = helper.make_node(
-    "Gelu", ["input"], ["gelu_1"], name="gelu_1", domain="com.microsoft"
-)
+gelu1 = helper.make_node("Gelu", ["input"], ["gelu_1"], name="gelu_1", domain="com.microsoft")
 nodes.append(gelu1)
 
 gathernd1 = helper.make_node(
@@ -29,9 +24,7 @@ gathernd1 = helper.make_node(
 )
 nodes.append(gathernd1)
 
-graph_def = helper.make_graph(
-    nodes, "test-model", [X, unsqueezed_masked_lm_positions], [Y]
-)
+graph_def = helper.make_graph(nodes, "test-model", [X, unsqueezed_masked_lm_positions], [Y])
 
 opsets = []
 onnxdomain = OperatorSetIdProto()

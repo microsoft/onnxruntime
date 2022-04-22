@@ -12,8 +12,7 @@ from onnx import ModelProto, helper, version
 from onnx.backend.base import Backend
 from onnx.checker import check_model
 
-from onnxruntime import (InferenceSession, SessionOptions,
-                         get_available_providers, get_device)
+from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_device
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
 
@@ -29,9 +28,7 @@ class OnnxRuntimeBackend(Backend):
     Note: This is not the official Python API.
     """  # noqa: E501
 
-    allowReleasedOpsetsOnly = bool(
-        os.getenv("ALLOW_RELEASED_ONNX_OPSET_ONLY", "1") == "1"
-    )
+    allowReleasedOpsetsOnly = bool(os.getenv("ALLOW_RELEASED_ONNX_OPSET_ONLY", "1") == "1")
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):
@@ -65,24 +62,18 @@ class OnnxRuntimeBackend(Backend):
                         error_message = (
                             "Skipping this test as only released onnx opsets are supported."
                             "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            " Got Domain '{0}' version '{1}'.".format(
-                                domain, opset.version
-                            )
+                            " Got Domain '{0}' version '{1}'.".format(domain, opset.version)
                         )
                         return False, error_message
                 except AttributeError:
                     # for some CI pipelines accessing helper.OP_SET_ID_VERSION_MAP
                     # is generating attribute error. TODO investigate the pipelines to
                     # fix this error. Falling back to a simple version check when this error is encountered
-                    if (domain == "ai.onnx" and opset.version > 12) or (
-                        domain == "ai.ommx.ml" and opset.version > 2
-                    ):
+                    if (domain == "ai.onnx" and opset.version > 12) or (domain == "ai.ommx.ml" and opset.version > 2):
                         error_message = (
                             "Skipping this test as only released onnx opsets are supported."
                             "To run this test set env variable ALLOW_RELEASED_ONNX_OPSET_ONLY to 0."
-                            " Got Domain '{0}' version '{1}'.".format(
-                                domain, opset.version
-                            )
+                            " Got Domain '{0}' version '{1}'.".format(domain, opset.version)
                         )
                         return False, error_message
         return True, ""
@@ -121,23 +112,15 @@ class OnnxRuntimeBackend(Backend):
                 if hasattr(options, k):
                     setattr(options, k, v)
 
-            excluded_providers = os.getenv(
-                "ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS", default=""
-            ).split(",")
-            providers = [
-                x for x in get_available_providers() if (x not in excluded_providers)
-            ]
+            excluded_providers = os.getenv("ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS", default="").split(",")
+            providers = [x for x in get_available_providers() if (x not in excluded_providers)]
 
             inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
             # which may hide test failures.
             inf.disable_fallback()
             if device is not None and not cls.supports_device(device):
-                raise RuntimeError(
-                    "Incompatible device expected '{0}', got '{1}'".format(
-                        device, get_device()
-                    )
-                )
+                raise RuntimeError("Incompatible device expected '{0}', got '{1}'".format(device, get_device()))
             return cls.prepare(inf, device, **kwargs)
         else:
             # type: ModelProto
@@ -146,11 +129,7 @@ class OnnxRuntimeBackend(Backend):
             # only works with onnx >= 1.10.0 hence the version check
             onnx_version = tuple(map(int, (version.version.split(".")[:3])))
             onnx_supports_serialized_model_check = onnx_version >= (1, 10, 0)
-            bin_or_model = (
-                model.SerializeToString()
-                if onnx_supports_serialized_model_check
-                else model
-            )
+            bin_or_model = model.SerializeToString() if onnx_supports_serialized_model_check else model
             check_model(bin_or_model)
             opset_supported, error_message = cls.is_opset_supported(model)
             if not opset_supported:
@@ -185,9 +164,7 @@ class OnnxRuntimeBackend(Backend):
         This method is not implemented as it is much more efficient
         to run a whole model than every node independently.
         """
-        raise NotImplementedError(
-            "It is much more efficient to run a whole model than every node independently."
-        )
+        raise NotImplementedError("It is much more efficient to run a whole model than every node independently.")
 
 
 is_compatible = OnnxRuntimeBackend.is_compatible

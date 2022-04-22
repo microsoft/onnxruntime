@@ -8,8 +8,7 @@ import onnx
 from onnx import external_data_helper
 from onnx import onnx_pb as onnx_proto
 
-from onnxruntime import (GraphOptimizationLevel, InferenceSession,
-                         SessionOptions)
+from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -108,9 +107,7 @@ ONNX_TYPE_TO_NP_TYPE = {
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     assert (
         qType in ONNX_TYPE_TO_NP_TYPE
-    ), "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(
-        qType
-    )
+    ), "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType)
     dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)
@@ -209,11 +206,7 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
         else:
             (qmin, qmax) = (-64, 64) if reduce_range else (-128, 127)
     else:
-        raise ValueError(
-            "Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(
-                qType
-            )
-        )
+        raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
     return qmin, qmax
 
 
@@ -298,9 +291,7 @@ def attribute_to_kwarg(attribute):
         :return: attribute in {key: value} format.
     """
     if attribute.type == 0:
-        raise ValueError(
-            "attribute {} does not have type specified.".format(attribute.name)
-        )
+        raise ValueError("attribute {} does not have type specified.".format(attribute.name))
 
     # Based on attribute type definitions from AttributeProto
     # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
@@ -325,11 +316,7 @@ def attribute_to_kwarg(attribute):
     elif attribute.type == 10:
         value = attribute.graphs
     else:
-        raise ValueError(
-            "attribute {} has unsupported type {}.".format(
-                attribute.name, attribute.type
-            )
-        )
+        raise ValueError("attribute {} has unsupported type {}.".format(attribute.name, attribute.type))
 
     return {attribute.name: value}
 
@@ -371,9 +358,7 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     """
     Helper function to generate a identifiable filepath by concatenating the given identifier as a suffix.
     """
-    return filename.parent.joinpath(filename.stem + identifier).with_suffix(
-        filename.suffix
-    )
+    return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
 
 
 def apply_plot(hist, hist_edges):
@@ -510,9 +495,7 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(
-        model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"]
-    )
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
 
 
 def add_infer_metadata(model):
@@ -554,9 +537,7 @@ def load_model(model_path: Path, need_optimize: bool):
 def save_and_reload_model(model):
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.external_data_helper.convert_model_to_external_data(
-            model, all_tensors_to_one_file=True
-        )
+        onnx.external_data_helper.convert_model_to_external_data(model, all_tensors_to_one_file=True)
         onnx.save_model(model, model_path.as_posix())
         return load_model(model_path, False)
 

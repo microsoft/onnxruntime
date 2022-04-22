@@ -13,8 +13,7 @@ from typing import Dict, List, Union
 import torch
 from t5_decoder import T5Decoder, T5DecoderHelper, T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderHelper
-from t5_encoder_decoder_init import (T5EncoderDecoderInit,
-                                     T5EncoderDecoderInitHelper)
+from t5_encoder_decoder_init import T5EncoderDecoderInit, T5EncoderDecoderInitHelper
 from transformers import T5ForConditionalGeneration
 
 from onnxruntime import InferenceSession
@@ -78,9 +77,7 @@ class T5Helper:
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
         """
-        model = T5ForConditionalGeneration.from_pretrained(
-            model_name_or_path, cache_dir=cache_dir
-        )
+        model = T5ForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir)
 
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)
@@ -115,9 +112,7 @@ class T5Helper:
         use_decoder_input_ids: bool = True,
     ):
         if isinstance(model, T5Encoder):
-            T5EncoderHelper.export_onnx(
-                model, device, onnx_model_path, verbose, use_external_data_format
-            )
+            T5EncoderHelper.export_onnx(model, device, onnx_model_path, verbose, use_external_data_format)
         elif isinstance(model, T5EncoderDecoderInit):
             T5EncoderDecoderInitHelper.export_onnx(
                 model,
@@ -128,9 +123,7 @@ class T5Helper:
                 use_external_data_format,
             )
         else:
-            T5DecoderHelper.export_onnx(
-                model, device, onnx_model_path, verbose, use_external_data_format
-            )
+            T5DecoderHelper.export_onnx(model, device, onnx_model_path, verbose, use_external_data_format)
 
     @staticmethod
     def auto_mixed_precision(
@@ -180,14 +173,10 @@ class T5Helper:
             # when the max difference of value after converting float to float16 is lower than a threshold (1e-6),
             # we can deduce that the weights are stored in float16 precision.
             max_diff = float_to_float16_max_diff(initializer)
-            logger.debug(
-                f"max diff of converting weights in last MatMul node {node.name}: {max_diff}"
-            )
+            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
             is_weight_fp16_precision = max_diff < 1e-6
         else:
-            logger.warning(
-                f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}"
-            )
+            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
 
         keep_io_types = []
         node_block_list = []

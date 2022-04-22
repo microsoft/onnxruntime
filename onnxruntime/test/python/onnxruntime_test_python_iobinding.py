@@ -8,8 +8,7 @@ from onnx.defs import onnx_opset_version
 from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE
 
 import onnxruntime as onnxrt
-from onnxruntime.capi._pybind_state import \
-    OrtDevice as C_OrtDevice  # pylint: disable=E0611
+from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import SessionIOBinding
 
@@ -28,9 +27,7 @@ class TestIOBinding(unittest.TestCase):
         )
 
     def create_uninitialized_ortvalue_input_on_gpu(self):
-        return onnxrt.OrtValue.ortvalue_from_shape_and_type(
-            [3, 2], np.float32, "cuda", 0
-        )
+        return onnxrt.OrtValue.ortvalue_from_shape_and_type([3, 2], np.float32, "cuda", 0)
 
     def create_numpy_input(self):
         return np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -44,9 +41,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_to_cpu_arr(self):
         input = self.create_numpy_input()
 
-        session = onnxrt.InferenceSession(
-            get_name("mul_1.onnx"), providers=onnxrt.get_available_providers()
-        )
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
 
         # Bind Numpy object (input) that's on CPU to wherever the model needs it
@@ -104,12 +99,8 @@ class TestIOBinding(unittest.TestCase):
                     x = np.arange(8).reshape((-1, 2)).astype(dtype)
                     proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
 
-                    X = helper.make_tensor_value_info(
-                        "X", proto_dtype, [None, x.shape[1]]
-                    )
-                    Y = helper.make_tensor_value_info(
-                        "Y", proto_dtype, [None, x.shape[1]]
-                    )
+                    X = helper.make_tensor_value_info("X", proto_dtype, [None, x.shape[1]])
+                    Y = helper.make_tensor_value_info("Y", proto_dtype, [None, x.shape[1]])
 
                     # inference
                     node_add = helper.make_node("Identity", ["X"], ["Y"])
@@ -124,9 +115,7 @@ class TestIOBinding(unittest.TestCase):
                         opset_imports=[helper.make_operatorsetid("", opset)],
                     )
 
-                    sess = onnxrt.InferenceSession(
-                        model_def.SerializeToString(), providers=provider
-                    )
+                    sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
 
                     bind = SessionIOBinding(sess._sess)
                     ort_value = C_OrtValue.ortvalue_from_numpy(x, device)
@@ -148,9 +137,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_only(self):
         input = self.create_ortvalue_input_on_gpu()
 
-        session = onnxrt.InferenceSession(
-            get_name("mul_1.onnx"), providers=onnxrt.get_available_providers()
-        )
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
 
         # Bind input to CUDA
@@ -177,9 +164,7 @@ class TestIOBinding(unittest.TestCase):
     def test_bind_input_and_preallocated_output(self):
         input = self.create_ortvalue_input_on_gpu()
 
-        session = onnxrt.InferenceSession(
-            get_name("mul_1.onnx"), providers=onnxrt.get_available_providers()
-        )
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
 
         # Bind input to CUDA
@@ -207,14 +192,10 @@ class TestIOBinding(unittest.TestCase):
         # to the host and validating its contents
         ort_output_vals_in_cpu = output.numpy()
         # Validate results
-        self.assertTrue(
-            np.array_equal(self.create_expected_output(), ort_output_vals_in_cpu)
-        )
+        self.assertTrue(np.array_equal(self.create_expected_output(), ort_output_vals_in_cpu))
 
     def test_bind_input_and_non_preallocated_output(self):
-        session = onnxrt.InferenceSession(
-            get_name("mul_1.onnx"), providers=onnxrt.get_available_providers()
-        )
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
 
         # Bind input to CUDA
@@ -244,18 +225,14 @@ class TestIOBinding(unittest.TestCase):
         self.assertEqual(len(ort_outputs), 1)
         self.assertEqual(ort_outputs[0].device_name(), "cuda")
         # Validate results (by copying results to CPU by creating a Numpy object)
-        self.assertTrue(
-            np.array_equal(self.create_expected_output(), ort_outputs[0].numpy())
-        )
+        self.assertTrue(np.array_equal(self.create_expected_output(), ort_outputs[0].numpy()))
 
         # We should be able to repeat the above process as many times as we want - try once more
         ort_outputs = io_binding.get_outputs()
         self.assertEqual(len(ort_outputs), 1)
         self.assertEqual(ort_outputs[0].device_name(), "cuda")
         # Validate results (by copying results to CPU by creating a Numpy object)
-        self.assertTrue(
-            np.array_equal(self.create_expected_output(), ort_outputs[0].numpy())
-        )
+        self.assertTrue(np.array_equal(self.create_expected_output(), ort_outputs[0].numpy()))
 
         # Change the bound input and validate the results in the same bound OrtValue
         # Bind alternate input to CUDA
@@ -282,16 +259,10 @@ class TestIOBinding(unittest.TestCase):
         self.assertEqual(len(ort_outputs), 1)
         self.assertEqual(ort_outputs[0].device_name(), "cuda")
         # Validate results (by copying results to CPU by creating a Numpy object)
-        self.assertTrue(
-            np.array_equal(
-                self.create_expected_output_alternate(), ort_outputs[0].numpy()
-            )
-        )
+        self.assertTrue(np.array_equal(self.create_expected_output_alternate(), ort_outputs[0].numpy()))
 
     def test_bind_input_and_bind_output_with_ortvalues(self):
-        session = onnxrt.InferenceSession(
-            get_name("mul_1.onnx"), providers=onnxrt.get_available_providers()
-        )
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         io_binding = session.io_binding()
 
         # Bind ortvalue as input
@@ -312,9 +283,7 @@ class TestIOBinding(unittest.TestCase):
         io_binding.synchronize_outputs()
 
         # Inspect contents of output_ortvalue and make sure that it has the right contents
-        self.assertTrue(
-            np.array_equal(self.create_expected_output(), output_ortvalue.numpy())
-        )
+        self.assertTrue(np.array_equal(self.create_expected_output(), output_ortvalue.numpy()))
 
         # Bind another ortvalue as input
         input_ortvalue_2 = self.create_ortvalue_alternate_input_on_gpu()
@@ -330,11 +299,7 @@ class TestIOBinding(unittest.TestCase):
         io_binding.synchronize_outputs()
 
         # Inspect contents of output_ortvalue and make sure that it has the right contents
-        self.assertTrue(
-            np.array_equal(
-                self.create_expected_output_alternate(), output_ortvalue.numpy()
-            )
-        )
+        self.assertTrue(np.array_equal(self.create_expected_output_alternate(), output_ortvalue.numpy()))
 
 
 if __name__ == "__main__":

@@ -14,9 +14,7 @@ opsets = [onnxdomain, msdomain]
 def save(model_path, nodes, inputs, outputs, initializers):
     graph = helper.make_graph(nodes, "GemmSumTest", inputs, outputs, initializers)
 
-    model = helper.make_model(
-        graph, opset_imports=opsets, producer_name="onnxruntime-test"
-    )
+    model = helper.make_model(graph, opset_imports=opsets, producer_name="onnxruntime-test")
 
     print(model_path)
     onnx.save(model, model_path)
@@ -151,9 +149,7 @@ def gen_gemm_sum_no_fusion_broadcast_failure(model_path):
         helper.make_tensor_value_info("C", TensorProto.FLOAT, [1, "M", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, "M", "N"])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, "M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
 
@@ -182,11 +178,7 @@ gen_gemm_sum_basic("gemm_sum_basic.onnx")
 gen_gemm_sum_attributes("gemm_sum_attributes.onnx")
 gen_gemm_sum_internal_nodes("gemm_sum_internal_nodes.onnx")
 gen_gemm_sum_no_fusion_c_used("gemm_sum_no_fusion_c_used.onnx")
-gen_gemm_sum_no_fusion_sum_multiple_inputs(
-    "gemm_sum_no_fusion_sum_multiple_inputs.onnx"
-)
+gen_gemm_sum_no_fusion_sum_multiple_inputs("gemm_sum_no_fusion_sum_multiple_inputs.onnx")
 gen_gemm_sum_fusion_broadcast("gemm_sum_fusion_broadcast.onnx")
 gen_gemm_sum_no_fusion_broadcast_failure("gemm_sum_no_fusion_broadcast_failure.onnx")
-gen_gemm_sum_no_fusion_original_gemm_output_used(
-    "gemm_sum_no_fusion_original_gemm_output_used.onnx"
-)
+gen_gemm_sum_no_fusion_original_gemm_output_used("gemm_sum_no_fusion_original_gemm_output_used.onnx")

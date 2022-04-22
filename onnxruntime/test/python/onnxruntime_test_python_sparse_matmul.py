@@ -5,6 +5,7 @@ import gc
 import os
 import sys
 import threading
+
 # -*- coding: UTF-8 -*-
 import unittest
 
@@ -24,9 +25,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         """
         # The below values are a part of the model
         dense_shape = [3, 3]
-        values = np.array(
-            [1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float
-        )
+        values = np.array([1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float)
         indices = np.array([2, 3, 5], np.int64)
         sess = onnxrt.InferenceSession(
             get_name("sparse_initializer_as_output.onnx"),
@@ -219,9 +218,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         ).reshape((len(A_values), 2))
 
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
-        sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(
-            common_shape, A_values, A_indices, cpu_device
-        )
+        sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(common_shape, A_values, A_indices, cpu_device)
         A_ort_value = onnxrt.OrtValue.ort_value_from_sparse_tensor(sparse_tensor)
 
         B_data = np.array(
@@ -403,9 +400,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
             get_name("sparse_to_dense_matmul.onnx"),
             providers=onnxrt.get_available_providers(),
         )
-        res = sess.run_with_ort_values(
-            ["dense_Y"], {"sparse_A": A_ort_value, "dense_B": B_ort_value}
-        )
+        res = sess.run_with_ort_values(["dense_Y"], {"sparse_A": A_ort_value, "dense_B": B_ort_value})
         self.assertEqual(len(res), 1)
         ort_value = res[0]
         self.assertTrue(isinstance(ort_value, onnxrt.OrtValue))

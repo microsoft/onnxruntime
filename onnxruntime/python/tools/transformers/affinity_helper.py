@@ -14,13 +14,9 @@ class AffinitySetting:
     def __init__(self):
         self.pid = os.getpid()
         self.affinity = None
-        self.is_os_supported = hasattr(os, "sched_getaffinity") and hasattr(
-            os, "sched_setaffinity"
-        )
+        self.is_os_supported = hasattr(os, "sched_getaffinity") and hasattr(os, "sched_setaffinity")
         if not self.is_os_supported:
-            logger.warning(
-                "Current OS does not support os.get_affinity() and os.set_affinity()"
-            )
+            logger.warning("Current OS does not support os.get_affinity() and os.set_affinity()")
 
     def get_affinity(self):
         if self.is_os_supported:

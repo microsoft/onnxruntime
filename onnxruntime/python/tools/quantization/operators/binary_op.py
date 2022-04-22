@@ -1,8 +1,7 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import (QuantizedValue, QuantizedValueType,
-                           attribute_to_kwarg, ms_domain)
+from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 
 
@@ -25,9 +24,7 @@ class QLinearBinaryOp(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(
-            node, [0, 1], initializer_use_weight_qType=False
-        )
+        ) = self.quantizer.quantize_inputs(node, [0, 1], initializer_use_weight_qType=False)
         if not data_found or quantized_input_names is None:
             return super().quantize()
 

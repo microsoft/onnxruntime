@@ -15,17 +15,14 @@ import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from bert_test_data import (fake_input_ids_data, fake_input_mask_data,
-                            output_test_data)
+from bert_test_data import fake_input_ids_data, fake_input_mask_data, output_test_data
 from onnx_model import OnnxModel
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--model", required=True, type=str, help="bert onnx model path."
-    )
+    parser.add_argument("--model", required=True, type=str, help="bert onnx model path.")
 
     parser.add_argument(
         "--output_dir",
@@ -35,9 +32,7 @@ def parse_arguments():
         help="output test data path. If not specified, .",
     )
 
-    parser.add_argument(
-        "--batch_size", required=False, type=int, default=1, help="batch size of input"
-    )
+    parser.add_argument("--batch_size", required=False, type=int, default=1, help="batch size of input")
 
     parser.add_argument(
         "--sequence_length",
@@ -87,9 +82,7 @@ def parse_arguments():
         help="number of test cases to be generated",
     )
 
-    parser.add_argument(
-        "--seed", required=False, type=int, default=3, help="random seed"
-    )
+    parser.add_argument("--seed", required=False, type=int, default=3, help="random seed")
 
     parser.add_argument(
         "--verbose",
@@ -103,9 +96,7 @@ def parse_arguments():
     return args
 
 
-def get_longformer_inputs(
-    onnx_file, input_ids_name=None, input_mask_name=None, global_mask_name=None
-):
+def get_longformer_inputs(onnx_file, input_ids_name=None, input_mask_name=None, global_mask_name=None):
     """
     Get graph inputs for longformer model.
     """
@@ -135,16 +126,12 @@ def get_longformer_inputs(
 
         expected_inputs = 1 + (1 if input_mask else 0) + (1 if global_mask else 0)
         if len(graph_inputs) != expected_inputs:
-            raise ValueError(
-                f"Expect the graph to have {expected_inputs} inputs. Got {len(graph_inputs)}"
-            )
+            raise ValueError(f"Expect the graph to have {expected_inputs} inputs. Got {len(graph_inputs)}")
 
         return input_ids, input_mask, global_mask
 
     if len(graph_inputs) != 3:
-        raise ValueError(
-            "Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs))
-        )
+        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
 
     # Try guess the inputs based on naming.
     input_ids = None
@@ -215,15 +202,11 @@ def fake_test_data(
 
     all_inputs = []
     for _ in range(test_cases):
-        input_1 = fake_input_ids_data(
-            input_ids, batch_size, sequence_length, dictionary_size
-        )
+        input_1 = fake_input_ids_data(input_ids, batch_size, sequence_length, dictionary_size)
         inputs = {input_ids.name: input_1}
 
         if input_mask:
-            inputs[input_mask.name] = fake_input_mask_data(
-                input_mask, batch_size, sequence_length, random_mask_length
-            )
+            inputs[input_mask.name] = fake_input_mask_data(input_mask, batch_size, sequence_length, random_mask_length)
 
         if global_mask:
             inputs[global_mask.name] = fake_global_mask_data(
@@ -282,9 +265,7 @@ def create_longformer_test_data(
     num_global_tokens,
 ):
 
-    input_ids, input_mask, global_mask = get_longformer_inputs(
-        model, input_ids_name, input_mask_name, global_mask_name
-    )
+    input_ids, input_mask, global_mask = get_longformer_inputs(model, input_ids_name, input_mask_name, global_mask_name)
     all_inputs = generate_test_data(
         batch_size,
         sequence_length,
@@ -309,9 +290,7 @@ def main():
         # Default output directory is a sub-directory under the directory of model.
         output_dir = os.path.join(
             Path(args.model).parent,
-            "b{}_s{}_g{}".format(
-                args.batch_size, args.sequence_length, args.global_tokens
-            ),
+            "b{}_s{}_g{}".format(args.batch_size, args.sequence_length, args.global_tokens),
         )
 
     if output_dir is not None:

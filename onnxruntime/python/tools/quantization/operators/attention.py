@@ -34,9 +34,7 @@ class AttentionQuant(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(
-            node, [0, 1], reduce_range=True, op_level_per_channel=True
-        )
+        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
         if quantized_input_names is None:
             return super().quantize()
 
@@ -54,9 +52,7 @@ class AttentionQuant(QuantOperatorBase):
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
         kwargs["domain"] = ms_domain
-        qattention_node = onnx.helper.make_node(
-            "QAttention", inputs, node.output, qattention_name, **kwargs
-        )
+        qattention_node = onnx.helper.make_node("QAttention", inputs, node.output, qattention_name, **kwargs)
         nodes.append(qattention_node)
 
         self.quantizer.new_nodes += nodes

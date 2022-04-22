@@ -23,9 +23,7 @@ kwargs["opset_imports"] = opsets
 
 # Create the model (ModelProto)
 bias = helper.make_node("Add", ["A", "B"], ["add0_out"], "add0")
-dropout_12 = helper.make_node(
-    "Dropout", ["add0_out", "ratio_const", "training_mode"], ["C", "mask"], "dropout0"
-)
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["C", "mask"], "dropout0")
 
 graph = helper.make_graph(
     [bias, dropout_12],
@@ -40,9 +38,7 @@ onnx.save(model, "bias_dropout_fusion1.onnx")
 
 # Create the model (ModelProto)
 bias = helper.make_node("Add", ["B", "A"], ["add0_out"], "add0")
-dropout_12 = helper.make_node(
-    "Dropout", ["add0_out", "ratio_const", "training_mode"], ["C", "mask"], "dropout0"
-)
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["C", "mask"], "dropout0")
 
 graph = helper.make_graph(
     [bias, dropout_12],
@@ -132,9 +128,7 @@ dropout_12 = helper.make_node(
 )
 residual = helper.make_node("Add", ["R", "dropout_out"], ["C"], "add1")
 
-D = helper.make_tensor_value_info(
-    "dropout_out", TensorProto.FLOAT, ["unk_1", "unk_2", 3072]
-)
+D = helper.make_tensor_value_info("dropout_out", TensorProto.FLOAT, ["unk_1", "unk_2", 3072])
 
 graph = helper.make_graph(
     [bias, dropout_12, residual],
@@ -176,9 +170,7 @@ onnx.save(model, "bias_dropout_residual_fusion_multiple_consumers2.onnx")
 A2 = helper.make_tensor_value_info("A2", TensorProto.FLOAT, ["unk_1", "unk_2", 3072])
 
 bias = helper.make_node("Add", ["A", "A2"], ["add0_out"], "add0")
-dropout_12 = helper.make_node(
-    "Dropout", ["add0_out", "ratio_const", "training_mode"], ["C", "mask"], "dropout0"
-)
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["C", "mask"], "dropout0")
 
 graph = helper.make_graph(
     [bias, dropout_12],
@@ -214,13 +206,9 @@ onnx.save(model, "bias_dropout_residual_same_shape_fusion.onnx")
 
 
 # Create the model (ModelProto)
-A_unk = helper.make_tensor_value_info(
-    "A_unk", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"]
-)
+A_unk = helper.make_tensor_value_info("A_unk", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"])
 B_unk = helper.make_tensor_value_info("B_unk", TensorProto.FLOAT, ["unk_3"])
-C_unk = helper.make_tensor_value_info(
-    "C_unk", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"]
-)
+C_unk = helper.make_tensor_value_info("C_unk", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"])
 
 bias = helper.make_node("Add", ["A_unk", "B_unk"], ["add0_out"], "add0")
 dropout_12 = helper.make_node(
@@ -242,9 +230,7 @@ model = helper.make_model(graph, producer_name="onnx-example", **kwargs)
 onnx.save(model, "bias_dropout_fusion_dim_is_param.onnx")
 
 # Create the model (ModelProto)
-R_unk = helper.make_tensor_value_info(
-    "R_unk", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"]
-)
+R_unk = helper.make_tensor_value_info("R_unk", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"])
 
 bias = helper.make_node("Add", ["A_unk", "B_unk"], ["add0_out"], "add0")
 dropout_12 = helper.make_node(
@@ -267,9 +253,7 @@ model = helper.make_model(graph, producer_name="onnx-example", **kwargs)
 onnx.save(model, "bias_dropout_residual_fusion_dim_is_param.onnx")
 
 # Create the model (ModelProto)
-A_unk2 = helper.make_tensor_value_info(
-    "A_unk2", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"]
-)
+A_unk2 = helper.make_tensor_value_info("A_unk2", TensorProto.FLOAT, ["unk_1", "unk_2", "unk_3"])
 
 bias = helper.make_node("Add", ["A_unk", "A_unk2"], ["add0_out"], "add0")
 dropout_12 = helper.make_node(

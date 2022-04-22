@@ -4,9 +4,7 @@ from onnx import TensorProto, helper
 # Loop is so the Tranpose output is used in a subgraph
 loop_body = helper.make_graph(
     [
-        helper.make_node(
-            "Add", ["transpose:0", "loop_state_in"], ["loop_state_out"], "Add1"
-        ),
+        helper.make_node("Add", ["transpose:0", "loop_state_in"], ["loop_state_out"], "Add1"),
     ],
     "Loop_body",
     [

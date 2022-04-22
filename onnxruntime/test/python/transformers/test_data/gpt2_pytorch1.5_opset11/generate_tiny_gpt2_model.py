@@ -85,14 +85,9 @@ class TinyGpt2Model(OnnxModel):
         initializers = graph.initializer
 
         for input in graph.input:
-            if (
-                input.type.tensor_type.shape.dim[1].dim_value
-                == old_parameters["seq_len"]
-            ):
+            if input.type.tensor_type.shape.dim[1].dim_value == old_parameters["seq_len"]:
                 print("input", input.name, input.type.tensor_type.shape)
-                input.type.tensor_type.shape.dim[1].dim_value = new_parameters[
-                    "seq_len"
-                ]
+                input.type.tensor_type.shape.dim[1].dim_value = new_parameters["seq_len"]
                 print("=>", input.type.tensor_type.shape)
 
         reshapes = {}
@@ -179,9 +174,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                     initializer.CopyFrom(
                         numpy_helper.from_array(
-                            np.asarray(
-                                [4 * new_parameters["hidden_size"]], dtype=dtype
-                            ),
+                            np.asarray([4 * new_parameters["hidden_size"]], dtype=dtype),
                             initializer.name,
                         )
                     )
@@ -196,9 +189,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                     initializer.CopyFrom(
                         numpy_helper.from_array(
-                            np.asarray(
-                                [3 * new_parameters["hidden_size"]], dtype=dtype
-                            ),
+                            np.asarray([3 * new_parameters["hidden_size"]], dtype=dtype),
                             initializer.name,
                         )
                     )
@@ -314,9 +305,7 @@ class TinyGpt2Model(OnnxModel):
                     )
                     initializer.CopyFrom(
                         numpy_helper.from_array(
-                            np.asarray(
-                                np.sqrt(new_parameters["size_per_head"]), dtype=dtype
-                            ),
+                            np.asarray(np.sqrt(new_parameters["size_per_head"]), dtype=dtype),
                             initializer.name,
                         )
                     )
@@ -346,9 +335,7 @@ class TinyGpt2Model(OnnxModel):
                 print("initializer", initializer.name, tensor.shape, "=>", new_shape)
 
         for initializer_name in reshapes:
-            self.replace_input_of_all_nodes(
-                initializer_name, initializer_name + "_resize"
-            )
+            self.replace_input_of_all_nodes(initializer_name, initializer_name + "_resize")
             tensor = self.resize_weight(initializer_name, reshapes[initializer_name])
             self.model.graph.initializer.extend([tensor])
 
@@ -404,9 +391,7 @@ class TinyGpt2Model(OnnxModel):
                                 "=>",
                                 new_parameters["num_heads"],
                             )
-                        if numpy_helper.to_array(att.t) == np.sqrt(
-                            old_parameters["size_per_head"]
-                        ):
+                        if numpy_helper.to_array(att.t) == np.sqrt(old_parameters["size_per_head"]):
                             nodes_to_add.append(
                                 onnx.helper.make_node(
                                     "Constant",
@@ -464,9 +449,7 @@ def generate_test_data(
 
     for test_case in range(test_cases):
         sequence_length = 3
-        input_1 = np.random.randint(
-            dictionary_size, size=(batch_size, 1), dtype=np.int64
-        )
+        input_1 = np.random.randint(dictionary_size, size=(batch_size, 1), dtype=np.int64)
         tensor_1 = numpy_helper.from_array(input_1, "input_ids")
 
         path = os.path.join(output_path, "test_data_set_" + str(test_case))
@@ -478,12 +461,8 @@ def generate_test_data(
             print("Successfully created the directory %s " % path)
 
         sess_options = onnxruntime.SessionOptions()
-        sess_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        )
-        sess = onnxruntime.InferenceSession(
-            onnx_file, sess_options, providers=["CPUExecutionProvider"]
-        )
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess = onnxruntime.InferenceSession(onnx_file, sess_options, providers=["CPUExecutionProvider"])
 
         input1_name = sess.get_inputs()[0].name
         output_names = [output.name for output in sess.get_outputs()]

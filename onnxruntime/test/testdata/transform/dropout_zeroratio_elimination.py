@@ -13,12 +13,8 @@ X2 = helper.make_tensor_value_info("X2", TensorProto.FLOAT, [])
 
 # initializers
 zeroratio_float = helper.make_tensor("ratio_zero_float", TensorProto.FLOAT, [], [0.0])
-zeroratio_double = helper.make_tensor(
-    "ratio_zero_double", TensorProto.DOUBLE, [], [0.0]
-)
-zeroratio_float16 = helper.make_tensor(
-    "ratio_zero_float16", TensorProto.FLOAT16, [], [0]
-)
+zeroratio_double = helper.make_tensor("ratio_zero_double", TensorProto.DOUBLE, [], [0.0])
+zeroratio_float16 = helper.make_tensor("ratio_zero_float16", TensorProto.FLOAT16, [], [0])
 nonzeroratio = helper.make_tensor("ratio_nonzero", TensorProto.FLOAT, [], [0.1])
 training_mode = helper.make_tensor("training_mode", TensorProto.BOOL, [], [1])
 
@@ -33,15 +29,11 @@ kwargs["opset_imports"] = opsets
 
 # Create the model (ModelProto)
 I1 = helper.make_node("Identity", ["X"], ["I1_out"], name="I1")
-D1 = helper.make_node(
-    "Dropout", ["I1_out", "ratio_zero_float", "training_mode"], ["D1_out"], "D1"
-)
+D1 = helper.make_node("Dropout", ["I1_out", "ratio_zero_float", "training_mode"], ["D1_out"], "D1")
 I2 = helper.make_node("Identity", ["D1_out"], ["O1"], name="I2")
 
 I3 = helper.make_node("Identity", ["X"], ["I3_out"], name="I3")
-D2 = helper.make_node(
-    "Dropout", ["I3_out", "ratio_nonzero", "training_mode"], ["D2_out"], "D2"
-)
+D2 = helper.make_node("Dropout", ["I3_out", "ratio_nonzero", "training_mode"], ["D2_out"], "D2")
 I4 = helper.make_node("Identity", ["D2_out"], ["O2"], name="I4")
 
 I5 = helper.make_node("Identity", ["X"], ["I5_out"], name="I5")
@@ -49,15 +41,11 @@ D3 = helper.make_node("Dropout", ["I5_out", "X2", "training_mode"], ["D3_out"], 
 I6 = helper.make_node("Identity", ["D3_out"], ["O3"], name="I6")
 
 I7 = helper.make_node("Identity", ["X"], ["I7_out"], name="I7")
-D4 = helper.make_node(
-    "Dropout", ["I7_out", "ratio_zero_double", "training_mode"], ["D4_out"], "D4"
-)
+D4 = helper.make_node("Dropout", ["I7_out", "ratio_zero_double", "training_mode"], ["D4_out"], "D4")
 I8 = helper.make_node("Identity", ["D4_out"], ["O4"], name="I8")
 
 I9 = helper.make_node("Identity", ["X"], ["I9_out"], name="I9")
-D5 = helper.make_node(
-    "Dropout", ["I9_out", "ratio_zero_float16", "training_mode"], ["D5_out"], "D5"
-)
+D5 = helper.make_node("Dropout", ["I9_out", "ratio_zero_float16", "training_mode"], ["D5_out"], "D5")
 I10 = helper.make_node("Identity", ["D5_out"], ["O5"], name="I10")
 
 graph = helper.make_graph(

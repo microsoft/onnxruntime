@@ -16,8 +16,7 @@ from helper import get_name
 from onnx import helper, numpy_helper
 
 import onnxruntime as onnxrt
-from onnxruntime.nuphar.model_tools import (run_shape_inference,
-                                            validate_with_ort)
+from onnxruntime.nuphar.model_tools import run_shape_inference, validate_with_ort
 from onnxruntime.nuphar.rnn_benchmark import generate_model, perf_test
 
 
@@ -39,9 +38,7 @@ def set_gemm_node_attrs(attrs, config):
         attrs["transB"] = 1
 
 
-def generate_gemm_inputs_initializers(
-    graph, config, added_inputs_initializers={}, extend=False
-):
+def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={}, extend=False):
     M = config["M"]
     K = config["K"]
     N = config["N"]
@@ -77,9 +74,7 @@ def generate_gemm_inputs_initializers(
         if init_a is not None:
             graph.initializer.add().CopyFrom(numpy_helper.from_array(init_a, A))
         else:
-            graph.input.add().CopyFrom(
-                helper.make_tensor_value_info(A, onnx.TensorProto.FLOAT, input_shape_a)
-            )
+            graph.input.add().CopyFrom(helper.make_tensor_value_info(A, onnx.TensorProto.FLOAT, input_shape_a))
 
     # B is an initializer
     if B in added_inputs_initializers:
@@ -89,9 +84,7 @@ def generate_gemm_inputs_initializers(
         if init_b is not None:
             graph.initializer.add().CopyFrom(numpy_helper.from_array(init_b, B))
         else:
-            graph.input.add().CopyFrom(
-                helper.make_tensor_value_info(B, onnx.TensorProto.FLOAT, input_shape_b)
-            )
+            graph.input.add().CopyFrom(helper.make_tensor_value_info(B, onnx.TensorProto.FLOAT, input_shape_b))
 
     if config["withC"]:
         if C in added_inputs_initializers:
@@ -101,11 +94,7 @@ def generate_gemm_inputs_initializers(
             if init_c is not None:
                 graph.initializer.add().CopyFrom(numpy_helper.from_array(init_c, C))
             else:
-                graph.input.add().CopyFrom(
-                    helper.make_tensor_value_info(
-                        C, onnx.TensorProto.FLOAT, input_shape_c
-                    )
-                )
+                graph.input.add().CopyFrom(helper.make_tensor_value_info(C, onnx.TensorProto.FLOAT, input_shape_c))
 
     return (a, b, c)
 
@@ -117,9 +106,7 @@ def generate_gemm_model(model_name, config):
     opset.version = 11
 
     added_inputs_initializers = {}
-    (a, b, c) = generate_gemm_inputs_initializers(
-        model.graph, config, added_inputs_initializers
-    )
+    (a, b, c) = generate_gemm_inputs_initializers(model.graph, config, added_inputs_initializers)
 
     node_inputs = [config["A"], config["B"]]
     if config["withC"]:
@@ -127,28 +114,20 @@ def generate_gemm_model(model_name, config):
 
     attrs = {}
     set_gemm_node_attrs(attrs, config)
-    node = helper.make_node(
-        "Gemm", node_inputs, [config["Y"]], config["node_name"], **attrs
-    )
+    node = helper.make_node("Gemm", node_inputs, [config["Y"]], config["node_name"], **attrs)
     model.graph.node.add().CopyFrom(node)
 
     shape_output = [config["M"], config["N"]]
-    model.graph.output.add().CopyFrom(
-        helper.make_tensor_value_info(config["Y"], onnx.TensorProto.FLOAT, shape_output)
-    )
+    model.graph.output.add().CopyFrom(helper.make_tensor_value_info(config["Y"], onnx.TensorProto.FLOAT, shape_output))
 
     # compute reference output
-    y = reference_gemm(
-        a, b, c, config["alpha"], config["beta"], config["transA"], config["transB"]
-    )
+    y = reference_gemm(a, b, c, config["alpha"], config["beta"], config["transA"], config["transB"])
 
     onnx.save(model, model_name)
     return (a, b, c, y)
 
 
-def generate_gemm_node_subgraph(
-    scan_body, scan_node_inputs, postfix, config, added_inputs
-):
+def generate_gemm_node_subgraph(scan_body, scan_node_inputs, postfix, config, added_inputs):
     M = config["M"]
     K = config["K"]
     N = config["N"]
@@ -168,11 +147,7 @@ def generate_gemm_node_subgraph(
         if A not in added_inputs:
             added_inputs[A] = 1
             scan_node_inputs.append(A)
-            scan_body.input.add().CopyFrom(
-                helper.make_tensor_value_info(
-                    A + postfix, onnx.TensorProto.FLOAT, shape_a
-                )
-            )
+            scan_body.input.add().CopyFrom(helper.make_tensor_value_info(A + postfix, onnx.TensorProto.FLOAT, shape_a))
 
     # B comes from the outer graph if it's an initializer
     if config["initB"]:
@@ -182,11 +157,7 @@ def generate_gemm_node_subgraph(
         if B not in added_inputs:
             added_inputs[B] = 1
             scan_node_inputs.append(B)
-            scan_body.input.add().CopyFrom(
-                helper.make_tensor_value_info(
-                    B + postfix, onnx.TensorProto.FLOAT, shape_b
-                )
-            )
+            scan_body.input.add().CopyFrom(helper.make_tensor_value_info(B + postfix, onnx.TensorProto.FLOAT, shape_b))
 
     # C comes from Scan state
     if config["withC"]:
@@ -194,9 +165,7 @@ def generate_gemm_node_subgraph(
 
     attrs = {}
     set_gemm_node_attrs(attrs, config)
-    node = helper.make_node(
-        "Gemm", gemm_node_inputs, [config["Y"] + postfix], config["node_name"], **attrs
-    )
+    node = helper.make_node("Gemm", gemm_node_inputs, [config["Y"] + postfix], config["node_name"], **attrs)
     scan_body.node.add().CopyFrom(node)
 
 
@@ -246,27 +215,19 @@ def generate_gemm_scan_model(model_name, config1, config2):
         states_cnt = states_cnt + 1
         scan_node_inputs.append(C1)
         scan_body.input.add().CopyFrom(
-            helper.make_tensor_value_info(
-                "in_" + C1 + postfix, onnx.TensorProto.FLOAT, shape_c1
-            )
+            helper.make_tensor_value_info("in_" + C1 + postfix, onnx.TensorProto.FLOAT, shape_c1)
         )
     if config2["withC"] and C1 != C2:
         assert config2["initC"]
         states_cnt = states_cnt + 1
         scan_node_inputs.append(C2)
         scan_body.input.add().CopyFrom(
-            helper.make_tensor_value_info(
-                "in_" + C2 + postfix, onnx.TensorProto.FLOAT, shape_c2
-            )
+            helper.make_tensor_value_info("in_" + C2 + postfix, onnx.TensorProto.FLOAT, shape_c2)
         )
 
     added_inputs_subgraph = {}
-    generate_gemm_node_subgraph(
-        scan_body, scan_node_inputs, postfix, config1, added_inputs_subgraph
-    )
-    generate_gemm_node_subgraph(
-        scan_body, scan_node_inputs, postfix, config2, added_inputs_subgraph
-    )
+    generate_gemm_node_subgraph(scan_body, scan_node_inputs, postfix, config1, added_inputs_subgraph)
+    generate_gemm_node_subgraph(scan_body, scan_node_inputs, postfix, config2, added_inputs_subgraph)
 
     sub_output = "sub_output" + postfix
     # create a Sub op instead of Add to break the MatMul-to-Gemm rewriting rule
@@ -282,33 +243,23 @@ def generate_gemm_scan_model(model_name, config1, config2):
     scan_node_outputs = []
     # create state outputs
     if config1["withC"]:
-        id_node1 = onnx.helper.make_node(
-            "Identity", [sub_output], ["out_" + C1 + postfix], "id_node1"
-        )
+        id_node1 = onnx.helper.make_node("Identity", [sub_output], ["out_" + C1 + postfix], "id_node1")
         scan_body.node.add().CopyFrom(id_node1)
         scan_body.output.add().CopyFrom(
-            helper.make_tensor_value_info(
-                "out_" + C1 + postfix, onnx.TensorProto.FLOAT, shape_c1
-            )
+            helper.make_tensor_value_info("out_" + C1 + postfix, onnx.TensorProto.FLOAT, shape_c1)
         )
         scan_node_outputs.append("out_" + C1)
 
     if config2["withC"] and C1 != C2:
-        id_node2 = onnx.helper.make_node(
-            "Identity", [sub_output], ["out_" + C2 + postfix], "id_node2"
-        )
+        id_node2 = onnx.helper.make_node("Identity", [sub_output], ["out_" + C2 + postfix], "id_node2")
         scan_body.node.add().CopyFrom(id_node2)
         scan_body.output.add().CopyFrom(
-            helper.make_tensor_value_info(
-                "out_" + C2 + postfix, onnx.TensorProto.FLOAT, shape_c2
-            )
+            helper.make_tensor_value_info("out_" + C2 + postfix, onnx.TensorProto.FLOAT, shape_c2)
         )
         scan_node_outputs.append("out_" + C2)
 
     # scan subgraph output
-    scan_body.output.add().CopyFrom(
-        helper.make_tensor_value_info(sub_output, onnx.TensorProto.FLOAT, shape_c1)
-    )
+    scan_body.output.add().CopyFrom(helper.make_tensor_value_info(sub_output, onnx.TensorProto.FLOAT, shape_c1))
     scan_node_outputs.append("scan_output")
 
     # create scan node
@@ -327,19 +278,13 @@ def generate_gemm_scan_model(model_name, config1, config2):
 
     added_inputs_initializers = {}
     # main graph inputs and initializers
-    (a1, b1, c1) = generate_gemm_inputs_initializers(
-        model.graph, config1, added_inputs_initializers, extend=True
-    )
-    (a2, b2, c2) = generate_gemm_inputs_initializers(
-        model.graph, config2, added_inputs_initializers, extend=True
-    )
+    (a1, b1, c1) = generate_gemm_inputs_initializers(model.graph, config1, added_inputs_initializers, extend=True)
+    (a2, b2, c2) = generate_gemm_inputs_initializers(model.graph, config2, added_inputs_initializers, extend=True)
 
     shape_output = ["seq", config1["M"], config1["N"]]
     # main graph outputs
     model.graph.output.add().CopyFrom(
-        helper.make_tensor_value_info(
-            "scan_output", onnx.TensorProto.FLOAT, shape_output
-        )
+        helper.make_tensor_value_info("scan_output", onnx.TensorProto.FLOAT, shape_output)
     )
     onnx.save(model, model_name)
     return (a1, b1, c1, a2, b2, c2)
@@ -376,9 +321,7 @@ class TestNuphar(unittest.TestCase):
         run_shape_inference(bidaf_model, bidaf_model)
         bidaf_scan_model = os.path.join(bidaf_dir, "bidaf_scan.onnx")
         bidaf_opt_scan_model = os.path.join(bidaf_dir, "bidaf_opt_scan.onnx")
-        bidaf_int8_scan_only_model = os.path.join(
-            bidaf_dir, "bidaf_int8_scan_only.onnx"
-        )
+        bidaf_int8_scan_only_model = os.path.join(bidaf_dir, "bidaf_int8_scan_only.onnx")
         subprocess.run(
             [
                 sys.executable,
@@ -457,9 +400,7 @@ class TestNuphar(unittest.TestCase):
         # prepare feed
         feed = {}
         for i in range(4):
-            tp = onnx.load_tensor(
-                os.path.join(bidaf_dir, "test_data_set_0", "input_{}.pb".format(i))
-            )
+            tp = onnx.load_tensor(os.path.join(bidaf_dir, "test_data_set_0", "input_{}.pb".format(i)))
             feed[tp.name] = numpy_helper.to_array(tp)
 
         for model in [bidaf_opt_scan_model, bidaf_int8_scan_only_model]:
@@ -468,9 +409,7 @@ class TestNuphar(unittest.TestCase):
                 # JIT cache happens when initializing session
                 sess = onnxrt.InferenceSession(
                     model,
-                    providers=make_providers(
-                        nuphar_settings + ", nuphar_codegen_target:" + isa
-                    ),
+                    providers=make_providers(nuphar_settings + ", nuphar_codegen_target:" + isa),
                 )
 
             cache_dir_content = os.listdir(cache_dir)
@@ -493,18 +432,14 @@ class TestNuphar(unittest.TestCase):
             nuphar_settings = "nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}".format(
                 cache_dir, so_name, "on"
             )
-            sess = onnxrt.InferenceSession(
-                model, providers=make_providers(nuphar_settings)
-            )
+            sess = onnxrt.InferenceSession(model, providers=make_providers(nuphar_settings))
             sess.run([], feed)
 
             # test avx
             nuphar_settings = "nuphar_cache_path:{}, nuphar_cache_so_name:{}, nuphar_cache_force_no_jit:{}, nuphar_codegen_target:{}".format(
                 cache_dir, so_name, "on", "avx"
             )
-            sess = onnxrt.InferenceSession(
-                model, providers=make_providers(nuphar_settings)
-            )
+            sess = onnxrt.InferenceSession(model, providers=make_providers(nuphar_settings))
             sess.run([], feed)
 
     def test_bert_squad(self):
@@ -621,20 +556,12 @@ class TestNuphar(unittest.TestCase):
             seq_len = 8
             batch_size = 2
             # prepare input
-            data_input = (
-                np.random.rand(seq_len, batch_size, input_dim) * 2 - 1
-            ).astype(np.float32)
-            data_seq_len = np.random.randint(
-                1, seq_len, size=(batch_size,), dtype=np.int32
-            )
+            data_input = (np.random.rand(seq_len, batch_size, input_dim) * 2 - 1).astype(np.float32)
+            data_seq_len = np.random.randint(1, seq_len, size=(batch_size,), dtype=np.int32)
 
             # run lstm as baseline
-            sess = onnxrt.InferenceSession(
-                lstm_model_name, providers=onnxrt.get_available_providers()
-            )
-            first_lstm_data_output = sess.run(
-                [], {"input": data_input[:, 0:1, :], "seq_len": data_seq_len[0:1]}
-            )
+            sess = onnxrt.InferenceSession(lstm_model_name, providers=onnxrt.get_available_providers())
+            first_lstm_data_output = sess.run([], {"input": data_input[:, 0:1, :], "seq_len": data_seq_len[0:1]})
 
             lstm_data_output = []
             lstm_data_output = first_lstm_data_output
@@ -667,24 +594,16 @@ class TestNuphar(unittest.TestCase):
             )
 
             # run scan_batch with batch size 1
-            sess = onnxrt.InferenceSession(
-                scan_model_name, providers=onnxrt.get_available_providers()
-            )
-            scan_batch_data_output = sess.run(
-                [], {"input": data_input[:, 0:1, :], "seq_len": data_seq_len[0:1]}
-            )
+            sess = onnxrt.InferenceSession(scan_model_name, providers=onnxrt.get_available_providers())
+            scan_batch_data_output = sess.run([], {"input": data_input[:, 0:1, :], "seq_len": data_seq_len[0:1]})
             assert np.allclose(first_lstm_data_output, scan_batch_data_output)
 
             # run scan_batch with batch size 2
-            scan_batch_data_output = sess.run(
-                [], {"input": data_input, "seq_len": data_seq_len}
-            )
+            scan_batch_data_output = sess.run([], {"input": data_input, "seq_len": data_seq_len})
             assert np.allclose(lstm_data_output, scan_batch_data_output)
 
             # run scan_batch with batch size 1 again
-            scan_batch_data_output = sess.run(
-                [], {"input": data_input[:, 0:1, :], "seq_len": data_seq_len[0:1]}
-            )
+            scan_batch_data_output = sess.run([], {"input": data_input[:, 0:1, :], "seq_len": data_seq_len[0:1]})
             assert np.allclose(first_lstm_data_output, scan_batch_data_output)
 
     def test_gemm_to_matmul(self):
@@ -766,9 +685,7 @@ class TestNuphar(unittest.TestCase):
                 check=True,
             )
 
-            sess = onnxrt.InferenceSession(
-                matmul_model_name, providers=onnxrt.get_available_providers()
-            )
+            sess = onnxrt.InferenceSession(matmul_model_name, providers=onnxrt.get_available_providers())
             test_inputs = {}
             set_gemm_model_inputs(running_config, test_inputs, a, b, c)
             actual_y = sess.run([], test_inputs)
@@ -916,17 +833,13 @@ class TestNuphar(unittest.TestCase):
 
             gemm_model_name = gemm_model_name_prefix + str(i) + ".onnx"
             matmul_model_name = matmul_model_name_prefix + str(i) + ".onnx"
-            a1, b1, c1, a2, b2, c2 = generate_gemm_scan_model(
-                gemm_model_name, running_config1, running_config2
-            )
+            a1, b1, c1, a2, b2, c2 = generate_gemm_scan_model(gemm_model_name, running_config1, running_config2)
 
             a1 = a1.reshape((1,) + a1.shape)
             b1 = b1.reshape((1,) + b1.shape)
             a2 = a2.reshape((1,) + a2.shape)
             b2 = b2.reshape((1,) + b2.shape)
-            sess = onnxrt.InferenceSession(
-                gemm_model_name, providers=onnxrt.get_available_providers()
-            )
+            sess = onnxrt.InferenceSession(gemm_model_name, providers=onnxrt.get_available_providers())
 
             test_inputs = {}
             set_gemm_model_inputs(running_config1, test_inputs, a1, b1, c1)
@@ -951,9 +864,7 @@ class TestNuphar(unittest.TestCase):
             )
 
             # run after model editing
-            sess = onnxrt.InferenceSession(
-                matmul_model_name, providers=onnxrt.get_available_providers()
-            )
+            sess = onnxrt.InferenceSession(matmul_model_name, providers=onnxrt.get_available_providers())
             actual_y = sess.run([], test_inputs)
 
             assert np.allclose(expected_y, actual_y, atol=1e-7)
@@ -961,9 +872,7 @@ class TestNuphar(unittest.TestCase):
 
     def test_loop_to_scan(self):
         loop_model_filename = get_name("nuphar_tiny_model_with_loop_shape_infered.onnx")
-        scan_model_filename = (
-            "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
-        )
+        scan_model_filename = "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
         subprocess.run(
             [
                 sys.executable,
@@ -985,12 +894,8 @@ class TestNuphar(unittest.TestCase):
         # nuphar_onnx_test_loop11_inconvertible_loop.onnx contains a Loop op with dynamic loop count.
         # This Loop op cannot be converted to a Scan op.
         # Set --keep_unconvertible_loop_ops option so conversion will not fail due to unconvertible loop ops.
-        loop_model_filename = get_name(
-            "nuphar_onnx_test_loop11_inconvertible_loop.onnx"
-        )
-        scan_model_filename = (
-            "nuphar_onnx_test_loop11_inconvertible_loop_unchanged.onnx"
-        )
+        loop_model_filename = get_name("nuphar_onnx_test_loop11_inconvertible_loop.onnx")
+        scan_model_filename = "nuphar_onnx_test_loop11_inconvertible_loop_unchanged.onnx"
         subprocess.run(
             [
                 sys.executable,
@@ -1016,9 +921,7 @@ class TestNuphar(unittest.TestCase):
 
     def test_loop_to_scan_tool(self):
         loop_model_filename = get_name("nuphar_tiny_model_with_loop_shape_infered.onnx")
-        scan_model_filename = (
-            "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
-        )
+        scan_model_filename = "nuphar_tiny_model_with_loop_shape_infered_converted_to_scan.onnx"
         subprocess.run(
             [
                 sys.executable,

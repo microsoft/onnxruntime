@@ -168,25 +168,17 @@ class AttentionForONNX(nn.Module):
         self.num_heads = num_heads
         self.dropout = dropout
         self.head_dim = embed_dim // num_heads
-        assert (
-            self.head_dim * num_heads == self.embed_dim
-        ), "embed_dim must be divisible by num_heads"
+        assert self.head_dim * num_heads == self.embed_dim, "embed_dim must be divisible by num_heads"
         self.scaling = self.head_dim**-0.5
 
         self.encoder_decoder_attention = encoder_decoder_attention
-        self.k_v_proj = torch.jit.script(
-            AttentionProjection(num_heads, self.head_dim, embed_dim, bias)
-        )
+        self.k_v_proj = torch.jit.script(AttentionProjection(num_heads, self.head_dim, embed_dim, bias))
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.cache_key = "encoder_decoder" if self.encoder_decoder_attention else "self"
 
     def _shape(self, tensor, seq_len, bsz):
-        return (
-            tensor.contiguous()
-            .view(seq_len, bsz * self.num_heads, self.head_dim)
-            .transpose(0, 1)
-        )
+        return tensor.contiguous().view(seq_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
     def forward(
         self,
@@ -203,9 +195,7 @@ class AttentionForONNX(nn.Module):
         static_kv: bool = self.encoder_decoder_attention
         tgt_len, bsz, embed_dim = query.size()
         # get here for encoder decoder cause of static_kv
-        k, v = self.k_v_proj(
-            query, key, layer_state, self.encoder_decoder_attention, use_past
-        )
+        k, v = self.k_v_proj(query, key, layer_state, self.encoder_decoder_attention, use_past)
 
         q = self.q_proj(query) * self.scaling
         q = self._shape(q, tgt_len, bsz)
@@ -244,9 +234,7 @@ class AttentionForONNX(nn.Module):
         assert v is not None
         attn_output = torch.bmm(attn_probs, v)
         assert attn_output.size() == (bsz * self.num_heads, tgt_len, self.head_dim)
-        attn_output = (
-            attn_output.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
-        )
+        attn_output = attn_output.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
         attn_output = self.out_proj(attn_output)
 
         return attn_output, new_key_cache, new_value_cache
@@ -316,9 +304,7 @@ class AttentionForONNX(nn.Module):
         from onnxruntime import InferenceSession, SessionOptions
 
         sess_options = SessionOptions()
-        ort_session = InferenceSession(
-            onnx_model_str, sess_options, providers=["CUDAExecutionProvider"]
-        )
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
         ort_output = ort_session.run(None, ort_inputs)
         output, new_key_cache, new_value_cache = ort_output
 
@@ -372,21 +358,13 @@ def create_decoder_attention_graph(
     ]
 
     initializers = [
-        helper.make_tensor(
-            "q_weight", TensorProto.FLOAT, [NH, NH], q_weight.flatten().tolist()
-        ),
-        helper.make_tensor(
-            "kv_weight", TensorProto.FLOAT, [NH, 2 * NH], kv_weight.flatten().tolist()
-        ),
-        helper.make_tensor(
-            "bias", TensorProto.FLOAT, [3 * NH], bias.flatten().tolist()
-        ),
+        helper.make_tensor("q_weight", TensorProto.FLOAT, [NH, NH], q_weight.flatten().tolist()),
+        helper.make_tensor("kv_weight", TensorProto.FLOAT, [NH, 2 * NH], kv_weight.flatten().tolist()),
+        helper.make_tensor("bias", TensorProto.FLOAT, [3 * NH], bias.flatten().tolist()),
         helper.make_tensor("static_kv", TensorProto.BOOL, [1], [static_kv]),
         helper.make_tensor("use_past", TensorProto.BOOL, [1], [use_past]),
         helper.make_tensor("has_layer_state", TensorProto.BOOL, [1], [has_layer_state]),
-        helper.make_tensor(
-            "has_key_padding_mask", TensorProto.BOOL, [1], [has_key_padding_mask]
-        ),
+        helper.make_tensor("has_key_padding_mask", TensorProto.BOOL, [1], [has_key_padding_mask]),
     ]
 
     graph = helper.make_graph(
@@ -395,24 +373,14 @@ def create_decoder_attention_graph(
         [
             helper.make_tensor_value_info("query", TensorProto.FLOAT, [S, B, NH]),
             helper.make_tensor_value_info("key", TensorProto.FLOAT, [S2, B, NH]),
-            helper.make_tensor_value_info(
-                "key_padding_mask", TensorProto.BOOL, [B, "mask_len"]
-            ),
-            helper.make_tensor_value_info(
-                "key_cache", TensorProto.FLOAT, [B, N, "cache_len", H]
-            ),
-            helper.make_tensor_value_info(
-                "value_cache", TensorProto.FLOAT, [B, N, "cache_len", H]
-            ),
+            helper.make_tensor_value_info("key_padding_mask", TensorProto.BOOL, [B, "mask_len"]),
+            helper.make_tensor_value_info("key_cache", TensorProto.FLOAT, [B, N, "cache_len", H]),
+            helper.make_tensor_value_info("value_cache", TensorProto.FLOAT, [B, N, "cache_len", H]),
         ],
         [
             helper.make_tensor_value_info("output", TensorProto.FLOAT, [S, B, NH]),
-            helper.make_tensor_value_info(
-                "new_key_cache", TensorProto.FLOAT, [B, N, "new_cache_len", H]
-            ),
-            helper.make_tensor_value_info(
-                "new_value_cache", TensorProto.FLOAT, [B, N, "new_cache_len", H]
-            ),
+            helper.make_tensor_value_info("new_key_cache", TensorProto.FLOAT, [B, N, "new_cache_len", H]),
+            helper.make_tensor_value_info("new_value_cache", TensorProto.FLOAT, [B, N, "new_cache_len", H]),
         ],
         initializers,
     )
@@ -450,9 +418,7 @@ def create_inputs(
         else:
             key_length = config.kv_sequence_length
 
-    key_padding_mask = (
-        torch.normal(mean=0.0, std=0.1, size=(config.batch_size, key_length)) > 0
-    )
+    key_padding_mask = torch.normal(mean=0.0, std=0.1, size=(config.batch_size, key_length)) > 0
     # The following line ensure not all the mask are true
     key_padding_mask[0][0] = False
 
@@ -480,12 +446,8 @@ def parity_check(
     rtol=1e-4,
     atol=1e-4,
 ):
-    query, key, key_padding_mask, layer_state, use_past = create_inputs(
-        config, has_layer_state, use_past, static_kv
-    )
-    attn = AttentionForONNX(
-        config.embed_dim, config.num_heads, encoder_decoder_attention=static_kv
-    )
+    query, key, key_padding_mask, layer_state, use_past = create_inputs(config, has_layer_state, use_past, static_kv)
+    attn = AttentionForONNX(config.embed_dim, config.num_heads, encoder_decoder_attention=static_kv)
     attn_output, new_key_cache, new_value_cache = attn.forward(
         query,
         key,

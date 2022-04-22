@@ -17,9 +17,14 @@ from onnx import onnx_pb as onnx_proto
 
 import onnxruntime
 
-from .quant_utils import (QuantType, apply_plot, clone_model_with_shape_infer,
-                          load_model, model_has_infer_metadata,
-                          smooth_distribution)
+from .quant_utils import (
+    QuantType,
+    apply_plot,
+    clone_model_with_shape_infer,
+    load_model,
+    model_has_infer_metadata,
+    smooth_distribution,
+)
 from .registry import QLinearOpsRegistry
 
 
@@ -32,11 +37,7 @@ class CalibrationMethod(Enum):
 class CalibrationDataReader(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls, subclass):
-        return (
-            hasattr(subclass, "get_next")
-            and callable(subclass.get_next)
-            or NotImplemented
-        )
+        return hasattr(subclass, "get_next") and callable(subclass.get_next) or NotImplemented
 
     @abc.abstractmethod
     def get_next(self) -> dict:
@@ -95,9 +96,7 @@ class CalibraterBase:
         create an OnnxRuntime InferenceSession.
         """
         sess_options = onnxruntime.SessionOptions()
-        sess_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        )
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         self.infer_session = onnxruntime.InferenceSession(
             self.augmented_model_path,
             sess_options=sess_options,
@@ -120,19 +119,13 @@ class CalibraterBase:
         tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
 
         for node in model.graph.node:
-            if (
-                len(self.op_types_to_calibrate) == 0
-                or node.op_type in self.op_types_to_calibrate
-            ):
+            if len(self.op_types_to_calibrate) == 0 or node.op_type in self.op_types_to_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
                     if tensor_name in value_infos.keys():
                         vi = value_infos[tensor_name]
                         if (
                             vi.type.HasField("tensor_type")
-                            and (
-                                vi.type.tensor_type.elem_type
-                                in tensor_type_to_calibrate
-                            )
+                            and (vi.type.tensor_type.elem_type in tensor_type_to_calibrate)
                             and (tensor_name not in initializer)
                         ):
                             tensors_to_calibrate.add(tensor_name)
@@ -196,14 +189,10 @@ class MinMaxCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(
-            output.name for output in self.model.graph.output
-        )
+        self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.moving_average = moving_average
         if moving_average and (averaging_constant < 0 or averaging_constant > 1):
-            raise ValueError(
-                "Invalid averaging constant, which should not be < 0 or > 1."
-            )
+            raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
         self.averaging_constant = averaging_constant
 
     def augment_graph(self):
@@ -243,11 +232,7 @@ class MinMaxCalibrater(CalibraterBase):
             )
 
             added_nodes.append(reduce_min_node)
-            added_outputs.append(
-                helper.make_tensor_value_info(
-                    reduce_min_node.output[0], TensorProto.FLOAT, shape
-                )
-            )
+            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, shape))
 
             # Adding ReduceMax nodes
             reduce_max_name = tensor + "_ReduceMax"
@@ -260,11 +245,7 @@ class MinMaxCalibrater(CalibraterBase):
             )
 
             added_nodes.append(reduce_max_node)
-            added_outputs.append(
-                helper.make_tensor_value_info(
-                    reduce_max_node.output[0], TensorProto.FLOAT, shape
-                )
-            )
+            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, shape))
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
@@ -297,12 +278,8 @@ class MinMaxCalibrater(CalibraterBase):
 
         for key, value in old_range.items():
             if self.moving_average:
-                min_value = value[0] + self.averaging_constant * (
-                    new_range[key][0] - value[0]
-                )
-                max_value = value[1] + self.averaging_constant * (
-                    new_range[key][1] - value[1]
-                )
+                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
+                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
             else:
                 min_value = min(value[0], new_range[key][0])
                 max_value = max(value[1], new_range[key][1])
@@ -319,13 +296,9 @@ class MinMaxCalibrater(CalibraterBase):
         if len(self.intermediate_outputs) == 0:
             return self.calibrate_tensors_range
 
-        output_names = [
-            self.infer_session.get_outputs()[i].name
-            for i in range(len(self.intermediate_outputs[0]))
-        ]
+        output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
         output_dicts_list = [
-            dict(zip(output_names, intermediate_output))
-            for intermediate_output in self.intermediate_outputs
+            dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
 
         merged_output_dict = {}
@@ -334,14 +307,11 @@ class MinMaxCalibrater(CalibraterBase):
                 merged_output_dict.setdefault(k, []).append(v)
         added_output_names = output_names[self.num_model_outputs :]
         calibrate_tensor_names = [
-            added_output_names[i].rpartition("_")[0]
-            for i in range(0, len(added_output_names), 2)
+            added_output_names[i].rpartition("_")[0] for i in range(0, len(added_output_names), 2)
         ]  # output names
 
         merged_added_output_dict = dict(
-            (i, merged_output_dict[i])
-            for i in merged_output_dict
-            if i not in self.model_original_outputs
+            (i, merged_output_dict[i]) for i in merged_output_dict if i not in self.model_original_outputs
         )
 
         pairs = []
@@ -349,17 +319,11 @@ class MinMaxCalibrater(CalibraterBase):
             min_value = 0
             max_value = 0
             if self.moving_average:
-                min_value_array = np.mean(
-                    merged_added_output_dict[added_output_names[i]], axis=0
-                )
-                max_value_array = np.mean(
-                    merged_added_output_dict[added_output_names[i + 1]], axis=0
-                )
+                min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis=0)
+                max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
             else:
                 min_value_array = min(merged_added_output_dict[added_output_names[i]])
-                max_value_array = max(
-                    merged_added_output_dict[added_output_names[i + 1]]
-                )
+                max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
             if type(min_value_array) == int or min_value_array.size > 0:
                 min_value = float(min_value_array)
             if type(max_value_array) == int or max_value_array.size > 0:
@@ -373,9 +337,7 @@ class MinMaxCalibrater(CalibraterBase):
 
         new_calibrate_tensors_range = dict(zip(calibrate_tensor_names, pairs))
         if self.calibrate_tensors_range:
-            self.calibrate_tensors_range = self.merge_range(
-                self.calibrate_tensors_range, new_calibrate_tensors_range
-            )
+            self.calibrate_tensors_range = self.merge_range(self.calibrate_tensors_range, new_calibrate_tensors_range)
         else:
             self.calibrate_tensors_range = new_calibrate_tensors_range
 
@@ -412,9 +374,7 @@ class HistogramCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(
-            output.name for output in self.model.graph.output
-        )
+        self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.collector = None
         self.method = method
         self.symmetric = symmetric
@@ -461,13 +421,9 @@ class HistogramCalibrater(CalibraterBase):
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
 
-        output_names = [
-            self.infer_session.get_outputs()[i].name
-            for i in range(len(self.intermediate_outputs[0]))
-        ]
+        output_names = [self.infer_session.get_outputs()[i].name for i in range(len(self.intermediate_outputs[0]))]
         output_dicts_list = [
-            dict(zip(output_names, intermediate_output))
-            for intermediate_output in self.intermediate_outputs
+            dict(zip(output_names, intermediate_output)) for intermediate_output in self.intermediate_outputs
         ]
 
         merged_dict = {}
@@ -475,11 +431,7 @@ class HistogramCalibrater(CalibraterBase):
             for k, v in d.items():
                 merged_dict.setdefault(k, []).append(v)
 
-        clean_merged_dict = dict(
-            (i, merged_dict[i])
-            for i in merged_dict
-            if i not in self.model_original_outputs
-        )
+        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in self.model_original_outputs)
 
         if not self.collector:
             self.collector = HistogramCollector(
@@ -499,9 +451,7 @@ class HistogramCalibrater(CalibraterBase):
         :return: dictionary mapping: {tensor name: (min value, max value)}
         """
         if not self.collector:
-            raise ValueError(
-                "No collector created and can't generate calibration data."
-            )
+            raise ValueError("No collector created and can't generate calibration data.")
 
         return self.collector.compute_collection_result()
 
@@ -653,9 +603,7 @@ class HistogramCollector(CalibrationDataCollector):
                     # increase the number of bins
                     width = old_hist_edges[1] - old_hist_edges[0]
                     # NOTE: np.arange may create an extra bin after the one containing temp_amax
-                    new_bin_edges = np.arange(
-                        old_hist_edges[-1] + width, temp_amax + width, width
-                    )
+                    new_bin_edges = np.arange(old_hist_edges[-1] + width, temp_amax + width, width)
                     old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
                 hist, hist_edges = np.histogram(data_arr, bins=old_hist_edges)
                 hist[: len(old_hist)] += old_hist
@@ -684,9 +632,7 @@ class HistogramCollector(CalibrationDataCollector):
                     old_histogram, data_arr, min_value, max_value, threshold
                 )
             else:
-                hist, hist_edges = np.histogram(
-                    data_arr, self.num_bins, range=(-threshold, threshold)
-                )
+                hist, hist_edges = np.histogram(data_arr, self.num_bins, range=(-threshold, threshold))
                 self.histogram_dict[tensor] = (
                     hist,
                     hist_edges,
@@ -700,9 +646,7 @@ class HistogramCollector(CalibrationDataCollector):
         (old_hist, old_hist_edges, old_min, old_max, old_threshold) = old_histogram
 
         if new_threshold <= old_threshold:
-            new_hist, _ = np.histogram(
-                data_arr, len(old_hist), range=(-old_threshold, old_threshold)
-            )
+            new_hist, _ = np.histogram(data_arr, len(old_hist), range=(-old_threshold, old_threshold))
             return (
                 new_hist + old_hist,
                 old_hist_edges,
@@ -712,24 +656,16 @@ class HistogramCollector(CalibrationDataCollector):
             )
         else:
             if old_threshold == 0:
-                hist, hist_edges = np.histogram(
-                    data_arr, len(old_hist), range=(-new_threshold, new_threshold)
-                )
+                hist, hist_edges = np.histogram(data_arr, len(old_hist), range=(-new_threshold, new_threshold))
                 hist += old_hist
             else:
                 old_num_bins = len(old_hist)
                 old_stride = 2 * old_threshold / old_num_bins
-                half_increased_bins = int(
-                    (new_threshold - old_threshold) // old_stride + 1
-                )
+                half_increased_bins = int((new_threshold - old_threshold) // old_stride + 1)
                 new_num_bins = old_num_bins + 2 * half_increased_bins
                 new_threshold = half_increased_bins * old_stride + old_threshold
-                hist, hist_edges = np.histogram(
-                    data_arr, new_num_bins, range=(-new_threshold, new_threshold)
-                )
-                hist[
-                    half_increased_bins : new_num_bins - half_increased_bins
-                ] += old_hist
+                hist, hist_edges = np.histogram(data_arr, new_num_bins, range=(-new_threshold, new_threshold))
+                hist[half_increased_bins : new_num_bins - half_increased_bins] += old_hist
             return (
                 hist,
                 hist_edges,
@@ -740,14 +676,8 @@ class HistogramCollector(CalibrationDataCollector):
 
     def compute_collection_result(self):
         if not self.histogram_dict or len(self.histogram_dict) == 0:
-            raise ValueError(
-                "Histogram has not been collected. Please run collect() first."
-            )
-        print(
-            "Finding optimal threshold for each tensor using {} algorithm ...".format(
-                self.method
-            )
-        )
+            raise ValueError("Histogram has not been collected. Please run collect() first.")
+        print("Finding optimal threshold for each tensor using {} algorithm ...".format(self.method))
 
         if self.method == "entropy":
             return self.compute_entropy()
@@ -758,9 +688,7 @@ class HistogramCollector(CalibrationDataCollector):
 
     def compute_percentile(self):
         if self.percentile < 0 or self.percentile > 100:
-            raise ValueError(
-                "Invalid percentile. Must be in range 0 <= percentile <= 100."
-            )
+            raise ValueError("Invalid percentile. Must be in range 0 <= percentile <= 100.")
 
         histogram_dict = self.histogram_dict
         percentile = self.percentile
@@ -812,9 +740,7 @@ class HistogramCollector(CalibrationDataCollector):
         print("Number of quantized bins : {}".format(self.num_quantized_bins))
 
         for tensor, histogram in histogram_dict.items():
-            optimal_threshold = self.get_entropy_threshold(
-                histogram, num_quantized_bins
-            )
+            optimal_threshold = self.get_entropy_threshold(histogram, num_quantized_bins)
             thresholds_dict[tensor] = optimal_threshold
 
             # Plot histogram for debug only
@@ -858,11 +784,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
             start_index = zero_bin_index - i
-            end_index = (
-                zero_bin_index + i + 1
-                if (zero_bin_index + i + 1) <= num_bins
-                else num_bins
-            )
+            end_index = zero_bin_index + i + 1 if (zero_bin_index + i + 1) <= num_bins else num_bins
 
             thresholds[i - num_half_quantized_bin] = (
                 float(hist_edges[start_index]),
@@ -890,9 +812,7 @@ class HistogramCollector(CalibrationDataCollector):
                 start = index * num_merged_bins
                 end = start + num_merged_bins
                 quantized_bins[index] = sum(sliced_distribution[start:end])
-            quantized_bins[-1] += sum(
-                sliced_distribution[num_quantized_bins * num_merged_bins :]
-            )
+            quantized_bins[-1] += sum(sliced_distribution[num_quantized_bins * num_merged_bins :])
 
             # in order to compare p and q, we need to make length of q equals to length of p
             # expand quantized bins into p.size bins
@@ -930,19 +850,9 @@ def create_calibrator(
 
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
-        symmetric = (
-            False if "symmetric" not in extra_options else extra_options["symmetric"]
-        )
-        moving_average = (
-            False
-            if "moving_average" not in extra_options
-            else extra_options["moving_average"]
-        )
-        averaging_constant = (
-            0.01
-            if "averaging_constant" not in extra_options
-            else extra_options["averaging_constant"]
-        )
+        symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
+        moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
+        averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
         return MinMaxCalibrater(
             model,
             op_types_to_calibrate,
@@ -955,14 +865,8 @@ def create_calibrator(
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
         num_bins = 128 if "num_bins" not in extra_options else extra_options["num_bins"]
-        num_quantized_bins = (
-            128
-            if "num_quantized_bins" not in extra_options
-            else extra_options["num_quantized_bins"]
-        )
-        symmetric = (
-            False if "symmetric" not in extra_options else extra_options["symmetric"]
-        )
+        num_quantized_bins = 128 if "num_quantized_bins" not in extra_options else extra_options["num_quantized_bins"]
+        symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
         return EntropyCalibrater(
             model,
             op_types_to_calibrate,
@@ -974,15 +878,9 @@ def create_calibrator(
         )
     elif calibrate_method == CalibrationMethod.Percentile:
         # default settings for percentile algorithm
-        num_bins = (
-            2048 if "num_bins" not in extra_options else extra_options["num_bins"]
-        )
-        percentile = (
-            99.999 if "percentile" not in extra_options else extra_options["percentile"]
-        )
-        symmetric = (
-            True if "symmetric" not in extra_options else extra_options["symmetric"]
-        )
+        num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
+        percentile = 99.999 if "percentile" not in extra_options else extra_options["percentile"]
+        symmetric = True if "symmetric" not in extra_options else extra_options["symmetric"]
         return PercentileCalibrater(
             model,
             op_types_to_calibrate,
