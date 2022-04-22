@@ -316,11 +316,8 @@ struct alignas(sizeof(T) * vec_size) aligned_vector {
 //#define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 
 // WARP related definitions and functions
-#if defined(USE_ROCM)
-constexpr int GPU_WARP_SIZE = warpSize;  // = 64 or 32 (Defined in hip_runtime.h)
-#else
-constexpr int GPU_WARP_SIZE = 32;
-#endif
+constexpr int GPU_WARP_SIZE = warpSize;
+inline int GPU_WARP_SIZE_HOST= warpSizeDynamic();
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
