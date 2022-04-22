@@ -20,17 +20,18 @@ limitations under the License.
 
 #include "longformer_attention_impl.h"
 
-#include "attention_impl.h"
-#include "longformer_attention_softmax.h"
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+#include <math_constants.h>
+#include <library_types.h>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-#include <cuda_fp16.h>
-#include <cuda_runtime.h>
-#include <math_constants.h>
-#include <library_types.h>
+#include "attention_impl.h"
+#include "longformer_attention_softmax.h"
+
 
 using namespace onnxruntime::cuda;
 using namespace cub;

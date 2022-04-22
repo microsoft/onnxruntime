@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/tensor/compress_impl.h"
+
+#include <thrust/functional.h>
+#include <thrust/iterator/transform_iterator.h>
+
 #include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
@@ -9,11 +14,6 @@
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)
 #endif
-
-#include "core/providers/cuda/tensor/compress_impl.h"
-
-#include <thrust/functional.h>
-#include <thrust/iterator/transform_iterator.h>
 
 namespace onnxruntime {
 namespace cuda {

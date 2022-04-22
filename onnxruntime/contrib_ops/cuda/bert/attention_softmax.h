@@ -21,13 +21,14 @@ limitations under the License.
 
 #include "core/providers/cuda/math/softmax.h"
 
+#include <type_traits>
+#include <cuda_fp16.h>
+#include <math_constants.h>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cu_inc/cub.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-#include <type_traits>
-#include <cuda_fp16.h>
-#include <math_constants.h>
 
 using namespace onnxruntime::cuda;
 using namespace cub;

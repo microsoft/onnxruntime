@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
-
 #include <stdint.h>
 #include <vector>
 #include <mutex>
@@ -15,6 +12,9 @@
 #if CUDA_VERSION >= 11000
 #include <cuda_bf16.h>
 #endif
+
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 namespace cuda {

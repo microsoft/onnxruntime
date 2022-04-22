@@ -3,14 +3,16 @@
 
 #include "topk_impl.h"
 
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cu_inc/cub.cuh"
-
-#include <device_atomic_functions.h>
 #include <cub/util_type.cuh>
 #include <cub/util_allocator.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include <limits>
+
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cub.cuh"
+
+// ROCM build requires this to be included this way and not as <device_atomic_functions.h>
+#include "device_atomic_functions.h"
 
 //TODO:fix the warnings
 #ifdef _MSC_VER
