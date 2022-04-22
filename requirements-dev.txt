@@ -1,4 +1,4 @@
-black
+black>=22.3
 cerberus
 codecov
 flatbuffers
@@ -10,7 +10,7 @@ onnxmltools
 packaging
 pandas
 protobuf
-pydocstyle
+pydocstyle[toml]
 pytest
 pytest-cov
 scikit-learn
