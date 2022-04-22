@@ -455,17 +455,27 @@ TEST(NnapiExecutionProviderTest, TestQDQGemm) {
                       {2, 2} /* input_shape2 */,
                       true /* has_bias */,
                       1 /* transB */),
-                  "nnapi_qdq_test_graph_gemm",
+                  "nnapi_qdq_test_graph_gemm_1",
                   {ExpectedEPNodeAssignment::All});
 }
 
-TEST(NnapiExecutionProviderTest, TestQDQGemm_2) {
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoTransB) {
   RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
                       {2, 2} /* input_shape1 */,
                       {2, 2} /* input_shape2 */,
                       true /* has_bias */,
                       0 /* transB */),
                   "nnapi_qdq_test_graph_gemm_2",
+                  {ExpectedEPNodeAssignment::All});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoBias) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      false /* has_bias */,
+                      1 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_3",
                   {ExpectedEPNodeAssignment::All});
 }
 

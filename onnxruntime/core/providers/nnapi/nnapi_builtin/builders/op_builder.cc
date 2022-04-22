@@ -1722,12 +1722,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       }
     } else {  // is_quant_gemm
       const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
-      // TODO: Need to confirm, put int32 type here for now
+      // QGemm has a contraint on input C to be int32 type
       ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
                         "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
-        bias_dimen.push_back(SafeInt<uint32_t>(dim));
+        bias_dimen.push_back(dim);
       std::vector<uint8_t> unpacked_tensor;
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
