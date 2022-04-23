@@ -29,12 +29,13 @@ fi
 #echo $UBUNTU_VERSION
 #if [ $UBUNTU_VERSION = "18.04" ]
 
-PROTO_VER=$(apt list | grep -oP -m 1 'protobuf-compiler.* \K[\d\.]+')
+PROTO_VER=$(apt list | grep -oP -m 1 'protobuf-compiler.* \K3[\.\d]+')
 echo "$PROTO_VER"
 if [[ $PROTO_VER < "3.11.0" ]]
 then 
     cd protobuf 
-    git checkout $(echo $PROTO_VER | grep -oP -m 1 '\d+\.\d+\.')x
+    CHECKOUT_VER=$($(echo $PROTO_VER | grep -oP -m 1 '\d+\.\d+\.')x)
+    git checkout 3.10.x
     cd .. 
 fi
 cd $CUR_PWD 
