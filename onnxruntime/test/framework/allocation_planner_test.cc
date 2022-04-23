@@ -1139,7 +1139,7 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   EXPECT_EQ(main_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
-#endif
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -659,12 +659,14 @@ class PlannerImpl {
 
               // The previous behavior was to default to CPU which will cause unnecessary copies when
               // (1) The user invokes Run() with an OrtValue backed by non-CPU memory (eg CUDA) and
-              // the explicit consumer of the implicit input is on the non-CPU device in the subgraph
+              // the node in the subgraph that consumes the subgraph's implicit input is on a non-CPU device
+              // in the subgraph
               // (2) The user tries to IOBind implicitly consumed graph inputs (GH Issue 11254) and
-              // the explicit consumer of the implicit input is on the non-CPU device in the subgraph
+              // the node in the subgraph that consumes the subgraph's implicit input is on
+              // a non-CPU device in the subgraph
 
-              // Even if the user provides an input on CPU and the explicit consumer of the implicit input
-              // is on the non-CPU device, instead of the subgraph copying mechanism taking it to the device,
+              // Even if the user provides an input on CPU and the node in the subgraph that consumes the subgraph's
+              // implicit input is on a non-CPU device, instead of the subgraph copying mechanism taking it to the device,
               // all we will do is "front-load" this copy in utils::CopyInputsAcrossDevices() with this approach.
 
               // NOTE 1: The only case this will be sub-optimal is when a node containing a subgraph is partitioned to a
@@ -680,15 +682,18 @@ class PlannerImpl {
               // as to which non-CPU device is "most optimal" for the implicit input.
 
               if (set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.count(index) == 0) {
-                // First time we are encountering this implicitly consumed input at this graph level (or)
-                // the EP that we previously seen for this implicit input is the same one as the current EP
-                // we have seen
-                if (!map_implicitly_consumed_node_arg_to_ep.contains(index)) {
+                auto already_seen_ep_for_node_arg = map_implicitly_consumed_node_arg_to_ep.find(index);
+
+                if (already_seen_ep_for_node_arg == map_implicitly_consumed_node_arg_to_ep.end()) {
+                  // First time we are encountering this implicitly consumed input at this graph level (or)
                   plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
                   map_implicitly_consumed_node_arg_to_ep.insert({index, exec_provider});
-                } else if (map_implicitly_consumed_node_arg_to_ep.find(index)->second == exec_provider) {
+                } else if (already_seen_ep_for_node_arg->second == exec_provider) {
+                  // The EP that we previously seen for this implicit input is the same one as the current EP
+                  // we have seen
                   plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
-                } else {  // Default the location to CPU
+                } else {
+                  // Default the location to CPU
                   plan_.SetLocation(static_cast<size_t>(index),
                                     execution_providers_.Get(CPU)->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
                   set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
