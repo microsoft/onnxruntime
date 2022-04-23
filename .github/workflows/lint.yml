@@ -1,0 +1,44 @@
+name: Lint
+
+on: [pull_request]
+
+jobs:
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: reviewdog/action-black@v2
+        with:
+          github_token: ${{ secrets.github_token }}
+          # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
+          reporter: github-pr-review
+          # Change reporter level if you need.
+          # GitHub Status Check won't become failure with a warning.
+          level: error
+      - uses: reviewdog/action-flake8@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+
+  lint-cpp:
+    name: Lint C++
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - uses: reviewdog/action-cpplint@master
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          flags: --linelength=120
+
+  lint-js:
+    name: Lint JavaScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: reviewdog/action-eslint@v1
+        with:
+          reporter: github-pr-check
+          eslint_flags: '--ext .ts --ext .tsx'
+          workdir: 'js/'
