@@ -23,11 +23,18 @@ then
 fi
 
 # Point to correct protobuf
-UBUNTU_VERSION=$(lsb_release -rs)
-if [$UBUNTU_VERSION = "18.04"]
+
+# deprecate
+#UBUNTU_VERSION=$(lsb_release -rs)
+#echo $UBUNTU_VERSION
+#if [ $UBUNTU_VERSION = "18.04" ]
+
+PROTO_VER=$(apt list | grep -oP -m 1 'protobuf-compiler.* \K[\d\.]+')
+echo "$PROTO_VER"
+if [[ $PROTO_VER < "3.11.0" ]]
 then 
     cd protobuf 
-    git checkout 3.10.x
+    git checkout $(echo $PROTO_VER | grep -oP -m 1 '\d+\.\d+\.')x
     cd .. 
 fi
 cd $CUR_PWD 
