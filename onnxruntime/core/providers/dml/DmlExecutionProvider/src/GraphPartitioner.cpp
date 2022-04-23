@@ -610,7 +610,9 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph)
+        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph,
+        bool isGraphFusionEnabled
+    )
     {
         // Nodes are uniquely identified by the name of their first output argument
         std::vector<std::unique_ptr<GraphPartition>> partitions;
@@ -672,6 +674,8 @@ namespace Dml
                 /*out*/ &isDmlNode,
                 /*out*/ &isDmlGraphNode
             );
+
+            isDmlGraphNode &= isGraphFusionEnabled; // Even if the node otherwise supports it, disable if the user wants it disabled.
 
             // Add a unique partition if graph node usage is not supported.
             //
@@ -786,7 +790,8 @@ namespace Dml
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
-        const std::string& partitionKernelPrefix
+        const std::string& partitionKernelPrefix,
+        bool isGraphFusionEnabled
         )
     {
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
@@ -801,7 +806,10 @@ namespace Dml
             registries,
             supportedDeviceDataTypeMask,
             graphNodePropertyMap, 
-            requiredInitializerMap);
+            requiredInitializerMap,
+            nullptr, // onNodeUnsupportedInGraph
+            isGraphFusionEnabled
+        );
 
         // Create a map between each initialized tensor and the partition(s) it is part of.
         auto initializerPartitionMap = GetInitializerToPartitionMap(graph, partitions);

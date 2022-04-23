@@ -34,7 +34,9 @@ namespace Dml
             IDMLDevice* dmlDevice,
             ID3D12Device* d3d12Device,
             ID3D12CommandQueue* queue,
-            bool enableMetacommands = true);
+            bool enableMetacommands = true,
+            bool enableGraphFusion = true
+        );
 
         void ReleaseCompletedReferences();
 
@@ -167,6 +169,7 @@ namespace Dml
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
         bool m_areMetacommandsEnabled = true;
+        bool m_isGraphFusionEnabled = true;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
@@ -224,7 +227,8 @@ namespace Dml
         explicit ExecutionProvider(
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* commandQueue,
-            bool enableMetacommands = true
+            bool enableMetacommands = true,
+            bool graphFusionEnabled = true
         );
         
         std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const final override

@@ -48,7 +48,9 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
-        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph = nullptr);
+        std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph = nullptr,
+        bool isGraphFusionEnabled = true
+    );
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     PartitionGraph(
@@ -57,7 +59,8 @@ namespace Dml
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
-        const std::string& partitionKernelPrefix
+        const std::string& partitionKernelPrefix,
+        bool isGraphFusionEnabled
     );
 
     bool IsNodeSupportedByDml(
