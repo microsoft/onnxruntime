@@ -11,5 +11,3 @@ jobs:
         with:
           python-version: "3.10"
       - uses: isort/isort-action@master
-        with:
-            requirementsFiles: "requirements-dev.txt"
