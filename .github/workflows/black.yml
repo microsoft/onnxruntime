@@ -1,0 +1,18 @@
+name: Lint Python with black
+
+on: [pull_request]
+
+jobs:
+  linter_name:
+    name: runner / black formatter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: reviewdog/action-black@v2
+        with:
+          github_token: ${{ secrets.github_token }}
+          # Change reviewdog reporter if you need [github-pr-check, github-check].
+          reporter: github-check
+          # Change reporter level if you need.
+          # GitHub Status Check won't become failure with a warning.
+          level: error
