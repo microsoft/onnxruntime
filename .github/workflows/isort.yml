@@ -1,6 +1,5 @@
 name: Lint Python with isort
 on:
-  - push
   - pull_request
 
 jobs:
