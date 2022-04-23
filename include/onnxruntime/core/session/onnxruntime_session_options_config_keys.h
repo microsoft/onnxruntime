@@ -113,9 +113,3 @@ static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "e
 // The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
 // Available since version 1.11.
 static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";
-
-// Disable DML_GRAPH fusion, enabling optimized .ort files to be reloadable.
-// "0": default enabled. ORT compiles partitions of the graph into a single DML_GRAPH nodes.
-// "1": disable. ORT avoids graph fusion.
-// Available since version 1.12.
-static const char* const kOrtSessionOptionsConfigDmlEpDisableGraphFusion = "ep.dml.disable_graph_fusion";

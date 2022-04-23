@@ -73,12 +73,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
     ORT_THROW_HR(E_INVALIDARG);
   }
 
-  bool graph_fusion_enabled = true;
-  std::string graph_fusion_value;
-  if (options->value.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigDmlEpDisableGraphFusion, graph_fusion_value))
-  {
-      graph_fusion_enabled = (graph_fusion_value == "0");
-  }
+  bool graph_fusion_enabled = options->value.graph_optimization_level > TransformerLevel::Level1;
 
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(dml_device->GetParentDevice(IID_PPV_ARGS(&d3d12_device)));
