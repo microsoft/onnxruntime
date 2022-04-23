@@ -20,6 +20,32 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-check
+          level: error
+      - name: pyflakes
+        uses: reviewdog/action-pyflakes@master
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+      - name: misspell # Check spellings as well
+        uses: reviewdog/action-misspell@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          locale: "US"
+          reporter: github-pr-check
+          level: info
+
+  lint-isort:
+    # Separated isort from other Python linters because isort does not
+    # report inline annotation (yet). We want this job to fail and not affect other linters
+    name: Lint Python import order
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+      - uses: isort/isort-action@master
 
   lint-cpp:
     name: Lint C++
@@ -40,5 +66,5 @@ jobs:
       - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-check
-          eslint_flags: '--ext .ts --ext .tsx'
-          workdir: 'js/'
+          eslint_flags: "--ext .ts --ext .tsx"
+          workdir: "js/"
