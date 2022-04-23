@@ -5,7 +5,8 @@ echo "$1"
 if [ ! "$1" = "8.2" ]
 then
     CUR_PWD=$(pwd)
-    cd cmake/external/onnx-tensorrt/
+    cd cmake/external
+    cd onnx-tensorrt
     git remote update
     if [ "$1" = "8.0" ]
     then 
@@ -14,6 +15,11 @@ then
     if [ "$1" = "7.2" ]
     then 
         git checkout "$1"'.1'
-    fi
+    fi 
+    cd ..
+    cd protobuf 
+    git checkout 3.10.x
+    cd .. 
     cd $CUR_PWD 
 fi
+
