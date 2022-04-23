@@ -34,7 +34,7 @@ echo "$PROTO_VER"
 if [[ $PROTO_VER < "3.11.0" ]]
 then 
     cd protobuf 
-    CHECKOUT_VER=$($(echo $PROTO_VER | grep -oP -m 1 '\d+\.\d+\.')x)
+    CHECKOUT_VER=$(echo $PROTO_VER | grep -oP -m 1 '\d+\.\d+\.')x
     git checkout 3.10.x
     cd .. 
 fi
