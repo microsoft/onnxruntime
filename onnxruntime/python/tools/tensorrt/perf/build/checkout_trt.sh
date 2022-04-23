@@ -1,11 +1,14 @@
 #!/bin/bash 
 
-echo "checking out onnx-tensorrt for correct version"
+echo "checking out submodule versions"
+
+CUR_PWD=$(pwd)
+cd cmake/external
+
+# Point to correct onnx-tensorrt
 echo "$1"
 if [ ! "$1" = "8.2" ]
 then
-    CUR_PWD=$(pwd)
-    cd cmake/external
     cd onnx-tensorrt
     git remote update
     if [ "$1" = "8.0" ]
@@ -17,9 +20,14 @@ then
         git checkout "$1"'.1'
     fi 
     cd ..
+fi
+
+# Point to correct protobuf
+UBUNTU_VERSION=$(lsb_release -rs)
+if [$UBUNTU_VERSION = "18.04"]
+then 
     cd protobuf 
     git checkout 3.10.x
     cd .. 
-    cd $CUR_PWD 
 fi
-
+cd $CUR_PWD 

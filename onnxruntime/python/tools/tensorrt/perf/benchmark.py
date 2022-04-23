@@ -748,15 +748,16 @@ def get_cudnn_version(workspace):
     cudnn_version = major + '.' + minor + '.' + patch 
     return cudnn_version
 
-def get_system_info(workspace):
+def get_system_info(args):
     info = {}
     info["cuda"] = get_cuda_version()
-    info["trt"] = get_trt_version(workspace)
-    info["cudnn"] = get_cudnn_version(workspace)
+    info["trt"] = get_trt_version(args.workspace)
+    info["cudnn"] = get_cudnn_version(args.workspace)
     info["linux_distro"] = get_linux_distro()
     info["cpu_info"] = get_cpu_info()
     info["gpu_info"] = get_gpu_info()
     info["memory"] = get_memory_info()
+    info["ep_option_overrides"] = {trt_ep: args.trt_ep_options, cuda_ep: args.cuda_ep_options}
 
     return info
 
@@ -905,18 +906,32 @@ def run_symbolic_shape_inference(model_path, new_model_path):
         logger.error(e)
         return False, "Symbolic shape inference error"
 
-def time_and_create_session(model_path, providers, session_options):
+def get_provider_options(providers, trt_ep_options, cuda_ep_options):
+    provider_options = []
+
+    for ep in providers:
+        if ep == trt_ep:
+            provider_options.append(trt_ep_options)
+        elif ep == cuda_ep:
+            provider_options.append(cuda_ep_options)
+        else:
+            provider_options.append({})
+
+    return provider_options
+
+def time_and_create_session(model_path, providers, provider_options, session_options):
     start = datetime.now()
-    session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
+    session = onnxruntime.InferenceSession(model_path, providers=providers, provider_options=provider_options,
+                                           sess_options=session_options)
     end = datetime.now()
     creation_time = (end - start).total_seconds()
     return session, creation_time
 
-def create_session(model_path, providers, session_options):
+def create_session(model_path, providers, provider_options, session_options):
     logger.info(model_path)
 
     try:
-        return time_and_create_session(model_path, providers, session_options)
+        return time_and_create_session(model_path, providers, provider_options, session_options)
     except Exception as e:
         # shape inference required on model
         if "shape inference" in str(e):
@@ -927,7 +942,7 @@ def create_session(model_path, providers, session_options):
                 if not status[0]: # symbolic shape inference error
                     e = status[1]
                     raise Exception(e)            
-            return time_and_create_session(new_model_path, providers, session_options)
+            return time_and_create_session(new_model_path, providers, provider_options, session_options)
         else:
             raise Exception(e) 
 
@@ -996,11 +1011,10 @@ def run_onnxruntime(args, models):
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
 
             # Set environment variables for ort-trt benchmarking 
+            trt_ep_options = copy.deepcopy(args.trt_ep_options)
             if "ORT-TRT" in ep:
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
-                os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "4294967296"
-                if args.enable_cache:
-                    os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
+                trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
+
             fp16 = False
             
             # use float16.py for cuda fp16 only            
@@ -1056,6 +1070,7 @@ def run_onnxruntime(args, models):
                 else:         
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
+                    provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
                     options = onnxruntime.SessionOptions()
                     
                     enablement = args.graph_enablement
@@ -1070,7 +1085,7 @@ def run_onnxruntime(args, models):
                     
                     # create onnxruntime inference session
                     try:
-                        sess, second_creation_time = create_session(model_path, providers, options)
+                        sess, second_creation_time = create_session(model_path, providers, provider_options, options)
 
                     except Exception as e:
                         logger.error(e)
@@ -1082,6 +1097,7 @@ def run_onnxruntime(args, models):
                     
                     logger.info("start to inference {} with {} ...".format(name, ep))
                     logger.info(sess.get_providers())
+                    logger.info(sess.get_provider_options())
 
                     if sess:
                         logger.info("Model inputs nodes:")
@@ -1099,7 +1115,7 @@ def run_onnxruntime(args, models):
                         "fp16": fp16,
                         "io_binding": args.io_binding,
                         "graph_optimizations": args.graph_enablement,
-                        "enable_cache": args.enable_cache,
+                        "enable_cache": args.trt_ep_options.get("trt_engine_cache_enable", "False"),
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
                         "batch_size": batch_size,
@@ -1147,9 +1163,12 @@ def run_onnxruntime(args, models):
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 time.sleep(1) # avoid to generate same profile file name
 
+                providers = ep_to_provider_list[ep]
+                provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
+
                 # create onnxruntime inference session
                 try:
-                    sess, creation_time = create_session(model_path, ep_to_provider_list[ep], options)
+                    sess, creation_time = create_session(model_path, providers, provider_options, options)
 
                 except Exception as e:
                     logger.error(e)
@@ -1163,6 +1182,7 @@ def run_onnxruntime(args, models):
 
                 logger.info("start to inference {} with {} ...".format(name, ep))
                 logger.info(sess.get_providers())
+                logger.info(sess.get_provider_options())
 
                 if sess:
                     logger.info("Model inputs nodes:")
@@ -1370,11 +1390,13 @@ def output_specs(info, csv_filename):
     tensorrt_version = info['trt'] + ' , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32).'
     cuda_version = info['cuda']
     cudnn_version = info['cudnn']
+    ep_option_overrides = json.dumps(info['ep_option_overrides'])
 
-    table = pd.DataFrame({'.': [1, 2, 3, 4, 5],
-                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN'], 
-                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version]})
-    table.to_csv(csv_filename, index=False)   
+    table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6],
+                          'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'EPOptionOverrides'],
+                          'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version,
+                                      ep_option_overrides]})
+    table.to_csv(csv_filename, index=False)
 
 def output_session_creation(results, csv_filename):
     need_write_header = True 
@@ -1671,7 +1693,27 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+class ParseDictArgAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string):
+        dict_arg = {}
+
+        for kv in values.split(","):
+            try:
+                k, v = kv.split("=")
+            except ValueError:
+                parser.error("argument {opt_str}: Expected '=' between key and value".format(opt_str=option_string))
+
+            if k in dict_arg:
+                parser.error("argument {opt_str}: Specified duplicate key '{dup_key}'".format(opt_str=option_string, dup_key=k))
+
+            dict_arg[k] = v
+
+        setattr(namespace, self.dest, dict_arg)
+
 def parse_arguments():
+    # Used by argparse to display usage information for custom inputs.
+    dict_arg_metavar = "Opt1=Val1,Opt2=Val2..."
+
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-c", "--comparison", required=False, default="cuda_trt", choices=["cuda_trt", "acl"], help="EPs to compare: CPU vs. CUDA vs. TRT or CPU vs. ACL")
@@ -1687,14 +1729,18 @@ def parse_arguments():
     parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
     parser.add_argument("-e", "--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
+
+    parser.add_argument("--trt_ep_options", required=False, default={"trt_engine_cache_enable": "True", "trt_max_workspace_size": "4294967296"},
+                        action=ParseDictArgAction, metavar=dict_arg_metavar, help="Specify options for the ORT TensorRT Execution Provider")
     
+    parser.add_argument("--cuda_ep_options", required=False, default={}, action=ParseDictArgAction, metavar=dict_arg_metavar,
+                        help="Specify options for the ORT CUDA Execution Provider")
+
     parser.add_argument("-z", "--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
     parser.add_argument("-b", "--io_binding", required=False, default=False, help="Bind Inputs")
     
     parser.add_argument("-g", "--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimization enablement.")
-
-    parser.add_argument("-n", "--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.") 
 
@@ -1722,6 +1768,7 @@ def parse_arguments():
     parser.add_argument("--system_info_csv", required=False, default=None, help="")
 
     args = parser.parse_args()
+
     return args
 
 def setup_logger(verbose):
