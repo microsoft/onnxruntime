@@ -52,7 +52,7 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     cd cmake/external/onnx-tensorrt/ &&\
     git remote update &&\
     git checkout 7.2.1 &&\
-    cd $CUR_PWD
+    cd $CUR_PWD &&\
     /bin/sh build.sh --parallel --build_shared_lib --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd .. 
