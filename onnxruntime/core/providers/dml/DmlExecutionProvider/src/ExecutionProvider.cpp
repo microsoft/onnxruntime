@@ -62,8 +62,10 @@ namespace Dml
     ExecutionProvider::ExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider)
+        bool enableMetacommands,
+        bool enableGraphFusion
+    ) :
+        IExecutionProvider(onnxruntime::kDmlExecutionProvider)
     {
         D3D12_COMMAND_LIST_TYPE queueType = commandQueue->GetDesc().Type;
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -75,7 +77,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
+        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands, enableGraphFusion);
 
         // Register the allocators with ORT, through concrete ORT methods on the IExecutionProvider base class
         InsertAllocator(m_impl->GetGpuAllocator());
@@ -147,10 +149,17 @@ namespace Dml
 // Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
 #define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
 
-    ExecutionProviderImpl::ExecutionProviderImpl(IDMLDevice* dmlDevice, ID3D12Device* d3d12Device, ID3D12CommandQueue* queue, bool enableMetacommands)
-        : m_d3d12Device(d3d12Device),
-          m_dmlDevice(dmlDevice),
-          m_areMetacommandsEnabled(enableMetacommands)
+    ExecutionProviderImpl::ExecutionProviderImpl(
+        IDMLDevice* dmlDevice,
+        ID3D12Device* d3d12Device,
+        ID3D12CommandQueue* queue,
+        bool enableMetacommands,
+        bool enableGraphFusion
+    ) :
+        m_d3d12Device(d3d12Device),
+        m_dmlDevice(dmlDevice),
+        m_areMetacommandsEnabled(enableMetacommands),
+        m_isGraphFusionEnabled(enableGraphFusion)
     {
 
         D3D12_FEATURE_DATA_FEATURE_LEVELS featureLevels = {};
@@ -532,7 +541,8 @@ namespace Dml
             registries,
             deviceDataTypeMask,
             m_kernelRegistry.get(),
-            partitionKernelPrefix
+            partitionKernelPrefix,
+            m_isGraphFusionEnabled
         );
     }
     
@@ -803,9 +813,11 @@ namespace Dml
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
         IDMLDevice* dmlDevice,
         ID3D12CommandQueue* commandQueue,
-        bool enableMetacommands)
+        bool enableMetacommands,
+        bool graphFusionEnabled
+        )
     {
-        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
+        return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands, graphFusionEnabled);
     }
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)

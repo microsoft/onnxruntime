@@ -20,14 +20,19 @@ using Microsoft::WRL::ComPtr;
 #include "DmlExecutionProvider/src/ErrorHandling.h"
 #include "DmlExecutionProvider/src/GraphicsUnknownHelper.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
 
 struct DMLProviderFactory : IExecutionProviderFactory {
   DMLProviderFactory(IDMLDevice* dml_device,
-                     ID3D12CommandQueue* cmd_queue) : dml_device_(dml_device),
-                                                      cmd_queue_(cmd_queue) {}
+                     ID3D12CommandQueue* cmd_queue,
+                     bool graph_fusion_enabled) : dml_device_(dml_device),
+                                                  cmd_queue_(cmd_queue),
+                                                  graph_fusion_enabled_(graph_fusion_enabled)
+  {}
+
   ~DMLProviderFactory() override {}
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
@@ -40,10 +45,11 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
   AllocatorRoundingMode rounding_mode_ = AllocatorRoundingMode::Enabled;
   bool metacommands_enabled_ = true;
+  bool graph_fusion_enabled_ = true;
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
-  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_, graph_fusion_enabled_);
   Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
 }
@@ -57,8 +63,8 @@ void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(IDMLDevice* dml_device,
-                                                                              ID3D12CommandQueue* cmd_queue) {
-#ifndef _GAMING_XBOX
+                                                                              ID3D12CommandQueue* cmd_queue,
+                                                                              _In_ OrtSessionOptions* options) {
   // Validate that the D3D12 devices match between DML and the command queue. This specifically asks for IUnknown in
   // order to be able to compare the pointers for COM object identity.
   ComPtr<IUnknown> d3d12_device_0;
@@ -71,12 +77,19 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   }
 #endif
 
+  bool graph_fusion_enabled = true;
+  std::string graph_fusion_value;
+  if (options->value.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigDmlEpDisableGraphFusion, graph_fusion_value))
+  {
+      graph_fusion_enabled = (graph_fusion_value == "0");
+  }
+
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(dml_device->GetParentDevice(IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
   const Env& env = Env::Default();
   auto luid = d3d12_device->GetAdapterLuid();
   env.GetTelemetryProvider().LogExecutionProviderEvent(&luid);
-  return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue);
+  return std::make_shared<onnxruntime::DMLProviderFactory>(dml_device, cmd_queue, graph_fusion_enabled);
 }
 
 void DmlConfigureProviderFactoryDefaultRoundingMode(IExecutionProviderFactory* factory, AllocatorRoundingMode rounding_mode) {
@@ -103,7 +116,7 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id, _In_ OrtSessionOptions* options) {
 #ifdef _GAMING_XBOX
     ComPtr<ID3D12Device> d3d12_device;
     D3D12XBOX_CREATE_DEVICE_PARAMETERS params = {};
@@ -152,7 +165,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
                                    DML_FEATURE_LEVEL_2_0,
                                    IID_PPV_ARGS(&dml_device)));
 
-  return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
+  return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get(), options);
 }
 
 }  // namespace onnxruntime
@@ -162,7 +175,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
 // The OrtSessionOptionsAppendExecutionProvider_DML export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
 API_IMPL_BEGIN
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(device_id));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(device_id, options));
 API_IMPL_END
   return nullptr;
 }
@@ -174,7 +187,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSess
                     _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue) {
 API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(dml_device,
-                                                                                        cmd_queue));
+                                                                                        cmd_queue,
+                                                                                        options));
 API_IMPL_END
   return nullptr;
 }
