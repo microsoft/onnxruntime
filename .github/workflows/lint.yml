@@ -27,13 +27,6 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-      - name: misspell # Check spellings as well
-        uses: reviewdog/action-misspell@v1
-        with:
-          github_token: ${{ secrets.github_token }}
-          locale: "US"
-          reporter: github-pr-check
-          level: info
 
   lint-isort:
     # Separated isort from other Python linters because isort does not
@@ -68,3 +61,39 @@ jobs:
           reporter: github-pr-check
           eslint_flags: "--ext .ts --ext .tsx"
           workdir: "js/"
+
+  lint-misc:
+    name: All other lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: misspell  # Check spellings as well
+        uses: reviewdog/action-misspell@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          locale: "US"
+          reporter: github-pr-check
+          level: info
+      - name: shellcheck  # Static check shell scripts
+        uses: reviewdog/action-shellcheck@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: info
+      - name: detect-secrets
+        uses: reviewdog/action-detect-secrets@master
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+      - name: markdownlint
+        uses: reviewdog/action-markdownlint@v0.1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-check
+          level: info
+      - uses: reviewdog/action-alex@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: info
