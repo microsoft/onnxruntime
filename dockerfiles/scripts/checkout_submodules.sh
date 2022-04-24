@@ -25,7 +25,8 @@ fi
 # Point to correct protobuf
 PROTO_VER=$(apt list | grep -oP -m 1 'protobuf-compiler.* \K3[\.\d]+')
 echo "$PROTO_VER"
-if [[ $PROTO_VER < "3.11.0" ]]
+
+if awk 'BEGIN{exit !(ARGV[1]<ARGV[2])}' "$PROTO_VER" "3.11.0"
 then 
     cd protobuf 
     CHECKOUT_BRANCH=$(echo $PROTO_VER | grep -oP -m 1 '\d+\.\d+\.')x
