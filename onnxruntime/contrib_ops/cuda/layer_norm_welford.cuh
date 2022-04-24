@@ -24,7 +24,6 @@ limitations under the License.
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "contrib_ops/cuda/layer_norm_welford.cuh"
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
 
@@ -35,6 +34,7 @@ namespace contrib {
 namespace cuda {
 
 constexpr int kWarpSize = 32;
+constexpr int KBlockSizeWrapImpl = 128;
 
 template <typename ComputeType>
 __device__ inline ComputeType rsqrt(const ComputeType& x) {
@@ -77,12 +77,12 @@ __inline__ __device__ double Div<double>(double a, double b) {
   return a / b;
 }
 
-// int64_t GetNumBlocksWrap(const int64_t rows, const int64_t block_size, int64_t const thread_group_width) {
-//   const int64_t thread_groups_per_block = block_size / thread_group_width;
-//   const int64_t num_blocks =
-//       (rows + thread_groups_per_block - 1) / thread_groups_per_block;
-//   return num_blocks;
-// }
+int64_t GetNumBlocksWrapImpl(const int64_t rows, int64_t const thread_group_width) {
+  const int64_t thread_groups_per_block = KBlockSizeWrapImpl / thread_group_width;
+  const int64_t num_blocks =
+      (rows + thread_groups_per_block - 1) / thread_groups_per_block;
+  return num_blocks;
+}
 
 template<class Func>
 inline cudaError_t GetNumBlocks(Func func, int64_t block_size, size_t dynamic_smem_size,
@@ -172,6 +172,47 @@ struct DirectLoadSkip {
   const SRC* src;
   const SRC* skip;
   const SRC* bias;
+  int64_t row_size;
+};
+
+template<typename DST>
+struct DirectLoadSkip<half, DST> {
+  DirectLoadSkip(const half* src, const half* skip, const half* bias, int64_t row_size) : src(src), skip(skip), bias(bias), row_size(row_size) {}
+  template<int N>
+  __device__ typename std::enable_if<N % 2 != 0, void>::type load(DST* dst, int64_t row, int64_t col) const {
+    Pack<half, N> pack;
+    const int64_t offset = (row * row_size + col) / N;
+    pack.storage = *(reinterpret_cast<const PackType<half, N>*>(src) + offset);
+    Pack<half, N> pack_skip;
+    pack_skip.storage = *(reinterpret_cast<const PackType<half, N>*>(skip) + offset);
+#pragma unroll
+    for (int i = 0; i < N; ++i) { dst[i] = (bias == nullptr) ? static_cast<DST>(pack.elem[i]) + static_cast<DST>(pack_skip.elem[i]) : static_cast<DST>(pack.elem[i]) + static_cast<DST>(pack_skip.elem[i]) + static_cast<DST>(bias[col]); }
+  } 
+
+  template<int N>
+  __device__ typename std::enable_if<N % 2 == 0, void>::type load(DST* dst, int64_t row, int64_t col) const {
+    Pack<half, N> pack;
+    const int64_t offset = (row * row_size + col) / N;
+    pack.storage = *(reinterpret_cast<const PackType<half, N>*>(src) + offset);
+    Pack<half, N> pack_skip;
+    pack_skip.storage = *(reinterpret_cast<const PackType<half, N>*>(skip) + offset);
+    #pragma unroll
+    for (int i = 0; i < N / 2; ++i) {
+      const half2 pack2 = __halves2half2(pack.elem[i], pack.elem[i + 1]);
+      const half2 pack_size2 = __halves2half2(pack_skip.elem[i], pack_skip.elem[i + 1]);
+      half2 res = AddHalf2(pack2, pack_size2);
+      if (bias == nullptr) {
+        dst[i] = static_cast<DST>(res.x);
+        dst[i + 1] = static_cast<DST>(res.y);
+      } else {
+        dst[i] = static_cast<DST>(res.x + bias[col]); 
+        dst[i + 1] = static_cast<DST>(res.y + bias[col]);
+      }
+    }
+  }
+  const half* src;
+  const half* skip;
+  const half* bias;
   int64_t row_size;
 };
 
@@ -451,7 +492,8 @@ typename std::enable_if<pack_size == 1, cudaError_t>::type DispatchLayerNormWarp
   if (cols <= 0) { return cudaErrorInvalidValue; }
 #define DEFINE_ONE_ELIF(thread_group_width)                                                   \
   else if (cols <= (thread_group_width)*pack_size) {                                          \
-    if (rows % 2 == 0) {                                                                      \
+    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                       \
+    if (rows % 2 == 0 && block_num > 1024) {                                                  \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
                                               thread_group_width, 2>(                         \
           stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
@@ -518,7 +560,8 @@ typename std::enable_if<pack_size == 2, cudaError_t>::type DispatchLayerNormWarp
   if (cols <= 0) { return cudaErrorInvalidValue; }
 #define DEFINE_ONE_ELIF(thread_group_width)                                                   \
   else if (cols <= (thread_group_width)*pack_size) {                                          \
-    if (rows % 2 == 0) {                                                                      \
+    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                       \
+    if (rows % 2 == 0 && block_num > 1024) {                                                  \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
                                               thread_group_width, 2>(                         \
           stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
@@ -568,7 +611,8 @@ typename std::enable_if<pack_size == 4, cudaError_t>::type DispatchLayerNormWarp
   if (cols <= 0) { return cudaErrorInvalidValue; }
 #define DEFINE_ONE_ELIF(thread_group_width)                                                   \
   else if (cols <= (thread_group_width)*pack_size) {                                          \
-    if (rows % 2 == 0) {                                                                      \
+    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                       \
+    if (rows % 2 == 0 && block_num > 1024) {                                                  \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
                                               thread_group_width, 2>(                         \
           stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
@@ -679,7 +723,7 @@ __global__ void LayerNormBlockSMemImpl(LOAD load, STORE store, const int64_t row
   }
 }
 
-template<typename LOAD, typename STORE, typename ComputeType, int pack_size, int block_size, bool simplified>
+template<typename LOAD, typename STORE, typename ComputeType, int pack_size, bool simplified, int block_size>
 inline cudaError_t LaunchLayerNormBlockSMemImpl(cudaStream_t stream, LOAD load, STORE store,
                                                 int smem, const int64_t rows, const int64_t cols,
                                                 const double epsilon, ComputeType* mean,
@@ -919,6 +963,7 @@ DispatchLayerNorm(cudaStream_t stream, LOAD load, STORE store, const int64_t row
   return DispatchLayerNormBlockUncachedImpl<LOAD, STORE, ComputeType, simplified>(
       stream, load, store, rows, cols, epsilon, mean, inv_variance);
 }
+
 
 }  // namespace cuda
 }  // namespace contrib
