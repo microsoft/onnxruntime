@@ -48,8 +48,8 @@ jobs:
           level: info
           markdownlint_flags: "--disable MD013 MD041 MD033 MD034 ."
 
-  lint-isort:
-    # Separated isort from other Python linters because we want this job to
+  lint-python-format:
+    # Separated black/isort from other Python linters because we want this job to
     # fail and not affect other linters
     name: Lint Python import order
     runs-on: ubuntu-latest
@@ -58,15 +58,10 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: "3.10"
+      - uses: psf/black@stable
+        with:
+          options: "--check --diff --color"
       - uses: isort/isort-action@master
-        with:
-          configuration: ""
-      - name: suggester / isort
-        uses: reviewdog/action-suggester@v1
-        with:
-          tool_name: isort
-        # action-suggester resets git automatically
-      # - uses: isort/isort-action@master  # Run isort again to fail the check if imports are not sorted
 
   lint-cpp:
     name: Lint C++
