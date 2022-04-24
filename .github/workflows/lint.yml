@@ -12,7 +12,7 @@ jobs:
         with:
           github_token: ${{ secrets.github_token }}
           # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
-          reporter: github-pr-review
+          reporter: github-pr-check
           # Change reporter level if you need.
           # GitHub Status Check won't become failure with a warning.
           level: error
@@ -65,8 +65,6 @@ jobs:
         uses: reviewdog/action-suggester@v1
         with:
           tool_name: isort
-        # action-suggester resets git automatically
-      - uses: isort/isort-action@master  # Run isort again to fail the check if imports are not sorted
 
   lint-cpp:
     name: Lint C++
