@@ -1384,7 +1384,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         if args.code_coverage:
             adb_shell(
                 'cd {0} && GCOV_PREFIX={0} GCOV_PREFIX_STRIP={1} {2}'.format(
-                    device_dir, cwd.count(os.sep) + 1, cmd))
+                    device_dir, 2, cmd))
         else:
             adb_shell('cd {} && {}'.format(device_dir, cmd))
 
