@@ -103,11 +103,6 @@ jobs:
     clean: all
   condition: succeeded()
   steps:
-    - script: |
-        set -ex
-        system_profiler SPSoftwareDataType SPHardwareDataType
-      displayName: 'Mac Agent Info'
-
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
@@ -238,11 +233,6 @@ jobs:
   dependsOn: Build_NNAPI_EP
   condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   steps:
-    - script: |
-        set -ex
-        system_profiler SPSoftwareDataType SPHardwareDataType
-      displayName: 'Mac Agent Info'
-
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
@@ -325,11 +315,6 @@ jobs:
       displayName: Use Python $(pythonVersion)
       inputs:
         versionSpec: $(pythonVersion)
-
-    - script: |
-        set -ex
-        system_profiler SPSoftwareDataType SPHardwareDataType
-      displayName: 'Mac Agent Info'
 
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
