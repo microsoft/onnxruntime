@@ -75,7 +75,7 @@ jobs:
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: Copy test data 
+    displayName: Copy test data
     inputs:
       contents: 'build/**/testdata/**'
       targetFolder: $(Build.ArtifactStagingDirectory)
@@ -225,12 +225,12 @@ jobs:
       contents: 'build_nnapi/**/*.gcno'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
-      
+
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: $(Build.ArtifactStagingDirectory)
       artifactName: NNAPIBuildOutput
-      
+
   - template: templates/clean-agent-build-directory-step.yml
 
 - job: Test_NNAPI_EP
@@ -248,6 +248,10 @@ jobs:
         artifact: 'NNAPIBuildOutput'
         path: $(Build.SourcesDirectory)
 
+    - script: |
+        find . $(Build.SourcesDirectory)
+      displayName: Check Downloads
+
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
       inputs:
@@ -260,7 +264,7 @@ jobs:
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android emulator
-      
+
     - script: |
         python3 tools/ci_build/build.py \
         --android \
@@ -275,11 +279,16 @@ jobs:
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
     - script: |
+        find . $(Build.SourcesDirectory)
+      displayName: Check Test Output
+
+    - script: |
         python3 -m pip install gcovr && \
         python3 tools/ci_build/coverage.py \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME
       displayName: Retrieve runtime code coverage files from the emulator and analyze
+
     - script: cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
       displayName: Print coverage report
 
@@ -325,7 +334,7 @@ jobs:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Stop Android emulator
       condition: always()
-      
+
     - template: templates/clean-agent-build-directory-step.yml
 
 # The below jobs only run on master build
@@ -356,7 +365,7 @@ jobs:
           $(Build.BinariesDirectory)/protobuf \
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
- 
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -390,7 +399,7 @@ jobs:
         --build_java \
         --code_coverage
       displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
-      
+
     - script: |
         python3 -m pip install gcovr && \
         python3 tools/ci_build/coverage.py \
@@ -418,9 +427,9 @@ jobs:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Stop Android emulator
       condition: always()
-      
+
     - template: templates/clean-agent-build-directory-step.yml
-      
+
 - job: Update_Dashboard
   workspace:
     clean: all
@@ -429,7 +438,7 @@ jobs:
     value: true
   pool: 'Linux-CPU-2019'
   condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  dependsOn: 
+  dependsOn:
   - Test_CPU_EP
   - NNAPI_EP_MASTER
   steps:
@@ -447,5 +456,5 @@ jobs:
         scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
         arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
         workingDirectory: '$(Build.BinariesDirectory)'
-      
+
     - template: templates/clean-agent-build-directory-step.yml
