@@ -3,7 +3,7 @@
 echo "checking out submodule versions"
 
 CUR_PWD=$(pwd)
-cd cmake/external
+cd onnxruntime/cmake/external
 
 # Point to correct onnx-tensorrt
 echo "$1"
