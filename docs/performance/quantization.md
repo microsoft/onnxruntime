@@ -28,7 +28,7 @@ Quantization in ONNX Runtime refers to 8 bit linear quantization of an ONNX mode
 
  For symmetric quantization:
  ```
- scale = abs(data_range_max, data_range_min) * 2 / (quantization_range_max - quantization_range_min)
+ scale = max(data_range_max, data_range_min) * 2 / (quantization_range_max - quantization_range_min)
  ```
 
  Zero_point represents zero in the quantization space. It is important that the floating point zero value be exactly representable in quantization space. This is because zero padding is used in many CNNs. If it is not possible to represent 0 uniquely after quantization, it will result in accuracy errors.
