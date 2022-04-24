@@ -1007,13 +1007,14 @@ def test_export_correctness_pool2d(pool_type, stride):
 @pytest.mark.parametrize("dim", [None, 0, -1])
 @pytest.mark.parametrize("keepdim", [True, False])
 def test_gradient_correctness_max(operator, dim, keepdim):
-    func = torch.min if operator == 'min' else torch.max
+    func = getattr(torch, operator)
 
     class NeuralNetMax(torch.nn.Module):
         def forward(self, input):
             if dim is None:
                 return func(input)
-            return func(input, dim=dim, keepdim=keepdim)
+            # torch.max(input, dim, keepdim) returns (max_values, max_indices)
+            return func(input, dim=dim, keepdim=keepdim)[0]
 
     N, C, D = 16, 256, 128
     device = 'cuda'
@@ -1022,7 +1023,6 @@ def test_gradient_correctness_max(operator, dim, keepdim):
 
     def run_step(model, input):
         prediction = model(input)
-        if dim is not None: prediction = prediction[0]
         loss = prediction.sum()
         loss.backward()
         return prediction
@@ -1032,6 +1032,35 @@ def test_gradient_correctness_max(operator, dim, keepdim):
         ort_input = copy.deepcopy(pt_input)
         pt_prediction = run_step(pt_model, pt_input)
         ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+@pytest.mark.parametrize("operator", ['min', 'max'])
+def test_gradient_correctness_max_two_tensors(operator):
+    func = getattr(torch, operator)
+    class NeuralNetMaxTwoTensors(torch.nn.Module):
+        def forward(self, input, other):
+            return func(input, other)
+
+    N, C, D = 16, 256, 128
+    device = 'cuda'
+    pt_model = NeuralNetMaxTwoTensors().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, *input):
+        prediction = model(*input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
+        pt_other = torch.rand((N, C, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        ort_other = copy.deepcopy(pt_other)
+        pt_prediction = run_step(pt_model, pt_input, pt_other)
+        ort_prediction = run_step(ort_model, ort_input, ort_other)
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)

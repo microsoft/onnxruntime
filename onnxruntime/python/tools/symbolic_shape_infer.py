@@ -2001,8 +2001,8 @@ class SymbolicShapeInference:
                 if (out_shape is not None and (None in out_shape or self._is_shape_contains_none_dim(out_shape))) or out_type_undefined:
                     if self.auto_merge_:
                         if node.op_type in [
-                                'Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat',
-                                'Where', 'Sum', 'Equal', 'Less', 'Greater', 'LessOrEqual', 'GreaterOrEqual'
+                            'Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat', 'Where',
+                            'Sum', 'Equal', 'Less', 'Greater', 'LessOrEqual', 'GreaterOrEqual', 'Min', 'Max'
                         ]:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in ['MatMul', 'MatMulInteger', 'MatMulInteger16']:
