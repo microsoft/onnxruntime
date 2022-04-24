@@ -77,6 +77,7 @@ jobs:
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
+          level: warning
           flags: --linelength=120
 
   lint-js:
