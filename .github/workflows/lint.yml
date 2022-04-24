@@ -62,7 +62,7 @@ jobs:
   lint-python-format:
     # Separated black/isort from other Python linters because we want this job to
     # fail and not affect other linters
-    name: Lint Python import order
+    name: Python format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
