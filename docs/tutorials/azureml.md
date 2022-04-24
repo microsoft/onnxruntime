@@ -68,7 +68,7 @@ az extension remove azure-cli-ml
 
 In the code below, we obtain a BERT model fine-tuned for question answering with the SQUAD dataset from HuggingFace.
 
-If you'd like to pre-train a BERT model from scratch, follow the instructions in Pretraining of the BERT model. And if you would like to fine-tune the model with your own dataset, refer to AzureML Bert Eval Squad or AzureML Bert Eval GLUE.
+If you'd like to pre-train a BERT model from scratch, follow the instructions in [Pre-train BERT model](https://github.com/microsoft/AzureML-BERT/blob/master/pretrain/PyTorch/notebooks/BERT_Pretrain.ipynb). And if you would like to fine-tune the model with your own dataset, refer to [AzureML Bert Eval Squad](https://github.com/microsoft/AzureML-BERT/blob/master/finetune/PyTorch/notebooks/BERT_Eval_SQUAD.ipynb) or [AzureML Bert Eval GLUE](https://github.com/microsoft/AzureML-BERT/blob/master/finetune/PyTorch/notebooks/BERT_Eval_GLUE.ipynb).
 
 ### Export the model
 
@@ -193,22 +193,17 @@ def run_pytorch(raw_data):
     logging.info("Context: ", inputs["context"])
 
     input_ids, input_mask, segment_ids, tokens = preprocess(inputs["question"], inputs["context"])
-
     model_outputs = model(torch.tensor([input_ids]),  token_type_ids=torch.tensor([segment_ids]))
-
     return postprocess(tokens, model_outputs.start_logits.detach().numpy(), model_outputs.end_logits.detach().numpy())
 
 # Run the ONNX model with ONNX Runtime
 def run(raw_data):
     logging.info("Request received")
-
     inputs = json.loads(raw_data)
-
     logging.info(inputs)
 
     # Preprocess the question and context into tokenized ids
     input_ids, input_mask, segment_ids, tokens = preprocess(inputs["question"], inputs["context"])
-
     logging.info("Running inference")
     
     # Format the inputs for ONNX Runtime
@@ -219,14 +214,11 @@ def run(raw_data):
         }
                   
     outputs = session.run(['start_logits', 'end_logits'], model_inputs)
-
     logging.info("Post-processing")  
 
     # Post process the output of the model into an answer (or an error if the question could not be answered)
     results = postprocess(tokens, outputs[0], outputs[1])
-
     logging.info(results)
-
     return results
 
 
