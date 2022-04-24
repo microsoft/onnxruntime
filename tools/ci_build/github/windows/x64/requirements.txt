@@ -1,0 +1,11 @@
+numpy==1.21.0
+mypy
+pytest
+setuptools>=41.4.0
+wheel
+git+http://github.com/onnx/onnx.git@be76ca7148396176784ba8733133b9fb1186ea0d#egg=onnx
+protobuf
+sympy==1.1.1
+flatbuffers
+tensorflow==2.8.*
+tf2onnx==1.9.*

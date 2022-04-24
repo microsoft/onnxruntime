@@ -26,8 +26,17 @@
 extern std::unique_ptr<Ort::Env> ort_env;
 
 using namespace onnxruntime::common;
-
+#ifdef USE_XNNPACK
+#include "core/framework/customregistry.h"
+#endif
 namespace onnxruntime {
+
+#ifdef USE_XNNPACK
+namespace xnnpack {
+Status GetXNNPackRegistry(CustomRegistry** xnnpack_registry);
+}
+#endif
+
 namespace test {
 // parameter is provider_name + "_" + model_path
 class ModelTest : public testing::TestWithParam<std::basic_string<ORTCHAR_T>> {};
@@ -590,6 +599,11 @@ TEST_P(ModelTest, Run) {
       so.session_logid = ToUTF8String(test_case_name);
       so.session_log_severity_level = (int)logging::Severity::kERROR;
       InferenceSession session_object(so, (**ort_env).GetEnvironment());
+#ifdef USE_XNNPACK
+      CustomRegistry* reg = nullptr;
+      ASSERT_STATUS_OK(xnnpack::GetXNNPackRegistry(&reg));
+      ASSERT_STATUS_OK(session_object.RegisterCustomRegistry(std::shared_ptr<CustomRegistry>(reg)));
+#endif
       if (provider_name == "cuda") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "rocm") {
@@ -956,6 +970,10 @@ TEST_P(ModelTest, Run) {
 #if !defined(_WIN32) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
+
+    if (Env::Default().FolderExists(ORT_TSTR("simple"))) {
+      paths.push_back(ORT_TSTR("simple"));
+    }
     while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();
