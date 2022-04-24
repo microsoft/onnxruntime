@@ -1,8 +1,8 @@
 # Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
-# 2. Nested Virutalizaiton isn't supported in Azure pipeline
-# https://developercommunity.visualstudio.com/t/enable-nested-virtualization-on-azure-pipelines/466384
+# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM, 
+# which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
 
 jobs:
 - job: Build_CPU_EP
