@@ -1154,26 +1154,28 @@ class SymbolicShapeInference:
             vi.CopyFrom(helper.make_tensor_value_info(o, elem_type, get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_aten_minmax(self, node):
-        dim_or_y = self._try_get_value(node, 1)
-        keepdim = self._try_get_value(node, 2)
+        vi = self.known_vi_[node.output[0]]
+        if len(node.input) == 1:
+            vi.CopyFrom(helper.make_tensor_value_info(
+                node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, []))
+        else: # len(node.input) == 3
+            dim = self._try_get_value(node, 1)
+            keepdim = self._try_get_value(node, 2)
+            if dim is None:
+                assert keepdim # can only handle keepdim == True case when dim is unknown.
+                output_shape = self._new_symbolic_shape(self._get_shape_rank(node, 0), node)
+            else:
+                shape = self._get_sympy_shape(node, 0)
+                dim = handle_negative_axis(dim, len(shape))
+                output_shape = shape[:dim]
+                if keepdim: output_shape += [1]
+                output_shape += shape[dim+1:]
 
-        if dim_or_y is None and keepdim is None:
-            vi = self.known_vi_[node.output[0]]
-            elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], elem_type, []))
-        else:
-            sympy_shape = self._get_sympy_shape(node, 0)
-            rank = len(sympy_shape)
-            dim = handle_negative_axis(dim_or_y, rank)
-            output_shape = sympy_shape[:dim]
-            if keepdim: output_shape += [1]
-            output_shape += sympy_shape[dim+1:]
-            for i, o in enumerate(node.output):
-                if not o:
-                    continue
-                vi = self.known_vi_[o]
-                elem_type = onnx.TensorProto.INT64 if i == 1 else self.known_vi_[node.input[0]].type.tensor_type.elem_type
-                vi.CopyFrom(helper.make_tensor_value_info(o, elem_type, get_shape_from_sympy_shape(output_shape)))
+            output_shape = get_shape_from_sympy_shape(output_shape)
+            vi.CopyFrom(helper.make_tensor_value_info(
+                node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, output_shape))
+            vi1 = self.known_vi_[node.output[1]]
+            vi1.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT64, output_shape))
 
     def _infer_aten_unfold(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
