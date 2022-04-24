@@ -66,7 +66,7 @@ jobs:
         with:
           tool_name: isort
         # action-suggester resets git automatically
-      - uses: isort/isort-action@master  # Run isort again to fail the check if imports are not sorted
+      # - uses: isort/isort-action@master  # Run isort again to fail the check if imports are not sorted
 
   lint-cpp:
     name: Lint C++
@@ -76,7 +76,7 @@ jobs:
       - uses: reviewdog/action-cpplint@master
         with:
           github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
+          reporter: github-pr-review
           level: warning
           flags: --linelength=120
 
