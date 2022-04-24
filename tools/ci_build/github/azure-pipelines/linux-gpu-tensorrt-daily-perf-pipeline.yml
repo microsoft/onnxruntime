@@ -40,6 +40,18 @@ parameters:
   type: boolean
   default: false
 
+- name: TrtEPOptions
+  displayName: TensorRT EP options
+  type: object
+  default:
+    - trt_max_workspace_size=4294967296
+    - trt_engine_cache_enable=True
+
+- name: CUDAEPOptions
+  displayName: CUDA EP options
+  type: object
+  default: []
+
 jobs:
 - job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
   workspace:
@@ -52,30 +64,38 @@ jobs:
       ${{ if eq(parameters.RunNvidiaContainer, true)}}:
         ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
           value: 21.12
-        ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
+        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
           value: 21.07
-        ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
+        ${{ elseif eq(parameters.TrtVersion, '7.2.3.4') }}:
           value: 20.12
 
     - name: dockerfile
-      ${{ if eq(parameters.RunNvidiaContainer, true)}}:
+      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
         value: nvcr.io/nvidia/tensorrt:$(trtContainerVersion)-py3
-      ${{ if eq(parameters.RunNvidiaContainer, false)}}:
+      ${{ else }}:
         ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
           value: Dockerfile.ubuntu_cuda11_4_tensorrt8_2
-        ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
+        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
           value: Dockerfile.ubuntu_cuda11_4_tensorrt8_0
-        ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
+        ${{ elseif eq(parameters.TrtVersion, '7.2.3.4') }}:
           value: Dockerfile.ubuntu_cuda11_4_tensorrt7_2
 
     - name: image
       ${{ if eq(parameters.BuildORT, true) }}:
         value: ort-$(branch)
-      ${{ if eq(parameters.BuildORT, false) }}:
+      ${{ else }}:
         value: $(dockerfile)
 
+    - name: trtEPOptionsArg
+      ${{ if not(eq(length(parameters.TrtEPOptions), 0)) }}:
+        value: --trt_ep_options ${{ join(',',parameters.TrtEPOptions) }}
+
+    - name: cudaEPOptionsArg
+      ${{ if not(eq(length(parameters.CUDAEPOptions), 0)) }}:
+        value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
+
     - name: optional_arguments
-      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
+      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
   steps:
     - ${{ if eq(parameters.BuildORT, false) }}:
@@ -99,7 +119,7 @@ jobs:
         - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
           displayName: 'Build latest ORT Image in Nvidia Container'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-      - ${{ if eq(parameters.RunNvidiaContainer, false) }}: 
+      - ${{ else }}: 
         - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(dockerfile) -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
           displayName: 'Build latest ORT Image'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
