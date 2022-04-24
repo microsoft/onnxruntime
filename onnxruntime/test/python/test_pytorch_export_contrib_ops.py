@@ -109,6 +109,15 @@ class ONNXExporterTest(unittest.TestCase):
         x = torch.randn(3, 3)
         self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
+    def test_gelu_supports_approximate_param(self):
+        # TODO(justinchu): Change this to a parameterized test
+        possible_args = ("none", "tanh")
+        for approximate in possible_args:
+            with self.subTest(approximate=approximate):
+                model = torch.nn.GELU(approximate=approximate)
+                x = torch.randn(3, 3)
+                self.run_test(model, x, custom_opsets={"com.microsoft": 1})
+
     def test_triu(self):
         for i in range(-5, 5):
             class Module(torch.nn.Module):
