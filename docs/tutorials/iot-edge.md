@@ -2,7 +2,7 @@
 title: Deploy on IoT and edge
 parent: Tutorials
 has_children: false
-nav_order: 7
+nav_order: 8
 redirect_from: /docs/get-started/with-iot
 ---
 
