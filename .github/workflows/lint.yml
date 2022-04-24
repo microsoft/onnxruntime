@@ -52,7 +52,7 @@ jobs:
           reporter: github-pr-check
           level: info
           filter_mode: file
-          markdownlint_flags: "--disable MD013 MD041 MD033 MD034 ."
+#           markdownlint_flags: "--disable MD013 MD041 MD033 MD034 ."
 
   lint-python-format:
     # Separated black/isort from other Python linters because we want this job to
