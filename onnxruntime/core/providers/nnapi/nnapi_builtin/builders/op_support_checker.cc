@@ -510,6 +510,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
           "QLinearAdd",
           "QLinearMul",
           "Pow",
+          "PRelu",
       });
 }
 
@@ -538,7 +539,7 @@ int32_t BinaryOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
-  if (op == "Pow") {
+  if (op == "Pow" || op == "PRelu") {
     return ANEURALNETWORKS_FEATURE_LEVEL_3;
   }
 
@@ -549,8 +550,9 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) cons
   const auto& op(node_unit.OpType());
 
   // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now
-  if (op != "QLinearAdd" && op != "QLinearMul")
+  if (op == "Add" || op == "Sub" || op == "Mul" || op == "Div" || op == "Pow") {
     return 7;
+  }
 
   return 1;
 }
@@ -2165,6 +2167,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Div", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Mul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Pow", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("PRelu", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAdd", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearMul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sub", BinaryOpSupportChecker);
