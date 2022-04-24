@@ -181,7 +181,7 @@ jobs:
       jdkSourceOption: 'PreInstalled'
 
   - script: |
-      export GCOV_PREFIX=/Users/runner/work/
+      export GCOV_PREFIX=/data/local/tmp
       export GCOV_PREFIX_STRIP=8
       python3 tools/ci_build/build.py \
         --android \
