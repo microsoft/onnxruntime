@@ -16,17 +16,20 @@ jobs:
           # Change reporter level if you need.
           # GitHub Status Check won't become failure with a warning.
           level: error
+          filter_mode: file
       - uses: reviewdog/action-flake8@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-check
           level: error
+          filter_mode: file
       - name: pyflakes
         uses: reviewdog/action-pyflakes@master
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
+          filter_mode: file
       - name: misspell  # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
@@ -34,18 +37,21 @@ jobs:
           locale: "US"
           reporter: github-pr-check
           level: info
+          filter_mode: file
       - name: shellcheck  # Static check shell scripts
         uses: reviewdog/action-shellcheck@v1
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: info
+          filter_mode: file
       - name: markdownlint
         uses: reviewdog/action-markdownlint@v0.1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-check
           level: info
+          filter_mode: file
           markdownlint_flags: "--disable MD013 MD041 MD033 MD034 ."
 
   lint-python-format:
@@ -73,6 +79,7 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
+          filter_mode: file
           flags: --linelength=120
 
   lint-js:
@@ -83,5 +90,7 @@ jobs:
       - uses: reviewdog/action-eslint@v1
         with:
           reporter: github-pr-check
+          level: error
+          filter_mode: file
           eslint_flags: "--ext .ts --ext .tsx"
           workdir: "js/"
