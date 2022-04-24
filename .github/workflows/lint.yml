@@ -1,6 +1,11 @@
 name: Lint
 
-on: [pull_request]
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
 
 jobs:
   lint-python:
@@ -30,7 +35,7 @@ jobs:
           reporter: github-pr-check
           level: warning
           filter_mode: file
-      - name: misspell  # Check spellings as well
+      - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
           github_token: ${{ secrets.github_token }}
@@ -38,7 +43,7 @@ jobs:
           reporter: github-pr-check
           level: info
           filter_mode: diff_context
-      - name: shellcheck  # Static check shell scripts
+      - name: shellcheck # Static check shell scripts
         uses: reviewdog/action-shellcheck@v1
         with:
           github_token: ${{ secrets.github_token }}
