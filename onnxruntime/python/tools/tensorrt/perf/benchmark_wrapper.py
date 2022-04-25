@@ -28,6 +28,9 @@ def resolve_trtexec_path(workspace):
     logger.info("using trtexec {}".format(trtexec_path))
     return trtexec_path
 
+def dict_to_args(dct):
+    return ','.join(["{}={}".format(k, v) for k, v in dct.items()])
+
 def main():
     args = parse_arguments()
     setup_logger(False)
@@ -80,6 +83,12 @@ def main():
                     continue 
                 else:
                     command.extend(["--trtexec", trtexec])
+
+            if len(args.cuda_ep_options):
+                command.extend(["--cuda_ep_options", dict_to_args(args.cuda_ep_options)])
+
+            if len(args.trt_ep_options):
+                command.extend(["--trt_ep_options", dict_to_args(args.trt_ep_options)])
 
             if args.running_mode == "validate":
                 command.extend(["--benchmark_metrics_csv", benchmark_metrics_csv])
@@ -176,7 +185,7 @@ def main():
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
-    info = get_system_info(args.workspace)
+    info = get_system_info(args)
     pretty_print(pp, info)
     logger.info("\n")
     output_specs(info, os.path.join(path, specs_csv))

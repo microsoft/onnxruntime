@@ -744,7 +744,7 @@ class OpTester {
   GetFetches() { return fetches_; }
 
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {},
-                                                 bool allow_released_onnx_opset_only = true);
+                                                 const ModelOptions& model_options = ModelOptions{});
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {

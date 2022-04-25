@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -67,7 +68,7 @@ TEST(GatherOpTest, Gather_invalid_axis) {
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
-  OpTester test("Gather"); 
+  OpTester test("Gather");
   // Invalid index 3. data[3] does not exist.
   test.AddAttribute<int64_t>("axis", 0LL);
   test.AddInput<float>("data", {3, 4},
@@ -77,8 +78,11 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
   test.AddInput<int32_t>("indices", {3}, {0LL, 1L, 1000L});
   test.AddOutput<float>("output", {1}, {1.0f});
 
-  // On Cuda it is impossible to dereference indecies memory on CPU so the check can not run
-  test.Run(OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
+  SessionOptions so;
+  // Ignore the shape inference error so that we can hit the invalid index error.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  test.Run(so, OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
+           // On Cuda it is impossible to dereference indices memory on CPU so the check can not run
            {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
@@ -97,7 +101,7 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
                          4.0f, 5.0f, 6.0f, 7.0f,
                          0.0f, 0.0f, 0.0f, 0.0f});
 
-  //On GPU, just set the value to 0 instead of report error. exclude all other providers
+  // On GPU, just set the value to 0 instead of report error. exclude all other providers
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 #endif
@@ -189,7 +193,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
                           {1, 0, 2, 1,
                            11, 10, 12, 11,
                            21, 20, 22, 21});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Input batch size is inconsistent
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint32) {
@@ -224,7 +228,7 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int16) {
                            11, 10, 12, 11,
                            21, 20, 22, 21});
 
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_uint16) {
@@ -258,11 +262,11 @@ TEST(GatherOpTest, Gather_axis1_indices2d_int8) {
                          {1, 0, 2, 1,
                           11, 10, 12, 11,
                           21, 20, 22, 21});
-  #if defined(OPENVINO_CONFIG_MYRIAD)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-  #else
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Assertion `regionRanges != nullptr' failed
+#endif
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_string) {
@@ -296,11 +300,11 @@ TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
                        {false, true, true, false,
                         true, true, false, true,
                         true, false, false, true});
-  #if defined(OPENVINO_CONFIG_MYRIAD)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
-  #else
-    test.Run();
-  #endif
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled temporarily
+#else
+  test.Run();
+#endif
 }
 
 TEST(GatherOpTest, Gather_perf) {
@@ -333,8 +337,7 @@ TEST(GatherOpTest, Gather_axis1_neg_indices2d_int8) {
                           11, 10, 12, 11,
                           21, 20, 22, 21});
   // OpenVINO EP: Disabled due to accuracy issues
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider,kOpenVINOExecutionProvider});  //TensorRT: Assertion `regionRanges != nullptr' failed
-
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT: Assertion `regionRanges != nullptr' failed
 }
 
 }  // namespace test
