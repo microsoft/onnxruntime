@@ -22,7 +22,6 @@ parameters:
   values:
   - 8.2.1.8
   - 8.0.1.6
-  - 7.2.3.4
 
 - name: ConfigureEPs
   displayName: Configure EPs (set epList variable - separate by spaces)
@@ -66,8 +65,6 @@ jobs:
           value: 21.12
         ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
           value: 21.07
-        ${{ elseif eq(parameters.TrtVersion, '7.2.3.4') }}:
-          value: 20.12
       
     - name: nvidia_dockerfile
       ${{ if eq(parameters.RunNvidiaContainer, true)}}:
@@ -87,8 +84,6 @@ jobs:
           value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_2
         ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
           value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt8_0
-        ${{ elseif eq(parameters.TrtVersion, '7.2.3.4') }}:
-          value: $(dockerfile_path)/Dockerfile.ubuntu_cuda11_4_tensorrt7_2
 
     - name: image
       ${{ if eq(parameters.BuildORT, true) }}:

@@ -15,10 +15,6 @@ then
     then 
         git checkout "$1"'-GA'
     fi
-    if [ "$1" = "7.2" ]
-    then 
-        git checkout "$1"'.1'
-    fi 
     cd ..
 fi
 
@@ -26,7 +22,8 @@ fi
 PROTO_VER=$(apt list | grep -oP -m 1 'protobuf-compiler.* \K3[\.\d]+')
 echo "$PROTO_VER"
 
-if awk 'BEGIN{exit !(ARGV[1]<ARGV[2])}' "$PROTO_VER" "3.11.0"
+#if awk 'BEGIN{exit !(ARGV[1]<ARGV[2])}' "$PROTO_VER" "3.11.0"
+if 0
 then 
     cd protobuf 
     CHECKOUT_BRANCH=$(echo $PROTO_VER | grep -oP -m 1 '\d+\.\d+\.')x
