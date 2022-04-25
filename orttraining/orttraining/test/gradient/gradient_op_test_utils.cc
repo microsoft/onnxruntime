@@ -205,6 +205,7 @@ void GradientOpTester::Run(
             if (!node.CanBeInlined()) {
               valid = false;
             } else {
+              // TODO: hanlde the nested function case.
               std::unique_ptr<Function> node_func;
               st = node.GetInstantiateFunctionBody(node_func);
               if (!st.IsOK()) {

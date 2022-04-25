@@ -52,6 +52,11 @@ struct BrokenTest {
 #ifdef GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ModelTest);
 #endif
+
+void SkipTest() {
+  GTEST_SKIP() << "Skipping single test";
+}
+
 TEST_P(ModelTest, Run) {
   std::basic_string<ORTCHAR_T> param = GetParam();
   size_t pos = param.find(ORT_TSTR("_"));
@@ -72,16 +77,19 @@ TEST_P(ModelTest, Run) {
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
     // That's one of reasons we skip those testcases and only test latest ONNX opsets.
+    SkipTest();
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
+    SkipTest();
     return;
   }
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
+    SkipTest();
     return;
   }
 #endif
@@ -396,7 +404,6 @@ TEST_P(ModelTest, Run) {
 
     // TensorRT EP CI uses Nvidia Tesla M60 which doesn't support fp16.
     broken_tests_keyword_set.insert({"FLOAT16"});
-
   }
 
   if (provider_name == "dml") {
@@ -547,14 +554,16 @@ TEST_P(ModelTest, Run) {
     if (iter != broken_tests.end() &&
         (model_version == TestModelInfo::unknown_version || iter->broken_versions_.empty() ||
          iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
+      SkipTest();
       return;
     }
 
     for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
-        std::string keyword = *iter2;
-        if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-          return;
-        }
+      std::string keyword = *iter2;
+      if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+        SkipTest();
+        return;
+      }
     }
   }
   bool is_single_node = !model_info->GetNodeName().empty();
@@ -566,7 +575,6 @@ TEST_P(ModelTest, Run) {
   // Test the model with intra op threadpool disabled
   if (provider_name == "cpu" && is_single_node)
     use_single_thread.push_back(true);
-
 
   std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
@@ -599,7 +607,7 @@ TEST_P(ModelTest, Run) {
               1000,
               1,
               1 << 30,
-              1, // enable fp16
+              1,  // enable fp16
               0,
               nullptr,
               0,
@@ -995,7 +1003,7 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
-auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
   // use info.param here to generate the test suffix
   std::basic_string<ORTCHAR_T> name = info.param;
 

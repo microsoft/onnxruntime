@@ -18,6 +18,7 @@ static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_N
   }
   return function_opset_imports;
 }
+
 // Construct it with fused index graph, instantiate the function directly
 FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
                            const IndexedSubGraph& nodes_to_fuse)
@@ -25,7 +26,8 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
         graph.GetSchemaRegistry(), 
         function_storage_proto_,
         graph.DomainToVersionMap(),
-        graph.GetLogger()) {
+        graph.GetLogger(),
+        graph.StrictShapeTypeInference()) {
   auto* meta_def = nodes_to_fuse.GetMetaDef();
 
   int i = 0;
@@ -51,9 +53,9 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   function_body_graph_.SetInputs(function_body_graph_inputs);
   function_body_graph_.SetOutputs(function_body_graph_outputs);
 
-  //Add node and node args
-  //TODO: for better performance, we could try to transfer the nodes in parent graph to sub-graph directly,
-  //instead of create new nodes.
+  // Add node and node args
+  // TODO: for better performance, we could try to transfer the nodes in parent graph to sub-graph directly,
+  // instead of create new nodes.
   for (auto& node_index : nodes_to_fuse.nodes) {
     auto node = graph.GetNode(node_index);
     std::vector<onnxruntime::NodeArg*> inputs;
@@ -101,7 +103,8 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
                            graph.GetSchemaRegistry(),
                            function_storage_proto_,
                            onnx_func.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
-                           graph.GetLogger()) {
+                           graph.GetLogger(),
+                           graph.StrictShapeTypeInference()) {
 }
 
 FunctionImpl::~FunctionImpl() = default;

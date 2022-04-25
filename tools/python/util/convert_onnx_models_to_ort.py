@@ -189,11 +189,6 @@ def parse_args():
     parser.add_argument('--allow_conversion_failures', action='store_true',
                         help='Whether to proceed after encountering model conversion failures.')
 
-    parser.add_argument('--nnapi_partitioning_stop_ops',
-                        help='Specify the list of NNAPI EP partitioning stop ops. '
-                             'In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session '
-                             'options config entry.')
-
     parser.add_argument('--target_platform', type=str, default=None, choices=['arm', 'amd64'],
                         help='Specify the target platform where the exported model will be used. '
                              'This parameter can be used to choose between platform-specific options, '
@@ -225,9 +220,6 @@ def convert_onnx_models_to_ort():
         raise FileNotFoundError("Unable to find custom operator library '{}'".format(custom_op_library))
 
     session_options_config_entries = {}
-
-    if args.nnapi_partitioning_stop_ops is not None:
-        session_options_config_entries["ep.nnapi.partitioning_stop_ops"] = args.nnapi_partitioning_stop_ops
 
     if args.target_platform == 'arm':
         session_options_config_entries["session.qdqisint8allowed"] = "1"
