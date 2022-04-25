@@ -1,9 +1,11 @@
 [tool.black]
 line-length = 120
+extend-exclude = "cmake"
 
 [tool.isort]
 profile = "black"
 line_length = 120
+extend_skip_glob = ["cmake/*"]
 
 [tool.pydocstyle]
 convention = "google"
