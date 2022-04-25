@@ -110,9 +110,9 @@ class ONNXExporterTest(unittest.TestCase):
         self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
     def test_gelu_supports_approximate_param(self):
-        # TODO(justinchu): Change this to a parameterized test
-        possible_args = ("none", "tanh")
-        for approximate in possible_args:
+        # TODO(justinchu): Change this to a parameterized test when we have
+        # parameterized as a dependency
+        for approximate in ("none", "tanh"):
             with self.subTest(approximate=approximate):
                 model = torch.nn.GELU(approximate=approximate)
                 x = torch.randn(3, 3)

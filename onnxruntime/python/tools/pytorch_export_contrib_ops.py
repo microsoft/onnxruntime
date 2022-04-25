@@ -5,6 +5,7 @@
 Support for registering ONNX Runtime's built-in contrib ops with
 PyTorch-ONNX exporter (torch.onnx.export).
 """
+# Enable postponed evaluation of annotations. See https://peps.python.org/pep-0563/
 from __future__ import annotations
 
 import typing
@@ -20,6 +21,7 @@ import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
 
 if typing.TYPE_CHECKING:
+    # Import modules needed only for type checking.
     import torch._C
 
 _OPSET_VERSION = 1
@@ -72,6 +74,8 @@ def register():
 
     def gelu(g, self: torch._C.Value, approximate: str = "none"):
         if approximate == "none":
+            # symbolic_opset9.gelu supports approximate="none", but onnxruntime
+            # implements a custom op for gelu so we respect it.
             return g.op("com.microsoft::Gelu", self).setType(self.type())
         return torch.onnx.symbolic_opset9.gelu(g, self, approximate)
     _reg(gelu)
