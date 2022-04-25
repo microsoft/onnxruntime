@@ -1,10 +1,11 @@
 import argparse
-import torch
-import onnxruntime
 
-from utils import prepare_data, get_batch
+import torch
 from ort_utils import my_loss, transformer_model_description_dynamic_axes
 from pt_model import TransformerModel
+from utils import get_batch, prepare_data
+
+import onnxruntime
 
 
 def train(trainer, data_source, device, epoch, args, bptt=35):

@@ -1,15 +1,17 @@
-import numpy as np
-from numpy.testing import assert_array_equal
-import onnxruntime as ort
-import onnx
-from onnx import helper
-from onnxruntime.nuphar.node_factory import ensure_opset
-from onnxruntime.nuphar.model_editor import convert_loop_to_scan_model
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
-import onnxruntime.tools.onnxruntime_test as ort_test
 import argparse
 import copy
 import os
+
+import numpy as np
+import onnx
+from numpy.testing import assert_array_equal
+from onnx import helper
+
+import onnxruntime as ort
+import onnxruntime.tools.onnxruntime_test as ort_test
+from onnxruntime.nuphar.model_editor import convert_loop_to_scan_model
+from onnxruntime.nuphar.node_factory import ensure_opset
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
 
 
 def run_shape_inference(input_model, output_model):

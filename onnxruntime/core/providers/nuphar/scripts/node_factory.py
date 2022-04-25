@@ -1,13 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import json
+import re
+
 # -*- coding: UTF-8 -*-
 from enum import Enum
-import json
+
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
-import re
 
 
 class NodeFactory:

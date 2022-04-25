@@ -2,13 +2,14 @@
 # Licensed under the MIT License.
 # sampler.py
 
-import torch
 import math
-import torch.distributed as dist
-from torch.utils.data.sampler import Sampler
-from torch.utils.data.dataset import Dataset
-from typing import Optional, Iterator, Callable
+from typing import Callable, Iterator, Optional
+
 import numpy as np
+import torch
+import torch.distributed as dist
+from torch.utils.data.dataset import Dataset
+from torch.utils.data.sampler import Sampler
 
 
 def _shard_wrapped_indices_across_workers(dataset_index_list, num_shards, num_samples_per_shard):

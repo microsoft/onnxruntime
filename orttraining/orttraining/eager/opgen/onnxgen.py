@@ -5,6 +5,7 @@
 
 import os.path as path
 from sys import argv
+
 from onnx import defs
 
 out_file = path.join(path.dirname(path.realpath(__file__)), "opgen", "onnxops.py")

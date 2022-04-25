@@ -2,12 +2,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import subprocess
 import os
 import shutil
+import subprocess
 import sys
+
+from _test_commons import _distributed_run, _single_run
 from checkpoint._test_helpers import makedir
-from _test_commons import _single_run, _distributed_run
 
 checkpoint_dir = os.path.abspath("checkpoint/checkpoint_dir/")
 makedir(checkpoint_dir)

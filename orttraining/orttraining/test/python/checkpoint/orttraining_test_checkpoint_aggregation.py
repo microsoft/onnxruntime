@@ -6,29 +6,29 @@
 # Refer to orttraining_test_checkpoint.py for an overview about Checkpoint tests
 ################################################################################
 
-import os
-import pickle
-from numpy.testing import assert_allclose
-import numpy as np
 import argparse
 import glob
+import os
+import pickle
+import sys
 
+import numpy as np
 import torch
 import torch.distributed as dist
-
-import sys
+from numpy.testing import assert_allclose
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import onnxruntime
-from onnxruntime.training import checkpoint
+from _test_commons import assert_all_states_close_ort
 from _test_helpers import (
-    distributed_setup,
+    aggregate_states,
     create_orttrainer_and_load_checkpoint,
     create_orttrainer_and_load_checkpoint_bart,
-    aggregate_states,
+    distributed_setup,
 )
-from _test_commons import assert_all_states_close_ort
+
+import onnxruntime
+from onnxruntime.training import checkpoint
 
 
 def test_zero_aggregation(checkpoint_dir, loaded_state_dict, is_mixedprecision):

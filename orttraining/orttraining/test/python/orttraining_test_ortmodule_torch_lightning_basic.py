@@ -1,13 +1,13 @@
 import argparse
 from multiprocessing import cpu_count
 
+import pytorch_lightning as pl
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
+from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import MNIST
-from torch.utils.data import DataLoader
-import pytorch_lightning as pl
 
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule

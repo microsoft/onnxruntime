@@ -2,9 +2,11 @@
 # Licensed under the MIT License.
 # orttraining_test_sampler.py
 
-import torch
-from onnxruntime.training.utils.data import sampler
 import random
+
+import torch
+
+from onnxruntime.training.utils.data import sampler
 
 
 class MyDataset(torch.utils.data.Dataset):

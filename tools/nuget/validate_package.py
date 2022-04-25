@@ -2,11 +2,11 @@
 # Licensed under the MIT License.
 
 import argparse
-import sys
-import os
-import zipfile  # Available Python 3.2 or higher
 import glob
+import os
 import re
+import sys
+import zipfile  # Available Python 3.2 or higher
 
 linux_gpu_package_libraries = [
     "libonnxruntime_providers_shared.so",

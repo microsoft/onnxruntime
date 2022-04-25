@@ -10,7 +10,6 @@ import sys
 from setuptools import setup
 from torch.utils import cpp_extension
 
-
 # TODO: Implement a cleaner way to auto-generate torch_gpu_allocator.cc
 use_rocm = True if os.environ["ONNXRUNTIME_ROCM_VERSION"] else False
 gpu_identifier = "hip" if use_rocm else "cuda"

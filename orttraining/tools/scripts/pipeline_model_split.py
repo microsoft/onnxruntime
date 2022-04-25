@@ -1,9 +1,8 @@
-import sys
 import os
+import sys
+
 import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 # Edge that needs to be cut for the split.
 # If the edge is feeding into more than one nodes, and not all the nodes belong to the same cut,

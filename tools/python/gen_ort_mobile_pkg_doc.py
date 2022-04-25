@@ -1,6 +1,7 @@
 import argparse
 import os
 import pathlib
+
 from util import reduced_build_config_parser
 from util.ort_format_model.operator_type_usage_processors import GloballyAllowedTypesOpTypeImplFilter
 

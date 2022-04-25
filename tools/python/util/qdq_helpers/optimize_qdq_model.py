@@ -3,9 +3,10 @@
 # Licensed under the MIT License.
 
 import argparse
-import onnx
 import os
 import pathlib
+
+import onnx
 
 from .qdq_model_utils import fix_dq_nodes_with_multiple_consumers
 

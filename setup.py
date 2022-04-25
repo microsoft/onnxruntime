@@ -3,18 +3,18 @@
 # Licensed under the MIT License.
 # ------------------------------------------------------------------------
 
-from setuptools import setup, Extension
-from distutils import log as logger
-from distutils.command.build_ext import build_ext as _build_ext
-from glob import glob, iglob
-from os import path, getcwd, environ, remove
-from shutil import copyfile
+import datetime
 import platform
 import subprocess
 import sys
-import datetime
-
+from distutils import log as logger
+from distutils.command.build_ext import build_ext as _build_ext
+from glob import glob, iglob
+from os import environ, getcwd, path, remove
 from pathlib import Path
+from shutil import copyfile
+
+from setuptools import Extension, setup
 
 nightly_build = False
 package_name = "onnxruntime"

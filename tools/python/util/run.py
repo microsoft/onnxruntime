@@ -6,7 +6,6 @@ import os
 import shlex
 import subprocess
 
-
 _log = logging.getLogger("util.run")
 
 

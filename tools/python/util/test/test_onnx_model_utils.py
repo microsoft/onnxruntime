@@ -1,21 +1,19 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import onnx
 import pathlib
 import unittest
 
-from onnx import helper
-from onnx import shape_inference
-from onnx import TensorProto
+import onnx
+from onnx import TensorProto, helper, shape_inference
 
 from ..mobile_helpers.usability_checker import check_shapes
 from ..onnx_model_utils import (
+    fix_output_shapes,
     get_producer_consumer_maps,
+    is_fixed_size_tensor,
     make_dim_param_fixed,
     make_input_shape_fixed,
-    fix_output_shapes,
-    is_fixed_size_tensor,
 )
 
 script_dir = pathlib.Path(__file__).parent

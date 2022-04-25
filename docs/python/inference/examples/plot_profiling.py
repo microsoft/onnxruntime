@@ -11,9 +11,10 @@ Profile the execution of a simple model
 *ONNX Runtime* can profile the execution of the model.
 This example shows how to interpret the results.
 """
-import onnx
-import onnxruntime as rt
 import numpy
+import onnx
+
+import onnxruntime as rt
 from onnxruntime.datasets import get_example
 
 

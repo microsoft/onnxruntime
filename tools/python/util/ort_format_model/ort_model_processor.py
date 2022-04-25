@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import ort_flatbuffers_py.fbs as fbs
+
 from .operator_type_usage_processors import OperatorTypeUsageManager
 
 

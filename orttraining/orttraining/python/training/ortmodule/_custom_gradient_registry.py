@@ -25,6 +25,7 @@
 #                     'is_tensor' is optional, if not present, the default is False.
 
 import json
+
 from onnxruntime.capi import _pybind_state as C
 
 

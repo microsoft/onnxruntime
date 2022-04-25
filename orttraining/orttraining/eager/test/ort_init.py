@@ -8,6 +8,7 @@
 # after the import, hence this test is isolated from the others.
 
 import unittest
+
 import torch
 
 

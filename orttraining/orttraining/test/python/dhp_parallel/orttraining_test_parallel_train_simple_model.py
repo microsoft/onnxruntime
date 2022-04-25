@@ -5,11 +5,12 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import onnxruntime
 import torch
+from torch import nn
+
+import onnxruntime
 from onnxruntime.capi._pybind_state import get_mpi_context_world_rank, get_mpi_context_world_size
 from onnxruntime.training import ORTTrainer, ORTTrainerOptions, optim
-from torch import nn
 
 # Get MPI setting.
 rank = get_mpi_context_world_rank()

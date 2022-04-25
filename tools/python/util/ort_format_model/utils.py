@@ -4,10 +4,9 @@
 import pathlib
 import typing
 
+from ..logger import get_logger
 from .operator_type_usage_processors import OperatorTypeUsageManager
 from .ort_model_processor import OrtFormatModelProcessor
-
-from ..logger import get_logger
 
 log = get_logger("ort_format_model.utils")
 

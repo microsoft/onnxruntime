@@ -1,15 +1,16 @@
+import copy
 import math
 import os
-import sys
 import subprocess
-import copy
+import sys
+
 import numpy as np
-from numpy.testing import assert_allclose
-import torch
 import onnx
+import torch
+from numpy.testing import assert_allclose
 
 import onnxruntime
-from onnxruntime.training import optim, _utils
+from onnxruntime.training import _utils, optim
 
 
 def _single_run(execution_file, scenario, checkopint_dir=None):

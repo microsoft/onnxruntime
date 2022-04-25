@@ -1,12 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import os
-import sys
-import shutil
 import json
+import os
+import shutil
+import sys
 
 from google.protobuf.json_format import MessageToJson
+
 
 # Current models only have one input and one output
 def get_io_name(model_file_name):
@@ -141,9 +142,10 @@ if __name__ == "__main__":
     sys.path.append(os.path.realpath(sys.argv[3]))
     sys.path.append(os.path.realpath(sys.argv[4]))
 
-    import onnxruntime
-    import predict_pb2
     import onnx_ml_pb2
+    import predict_pb2
+
+    import onnxruntime
 
     os.makedirs(test_data, exist_ok=True)
     gen_req_resp(model_zoo, test_data)

@@ -5,15 +5,17 @@
 ## Model testing is not complete.
 
 from __future__ import print_function
+
 import argparse
-import torch
+import os
+
+import numpy as np
 import onnxruntime_pybind11_state as torch_ort
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-import numpy as np
-import os
 
 dataset_root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 

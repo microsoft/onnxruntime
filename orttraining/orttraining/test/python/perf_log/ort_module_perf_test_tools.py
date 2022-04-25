@@ -1,12 +1,12 @@
 # https://docs.microsoft.com/en-us/azure/mysql/connect-python
 
+import argparse
+import os
+from datetime import datetime
+
+import git
 import mysql.connector
 from mysql.connector import errorcode
-import git
-import os
-
-import argparse
-from datetime import datetime
 
 
 def get_repo_commit(repo_path):

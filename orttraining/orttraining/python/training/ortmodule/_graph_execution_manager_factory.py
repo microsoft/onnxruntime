@@ -3,10 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from ._training_manager import TrainingManager
-from ._inference_manager import InferenceManager
-from .debug_options import DebugOptions
 from ._fallback import _FallbackManager
+from ._inference_manager import InferenceManager
+from ._training_manager import TrainingManager
+from .debug_options import DebugOptions
 
 
 class GraphExecutionManagerFactory(object):

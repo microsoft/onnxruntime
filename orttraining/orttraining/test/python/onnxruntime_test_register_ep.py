@@ -1,6 +1,7 @@
-import unittest
-import onnxruntime_pybind11_state as C
 import os
+import unittest
+
+import onnxruntime_pybind11_state as C
 
 
 class EPRegistrationTests(unittest.TestCase):

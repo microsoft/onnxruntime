@@ -2,9 +2,10 @@
 # Licensed under the MIT License.
 # _onnx_models.py
 
-from dataclasses import dataclass
-import onnx
 import os
+from dataclasses import dataclass
+
+import onnx
 import torch
 
 

@@ -1,23 +1,28 @@
-import logging
 import argparse
-import torch
-import wget
+import datetime
+import logging
 import os
-import pandas as pd
-import zipfile
-from transformers import BertTokenizer, AutoConfig
-from sklearn.model_selection import train_test_split
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-from transformers import BertForSequenceClassification, AdamW, BertConfig
-from transformers import get_linear_schedule_with_warmup
-import numpy as np
 import random
 import time
-import datetime
+import zipfile
 
+import numpy as np
+import pandas as pd
+import torch
+import wget
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
+from transformers import (
+    AdamW,
+    AutoConfig,
+    BertConfig,
+    BertForSequenceClassification,
+    BertTokenizer,
+    get_linear_schedule_with_warmup,
+)
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule, DebugOptions
+from onnxruntime.training.ortmodule import DebugOptions, ORTModule
 
 
 def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):

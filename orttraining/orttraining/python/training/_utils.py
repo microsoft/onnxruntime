@@ -4,13 +4,13 @@
 # --------------------------------------------------------------------------
 
 import importlib.util
-import numpy as np
 import os
 import sys
+from functools import wraps
+
+import numpy as np
 import torch
 from onnx import TensorProto
-
-from functools import wraps
 
 
 def get_device_index(device):

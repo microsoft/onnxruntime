@@ -1,7 +1,7 @@
 # AUTO-GENERATED CODE! - DO NOT EDIT!
 # $ python onnxgen.py
 
-from opgen.generator import ONNXAttr, ONNXOp, AttrType
+from opgen.generator import AttrType, ONNXAttr, ONNXOp
 
 
 class Abs(ONNXOp):

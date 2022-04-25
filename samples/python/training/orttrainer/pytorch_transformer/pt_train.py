@@ -1,9 +1,9 @@
 import argparse
+
 import torch
 import torch.nn as nn
-
-from utils import prepare_data, get_batch
 from pt_model import TransformerModel
+from utils import get_batch, prepare_data
 
 
 def train(model, data_source, device, epoch, args, bptt=35):

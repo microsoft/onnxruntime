@@ -1,11 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+from collections.abc import Iterable
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections.abc import Iterable
 from torch.utils.checkpoint import checkpoint
+
 from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
 

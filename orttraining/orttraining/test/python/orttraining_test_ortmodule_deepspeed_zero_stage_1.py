@@ -9,15 +9,15 @@ $ deepspeed orttraining_test_ortmodule_deepspeed_zero_stage_1.py \
 ```
 """
 import argparse
-import torch
 import time
-from torchvision import datasets, transforms
-import torch.distributed as dist
-
-import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 
 import deepspeed
+import torch
+import torch.distributed as dist
+from torchvision import datasets, transforms
+
+import onnxruntime
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
 
 
 class NeuralNet(torch.nn.Module):

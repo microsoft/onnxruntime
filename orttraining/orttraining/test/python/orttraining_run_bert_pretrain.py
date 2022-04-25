@@ -1,37 +1,30 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
+
+import dataclasses
+import datetime
+import glob
+import json
+import logging
 
 # ==================
 import os
-import shutil
-import logging
 import random
-import h5py
-from tqdm import tqdm
-import datetime
-import numpy as np
-import dataclasses
-from dataclasses import dataclass, field
-from typing import Optional, Any, Dict
-import json
-import glob
-
+import shutil
 import unittest
-
-import torch
-from torch.utils.data import DataLoader, RandomSampler, Dataset
-import torch.distributed as dist
-from torch.utils.tensorboard import SummaryWriter
-
-from transformers import BertForPreTraining, BertConfig, HfArgumentParser
-
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
+
+import h5py
+import numpy as np
+import torch
+import torch.distributed as dist
+from torch.utils.data import DataLoader, Dataset, RandomSampler
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+from transformers import BertConfig, BertForPreTraining, HfArgumentParser
 
 import onnxruntime as ort
-from onnxruntime.training import amp, optim, orttrainer
-from onnxruntime.training.optim import PolyWarmupLRScheduler, LinearWarmupLRScheduler
-from onnxruntime.training.checkpoint import aggregate_checkpoints
 
 # need to override torch.onnx.symbolic_opset12.nll_loss to handle ignore_index == -100 cases.
 # the fix for ignore_index == -100 cases is already in pytorch master.
@@ -39,6 +32,9 @@ from onnxruntime.training.checkpoint import aggregate_checkpoints
 # eventually we will use pytorch with fixed nll_loss once computation
 # issues are understood and solved.
 import onnxruntime.capi.pt_patch
+from onnxruntime.training import amp, optim, orttrainer
+from onnxruntime.training.checkpoint import aggregate_checkpoints
+from onnxruntime.training.optim import LinearWarmupLRScheduler, PolyWarmupLRScheduler
 
 # we cannot make full convergence run in nightly pipeling because of its timeout limit,
 # max_steps is still needed to calculate learning rate. force_to_stop_max_steps is used to

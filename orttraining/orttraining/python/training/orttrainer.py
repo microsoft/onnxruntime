@@ -1,18 +1,19 @@
 import copy
 import io
 import os
-import onnx
-import torch
-from inspect import signature
 import warnings
 from functools import partial
+from inspect import signature
+
 import numpy as np
+import onnx
+import torch
 
 import onnxruntime as ort
-from . import _utils, amp, checkpoint, optim, postprocess, ORTTrainerOptions, _checkpoint_storage
-from .model_desc_validation import _ORTTrainerModelDesc
-
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
+from . import ORTTrainerOptions, _checkpoint_storage, _utils, amp, checkpoint, optim, postprocess
+from .model_desc_validation import _ORTTrainerModelDesc
 
 
 class TrainStepInfo(object):
@@ -291,10 +292,10 @@ class ORTTrainer(object):
             f.write(self._onnx_model.SerializeToString())
 
     def _check_model_export(self, input):
-        from onnx import helper, TensorProto, numpy_helper
+        import _test_helpers
         import numpy as np
         from numpy.testing import assert_allclose
-        import _test_helpers
+        from onnx import TensorProto, helper, numpy_helper
 
         onnx_model_copy = copy.deepcopy(self._onnx_model)
 

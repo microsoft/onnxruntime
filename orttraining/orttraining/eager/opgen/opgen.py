@@ -3,13 +3,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from opgen.writer import SourceWriter as SourceWriter
-from opgen.parser import cpp_create_from_file as CPPParser
-import sys
-import os
-from opgen.generator import ORTGen as ORTGen
-from importlib.machinery import SourceFileLoader
 import argparse
+import os
+import sys
+from importlib.machinery import SourceFileLoader
+
+from opgen.generator import ORTGen as ORTGen
+from opgen.parser import cpp_create_from_file as CPPParser
+from opgen.writer import SourceWriter as SourceWriter
 
 parser = argparse.ArgumentParser(description="Generate ORT ATen operations")
 parser.add_argument(

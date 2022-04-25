@@ -1,16 +1,18 @@
 import argparse
+import os
+import time
+
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from fairscale.optim.oss import OSS
-from fairscale.nn.data_parallel import ShardedDataParallel as ShardedDDP
 import torchvision
-from torchvision import datasets, transforms
-import time
+from fairscale.nn.data_parallel import ShardedDataParallel as ShardedDDP
+from fairscale.optim.oss import OSS
 from torch.nn.parallel import DistributedDataParallel as DDP
-import os
-from onnxruntime.training.ortmodule import ORTModule, DebugOptions
-import numpy as np
+from torchvision import datasets, transforms
+
+from onnxruntime.training.ortmodule import DebugOptions, ORTModule
 
 # Usage :
 # pip install fairscale

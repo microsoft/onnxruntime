@@ -1,35 +1,27 @@
-from functools import partial
 import inspect
 import math
-from distutils.version import StrictVersion
-from numpy.testing import assert_allclose
-import onnx
 import os
-import pytest
 import tempfile
+from distutils.version import StrictVersion
+from functools import partial
+
+import _test_commons
+import _test_helpers
+import onnx
+import pytest
 import torch
 import torch.nn.functional as F
+from numpy.testing import assert_allclose
 
-from onnxruntime import set_seed
-from onnxruntime.capi.ort_trainer import (
-    IODescription as Legacy_IODescription,
-    ModelDescription as Legacy_ModelDescription,
-    LossScaler as Legacy_LossScaler,
-    ORTTrainer as Legacy_ORTTrainer,
-)
-from onnxruntime.training import (
-    _utils,
-    amp,
-    checkpoint,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
-import _test_commons, _test_helpers
-from onnxruntime import SessionOptions
-from onnxruntime.training import PropagateCastOpsStrategy
+from onnxruntime import SessionOptions, set_seed
+from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
+from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
+from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
+from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
+from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint
+from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.training import optim, orttrainer
+from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################
 # Testing starts here #########################################################

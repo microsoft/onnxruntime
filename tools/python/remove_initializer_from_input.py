@@ -1,5 +1,6 @@
-import onnx
 import argparse
+
+import onnx
 
 
 def get_args():

@@ -7,7 +7,6 @@ import os
 import pathlib
 import re
 import shutil
-
 from typing import Dict, List
 
 _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)

@@ -78,14 +78,16 @@ class OutputGrabber(object):
             self.capturedtext += char
 
 
+import os
+import unittest
+
+import numpy as np
 import torch
-from onnxruntime.capi import _pybind_state as torch_ort_eager
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import os
+
+from onnxruntime.capi import _pybind_state as torch_ort_eager
 from onnxruntime.training import optim, orttrainer, orttrainer_options
-import unittest
 
 
 def my_loss(x, target):

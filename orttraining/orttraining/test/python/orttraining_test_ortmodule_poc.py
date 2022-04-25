@@ -1,11 +1,12 @@
 import argparse
 import logging
-import torch
 import time
+
+import torch
 from torchvision import datasets, transforms
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule, DebugOptions
+from onnxruntime.training.ortmodule import DebugOptions, ORTModule
 
 
 class NeuralNet(torch.nn.Module):

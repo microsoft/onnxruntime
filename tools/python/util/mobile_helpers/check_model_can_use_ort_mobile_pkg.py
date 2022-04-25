@@ -6,13 +6,14 @@
 
 import argparse
 import logging
-import onnx
 import pathlib
 import sys
+
+import onnx
 from onnx import shape_inference
+
 from ..onnx_model_utils import get_opsets_imported
 from ..reduced_build_config_parser import parse_config
-
 
 cpp_to_tensorproto_type = {
     "float": 1,

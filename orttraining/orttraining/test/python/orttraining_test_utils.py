@@ -1,19 +1,12 @@
 import torch
-
-from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription
-
-from orttraining_test_data_loader import create_ort_test_dataloader, BatchArgsOption, split_batch
 from orttraining_test_bert_postprocess import postprocess_model
+from orttraining_test_data_loader import BatchArgsOption, create_ort_test_dataloader, split_batch
 
-from onnxruntime.training import (
-    _utils,
-    amp,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
+from onnxruntime.capi.ort_trainer import IODescription, ORTTrainer
+from onnxruntime.training import TrainStepInfo, _utils, amp
+from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.training import optim, orttrainer
+from onnxruntime.training import orttrainer_options as orttrainer_options
 from onnxruntime.training.optim import _LRScheduler
 
 

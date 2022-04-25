@@ -8,8 +8,8 @@ import hashlib
 import os
 import shlex
 import sys
-from logger import get_logger
 
+from logger import get_logger
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -18,7 +18,6 @@ sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
 
 
 from util import run  # noqa: E402
-
 
 log = get_logger("get_docker_image")
 

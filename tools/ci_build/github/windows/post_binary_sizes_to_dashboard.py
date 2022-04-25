@@ -4,21 +4,14 @@
 
 
 import argparse
-import sys
-import os
 import datetime
+import os
+import sys
 
 # ingest from dataframe
 import pandas
-from azure.kusto.data import (
-    DataFormat,
-    KustoConnectionStringBuilder,
-)
-from azure.kusto.ingest import (
-    IngestionProperties,
-    ReportLevel,
-    QueuedIngestClient,
-)
+from azure.kusto.data import DataFormat, KustoConnectionStringBuilder
+from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
 
 
 def parse_arguments():

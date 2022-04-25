@@ -1,9 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import os
 import pathlib
 import typing
-import os
 
 
 def path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix: str) -> bool:

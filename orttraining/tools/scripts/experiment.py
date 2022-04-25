@@ -5,15 +5,12 @@ import sys
 
 from azure.common.client_factory import get_client_from_cli_profile
 from azure.mgmt.containerregistry import ContainerRegistryManagementClient
-
-from azureml.core import Workspace, Experiment, Run, Datastore
-from azureml.core.compute import ComputeTarget, AmlCompute
-
+from azureml.core import Datastore, Experiment, Run, Workspace
+from azureml.core.compute import AmlCompute, ComputeTarget
 from azureml.core.container_registry import ContainerRegistry
-from azureml.train.estimator import Estimator
-
-from azureml.data.azure_storage_datastore import AzureFileDatastore, AzureBlobDatastore
 from azureml.core.runconfig import MpiConfiguration, RunConfiguration
+from azureml.data.azure_storage_datastore import AzureBlobDatastore, AzureFileDatastore
+from azureml.train.estimator import Estimator
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
