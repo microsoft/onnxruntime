@@ -155,7 +155,7 @@ class Node {
   int SinceVersion() const noexcept { return since_version_; }
 
   /** Sets the since version (opset version that the Node's operator was first defined in.) for this node.
-  @remarks Used during layout transformation for setting since vesion for layout transformed nodes with
+  @remarks Used during layout transformation for setting since version for layout transformed nodes with
   domain kMSNHWC.
   */
   void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
@@ -662,6 +662,9 @@ class Graph {
 
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
+
+  /** Returns the strict_shape_type_inference that was passed into the constructor. */
+  bool StrictShapeTypeInference() const { return strict_shape_type_inference_; }
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Sets the Graph name. */
@@ -1344,7 +1347,8 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
         Graph* parent_graph, const Node* parent_node,
-        const logging::Logger& logger);
+        const logging::Logger& logger,
+        bool strict_shape_type_inference);
 
   // Populate Graph instance from ORT format serialized data.
   common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph);
@@ -1358,7 +1362,8 @@ class Graph {
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-        const logging::Logger& logger);
+        const logging::Logger& logger,
+        bool strict_shape_type_inference);
 
   // internal use by the Graph class only
   Graph(const Model& owning_model,
@@ -1369,7 +1374,8 @@ class Graph {
         Graph* parent_graph,
         const Node* parent_node,
         const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-        const logging::Logger& logger);
+        const logging::Logger& logger,
+        bool strict_shape_type_inference);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
@@ -1635,9 +1641,6 @@ class Graph {
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
-  // Is model using latest ONNX opset
-  bool using_latest_onnx_opset_{false};
-
   ResolveContext resolve_context_;
 
   // the parent graph if this is a subgraph.
@@ -1653,6 +1656,12 @@ class Graph {
   int num_resolves_ = 0;
 
   const logging::Logger& logger_;
+
+  // If true, all inconsistencies encountered during shape and type inference
+  // will be exposed to the caller as failures. If false, in some cases
+  // warnings will be logged but processing will continue and no error will
+  // be returned.
+  const bool strict_shape_type_inference_;
 
   // distinguishes between graph loaded from model file and graph created from scratch
   const bool is_loaded_from_model_file_;

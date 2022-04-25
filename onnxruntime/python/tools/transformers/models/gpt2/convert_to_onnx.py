@@ -15,7 +15,6 @@ This converts GPT2 model to onnx. Examples:
 
 """
 
-import os
 import argparse
 import logging
 import torch
@@ -27,6 +26,12 @@ from transformers import AutoConfig
 from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
 from gpt2_beamsearch_tester import Gpt2TesterFactory
+
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 

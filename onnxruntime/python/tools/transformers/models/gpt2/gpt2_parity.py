@@ -10,18 +10,24 @@
 # pvalue < 0.05 means two experiments have significant difference on top 1 match rate.
 # User could use this script to select the best mixed precision model according to these metrics.
 
-from convert_to_onnx import main, get_latency_name
-import os
 import argparse
 import logging
-from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
-from benchmark_helper import setup_logger
 from onnx_model import OnnxModel
 import onnx
 import csv
 import datetime
 import scipy.stats
 import torch
+
+from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
+from convert_to_onnx import main, get_latency_name
+
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from benchmark_helper import setup_logger
 
 logger = logging.getLogger('')
 
@@ -69,6 +75,7 @@ def parse_arguments(argv=None):
 
 
 class ParityTask:
+
     def __init__(self, test_cases, total_runs, csv_path):
         self.total_runs = total_runs
         self.test_cases = test_cases
