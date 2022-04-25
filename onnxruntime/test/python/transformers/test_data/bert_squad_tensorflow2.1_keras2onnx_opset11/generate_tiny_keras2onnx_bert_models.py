@@ -316,7 +316,7 @@ def main():
     bert_model.update_graph()
     bert_model.remove_unused_constant()
 
-    print("opset verion", bert_model.model.opset_import[0].version)
+    print("opset version", bert_model.model.opset_import[0].version)
 
     with open(args.output, "wb") as out:
         out.write(bert_model.model.SerializeToString())

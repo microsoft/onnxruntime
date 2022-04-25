@@ -66,9 +66,9 @@ In your python code, you can use the optimizer like the following:
 
 ```python
 from onnxruntime.transformers import optimizer
-optimized_model = optimizer.optimize_model("gpt2.onnx", model_type='gpt2', num_heads=12, hidden_size=768)
+optimized_model = optimizer.optimize_model("bert.onnx", model_type='bert', num_heads=12, hidden_size=768)
 optimized_model.convert_float_to_float16()
-optimized_model.save_model_to_file("gpt2_fp16.onnx")
+optimized_model.save_model_to_file("bert_fp16.onnx")
 ```
 
 You can also use command line. Example of optimizing a BERT-large model to use mixed precision (float16):
@@ -78,7 +78,7 @@ python -m onnxruntime.transformers.optimizer --input bert_large.onnx --output be
 
 You can also download the latest script files from [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/). Then run it like the following:
 ```console
-python optimizer.py --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
+python optimizer.py --input bert.onnx --output bert_opt.onnx --model_type bert
 ```
 
 ### Optimizer Options
@@ -164,11 +164,11 @@ The model has 12 layers and 768 hidden, with input_ids, position_ids, attention_
 
 Since past state is used, sequence length in input_ids is 1. For example, s=4 means the past sequence length is 4 and the total sequence length is 5.
 
-[benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/benchmark_gpt2.py) is used to get the results like the following commands:
+[benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/models/gpt2/benchmark_gpt2.py) is used to get the results like the following commands:
 
 ```console
-python -m onnxruntime.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
-python -m onnxruntime.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
+python -m onnxruntime.transformers.models.gpt2.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
+python -m onnxruntime.transformers.models.gpt2.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
 ```
 
 ### Benchmark.py

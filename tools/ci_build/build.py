@@ -1438,7 +1438,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 adb_push('onnxruntime_shared_lib_test', device_dir, cwd=cwd)
                 adb_shell('chmod +x {}/onnxruntime_shared_lib_test'.format(device_dir))
                 run_adb_shell(
-                    'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} && {0}/onnxruntime_shared_lib_test'.format(
+                    'LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_shared_lib_test'.format(
                         device_dir))
 
 

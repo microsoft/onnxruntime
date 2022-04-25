@@ -104,7 +104,7 @@ def _build_package(args):
     # Temp dirs to hold building results
     intermediates_dir = os.path.join(build_dir, 'intermediates')
     build_config = args.config
-    base_build_command = [sys.executable, BUILD_PY, '--config=' + build_config] + build_settings['build_params']
+    base_build_command = [sys.executable, BUILD_PY] + build_settings['build_params'] + ['--config=' + build_config]
 
     if args.include_ops_by_config is not None:
         base_build_command += ['--include_ops_by_config=' + str(args.include_ops_by_config.resolve())]

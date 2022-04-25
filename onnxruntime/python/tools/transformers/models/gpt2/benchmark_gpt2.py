@@ -6,20 +6,23 @@
 # This script benchmarks gpt2 model with past state.
 # For gpt2 model without past state, use benchmark.py to measure performance.
 
-import os
-import sys
-import numpy
 import csv
 from datetime import datetime
 import psutil
 import argparse
 import logging
 import torch
-import onnx
 from packaging import version
 from transformers import AutoConfig
+
 from gpt2_helper import Gpt2Helper, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
+
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 
@@ -227,8 +230,13 @@ def main(args):
 
     if args.optimize_onnx or args.precision != Precision.FLOAT32:
         onnx_model_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
-        gpt2helper.optimize_onnx(onnx_model_paths["raw"], onnx_model_path, args.precision == Precision.FLOAT16,
-                                 model.config.num_attention_heads, model.config.hidden_size, use_external_data_format)
+        gpt2helper.optimize_onnx(onnx_model_paths["raw"],
+                                 onnx_model_path,
+                                 args.precision == Precision.FLOAT16,
+                                 model.config.num_attention_heads,
+                                 model.config.hidden_size,
+                                 use_external_data_format,
+                                 auto_mixed_precision=True)
 
         if args.precision == Precision.INT8:
             logger.info("quantizing model...")
@@ -254,9 +262,15 @@ def main(args):
 
     # Allocate output buffers for IO Binding
     if model_type == 'beam_search_step' or model_type == 'configurable_one_step_search':
-        max_output_shapes = gpt2helper.get_output_shapes(max(args.batch_sizes), max(args.past_sequence_lengths),
-                                                         max(args.past_sequence_lengths), max(args.sequence_lengths), 4,
-                                                         0, config, args.model_class)
+        max_output_shapes = gpt2helper.get_output_shapes(max(args.batch_sizes),
+                                                         context_len=max(args.past_sequence_lengths),
+                                                         past_sequence_length=max(args.past_sequence_lengths),
+                                                         sequence_length=max(args.sequence_lengths),
+                                                         beam_size=args.beam_size,
+                                                         step=0,
+                                                         config=config,
+                                                         model_class=args.model_class)
+
         output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
     else:
@@ -294,8 +308,8 @@ def main(args):
                                                                    has_position_ids=use_padding,
                                                                    has_attention_mask=use_padding)
                         output_shapes = gpt2helper.get_output_shapes(batch_size, past_sequence_length,
-                                                                     past_sequence_length, sequence_length, 4, 0,
-                                                                     config, args.model_class)
+                                                                     past_sequence_length, sequence_length,
+                                                                     args.beam_size, 0, config, args.model_class)
                     else:
                         dummy_inputs = gpt2helper.get_dummy_inputs(batch_size,
                                                                    past_sequence_length,
@@ -312,9 +326,18 @@ def main(args):
                                                                      config, args.model_class)
 
                     try:
-                        outputs, torch_latency = Gpt2Helper.pytorch_inference(model, dummy_inputs, args.test_times)
-                        ort_outputs, ort_latency = Gpt2Helper.onnxruntime_inference(session, dummy_inputs,
+                        outputs, torch_latency = gpt2helper.pytorch_inference(model, dummy_inputs, args.test_times)
+
+                        # Dump Torch output shape
+                        for i, value in enumerate(outputs):
+                            if isinstance(value, tuple):
+                                logger.debug(f"torch output {i} is tuple of size {len(value)}, shape {value[0].shape}")
+                            else:
+                                logger.debug(f"torch output {i} shape {value.shape}")
+
+                        ort_outputs, ort_latency = gpt2helper.onnxruntime_inference(session, dummy_inputs,
                                                                                     args.test_times)
+
                         ort_io_outputs, ort_io_latency = gpt2helper.onnxruntime_inference_with_binded_io(
                             session,
                             dummy_inputs,
@@ -327,7 +350,7 @@ def main(args):
                         if args.validate_onnx:
                             if gpt2helper.compare_outputs(outputs,
                                                           ort_outputs,
-                                                          model_class,
+                                                          model_class=args.model_class,
                                                           rtol=DEFAULT_TOLERANCE[args.precision],
                                                           atol=DEFAULT_TOLERANCE[args.precision]):
                                 logger.info(
@@ -341,7 +364,7 @@ def main(args):
 
                             if gpt2helper.compare_outputs(outputs,
                                                           copy_outputs,
-                                                          model_class,
+                                                          model_class=args.model_class,
                                                           rtol=DEFAULT_TOLERANCE[args.precision],
                                                           atol=DEFAULT_TOLERANCE[args.precision]):
                                 logger.info(
@@ -369,6 +392,7 @@ def main(args):
                         csv_writer.writerow(row)
                     except:
                         logger.error(f"Exception", exc_info=True)
+                        return None
 
     logger.info(f"Results are saved to file {csv_filename}")
     return csv_filename

@@ -25,13 +25,14 @@ def parse_nightly_and_local_version_from_whl_name(blob_name):
 
 
 def run_subprocess(args, cwd=None):
-    log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
+    log.warning("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     return subprocess.run(args, cwd=cwd, check=True)
 
 
-def upload_whl(python_wheel_path):
+def upload_whl(python_wheel_path, final_storage=False):
+    storage_account_name = "onnxruntimepackages" if final_storage else "onnxruntimepackagesint"
     blob_name = os.path.basename(python_wheel_path)
-    run_subprocess(['azcopy', 'cp', python_wheel_path, 'https://onnxruntimepackages.blob.core.windows.net/$web/'])
+    run_subprocess(['azcopy', 'cp', python_wheel_path, f'https://{storage_account_name}.blob.core.windows.net/$web/'])
 
     nightly_build, local_version = parse_nightly_and_local_version_from_whl_name(blob_name)
     if local_version:
@@ -41,7 +42,7 @@ def upload_whl(python_wheel_path):
 
     download_path_to_html = "./onnxruntime_{}.html".format(nightly_build)
 
-    run_subprocess(['azcopy', 'cp', 'https://onnxruntimepackages.blob.core.windows.net/$web/'+html_blob_name,
+    run_subprocess(['azcopy', 'cp', f'https://{storage_account_name}.blob.core.windows.net/$web/'+html_blob_name,
                     download_path_to_html])
 
     blob_name_plus_replaced = blob_name.replace('+', '%2B')
@@ -59,7 +60,7 @@ def upload_whl(python_wheel_path):
     else:
         warnings.warn("'{}' exists in {}. The html file is not updated.".format(new_line, download_path_to_html))
     run_subprocess(['azcopy', 'cp', download_path_to_html,
-                    'https://onnxruntimepackages.blob.core.windows.net/$web/'+html_blob_name,
+                    f'https://{storage_account_name}.blob.core.windows.net/$web/'+html_blob_name,
                     '--content-type', 'text/html', '--overwrite', 'true'])
 
 
@@ -67,7 +68,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Upload python whl to azure storage.")
 
     parser.add_argument("--python_wheel_path", type=str, help="path to python wheel")
+    parser.add_argument("--final_storage", action='store_true', help="upload to final storage")
 
     args = parser.parse_args()
 
-    upload_whl(args.python_wheel_path)
+    upload_whl(args.python_wheel_path, args.final_storage)
