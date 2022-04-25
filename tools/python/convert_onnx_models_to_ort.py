@@ -8,5 +8,5 @@
 from util.convert_onnx_models_to_ort import convert_onnx_models_to_ort
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     convert_onnx_models_to_ort()

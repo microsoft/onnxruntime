@@ -37,7 +37,7 @@ print("input type", input_type)
 # Let's see the output name and shape.
 
 output_name = sess.get_outputs()[0].name
-print("output name", output_name)  
+print("output name", output_name)
 output_shape = sess.get_outputs()[0].shape
 print("output shape", output_shape)
 output_type = sess.get_outputs()[0].type
@@ -47,7 +47,8 @@ print("output type", output_type)
 # Let's compute its outputs (or predictions if it is a machine learned model).
 
 import numpy.random
-x = numpy.random.random((3,4,5))
+
+x = numpy.random.random((3, 4, 5))
 x = x.astype(numpy.float32)
 res = sess.run([output_name], {input_name: x})
 print(res)

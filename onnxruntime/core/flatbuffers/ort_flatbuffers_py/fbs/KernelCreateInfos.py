@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class KernelCreateInfos(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsKernelCreateInfos(cls, buf, offset):
@@ -29,7 +31,9 @@ class KernelCreateInfos(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Uint32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
+            return self._tab.Get(
+                flatbuffers.number_types.Uint32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4)
+            )
         return 0
 
     # KernelCreateInfos
@@ -56,7 +60,9 @@ class KernelCreateInfos(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Uint64Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 8))
+            return self._tab.Get(
+                flatbuffers.number_types.Uint64Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 8)
+            )
         return 0
 
     # KernelCreateInfos
@@ -78,9 +84,26 @@ class KernelCreateInfos(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         return o == 0
 
-def KernelCreateInfosStart(builder): builder.StartObject(2)
-def KernelCreateInfosAddNodeIndices(builder, nodeIndices): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(nodeIndices), 0)
-def KernelCreateInfosStartNodeIndicesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def KernelCreateInfosAddKernelDefHashes(builder, kernelDefHashes): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(kernelDefHashes), 0)
-def KernelCreateInfosStartKernelDefHashesVector(builder, numElems): return builder.StartVector(8, numElems, 8)
-def KernelCreateInfosEnd(builder): return builder.EndObject()
+
+def KernelCreateInfosStart(builder):
+    builder.StartObject(2)
+
+
+def KernelCreateInfosAddNodeIndices(builder, nodeIndices):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(nodeIndices), 0)
+
+
+def KernelCreateInfosStartNodeIndicesVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+
+def KernelCreateInfosAddKernelDefHashes(builder, kernelDefHashes):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(kernelDefHashes), 0)
+
+
+def KernelCreateInfosStartKernelDefHashesVector(builder, numElems):
+    return builder.StartVector(8, numElems, 8)
+
+
+def KernelCreateInfosEnd(builder):
+    return builder.EndObject()

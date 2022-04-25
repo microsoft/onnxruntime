@@ -17,14 +17,13 @@ ort_root = script_dir.parents[4]
 
 class TestQDQUtils(unittest.TestCase):
     def test_fix_DQ_with_multiple_consumers(self):
-        '''
-        '''
-        model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'qdq_with_multi_consumer_dq_nodes.onnx'
+        """ """
+        model_path = ort_root / "onnxruntime" / "test" / "testdata" / "qdq_with_multi_consumer_dq_nodes.onnx"
         model = onnx.load(str(model_path))
 
-        orig_dq_nodes = [n for n in model.graph.node if n.op_type == 'DequantizeLinear']
+        orig_dq_nodes = [n for n in model.graph.node if n.op_type == "DequantizeLinear"]
         fix_dq_nodes_with_multiple_consumers(model)
-        new_dq_nodes = [n for n in model.graph.node if n.op_type == 'DequantizeLinear']
+        new_dq_nodes = [n for n in model.graph.node if n.op_type == "DequantizeLinear"]
 
         # there are 3 DQ nodes with 2 consumers (an earlier Conv and later Add)
         # additionally the last one also provides a graph output

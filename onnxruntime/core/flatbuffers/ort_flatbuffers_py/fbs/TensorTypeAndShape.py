@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class TensorTypeAndShape(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsTensorTypeAndShape(cls, buf, offset):
@@ -37,12 +39,24 @@ class TensorTypeAndShape(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.Shape import Shape
+
             obj = Shape()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def TensorTypeAndShapeStart(builder): builder.StartObject(2)
-def TensorTypeAndShapeAddElemType(builder, elemType): builder.PrependInt32Slot(0, elemType, 0)
-def TensorTypeAndShapeAddShape(builder, shape): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(shape), 0)
-def TensorTypeAndShapeEnd(builder): return builder.EndObject()
+
+def TensorTypeAndShapeStart(builder):
+    builder.StartObject(2)
+
+
+def TensorTypeAndShapeAddElemType(builder, elemType):
+    builder.PrependInt32Slot(0, elemType, 0)
+
+
+def TensorTypeAndShapeAddShape(builder, shape):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(shape), 0)
+
+
+def TensorTypeAndShapeEnd(builder):
+    return builder.EndObject()

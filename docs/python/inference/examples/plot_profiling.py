@@ -27,8 +27,6 @@ def change_ir_version(filename, ir_version=6):
     return model
 
 
-
-
 #########################
 # Let's load a very simple model and compute some prediction.
 
@@ -61,10 +59,9 @@ print(prof_file)
 # The results are stored un a file in JSON format.
 # Let's see what it contains.
 import json
+
 with open(prof_file, "r") as f:
     sess_time = json.load(f)
 import pprint
+
 pprint.pprint(sess_time)
-
-
-    

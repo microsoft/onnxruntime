@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class InferenceSession(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsInferenceSession(cls, buf, offset):
@@ -37,6 +39,7 @@ class InferenceSession(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.Model import Model
+
             obj = Model()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -48,13 +51,28 @@ class InferenceSession(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.SessionState import SessionState
+
             obj = SessionState()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def InferenceSessionStart(builder): builder.StartObject(3)
-def InferenceSessionAddOrtVersion(builder, ortVersion): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(ortVersion), 0)
-def InferenceSessionAddModel(builder, model): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(model), 0)
-def InferenceSessionAddSessionState(builder, sessionState): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(sessionState), 0)
-def InferenceSessionEnd(builder): return builder.EndObject()
+
+def InferenceSessionStart(builder):
+    builder.StartObject(3)
+
+
+def InferenceSessionAddOrtVersion(builder, ortVersion):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(ortVersion), 0)
+
+
+def InferenceSessionAddModel(builder, model):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(model), 0)
+
+
+def InferenceSessionAddSessionState(builder, sessionState):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(sessionState), 0)
+
+
+def InferenceSessionEnd(builder):
+    return builder.EndObject()

@@ -21,13 +21,15 @@ The first step consists in retrieving the boston datset.
 """
 import pandas
 from sklearn.datasets import load_boston
+
 boston = load_boston()
 X, y = boston.data, boston.target
 
 from sklearn.model_selection import train_test_split
+
 X_train, X_test, y_train, y_test = train_test_split(X, y)
-X_train_dict = pandas.DataFrame(X_train[:,1:]).T.to_dict().values()
-X_test_dict = pandas.DataFrame(X_test[:,1:]).T.to_dict().values()
+X_train_dict = pandas.DataFrame(X_train[:, 1:]).T.to_dict().values()
+X_test_dict = pandas.DataFrame(X_test[:, 1:]).T.to_dict().values()
 
 ####################################
 # We create a pipeline.
@@ -35,10 +37,9 @@ X_test_dict = pandas.DataFrame(X_test[:,1:]).T.to_dict().values()
 from sklearn.pipeline import make_pipeline
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.feature_extraction import DictVectorizer
-pipe = make_pipeline(
-            DictVectorizer(sparse=False),
-            GradientBoostingRegressor())
-            
+
+pipe = make_pipeline(DictVectorizer(sparse=False), GradientBoostingRegressor())
+
 pipe.fit(X_train_dict, y_train)
 
 ####################################
@@ -53,7 +54,7 @@ print(r2_score(y_test, pred))
 # Conversion to ONNX format
 # +++++++++++++++++++++++++
 #
-# We use module 
+# We use module
 # `sklearn-onnx <https://github.com/onnx/sklearn-onnx>`_
 # to convert the model into ONNX format.
 
@@ -61,7 +62,7 @@ from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType, Int64TensorType, DictionaryType, SequenceType
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
-initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
+initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 onx = convert_sklearn(pipe, initial_types=initial_type)
 with open("pipeline_vectorize.onnx", "wb") as f:
     f.write(onx.SerializeToString())
@@ -75,6 +76,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
 import numpy
+
 inp, out = sess.get_inputs()[0], sess.get_outputs()[0]
 print("input name='{}' and shape={} and type={}".format(inp.name, inp.shape, inp.type))
 print("output name='{}' and shape={} and type={}".format(out.name, out.shape, out.type))
@@ -100,4 +102,3 @@ print(r2_score(pred, pred_onx))
 #########################
 # Very similar. *ONNX Runtime* uses floats instead of doubles,
 # that explains the small discrepencies.
-

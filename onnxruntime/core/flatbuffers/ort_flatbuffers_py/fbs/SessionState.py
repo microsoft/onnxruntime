@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class SessionState(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsSessionState(cls, buf, offset):
@@ -30,6 +32,7 @@ class SessionState(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.KernelCreateInfos import KernelCreateInfos
+
             obj = KernelCreateInfos()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -43,6 +46,7 @@ class SessionState(object):
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
             from ort_flatbuffers_py.fbs.SubGraphSessionState import SubGraphSessionState
+
             obj = SubGraphSessionState()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -60,8 +64,22 @@ class SessionState(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         return o == 0
 
-def SessionStateStart(builder): builder.StartObject(2)
-def SessionStateAddKernels(builder, kernels): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(kernels), 0)
-def SessionStateAddSubGraphSessionStates(builder, subGraphSessionStates): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(subGraphSessionStates), 0)
-def SessionStateStartSubGraphSessionStatesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def SessionStateEnd(builder): return builder.EndObject()
+
+def SessionStateStart(builder):
+    builder.StartObject(2)
+
+
+def SessionStateAddKernels(builder, kernels):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(kernels), 0)
+
+
+def SessionStateAddSubGraphSessionStates(builder, subGraphSessionStates):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(subGraphSessionStates), 0)
+
+
+def SessionStateStartSubGraphSessionStatesVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+
+def SessionStateEnd(builder):
+    return builder.EndObject()

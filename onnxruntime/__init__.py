@@ -20,11 +20,31 @@ __author__ = "Microsoft"
 # meaningful messages to the user.
 # the saved exception is raised after device version validation.
 try:
-    from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
-        RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
-        NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, SessionIOBinding, \
-        OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator,  OrtSparseFormat, \
-        set_default_logger_verbosity
+    from onnxruntime.capi._pybind_state import (
+        get_all_providers,
+        get_available_providers,
+        get_device,
+        set_seed,
+        RunOptions,
+        SessionOptions,
+        set_default_logger_severity,
+        enable_telemetry_events,
+        disable_telemetry_events,
+        NodeArg,
+        ModelMetadata,
+        GraphOptimizationLevel,
+        ExecutionMode,
+        ExecutionOrder,
+        SessionIOBinding,
+        OrtAllocatorType,
+        OrtMemType,
+        OrtArenaCfg,
+        OrtMemoryInfo,
+        create_and_register_allocator,
+        OrtSparseFormat,
+        set_default_logger_verbosity,
+    )
+
     import_capi_exception = None
 except Exception as e:
     import_capi_exception = e
@@ -34,8 +54,13 @@ from onnxruntime.capi import onnxruntime_validation
 if import_capi_exception:
     raise import_capi_exception
 
-from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue, SparseTensor, \
-    OrtDevice
+from onnxruntime.capi.onnxruntime_inference_collection import (
+    InferenceSession,
+    IOBinding,
+    OrtValue,
+    SparseTensor,
+    OrtDevice,
+)
 
 from onnxruntime.capi.training import *  # noqa: F403
 
@@ -46,6 +71,7 @@ except ImportError:
     pass
 
 from onnxruntime.capi.onnxruntime_validation import package_name, version, cuda_version
+
 if version:
     __version__ = version
 

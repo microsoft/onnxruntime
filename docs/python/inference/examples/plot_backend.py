@@ -24,6 +24,7 @@ from onnx import load
 # The device depends on how the package was compiled,
 # GPU or CPU.
 from onnxruntime import get_device
+
 device = get_device()
 
 name = datasets.get_example("logreg_iris.onnx")

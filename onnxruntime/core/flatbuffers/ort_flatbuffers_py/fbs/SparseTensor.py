@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class SparseTensor(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsSparseTensor(cls, buf, offset):
@@ -30,6 +32,7 @@ class SparseTensor(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.Tensor import Tensor
+
             obj = Tensor()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -41,6 +44,7 @@ class SparseTensor(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.Tensor import Tensor
+
             obj = Tensor()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -51,7 +55,9 @@ class SparseTensor(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(flatbuffers.number_types.Int64Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 8))
+            return self._tab.Get(
+                flatbuffers.number_types.Int64Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 8)
+            )
         return 0
 
     # SparseTensor
@@ -73,9 +79,26 @@ class SparseTensor(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         return o == 0
 
-def SparseTensorStart(builder): builder.StartObject(3)
-def SparseTensorAddValues(builder, values): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(values), 0)
-def SparseTensorAddIndices(builder, indices): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(indices), 0)
-def SparseTensorAddDims(builder, dims): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(dims), 0)
-def SparseTensorStartDimsVector(builder, numElems): return builder.StartVector(8, numElems, 8)
-def SparseTensorEnd(builder): return builder.EndObject()
+
+def SparseTensorStart(builder):
+    builder.StartObject(3)
+
+
+def SparseTensorAddValues(builder, values):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(values), 0)
+
+
+def SparseTensorAddIndices(builder, indices):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(indices), 0)
+
+
+def SparseTensorAddDims(builder, dims):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(dims), 0)
+
+
+def SparseTensorStartDimsVector(builder, numElems):
+    return builder.StartVector(8, numElems, 8)
+
+
+def SparseTensorEnd(builder):
+    return builder.EndObject()

@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class SequenceType(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsSequenceType(cls, buf, offset):
@@ -30,11 +32,20 @@ class SequenceType(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.TypeInfo import TypeInfo
+
             obj = TypeInfo()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def SequenceTypeStart(builder): builder.StartObject(1)
-def SequenceTypeAddElemType(builder, elemType): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(elemType), 0)
-def SequenceTypeEnd(builder): return builder.EndObject()
+
+def SequenceTypeStart(builder):
+    builder.StartObject(1)
+
+
+def SequenceTypeAddElemType(builder, elemType):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(elemType), 0)
+
+
+def SequenceTypeEnd(builder):
+    return builder.EndObject()

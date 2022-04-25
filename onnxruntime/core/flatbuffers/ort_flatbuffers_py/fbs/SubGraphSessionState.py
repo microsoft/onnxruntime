@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class SubGraphSessionState(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsSubGraphSessionState(cls, buf, offset):
@@ -37,12 +39,24 @@ class SubGraphSessionState(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.SessionState import SessionState
+
             obj = SessionState()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def SubGraphSessionStateStart(builder): builder.StartObject(2)
-def SubGraphSessionStateAddGraphId(builder, graphId): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(graphId), 0)
-def SubGraphSessionStateAddSessionState(builder, sessionState): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(sessionState), 0)
-def SubGraphSessionStateEnd(builder): return builder.EndObject()
+
+def SubGraphSessionStateStart(builder):
+    builder.StartObject(2)
+
+
+def SubGraphSessionStateAddGraphId(builder, graphId):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(graphId), 0)
+
+
+def SubGraphSessionStateAddSessionState(builder, sessionState):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(sessionState), 0)
+
+
+def SubGraphSessionStateEnd(builder):
+    return builder.EndObject()

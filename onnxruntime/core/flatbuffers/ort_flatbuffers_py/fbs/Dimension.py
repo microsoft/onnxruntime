@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class Dimension(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsDimension(cls, buf, offset):
@@ -30,6 +32,7 @@ class Dimension(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.DimensionValue import DimensionValue
+
             obj = DimensionValue()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -42,7 +45,18 @@ class Dimension(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-def DimensionStart(builder): builder.StartObject(2)
-def DimensionAddValue(builder, value): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
-def DimensionAddDenotation(builder, denotation): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(denotation), 0)
-def DimensionEnd(builder): return builder.EndObject()
+
+def DimensionStart(builder):
+    builder.StartObject(2)
+
+
+def DimensionAddValue(builder, value):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
+
+
+def DimensionAddDenotation(builder, denotation):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(denotation), 0)
+
+
+def DimensionEnd(builder):
+    return builder.EndObject()

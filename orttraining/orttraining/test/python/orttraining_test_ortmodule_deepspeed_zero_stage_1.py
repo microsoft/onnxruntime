@@ -19,6 +19,7 @@ from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 
 import deepspeed
 
+
 class NeuralNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNet, self).__init__()
@@ -35,8 +36,11 @@ class NeuralNet(torch.nn.Module):
 
 
 def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
-    print('\n======== Epoch {:} / {:} with batch size {:} ========'.format(
-        epoch+1, args.epochs, model.train_batch_size()))
+    print(
+        "\n======== Epoch {:} / {:} with batch size {:} ========".format(
+            epoch + 1, args.epochs, model.train_batch_size()
+        )
+    )
     model.train()
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -54,6 +58,7 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
 
         if args.view_graphs:
             import torchviz
+
             pytorch_backward_graph = torchviz.make_dot(probability, params=dict(list(model.named_parameters())))
             pytorch_backward_graph.view()
 
@@ -71,9 +76,15 @@ def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
         if iteration % args.log_interval == 0:
             curr_time = time.time()
             elapsed_time = curr_time - start_time
-            print('[{:5}/{:5} ({:2.0f}%)]\tLoss: {:.6f}\tExecution time: {:.4f}'.format(
-                iteration * len(data), len(train_loader.dataset),
-                100. * iteration / len(train_loader), loss, elapsed_time))
+            print(
+                "[{:5}/{:5} ({:2.0f}%)]\tLoss: {:.6f}\tExecution time: {:.4f}".format(
+                    iteration * len(data),
+                    len(train_loader.dataset),
+                    100.0 * iteration / len(train_loader),
+                    loss,
+                    elapsed_time,
+                )
+            )
             start_time = curr_time
 
     # Calculate the average loss over the training data.
@@ -103,61 +114,75 @@ def test(args, model, device, loss_fn, test_loader):
             pred = output.argmax(dim=1, keepdim=True)
             correct += pred.eq(target.view_as(pred)).sum().item()
     test_loss /= len(test_loader.dataset)
-    print('\nTest set: Batch size: {:}, Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        args.test_batch_size, test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+    print(
+        "\nTest set: Batch size: {:}, Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n".format(
+            args.test_batch_size,
+            test_loss,
+            correct,
+            len(test_loader.dataset),
+            100.0 * correct / len(test_loader.dataset),
+        )
+    )
 
     # Report the final accuracy for this validation run.
     epoch_time = time.time() - t0
-    print("  Accuracy: {0:.2f}".format(float(correct)/len(test_loader.dataset)))
+    print("  Accuracy: {0:.2f}".format(float(correct) / len(test_loader.dataset)))
     print("  Validation took: {:.4f}s".format(epoch_time))
     return epoch_time
+
 
 def my_loss(x, target, is_train=True):
     if is_train:
         return torch.nn.CrossEntropyLoss()(x, target)
     else:
-        return torch.nn.CrossEntropyLoss(reduction='sum')(x, target)
+        return torch.nn.CrossEntropyLoss(reduction="sum")(x, target)
+
 
 def main():
     # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--train-steps', type=int, default=-1, metavar='N',
-                        help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
-    parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                        help='learning rate (default: 0.01)')
-    parser.add_argument('--batch-size', type=int, default=32, metavar='N',
-                        help='input batch size for training (default: 32)')
-    parser.add_argument('--test-batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for testing (default: 64)')
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=42, metavar='S',
-                        help='random seed (default: 42)')
-    parser.add_argument('--pytorch-only', action='store_true', default=False,
-                        help='disables ONNX Runtime training')
-    parser.add_argument('--log-interval', type=int, default=300, metavar='N',
-                        help='how many batches to wait before logging training status (default: 300)')
-    parser.add_argument('--view-graphs', action='store_true', default=False,
-                        help='views forward and backward graphs')
-    parser.add_argument('--export-onnx-graphs', action='store_true', default=False,
-                        help='export ONNX graphs to current directory')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
-                        help='number of epochs to train (default: 10)')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
-                        help='Log level (default: WARNING)')
-    parser.add_argument('--data-dir', type=str, default='./mnist',
-                        help='Path to the mnist data directory')
+    parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
+    parser.add_argument(
+        "--train-steps",
+        type=int,
+        default=-1,
+        metavar="N",
+        help="number of steps to train. Set -1 to run through whole dataset (default: -1)",
+    )
+    parser.add_argument("--lr", type=float, default=0.01, metavar="LR", help="learning rate (default: 0.01)")
+    parser.add_argument(
+        "--batch-size", type=int, default=32, metavar="N", help="input batch size for training (default: 32)"
+    )
+    parser.add_argument(
+        "--test-batch-size", type=int, default=64, metavar="N", help="input batch size for testing (default: 64)"
+    )
+    parser.add_argument("--no-cuda", action="store_true", default=False, help="disables CUDA training")
+    parser.add_argument("--seed", type=int, default=42, metavar="S", help="random seed (default: 42)")
+    parser.add_argument("--pytorch-only", action="store_true", default=False, help="disables ONNX Runtime training")
+    parser.add_argument(
+        "--log-interval",
+        type=int,
+        default=300,
+        metavar="N",
+        help="how many batches to wait before logging training status (default: 300)",
+    )
+    parser.add_argument("--view-graphs", action="store_true", default=False, help="views forward and backward graphs")
+    parser.add_argument(
+        "--export-onnx-graphs", action="store_true", default=False, help="export ONNX graphs to current directory"
+    )
+    parser.add_argument("--epochs", type=int, default=10, metavar="N", help="number of epochs to train (default: 10)")
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        default="WARNING",
+        help="Log level (default: WARNING)",
+    )
+    parser.add_argument("--data-dir", type=str, default="./mnist", help="Path to the mnist data directory")
 
     # DeepSpeed-related settings
-    parser.add_argument('--local_rank',
-                        type=int,
-                        required=True,
-                        help='local rank passed from distributed launcher')
+    parser.add_argument("--local_rank", type=int, required=True, help="local rank passed from distributed launcher")
     parser = deepspeed.add_config_arguments(parser)
-    
-    args = parser.parse_args()
 
+    args = parser.parse_args()
 
     # Common setup
     torch.manual_seed(args.seed)
@@ -171,48 +196,59 @@ def main():
 
     ## Data loader
 
-    dist.init_process_group(backend='nccl')
+    dist.init_process_group(backend="nccl")
     if args.local_rank == 0:
         # download only once on rank 0
         datasets.MNIST(args.data_dir, download=True)
     dist.barrier()
-    train_set = datasets.MNIST(args.data_dir, train=True,
-                            transform=transforms.Compose([transforms.ToTensor(),
-                                                        transforms.Normalize((0.1307,), (0.3081,))]))
+    train_set = datasets.MNIST(
+        args.data_dir,
+        train=True,
+        transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]),
+    )
 
     test_loader = None
     if args.test_batch_size > 0:
         test_loader = torch.utils.data.DataLoader(
-            datasets.MNIST(args.data_dir, train=False, transform=transforms.Compose([
-                transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])),
-            batch_size=args.test_batch_size, shuffle=True)
+            datasets.MNIST(
+                args.data_dir,
+                train=False,
+                transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]),
+            ),
+            batch_size=args.test_batch_size,
+            shuffle=True,
+        )
 
     # Model architecture
     model = NeuralNet(input_size=784, hidden_size=500, num_classes=10).to(device)
     if not args.pytorch_only:
-        print('Training MNIST on ORTModule....')
+        print("Training MNIST on ORTModule....")
 
         # Set log level
-        log_level_mapping = {"DEBUG": LogLevel.VERBOSE,
-                            "INFO": LogLevel.INFO,
-                            "WARNING": LogLevel.WARNING,
-                            "ERROR": LogLevel.ERROR,
-                            "CRITICAL": LogLevel.FATAL}
+        log_level_mapping = {
+            "DEBUG": LogLevel.VERBOSE,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR,
+            "CRITICAL": LogLevel.FATAL,
+        }
         log_level = log_level_mapping.get(args.log_level.upper(), None)
         if not isinstance(log_level, LogLevel):
-            raise ValueError('Invalid log level: %s' % args.log_level)
-        debug_options = DebugOptions(log_level=log_level, save_onnx=args.export_onnx_graphs, onnx_prefix='MNIST')
+            raise ValueError("Invalid log level: %s" % args.log_level)
+        debug_options = DebugOptions(log_level=log_level, save_onnx=args.export_onnx_graphs, onnx_prefix="MNIST")
 
         model = ORTModule(model, debug_options)
 
     else:
-        print('Training MNIST on vanilla PyTorch....')
+        print("Training MNIST on vanilla PyTorch....")
 
     model, optimizer, train_loader, _ = deepspeed.initialize(
-        args=args,model=model,
+        args=args,
+        model=model,
         model_parameters=[p for p in model.parameters() if p.requires_grad],
-        training_data=train_set)
-    
+        training_data=train_set,
+    )
+
     # Train loop
     total_training_time, total_test_time, epoch_0_training = 0, 0, 0
     for epoch in range(0, args.epochs):
@@ -222,11 +258,11 @@ def main():
         if args.test_batch_size > 0:
             total_test_time += test(args, model, device, my_loss, test_loader)
 
-    print('\n======== Global stats ========')
+    print("\n======== Global stats ========")
     if not args.pytorch_only:
         estimated_export = 0
         if args.epochs > 1:
-            estimated_export = epoch_0_training - (total_training_time - epoch_0_training)/(args.epochs-1)
+            estimated_export = epoch_0_training - (total_training_time - epoch_0_training) / (args.epochs - 1)
             print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
         else:
             print("  Estimated ONNX export took:               Estimate available when epochs > 1 only")
@@ -235,5 +271,5 @@ def main():
     print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -2,6 +2,7 @@
 
 # namespace: fbs
 
+
 class AttributeType(object):
     UNDEFINED = 0
     FLOAT = 1
@@ -16,4 +17,3 @@ class AttributeType(object):
     GRAPHS = 10
     SPARSE_TENSOR = 11
     SPARSE_TENSORS = 12
-

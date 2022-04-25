@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class StringStringEntry(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsStringStringEntry(cls, buf, offset):
@@ -38,7 +40,18 @@ class StringStringEntry(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-def StringStringEntryStart(builder): builder.StartObject(2)
-def StringStringEntryAddKey(builder, key): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0)
-def StringStringEntryAddValue(builder, value): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
-def StringStringEntryEnd(builder): return builder.EndObject()
+
+def StringStringEntryStart(builder):
+    builder.StartObject(2)
+
+
+def StringStringEntryAddKey(builder, key):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(key), 0)
+
+
+def StringStringEntryAddValue(builder, value):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(value), 0)
+
+
+def StringStringEntryEnd(builder):
+    return builder.EndObject()

@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class ValueInfo(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAsValueInfo(cls, buf, offset):
@@ -44,13 +46,28 @@ class ValueInfo(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.TypeInfo import TypeInfo
+
             obj = TypeInfo()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def ValueInfoStart(builder): builder.StartObject(3)
-def ValueInfoAddName(builder, name): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
-def ValueInfoAddDocString(builder, docString): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
-def ValueInfoAddType(builder, type): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(type), 0)
-def ValueInfoEnd(builder): return builder.EndObject()
+
+def ValueInfoStart(builder):
+    builder.StartObject(3)
+
+
+def ValueInfoAddName(builder, name):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+
+
+def ValueInfoAddDocString(builder, docString):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
+
+
+def ValueInfoAddType(builder, type):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(type), 0)
+
+
+def ValueInfoEnd(builder):
+    return builder.EndObject()
