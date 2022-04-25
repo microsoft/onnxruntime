@@ -1944,7 +1944,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
         y_scale, y_zero_point));
   }
 
-  int rank = static_cast<int32_t>(shaper[input0].size());
+  int32_t rank = static_cast<int32_t>(shaper[input0].size());
   int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
 
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
