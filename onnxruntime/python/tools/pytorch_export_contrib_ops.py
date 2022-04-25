@@ -73,9 +73,8 @@ def register():
     _reg(inverse)
 
     def gelu(g, self: torch._C.Value, approximate: str = "none"):
+        # Use microsoft::Gelu for performance if possible. It only supports approximate == "none"
         if approximate == "none":
-            # symbolic_opset9.gelu supports approximate="none", but onnxruntime
-            # implements a custom op for gelu so we respect it.
             return g.op("com.microsoft::Gelu", self).setType(self.type())
         return torch.onnx.symbolic_opset9.gelu(g, self, approximate)
     _reg(gelu)
