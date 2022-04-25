@@ -180,6 +180,24 @@ def parse_arguments():
         "--enable_training_torch_interop", action="store_true", help="Enable training kernels interop with torch."
     )
     parser.add_argument(
+        "--enable_nvtx_profile", action='store_true', help="Enable NVTX profile in ORT.")
+    parser.add_argument(
+        "--enable_memory_profile", action='store_true', help="Enable memory profile in ORT.")
+    parser.add_argument(
+        "--enable_training", action='store_true', help="Enable training in ORT.")
+    parser.add_argument(
+        "--enable_training_ops", action='store_true', help="Enable training ops in inference graph.")
+    parser.add_argument(
+        "--enable_training_torch_interop", action='store_true', help="Enable training kernels interop with torch.")
+    parser.add_argument(
+        "--enable_training_on_device", action='store_true', help="Enable training on device API.")
+    parser.add_argument(
+        "--disable_nccl", action='store_true', help="Disable Nccl.")
+    parser.add_argument(
+        "--mpi_home", help="Path to MPI installation dir")
+    parser.add_argument(
+        "--nccl_home", help="Path to NCCL installation dir")
+    parser.add_argument(
         "--enable_training_on_device", action='store_true', help="Enable on device training in ORT.")
     parser.add_argument("--disable_nccl", action="store_true", help="Disable Nccl.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
