@@ -2,7 +2,12 @@
 // Licensed under the MIT License.
 
 #if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
-
+#pragma once
+#include "core/common/logging/logging.h"
+#include "core/common/logging/sinks/clog_sink.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/environment.h"
+#include "core/session/inference_session.h"
 namespace onnxruntime {
 namespace training {
 namespace api_test {
@@ -10,8 +15,8 @@ namespace api_test {
 class Parameter {
  public:
   // create parameter
-  Parameter(std::string /*name*/, const OrtValue& /*data*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
+  Parameter(std::string& name, const OrtValue& data) : name_(name), data_(data) {
+    ORT_ENFORCE(data.IsAllocated());
   }
 
   // Return the mutable data
@@ -33,8 +38,8 @@ class Parameter {
   }
   // need to set grad but not public api
  private:
-  OrtValue data_;
   std::string name_;
+  OrtValue data_;
 
   OrtValue gradient_;
   std::string gradient_name_;
@@ -48,26 +53,21 @@ class Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  Module(const std::string& /*train_model_path_or_bytes*/,
-         std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*parameters*/,
-         const std::optional<std::string>& /*eval_model_path_or_bytes*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-  }
+  Module(const std::string& train_model_path_or_bytes,
+         std::map<std::string, std::shared_ptr<Parameter>>& parameters,
+         const std::optional<std::string>& eval_model_path_or_bytes);
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> parameters() const {
-    return parameters_;
-  }
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters() const {
     ORT_NOT_IMPLEMENTED("Not implemented.");
-    return {};
+    // return parameters_;
+  }
+  std::map<std::string, std::shared_ptr<Parameter>> named_parameters() const {
+    return parameters_;
   }
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs. Gradients will be accumulated within the Parameter object
-  Status TrainStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return Status::OK();
-  }
+  Status TrainStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
@@ -77,7 +77,7 @@ class Module {
   }
 
   // Return the states of the module as a map.
-  Status GetStateDict(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*module_state_dict*/) {
+  Status GetStateDict(const std::map<std::string, std::shared_ptr<Parameter>>& /*module_state_dict*/) {
     ORT_NOT_IMPLEMENTED("Not implemented.");
     return Status::OK();
   }
@@ -85,7 +85,11 @@ class Module {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_;
-  std::vector<std::shared_ptr<Parameter>> parameters_;
+  std::map<std::string, std::shared_ptr<Parameter>> parameters_;
+  std::vector<std::string> input_names_;
+  std::vector<std::string> output_names_;
+  std::vector<OrtValue> weights_;
+  std::vector<OrtValue> gradients_;
 };
 
 // Internal state
@@ -112,7 +116,7 @@ class Optimizer {
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input’s ValueInfoProto if the parameter doesn’t have it already.
   Optimizer(const std::string& /*optim_path_or_bytes*/,
-            std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*parameters*/) {
+            std::map<std::string, std::shared_ptr<Parameter>>& /*parameters*/) {
     ORT_NOT_IMPLEMENTED("Not implemented.");
   }
 
@@ -187,43 +191,43 @@ class LinearScheduler : public LearningRateScheduler {
   int64_t total_iters_;
 };
 
-namespace utils {
+// namespace utils {
 
-struct CheckpointProperty {
-  int value;
-  // Support primitive types like int, float, string leveraging type trait.
-};
+// struct CheckpointProperty {
+//   int value;
+//   // Support primitive types like int, float, string leveraging type trait.
+// };
 
-struct CheckpointStates {
-  CheckpointStates() {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-  }
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
-  OptimizerState optimizer_states;
-  std::unordered_map<std::string, CheckpointProperty> named_properties;
-};
+// struct CheckpointStates {
+//   CheckpointStates() {
+//     ORT_NOT_IMPLEMENTED("Not implemented.");
+//   }
+//   std::map<std::string, std::shared_ptr<Parameter>> named_parameters;
+//   OptimizerState optimizer_states;
+//   std::unordered_map<std::string, CheckpointProperty> named_properties;
+// };
 
-// Save properties into a checkpoint property file (with postfix .prop).
-Status Ort_Save(CheckpointStates& /*state_dicts*/, const PathString& /*checkpoint_path*/) {
-  ORT_NOT_IMPLEMENTED("Not implemented.");
-  return Status::OK();
-}
+// // Save properties into a checkpoint property file (with postfix .prop).
+// Status Ort_Save(CheckpointStates& /*state_dicts*/, const PathString& /*checkpoint_path*/) {
+//   ORT_NOT_IMPLEMENTED("Not implemented.");
+//   return Status::OK();
+// }
 
-// Load properties file having postfix being '.prop'.
-Status Ort_Load(const PathString& /*checkpoint_path*/, CheckpointStates& /*state_dicts*/) {
-  ORT_NOT_IMPLEMENTED("Not implemented.");
-  return Status::OK();
-}
+// // Load properties file having postfix being '.prop'.
+// Status Ort_Load(const PathString& /*checkpoint_path*/, CheckpointStates& /*state_dicts*/) {
+//   ORT_NOT_IMPLEMENTED("Not implemented.");
+//   return Status::OK();
+// }
 
-/*
-  module.train_sess.RegisterExecutionProvider(provider);
-  module.eval_sess.RegisterExecutionProvider(provider);
-  optimizer.optim_sess.RegisterExecutionProvider(provider);
-*/
-void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/) {
-  ORT_NOT_IMPLEMENTED("Not implemented.");
-}
-}  // namespace utils
+// /*
+//   module.train_sess.RegisterExecutionProvider(provider);
+//   module.eval_sess.RegisterExecutionProvider(provider);
+//   optimizer.optim_sess.RegisterExecutionProvider(provider);
+// */
+// void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/) {
+//   ORT_NOT_IMPLEMENTED("Not implemented.");
+// }
+// }  // namespace utils
 
 }  // namespace api_test
 }  // namespace training

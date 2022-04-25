@@ -17,6 +17,15 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/agent/*.cc"
     )
 
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  file(GLOB_RECURSE onnxruntime_training_api_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/training_api/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_api/*.cc"
+  )
+
+  list(APPEND onnxruntime_training_srcs ${onnxruntime_training_api_srcs})
+endif()
+
 # This needs to be built in framework.cmake
 file(GLOB_RECURSE onnxruntime_training_framework_excluded_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
@@ -245,10 +254,28 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       endif()
     endif()
 
-    onnxruntime_add_include_to_target(onnxruntime_training_api_test_runner onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
-    target_include_directories(onnxruntime_training_api_test_runner PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+    onnxruntime_add_include_to_target(onnxruntime_training_api_test_runner onnxruntime_training 
+      onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+   
+    target_include_directories(onnxruntime_training_api_test_runner PUBLIC 
+      ${CMAKE_CURRENT_BINARY_DIR} 
+      ${ONNXRUNTIME_ROOT} 
+      ${ORTTRAINING_ROOT} 
+      ${MPI_CXX_INCLUDE_DIRS} 
+      ${eigen_INCLUDE_DIRS} 
+      ${CXXOPTS} 
+      ${extra_includes} 
+      ${onnxruntime_graph_header} 
+      ${onnxruntime_exec_src_dir} 
+      ${CMAKE_CURRENT_BINARY_DIR} 
+      ${CMAKE_CURRENT_BINARY_DIR}/onnx
+    )
 
-    target_link_libraries(onnxruntime_training_api_test_runner PRIVATE onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
+    target_link_libraries(onnxruntime_training_api_test_runner PRIVATE 
+      onnxruntime_training
+      ${ONNXRUNTIME_LIBS}
+      ${onnxruntime_EXTERNAL_LIBRARIES}
+    )
     set_target_properties(onnxruntime_training_api_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 

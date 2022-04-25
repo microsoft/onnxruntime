@@ -12,6 +12,7 @@
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/training_api/interfaces.h"
+#include "orttraining/training_api/utils.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
