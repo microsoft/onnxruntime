@@ -65,6 +65,7 @@ void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(IDMLDevice* dml_device,
                                                                               ID3D12CommandQueue* cmd_queue,
                                                                               _In_ OrtSessionOptions* options) {
+#ifndef _GAMING_XBOX
   // Validate that the D3D12 devices match between DML and the command queue. This specifically asks for IUnknown in
   // order to be able to compare the pointers for COM object identity.
   ComPtr<IUnknown> d3d12_device_0;
