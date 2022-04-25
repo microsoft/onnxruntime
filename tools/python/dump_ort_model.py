@@ -6,10 +6,9 @@ import os
 import sys
 import typing
 
-from util.ort_format_model.types import FbsTypeInfo
-
 # the import of FbsTypeInfo sets up the path so we can import ort_flatbuffers_py
 import ort_flatbuffers_py.fbs as fbs
+from util.ort_format_model.types import FbsTypeInfo
 
 
 class OrtFormatModelDumper:

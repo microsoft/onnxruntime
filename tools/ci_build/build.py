@@ -5,14 +5,15 @@
 import argparse
 import contextlib
 import os
+import platform
 import re
 import shlex
 import shutil
 import subprocess
 import sys
-import platform
-from amd_hipify import amd_hipify
 from distutils.version import LooseVersion
+
+from amd_hipify import amd_hipify
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -20,10 +21,8 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
-from util import run, is_windows, is_macOS, is_linux, get_logger  # noqa: E402
-
 import util.android as android  # noqa: E402
-
+from util import get_logger, is_linux, is_macOS, is_windows, run  # noqa: E402
 
 log = get_logger("build")
 
@@ -1864,8 +1863,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
                     )
                     if args.enable_transformers_tool_test:
-                        import numpy
                         import google.protobuf
+                        import numpy
 
                         numpy_init_version = numpy.__version__
                         pb_init_version = google.protobuf.__version__
@@ -1899,8 +1898,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.skip_keras_test:
                 try:
-                    import onnxmltools  # noqa
                     import keras  # noqa
+                    import onnxmltools  # noqa
 
                     onnxml_test = True
                 except ImportError:

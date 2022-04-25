@@ -4,19 +4,18 @@
 # -*- coding: UTF-8 -*-
 import argparse
 import multiprocessing
+import os
+from timeit import default_timer as timer
+
 import numpy as np
 import onnx
+from onnx import IR_VERSION, helper, numpy_helper, shape_inference
 
 # use lines below when building ONNX Runtime from source with --enable_pybind
 # import sys
 # sys.path.append(r'X:\Repos\Lotus\build\Windows\Release\Release')
 # sys.path.append('/repos/Lotus/build/Linux/Release')
 import onnxruntime
-from onnx import helper, numpy_helper
-from onnx import shape_inference
-from onnx import IR_VERSION
-import os
-from timeit import default_timer as timer
 
 
 def generate_model(
@@ -193,8 +192,8 @@ def perf_test(
     # run converted model in Nuphar, using specified threads
     with ScopedSetNumThreads(num_threads) as scoped_set_num_threads:
         # run Scan model converted from original in Nuphar
-        from .model_editor import convert_to_scan_model
         from ..tools.symbolic_shape_infer import SymbolicShapeInference
+        from .model_editor import convert_to_scan_model
 
         scan_model_name = os.path.splitext(model_name)[0] + "_scan.onnx"
         convert_to_scan_model(model_name, scan_model_name)

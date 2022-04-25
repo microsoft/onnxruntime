@@ -1,19 +1,19 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import unittest
+import json
+import os
 import subprocess
 import time
-import os
-import requests
-import json
-import numpy
+import unittest
 
-import test_util
+import grpc
+import numpy
 import onnx_ml_pb2
 import predict_pb2
 import prediction_service_pb2_grpc
-import grpc
+import requests
+import test_util
 
 
 class HttpJsonPayloadTests(unittest.TestCase):

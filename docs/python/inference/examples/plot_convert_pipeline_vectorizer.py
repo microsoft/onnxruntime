@@ -34,9 +34,9 @@ X_test_dict = pandas.DataFrame(X_test[:, 1:]).T.to_dict().values()
 ####################################
 # We create a pipeline.
 
-from sklearn.pipeline import make_pipeline
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.feature_extraction import DictVectorizer
+from sklearn.pipeline import make_pipeline
 
 pipe = make_pipeline(DictVectorizer(sparse=False), GradientBoostingRegressor())
 
@@ -59,7 +59,7 @@ print(r2_score(y_test, pred))
 # to convert the model into ONNX format.
 
 from skl2onnx import convert_sklearn
-from skl2onnx.common.data_types import FloatTensorType, Int64TensorType, DictionaryType, SequenceType
+from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType, SequenceType
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]

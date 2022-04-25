@@ -1,10 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import unittest
-import random
 import os
+import random
 import sys
+import unittest
 
 
 class ModelZooTests(unittest.TestCase):

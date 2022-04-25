@@ -1,23 +1,23 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import os
 import base64
-import struct
-import math
-import subprocess
-import time
-import requests
-import json
 import datetime
-import socket
 import errno
+import json
+import math
+import os
+import socket
+import struct
+import subprocess
 import sys
+import time
 import urllib.request
 
-import predict_pb2
-import onnx_ml_pb2
 import numpy
+import onnx_ml_pb2
+import predict_pb2
+import requests
 
 
 def test_log(str):

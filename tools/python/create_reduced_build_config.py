@@ -3,11 +3,11 @@
 # Licensed under the MIT License.
 
 import argparse
-import onnx
 import pathlib
 import sys
 import typing
 
+import onnx
 from util.file_utils import files_from_file_or_dir, path_match_suffix_ignore_case
 
 

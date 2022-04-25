@@ -2,25 +2,22 @@
 
 # This file is copied and adapted from https://github.com/onnx/onnx repository.
 # There was no copyright statement on the file at the time of copying.
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, print_function, unicode_literals
 
-from collections import defaultdict
+import argparse
 import io
 import os
 import pathlib
 import sys
-import argparse
+from collections import defaultdict
+from typing import Any, Dict, List, Sequence, Set, Text, Tuple
 
 import numpy as np  # type: ignore
+from onnx import AttributeProto, FunctionProto
 
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef  # noqa: F401
 from onnxruntime.capi.onnxruntime_pybind11_state.schemadef import OpSchema  # noqa: F401
-from typing import Any, Text, Sequence, Dict, List, Set, Tuple
-from onnx import AttributeProto, FunctionProto
 
 ONNX_ML = not bool(os.getenv("ONNX_ML") == "0")
 ONNX_DOMAIN = "onnx"

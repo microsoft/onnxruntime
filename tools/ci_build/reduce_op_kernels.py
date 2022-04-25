@@ -3,13 +3,13 @@
 # Licensed under the MIT License.
 
 import argparse
-import op_registration_utils
 import shutil
 import sys
 import typing
-
-from logger import get_logger
 from pathlib import Path
+
+import op_registration_utils
+from logger import get_logger
 
 # directory containing the reduced op files, relative to the build directory
 OP_REDUCTION_DIR = "op_reduction.generated"

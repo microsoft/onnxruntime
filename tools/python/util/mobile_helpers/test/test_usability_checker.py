@@ -3,8 +3,10 @@
 
 import logging
 import pathlib
-from testfixtures import LogCapture
 import unittest
+
+from testfixtures import LogCapture
+
 from ..usability_checker import analyze_model
 
 # example usage from <ort root>/tools/python
