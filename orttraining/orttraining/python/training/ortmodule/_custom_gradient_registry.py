@@ -140,8 +140,8 @@ def minmax_dim_gradient():
     #       print(x.grad)        (tensor([0., 1., 0., 0., 0.]))
     return [
         ('Shape', ['I(0)'], ['Shape_X']),
-        (('ATen', 'org.pytorch.aten'), ['GO(0)', 'I(1)', 'O(1)', 'Shape_X', 'I(2)'],
-        ['GI(0)'], {'operator': {'value': 'aten::value_selecting_reduction_backward', 'dtype': 'string'}})
+        (('ATen', 'org.pytorch.aten'), ['GO(0)', 'I(1)', 'O(1)', 'Shape_X', 'I(2)'], ['GI(0)'],
+         {'operator': {'value': 'aten::value_selecting_reduction_backward', 'dtype': 'string'}})
     ]
 
 min_dim_gradient = register_gradient('org.pytorch.aten', 'ATen', 'aten::min', 'dim')(minmax_dim_gradient)
