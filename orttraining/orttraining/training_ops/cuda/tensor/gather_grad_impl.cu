@@ -170,8 +170,8 @@ void DirectSumImpl(
     int64_t num_gathered_per_index,
     int64_t gather_dimension_size,
     int64_t num_batches) {
-  dim3 block(GPU_WARP_SIZE, 4);
-  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
+  dim3 block(GPU_WARP_SIZE_HOST, 4);
+  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE_HOST));
 
   DirectSumKernel<T, TIndex, GridDim::maxElementsPerThread><<<grid, block, 0, stream>>>(
       dX_indices_sorted,
@@ -367,7 +367,7 @@ void PartialSumsImpl(
 
   {
     const auto num_gathered_per_index_warp_size_multiple =
-        CeilDiv(num_gathered_per_index, GPU_WARP_SIZE) * GPU_WARP_SIZE;
+        CeilDiv(num_gathered_per_index, GPU_WARP_SIZE_HOST) * GPU_WARP_SIZE_HOST;
     const auto threads_per_block =
         std::min<int64_t>(num_gathered_per_index_warp_size_multiple, GridDim::maxThreadsPerBlock);
 
@@ -512,8 +512,8 @@ void Impl_Simplified(
       dX_indices, num_gathered_indices,
       dX_indices_sorted, dY_indices_sorted);
 
-  dim3 block(GPU_WARP_SIZE, 4);
-  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
+  dim3 block(GPU_WARP_SIZE_HOST, 4);
+  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE_HOST));
 
   DirectSumKernel<T, TIndex, GridDim::maxElementsPerThread><<<grid, block, 0, stream>>>(
       dX_indices_sorted.get(),
