@@ -111,6 +111,8 @@ using UpdateFeedsFunc1 = std::function<Status(
     std::vector<OrtValue>& next_inputs,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
 
 template <typename T>
@@ -122,6 +124,8 @@ using UpdateFeedsFunc2 = std::function<Status(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
 
 }  // namespace BeamSearchDeviceHelper
@@ -206,6 +210,8 @@ Status UpdateFeeds1(
     std::vector<OrtValue>& next_inputs,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 template <typename T>
@@ -217,6 +223,8 @@ Status UpdateFeeds2(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 }  // namespace BeamSearchCpuDeviceHelper

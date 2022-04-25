@@ -218,13 +218,17 @@ class BeamSearchImpl {
       const std::vector<OrtValue>& last_outputs,
       std::vector<OrtValue>& next_inputs,
       gsl::span<const int32_t> beam_next_tokens,
-      gsl::span<const int32_t> beam_indices);
+      gsl::span<const int32_t> beam_indices,
+      int current_length,
+      transformers::Sequences& sequences);
 
   Status UpdateFeeds2(
       const std::vector<OrtValue>& last_outputs,
       std::vector<OrtValue>& next_inputs,
       gsl::span<const int32_t> beam_next_tokens,
-      gsl::span<const int32_t> beam_indices);
+      gsl::span<const int32_t> beam_indices,
+      int current_length,
+      transformers::Sequences& sequences);
 
   // Process logits and append next tokens to sequences.
   Status GenerateNextToken(const OrtValue& logits,
@@ -545,9 +549,11 @@ Status BeamSearchImpl<T>::UpdateFeeds1(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices) {
+    gsl::span<const int32_t> beam_indices,
+    int current_length,
+    Sequences& sequences) {
   return update_feeds_func1_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs,
-                             beam_next_tokens, beam_indices, GetConsoleDumper());
+                             beam_next_tokens, beam_indices, current_length, sequences, GetConsoleDumper());
 }
 
 template <typename T>
@@ -555,9 +561,11 @@ Status BeamSearchImpl<T>::UpdateFeeds2(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices) {
+    gsl::span<const int32_t> beam_indices,
+    int current_length,
+    Sequences& sequences) {
   return update_feeds_func2_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs,
-                            beam_next_tokens, beam_indices, parameters_->num_beams, GetConsoleDumper());
+                            beam_next_tokens, beam_indices, parameters_->num_beams, current_length, sequences, GetConsoleDumper());
 }
 
 
@@ -652,9 +660,10 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();
-  dumper->Print("encoder_outputs", decoder_feeds[1]);
-  //dumper->Print("decoder_input_ids", decoder_feeds[1]);
-  //dumper->Print("attention_mask", decoder_feeds[2]);
+  dumper->Print("encoder_input_ids", feeds[0]);
+  dumper->Print("encoder_attn_mask", feeds[1]);
+  dumper->Print("decoder_input_ids", feeds[2]);
+  dumper->Print("beam", feeds[3]);
 #endif
 
   int current_length = parameters_->sequence_length;
@@ -688,7 +697,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
     gsl::span<int32_t> beam_next_tokens;
     gsl::span<int32_t> beam_indices;
     ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
-
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (beam_scorer_->IsDone()) {
       break;
@@ -696,13 +704,12 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
     // Increase sequence length after a new token is generated.
     ++current_length;
-
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters_->max_length) {
       if (iteration_counter == 1) {
-        ORT_RETURN_IF_ERROR(UpdateFeeds1(fetches, feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
+        ORT_RETURN_IF_ERROR(UpdateFeeds1(fetches, feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>(), current_length, cpu_state.sequences));
       } else {
-        ORT_RETURN_IF_ERROR(UpdateFeeds2(fetches, feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
+        ORT_RETURN_IF_ERROR(UpdateFeeds2(fetches, feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>(), current_length, cpu_state.sequences));
       }
 
     }
