@@ -1167,6 +1167,50 @@ bool CastOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
 
 #pragma endregion
 
+#pragma region op_depthtospace
+
+class DepthToSpaceOpSupportChecker : public BaseOpSupportChecker {
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+
+  // DepthToSpace opset 11- has missing key attribute mode, is not supported for now
+  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 11; }
+};
+
+bool DepthToSpaceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+                                                     const OpSupportCheckParams& /* params */) const {
+  NodeAttrHelper helper(node_unit);
+  const auto blocksize = helper.Get("blocksize", 2);
+
+  Shape input_shape;
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+    return false;
+
+  const auto input_size = input_shape.size();
+  if (input_size != 4) {
+    LOGS_DEFAULT(VERBOSE) << "DepthToSpace only supports 4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  if (blocksize < 1) {
+    LOGS_DEFAULT(VERBOSE) << "[DepthToSpace] blocksize should be >= 1. current blocksize: " << blocksize;
+    return false;
+  }
+
+  // For now, only DCR mode is accepted as NNAPI only supports DCR format data rearrangement
+  const auto mode = helper.Get("mode", "DCR");
+  if (mode != "DCR") {
+    LOGS_DEFAULT(VERBOSE) << "[DepthToSpace] ANEURALNETWORKS_DEPTH_TO_SPACE only supports DCR rearrangement mode. Current mode : " << mode;
+    return false;
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region op_softmax
 
 class SoftMaxOpSupportChecker : public BaseOpSupportChecker {

@@ -1475,6 +1475,37 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 #pragma endregion
 
+#pragma region op_depthtospace
+class DepthToSpaceOpBuilder : public BaseOpBuilder {
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  NodeAttrHelper helper(node_unit);
+
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
+  const auto blocksize = helper.Get("blocksize", 2);
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, blocksize);
+
+  
+  ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
+                                                 {output_operand_type}));
+  return Status::OK();
+}
+
+#pragma endregion
+
 #pragma region op_softmax
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
@@ -2638,6 +2669,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DepthToSpace", DepthToSpaceOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
