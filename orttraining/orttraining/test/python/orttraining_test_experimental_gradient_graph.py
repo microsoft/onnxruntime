@@ -4,9 +4,8 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import torch
-
 import onnxruntime
+import torch
 from onnxruntime.training.experimental import export_gradient_graph
 
 

@@ -1,7 +1,6 @@
+import onnx
 import argparse
 import os
-
-import onnx
 
 
 def export_and_recurse(node, attribute, output_dir, level):

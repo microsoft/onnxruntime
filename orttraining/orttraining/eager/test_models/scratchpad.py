@@ -1,8 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import onnxruntime_pybind11_state as torch_ort
 import torch
+import onnxruntime_pybind11_state as torch_ort
 
 device = torch_ort.device()
 

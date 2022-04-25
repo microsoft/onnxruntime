@@ -1,12 +1,13 @@
 import argparse
-import os
 import sys
+import os
+
 from concurrent.futures import ThreadPoolExecutor
+from requests import Session
 from threading import Event, Thread
 
+from azureml.core import Workspace, Experiment, Run
 from azureml._run_impl.run_watcher import RunWatcher
-from azureml.core import Experiment, Run, Workspace
-from requests import Session
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

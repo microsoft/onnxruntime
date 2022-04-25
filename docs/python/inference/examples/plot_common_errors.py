@@ -15,10 +15,9 @@ It starts by loading the model trained in example
 trained on *Iris* datasets. The model takes
 a vector of dimension 2 and returns a class among three.
 """
-import numpy
-
 import onnxruntime as rt
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
+import numpy
 from onnxruntime.datasets import get_example
 
 example2 = get_example("logreg_iris.onnx")

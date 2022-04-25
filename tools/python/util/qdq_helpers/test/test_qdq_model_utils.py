@@ -1,10 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import onnx
 import pathlib
 import unittest
-
-import onnx
 
 from ..qdq_model_utils import fix_dq_nodes_with_multiple_consumers
 

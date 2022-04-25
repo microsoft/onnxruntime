@@ -1,11 +1,15 @@
 from copy import deepcopy
 
-import torch
-from opgen.generator import MakeTorchFallback as MakeTorchFallback
-from opgen.generator import ONNXOp as ONNXOp
-from opgen.generator import ORTGen as ORTGen
-from opgen.generator import SignatureOnly as SignatureOnly
+from opgen.generator import (
+    ORTGen as ORTGen,
+    ONNXOp as ONNXOp,
+    SignatureOnly as SignatureOnly,
+    MakeTorchFallback as MakeTorchFallback,
+)
+
 from opgen.onnxops import *
+
+import torch
 from packaging import version
 
 TORCH_API_CHANGE_VERSION = "1.11.1"

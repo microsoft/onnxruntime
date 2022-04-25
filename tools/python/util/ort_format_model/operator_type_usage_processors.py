@@ -3,10 +3,9 @@
 
 import json
 import typing
-from abc import ABC, abstractmethod
-
 import ort_flatbuffers_py.fbs as fbs
 
+from abc import ABC, abstractmethod
 from .types import FbsTypeInfo, value_name_to_typestr
 
 

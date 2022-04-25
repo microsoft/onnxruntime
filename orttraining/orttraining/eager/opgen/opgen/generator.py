@@ -1,13 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import json
-import sys
-from typing import Dict, List, Optional, Union
+from typing import Optional, Dict, List, Union
 
-import opgen.ast as ast
+import sys
+import json
+
 import opgen.lexer as lexer
 import opgen.parser as parser
+import opgen.ast as ast
 import opgen.writer as writer
 
 

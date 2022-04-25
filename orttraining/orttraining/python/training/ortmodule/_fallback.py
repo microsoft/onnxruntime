@@ -3,23 +3,24 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from . import _logger
+
 import os
+import torch
 import warnings
+
 from enum import IntFlag
 from typing import Optional
-
-import torch
-
-from . import _logger, _utils
 from ._fallback_exceptions import (
-    ORTModuleDeviceException,
     ORTModuleFallbackException,
     ORTModuleInitException,
+    ORTModuleDeviceException,
     ORTModuleIOError,
-    ORTModuleONNXModelException,
     ORTModuleTorchModelException,
+    ORTModuleONNXModelException,
     wrap_exception,
 )
+from . import _utils
 
 
 class _FallbackPolicy(IntFlag):

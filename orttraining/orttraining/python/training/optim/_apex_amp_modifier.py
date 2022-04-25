@@ -8,7 +8,6 @@
 
 import types
 import warnings
-
 from ._modifier import FP16OptimizerModifier
 
 
@@ -24,7 +23,6 @@ class ApexAMPModifier(FP16OptimizerModifier):
 
     def override_function(m_self):
         from apex import amp as apex_amp
-
         from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
 
         warnings.warn("Apex AMP fp16_optimizer functions are overrided with faster implementation.", UserWarning)

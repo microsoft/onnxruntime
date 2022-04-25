@@ -2,9 +2,8 @@
 # Licensed under the MIT License.
 
 import unittest
-
-import onnxruntime_pybind11_state as torch_ort
 import torch
+import onnxruntime_pybind11_state as torch_ort
 
 
 class OrtTensorTests(unittest.TestCase):

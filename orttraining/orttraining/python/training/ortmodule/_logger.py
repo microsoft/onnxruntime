@@ -3,13 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from onnxruntime.capi._pybind_state import Severity
+from contextlib import contextmanager
+from enum import IntEnum
 import io
 import sys
 import warnings
-from contextlib import contextmanager
-from enum import IntEnum
-
-from onnxruntime.capi._pybind_state import Severity
 
 
 class LogLevel(IntEnum):

@@ -2,9 +2,9 @@
 # Licensed under the MIT License.
 
 import inspect
-from collections import abc
-
 import torch
+
+from collections import abc
 
 
 def _parse_inputs_for_onnx_export(all_input_parameters, inputs, kwargs):

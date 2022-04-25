@@ -1,9 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from abc import ABC
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from abc import ABC
+from typing import List, Optional, Union, Tuple
 
 
 class SourceLocation(object):

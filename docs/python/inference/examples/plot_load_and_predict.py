@@ -12,9 +12,8 @@ the output for an input vector. It also shows how to
 retrieve the definition of its inputs and outputs.
 """
 
-import numpy
-
 import onnxruntime as rt
+import numpy
 from onnxruntime.datasets import get_example
 
 #########################

@@ -7,8 +7,9 @@ import contextlib
 import shlex
 import sys
 
-import util.android as android
 from util import get_logger
+import util.android as android
+
 
 log = get_logger("run_android_emulator")
 

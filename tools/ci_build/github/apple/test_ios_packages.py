@@ -10,8 +10,10 @@ import shutil
 import subprocess
 import tempfile
 
+
 from c.assemble_c_pod_package import assemble_c_pod_package
-from package_assembly_utils import PackageVariant, gen_file_from_template, get_ort_version
+from package_assembly_utils import gen_file_from_template, get_ort_version, PackageVariant
+
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve(strict=True)
 REPO_DIR = SCRIPT_PATH.parents[4]

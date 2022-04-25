@@ -3,15 +3,14 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import copy
-import gc
-import inspect
-import warnings
 from collections import abc
-
+import copy
+import inspect
 import torch
+import warnings
+import gc
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception
+from ._fallback import _FallbackManager, ORTModuleIOError, ORTModuleONNXModelException, wrap_exception
 from ._utils import warn_of_constant_inputs
 
 

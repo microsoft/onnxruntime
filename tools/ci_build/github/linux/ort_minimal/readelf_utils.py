@@ -9,8 +9,8 @@ import argparse
 import collections
 import os
 import re
-import subprocess
 import sys
+import subprocess
 
 
 def get_section_sizes(binary_path, readelf_path, dump_to_file=None):

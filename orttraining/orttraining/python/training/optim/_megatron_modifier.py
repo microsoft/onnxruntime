@@ -11,9 +11,7 @@
 
 import types
 import warnings
-
 from numpy import inf
-
 from ._modifier import FP16OptimizerModifier, check_overflow, clip_grad_norm_fp32
 
 

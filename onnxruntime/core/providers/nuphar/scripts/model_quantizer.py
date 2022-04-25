@@ -3,13 +3,11 @@
 
 # -*- coding: UTF-8 -*-
 import argparse
-import json
 from enum import Enum
-
+import json
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
-
 from .node_factory import NodeFactory, ensure_opset
 
 

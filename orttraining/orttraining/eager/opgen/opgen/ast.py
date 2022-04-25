@@ -2,8 +2,7 @@
 # Licensed under the MIT License.
 
 import io
-from typing import List, TextIO, Union
-
+from typing import TextIO, List, Union
 from opgen.lexer import Token
 
 

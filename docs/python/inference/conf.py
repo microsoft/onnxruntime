@@ -6,9 +6,8 @@
 # Configuration file for the Sphinx documentation builder.
 
 import os
-import shutil
 import sys
-
+import shutil
 import onnxruntime
 
 # import recommonmark

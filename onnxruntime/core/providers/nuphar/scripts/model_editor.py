@@ -3,18 +3,15 @@
 
 # -*- coding: UTF-8 -*-
 import argparse
-import copy
-import warnings
 from enum import Enum
-
+import warnings
 import numpy as np
-import onnx
 from numpy.testing import assert_array_equal
+import onnx
 from onnx import helper
-
 from onnxruntime.nuphar.node_factory import NodeFactory, ensure_opset
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto
-
+import copy
 
 # trim outputs of LSTM/GRU/RNN if not used or outputed
 def trim_unused_outputs(node, graph):

@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-import argparse
+import subprocess
 import os
 import shutil
-import subprocess
 import sys
-
 import torch
-from _test_commons import _load_pytorch_transformer_model
-
-from onnxruntime import set_seed
-from onnxruntime.capi._pybind_state import get_mpi_context_world_rank, get_mpi_context_world_size, set_cuda_device_id
+import argparse
+from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
 from onnxruntime.training import optim, orttrainer
+from _test_commons import _load_pytorch_transformer_model
+from onnxruntime import set_seed
 
 
 def _run_adasum_tests(opts):

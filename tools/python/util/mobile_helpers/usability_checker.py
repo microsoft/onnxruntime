@@ -3,20 +3,19 @@
 
 import argparse
 import logging
+import onnx
 import os
 import pathlib
 import tempfile
+
 from collections import deque
 from enum import IntEnum
-
-import onnx
-
 from ..onnx_model_utils import (
     get_producer_consumer_maps,
-    is_fixed_size_tensor,
+    optimize_model,
     iterate_graph_per_graph_func,
     iterate_graph_per_node_func,
-    optimize_model,
+    is_fixed_size_tensor,
 )
 
 

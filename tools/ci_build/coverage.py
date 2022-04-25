@@ -8,10 +8,9 @@
 #     2. The tests are run on the target emulator and *.gcda files are available on the emulator
 #     3. The emulator which ran tests must be running. Otherwise this script will fail
 
-import argparse
 import os
 import sys
-
+import argparse
 from build import run_subprocess
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))

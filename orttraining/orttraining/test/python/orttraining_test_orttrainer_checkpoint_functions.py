@@ -1,12 +1,10 @@
-from unittest.mock import Mock, patch
-
+import pytest
+from unittest.mock import patch, Mock
+from _test_commons import _load_pytorch_transformer_model
+from onnxruntime.training import amp, checkpoint, optim, orttrainer, _checkpoint_storage
 import numpy as np
 import onnx
-import pytest
 import torch
-from _test_commons import _load_pytorch_transformer_model
-
-from onnxruntime.training import _checkpoint_storage, amp, checkpoint, optim, orttrainer
 
 # Helper functions
 

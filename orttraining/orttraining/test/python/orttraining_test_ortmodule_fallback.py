@@ -4,23 +4,22 @@
 
 import copy
 import itertools
-import math
 import os
+import math
+import numpy as np
+import torch
+import pytest
 import warnings
 
+from onnxruntime.training.ortmodule import ORTModule, _fallback, ORTMODULE_TORCH_CPP_DIR
+from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 import _test_helpers
-import numpy as np
-import pytest
-import torch
 from _orttraining_ortmodule_models import (
+    NeuralNetSinglePositionalArgument,
+    NeuralNetCustomClassOutput,
     MyCustomClassInputNet,
     MyCustomFunctionReluModel,
-    NeuralNetCustomClassOutput,
-    NeuralNetSinglePositionalArgument,
 )
-
-from onnxruntime.training.ortmodule import ORTMODULE_TORCH_CPP_DIR, ORTModule, _fallback
-from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 # PyTorch model definitions for tests
 
@@ -374,7 +373,6 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
     #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
 
     from packaging import version
-
     from onnxruntime.training.ortmodule import MINIMUM_RUNTIME_PYTORCH_VERSION_STR
 
     runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])

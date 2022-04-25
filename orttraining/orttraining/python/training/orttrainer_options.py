@@ -1,11 +1,10 @@
 import cerberus
 import torch
 
-import onnxruntime as ort
-
-from . import PropagateCastOpsStrategy
-from .amp import loss_scaler
 from .optim import lr_scheduler
+from .amp import loss_scaler
+from . import PropagateCastOpsStrategy
+import onnxruntime as ort
 
 
 class ORTTrainerOptions(object):

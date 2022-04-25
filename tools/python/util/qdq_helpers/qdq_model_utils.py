@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 
 import onnx
-
 from ..onnx_model_utils import get_producer_consumer_maps, iterate_graph_per_graph_func
 
 

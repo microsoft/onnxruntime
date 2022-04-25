@@ -2,10 +2,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import argparse
 import os
+import argparse
 import warnings
-
 from azure.storage.blob import BlockBlobService, ContentSettings
 
 

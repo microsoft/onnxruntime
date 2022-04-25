@@ -2,11 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import argparse
-import logging
 import os
-import subprocess
+import argparse
 import warnings
+import subprocess
+import logging
 
 log = logging.getLogger("Build")
 

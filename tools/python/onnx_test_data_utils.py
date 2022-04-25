@@ -4,6 +4,7 @@ import os
 import sys
 
 import numpy as np
+
 import onnx
 from onnx import numpy_helper
 

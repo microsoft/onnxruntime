@@ -1,7 +1,9 @@
 import torch
 
-from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
-from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
+from onnxruntime.capi.ort_trainer import (
+    IODescription as Legacy_IODescription,
+    ModelDescription as Legacy_ModelDescription,
+)
 
 
 def my_loss(x, target):

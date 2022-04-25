@@ -1,15 +1,13 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
+import sys
 import os
 import subprocess
-import sys
-from subprocess import CalledProcessError
-
-import onnx
-import pybind11
-from setuptools import Extension, setup
+from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
-
+from subprocess import CalledProcessError
+import pybind11
+import onnx
 import onnxruntime
 
 

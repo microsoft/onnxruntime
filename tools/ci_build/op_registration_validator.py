@@ -6,11 +6,11 @@ Validate ORT kernel registrations.
 """
 
 import argparse
+import op_registration_utils
 import os
 import sys
 import typing
 
-import op_registration_utils
 from logger import get_logger
 
 log = get_logger("op_registration_validator")

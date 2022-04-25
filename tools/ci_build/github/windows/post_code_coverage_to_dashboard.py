@@ -9,14 +9,21 @@
 # --commit_hash=<string, full git commit hash>
 
 import argparse
-import datetime
 import json
 import sys
+import datetime
 
 # ingest from dataframe
 import pandas
-from azure.kusto.data import DataFormat, KustoConnectionStringBuilder
-from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
+from azure.kusto.data import (
+    DataFormat,
+    KustoConnectionStringBuilder,
+)
+from azure.kusto.ingest import (
+    IngestionProperties,
+    ReportLevel,
+    QueuedIngestClient,
+)
 
 
 def parse_arguments():

@@ -2,12 +2,12 @@
 # Licensed under the MIT License.
 # _torch_module_pytorch.py
 
-from collections import OrderedDict
-from typing import Callable, Iterator, Optional, Tuple, TypeVar
-
-import torch
-
 from ._torch_module_interface import TorchModuleInterface
+
+from collections import OrderedDict
+import torch
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
+
 
 T = TypeVar("T", bound="torch.nn.Module")
 

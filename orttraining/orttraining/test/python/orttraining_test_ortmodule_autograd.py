@@ -1,17 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from distutils.version import LooseVersion
-
+# Import external libraries.
+import onnxruntime
 import pytest
 import torch
+from torch.nn.parameter import Parameter
+from distutils.version import LooseVersion
 
 # Import ORT modules.
 from _test_helpers import *
-from torch.nn.parameter import Parameter
-
-# Import external libraries.
-import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
 
 torch.manual_seed(1)

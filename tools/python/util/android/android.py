@@ -11,8 +11,9 @@ import subprocess
 import time
 import typing
 
-from ..platform_helpers import is_windows
 from ..run import run
+from ..platform_helpers import is_windows
+
 
 _log = logging.getLogger("util.android")
 

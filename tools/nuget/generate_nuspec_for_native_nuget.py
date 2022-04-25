@@ -2,9 +2,9 @@
 # Licensed under the MIT License.
 
 import argparse
+import sys
 import os
 import re
-import sys
 from pathlib import Path
 
 

@@ -2,8 +2,9 @@
 # Licensed under the MIT License.
 
 import onnx
-from onnx import TensorProto, helper
+from onnx import helper
 from onnx.helper import make_opsetid
+from onnx import TensorProto
 
 input_info = helper.make_tensor_value_info("input", TensorProto.FLOAT16, [1, 5])
 output_info = helper.make_tensor_value_info("output", TensorProto.FLOAT16, [1, 5])

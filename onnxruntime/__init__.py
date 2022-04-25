@@ -21,28 +21,28 @@ __author__ = "Microsoft"
 # the saved exception is raised after device version validation.
 try:
     from onnxruntime.capi._pybind_state import (
-        ExecutionMode,
-        ExecutionOrder,
-        GraphOptimizationLevel,
-        ModelMetadata,
-        NodeArg,
-        OrtAllocatorType,
-        OrtArenaCfg,
-        OrtMemoryInfo,
-        OrtMemType,
-        OrtSparseFormat,
-        RunOptions,
-        SessionIOBinding,
-        SessionOptions,
-        create_and_register_allocator,
-        disable_telemetry_events,
-        enable_telemetry_events,
         get_all_providers,
         get_available_providers,
         get_device,
-        set_default_logger_severity,
-        set_default_logger_verbosity,
         set_seed,
+        RunOptions,
+        SessionOptions,
+        set_default_logger_severity,
+        enable_telemetry_events,
+        disable_telemetry_events,
+        NodeArg,
+        ModelMetadata,
+        GraphOptimizationLevel,
+        ExecutionMode,
+        ExecutionOrder,
+        SessionIOBinding,
+        OrtAllocatorType,
+        OrtMemType,
+        OrtArenaCfg,
+        OrtMemoryInfo,
+        create_and_register_allocator,
+        OrtSparseFormat,
+        set_default_logger_verbosity,
     )
 
     import_capi_exception = None
@@ -57,10 +57,11 @@ if import_capi_exception:
 from onnxruntime.capi.onnxruntime_inference_collection import (
     InferenceSession,
     IOBinding,
-    OrtDevice,
     OrtValue,
     SparseTensor,
+    OrtDevice,
 )
+
 from onnxruntime.capi.training import *  # noqa: F403
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
@@ -69,7 +70,7 @@ try:
 except ImportError:
     pass
 
-from onnxruntime.capi.onnxruntime_validation import cuda_version, package_name, version
+from onnxruntime.capi.onnxruntime_validation import package_name, version, cuda_version
 
 if version:
     __version__ = version

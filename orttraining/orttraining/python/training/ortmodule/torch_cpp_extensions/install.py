@@ -3,13 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from onnxruntime.training import ortmodule
+
+from glob import glob
+from shutil import copyfile
 import os
 import subprocess
 import sys
-from glob import glob
-from shutil import copyfile
-
-from onnxruntime.training import ortmodule
 
 
 def _list_extensions(path):

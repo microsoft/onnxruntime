@@ -4,8 +4,7 @@
 # --------------------------------------------------------------------------
 
 import os
-
-from setuptools import Extension, setup
+from setuptools import setup, Extension
 from torch.utils import cpp_extension
 
 filename = os.path.join(os.path.dirname(__file__), "aten_op_executor.cc")

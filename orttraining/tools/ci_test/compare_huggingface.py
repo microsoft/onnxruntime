@@ -1,6 +1,6 @@
-import collections
-import json
 import sys
+import json
+import collections
 
 actual = sys.argv[1]
 expect = sys.argv[2]

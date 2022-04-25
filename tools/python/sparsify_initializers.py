@@ -8,10 +8,9 @@
 
 import argparse
 import logging
-import sys
-from typing import List, Tuple
-
 import numpy as np
+import sys
+from typing import Tuple, List
 import onnx
 from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper
 

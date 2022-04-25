@@ -6,18 +6,19 @@
 # Refer to orttraining_test_checkpoint.py for an overview about Checkpoint tests
 ################################################################################
 
-import argparse
 import os
+import argparse
+
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from _test_helpers import (
     _train,
-    create_initialized_orttrainer,
     distributed_setup,
-    global_fp16_fp32_atol,
+    create_initialized_orttrainer,
     split_state_dict,
+    global_fp16_fp32_atol,
     verify_model_state,
     verify_opt_state,
     verify_part_info,

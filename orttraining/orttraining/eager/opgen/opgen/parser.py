@@ -1,10 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from typing import List, Optional, Tuple, Union
-
-from opgen.ast import *
 from opgen.lexer import *
+from opgen.ast import *
+from typing import List, Tuple, Union, Optional
 
 
 class UnexpectedTokenError(RuntimeError):

@@ -1,9 +1,8 @@
-import os.path
 import sys
-
-import numpy as np
-import onnx
+import os.path
 from onnx import *
+import onnx
+import numpy as np
 
 
 def find_node(graph_proto, op_type):

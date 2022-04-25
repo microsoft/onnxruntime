@@ -3,19 +3,18 @@ Example python code for creating a model with a single operator and performance 
 input combinations.
 """
 
+import onnx
+from onnx import helper
+from onnx import TensorProto
+import numpy as np
 import time
 import timeit
-
-import numpy as np
-import onnx
+import onnxruntime as rt
 
 # if you copy this script elsewhere you may need to add the tools\python dir to the sys.path for this
 # import to work.
 # e.g. sys.path.append(r'<path to onnxruntime source>\tools\python')
 import ort_test_dir_utils
-from onnx import TensorProto, helper
-
-import onnxruntime as rt
 
 # make input deterministic
 np.random.seed(123)

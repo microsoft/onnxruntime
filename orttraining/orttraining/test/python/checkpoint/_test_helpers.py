@@ -1,25 +1,27 @@
-import copy
-import glob
 import os
 import pickle
 from itertools import islice
+import glob
+import copy
 
 import torch
 import torch.distributed as dist
-from _test_commons import (
-    _load_bart_model,
-    _load_pytorch_transformer_model,
-    assert_all_states_close_ort,
-    assert_all_states_close_pytorch,
-    generate_dummy_optim_state,
-    generate_random_input_from_bart_model_desc,
-)
-from numpy.testing import assert_allclose, assert_array_equal
 from onnx import numpy_helper
 
 from onnxruntime import set_seed
-from onnxruntime.capi._pybind_state import get_mpi_context_world_rank, get_mpi_context_world_size, set_cuda_device_id
-from onnxruntime.training import _checkpoint_storage, amp, checkpoint, optim, orttrainer
+from onnxruntime.training import amp, checkpoint, _checkpoint_storage, optim, orttrainer
+from onnxruntime.capi._pybind_state import set_cuda_device_id, get_mpi_context_world_rank, get_mpi_context_world_size
+
+from _test_commons import (
+    generate_random_input_from_bart_model_desc,
+    generate_dummy_optim_state,
+    _load_pytorch_transformer_model,
+    _load_bart_model,
+    assert_all_states_close_ort,
+    assert_all_states_close_pytorch,
+)
+
+from numpy.testing import assert_allclose, assert_array_equal
 
 global_fp16_fp32_atol = 1e-3
 

@@ -2,10 +2,9 @@
 # Licensed under the MIT License.
 
 import unittest
-
-import numpy as np
-import onnxruntime_pybind11_state as torch_ort
 import torch
+import onnxruntime_pybind11_state as torch_ort
+import numpy as np
 
 
 class OrtOpTests(unittest.TestCase):

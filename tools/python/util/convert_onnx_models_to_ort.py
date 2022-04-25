@@ -11,7 +11,6 @@ import tempfile
 import typing
 
 import onnxruntime as ort
-
 from .file_utils import files_from_file_or_dir, path_match_suffix_ignore_case
 from .onnx_model_utils import get_optimization_level
 from .ort_format_model import create_config_from_models

@@ -1,8 +1,8 @@
+from pathlib import Path
 import argparse
 import configparser
 import json
 import re
-from pathlib import Path
 
 import pygit2
 

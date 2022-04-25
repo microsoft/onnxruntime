@@ -3,9 +3,9 @@
 # _torch_module_interface.py
 
 from collections import OrderedDict
-from typing import Callable, Iterator, Optional, Tuple, TypeVar
-
 import torch
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
+
 
 T = TypeVar("T", bound="torch.nn.Module")
 

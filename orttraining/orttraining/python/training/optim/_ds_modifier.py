@@ -10,11 +10,10 @@
 # - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
+import torch
 import types
 import warnings
 from distutils.version import LooseVersion
-
-import torch
 from numpy import inf
 
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads

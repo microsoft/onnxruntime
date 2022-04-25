@@ -1,21 +1,22 @@
-import copy
-import os
-import sys
 import unittest
+import pytest
+import sys
+import os
+import copy
+from numpy.testing import assert_allclose, assert_array_equal
 
 import onnx
-import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from numpy.testing import assert_allclose, assert_array_equal
-from orttraining_test_bert_postprocess import postprocess_model
-from orttraining_test_data_loader import create_ort_test_dataloader
-from orttraining_test_transformers import BertForPreTraining, BertModelTest
-from orttraining_test_utils import map_optimizer_attributes
 
+from orttraining_test_utils import map_optimizer_attributes
+from orttraining_test_transformers import BertModelTest, BertForPreTraining
+from orttraining_test_data_loader import create_ort_test_dataloader
+from orttraining_test_bert_postprocess import postprocess_model
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer, generate_sample
+
+from onnxruntime.capi.ort_trainer import ORTTrainer, IODescription, ModelDescription, LossScaler, generate_sample
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)

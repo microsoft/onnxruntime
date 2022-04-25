@@ -6,23 +6,23 @@
 # Refer to orttraining_test_checkpoint.py for an overview about Checkpoint tests
 ################################################################################
 
-import argparse
-import glob
 import os
 import pickle
-import sys
+from numpy.testing import assert_allclose
+import argparse
+import glob
 
 import torch
 import torch.distributed as dist
-from numpy.testing import assert_allclose
+
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from _test_commons import assert_all_states_close_ort
-from _test_helpers import aggregate_states, distributed_setup, load_model_optim_state_and_eval
-
 import onnxruntime
 from onnxruntime.training import checkpoint, optim
+from _test_helpers import distributed_setup, load_model_optim_state_and_eval, aggregate_states
+from _test_commons import assert_all_states_close_ort
 
 
 def verify_optimizer_state_match(device, opts, checkpoint_dir, world_rank, use_lamb=False):

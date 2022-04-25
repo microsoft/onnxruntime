@@ -8,15 +8,16 @@ import pathlib
 import shutil
 import sys
 
+
 _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 sys.path.append(str(_script_dir.parent))
 
 
 from package_assembly_utils import (  # noqa: E402
-    PackageVariant,
     copy_repo_relative_to_dir,
     gen_file_from_template,
     load_json_config,
+    PackageVariant,
 )
 
 

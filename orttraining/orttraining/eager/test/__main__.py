@@ -3,8 +3,8 @@
 
 import glob
 import os
-import subprocess
 import sys
+import subprocess
 
 selfdir = os.path.dirname(os.path.realpath(__file__))
 

@@ -1,12 +1,10 @@
 """
 @brief      test log(time=3s)
 """
-import copy
 import unittest
-
+import copy
 import numpy as np
 import torch
-
 from onnxruntime.training.ortmodule import ORTModule
 
 

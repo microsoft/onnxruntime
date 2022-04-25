@@ -4,6 +4,7 @@
 
 from wheel.vendored.packaging.tags import sys_tags
 
+
 # first tag is always the more specific tag
 tag = next(sys_tags())
 print("{0}-{1}".format(tag.interpreter, tag.abi))

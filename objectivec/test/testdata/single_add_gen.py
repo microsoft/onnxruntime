@@ -1,5 +1,6 @@
 import onnx
-from onnx import TensorProto, helper
+from onnx import helper
+from onnx import TensorProto
 
 graph = helper.make_graph(
     [  # nodes

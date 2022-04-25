@@ -10,11 +10,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
-import torch
 import tqdm
 from filelock import FileLock
-from torch.utils.data.dataset import Dataset
+
 from transformers import PreTrainedTokenizer, is_tf_available, is_torch_available
+
+import torch
+from torch.utils.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 

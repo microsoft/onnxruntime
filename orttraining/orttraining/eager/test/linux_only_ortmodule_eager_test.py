@@ -1,14 +1,12 @@
-import os
-import unittest
-
-import numpy as np
 import torch
+from onnxruntime.capi import _pybind_state as torch_ort_eager
+from onnxruntime.training import ORTModule
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
-from onnxruntime.capi import _pybind_state as torch_ort_eager
-from onnxruntime.training import ORTModule
+import numpy as np
+import os
+import unittest
 
 
 def my_loss(x, target):

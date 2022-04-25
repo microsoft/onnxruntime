@@ -100,7 +100,7 @@ def update_version():
     js_root = os.path.join(cwd, "..", "..", "js")
 
     def run(args, cwd):
-        from util import is_windows, run
+        from util import run, is_windows
 
         if is_windows():
             args = ["cmd", "/c"] + args

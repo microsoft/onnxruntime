@@ -3,13 +3,12 @@
 # Licensed under the MIT License.
 
 import argparse
+import onnx
 import os
 import pathlib
 import sys
 
-import onnx
-
-from .onnx_model_utils import fix_output_shapes, make_dim_param_fixed, make_input_shape_fixed
+from .onnx_model_utils import make_dim_param_fixed, make_input_shape_fixed, fix_output_shapes
 
 
 def make_dynamic_shape_fixed_helper():

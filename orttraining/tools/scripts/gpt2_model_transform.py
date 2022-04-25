@@ -1,10 +1,11 @@
 ### Be noted: this script is developed against the model exported from Megatron GPT2 Pretraining script.
 
 import sys
-
-import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper, shape_inference
+from onnx import helper, shape_inference
+from onnx import TensorProto
+import numpy as np
+from onnx import numpy_helper
 
 if len(sys.argv) < 2:
     print("Please give model path...")

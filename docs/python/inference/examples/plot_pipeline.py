@@ -49,7 +49,7 @@ with open(example1, "rb") as fid:
 
 ###################################
 # We convert it into a graph.
-from onnx.tools.net_drawer import GetOpNodeProducer, GetPydotGraph
+from onnx.tools.net_drawer import GetPydotGraph, GetOpNodeProducer
 
 pydot_graph = GetPydotGraph(
     model.graph, name=model.graph.name, rankdir="LR", node_producer=GetOpNodeProducer("docstring")

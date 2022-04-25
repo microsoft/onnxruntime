@@ -3,10 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import torch
-import torch.onnx.symbolic_helper as sym_help
 from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
+from torch.onnx.symbolic_helper import parse_args, _get_tensor_dim_size, _get_tensor_sizes
+import torch.onnx.symbolic_helper as sym_help
+import torch
 
 
 class CustomOpSymbolicRegistry:

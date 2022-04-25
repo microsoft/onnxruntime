@@ -1,9 +1,7 @@
-import random
 from enum import Enum
-
+import random
 import torch
-from torch.utils.data import DataLoader, Dataset
-
+from torch.utils.data import Dataset, DataLoader
 from onnxruntime.capi.ort_trainer import generate_sample
 
 global_rng = random.Random()

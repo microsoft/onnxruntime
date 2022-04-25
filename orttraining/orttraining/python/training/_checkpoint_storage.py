@@ -3,10 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import pickle
-from collections.abc import Mapping
-
 import h5py
+from collections.abc import Mapping
+import pickle
 
 
 def _dfs_save(group, save_obj):

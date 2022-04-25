@@ -2,12 +2,11 @@
 # Licensed under the MIT License.
 
 import logging
+import onnx
+import onnxruntime as ort
 import pathlib
 
-import onnx
 from onnx import version_converter
-
-import onnxruntime as ort
 
 
 def iterate_graph_per_node_func(graph, per_node_func, **func_args):

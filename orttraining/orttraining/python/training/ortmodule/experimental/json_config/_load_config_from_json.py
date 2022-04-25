@@ -3,18 +3,17 @@
 # _load_config_from_json.py
 
 import json
-import logging
 import os
-from functools import reduce
+import logging
 from types import SimpleNamespace
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.training import ortmodule
-
+from functools import reduce
+from . import JSON_PATH_ENVIRONMENT_KEY
 from ..._fallback import _FallbackPolicy
 from ..._graph_execution_manager import _SkipCheck
 from ...debug_options import DebugOptions, LogLevel, _SaveOnnxOptions
-from . import JSON_PATH_ENVIRONMENT_KEY
+from onnxruntime.training import ortmodule
 
 log = logging.getLogger(__name__)
 

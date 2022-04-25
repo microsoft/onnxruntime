@@ -1,18 +1,17 @@
 import copy
-import os
-
 import numpy as np
+import os
 import torch
-from numpy.testing import assert_allclose
 
+from numpy.testing import assert_allclose
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import orttrainer
 
 try:
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
-    from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
     from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
+    from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass

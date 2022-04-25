@@ -1,9 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import unittest
-
 import torch
+import unittest
 
 from ..pytorch_export_helpers import infer_input_info
 

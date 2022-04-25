@@ -1,13 +1,12 @@
 import glob
-import os
-import shutil
-
 import numpy as np
 import onnx
 import onnx_test_data_utils
-from onnx import numpy_helper
-
 import onnxruntime as ort
+import os
+import shutil
+
+from onnx import numpy_helper
 
 
 def _get_numpy_type(model_info, name):

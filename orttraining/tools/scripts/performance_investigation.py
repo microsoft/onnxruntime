@@ -1,5 +1,4 @@
 import argparse
-
 import onnx
 
 parser = argparse.ArgumentParser(description="ONNX file analyzer for performance investigation.")
