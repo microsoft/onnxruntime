@@ -77,7 +77,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   }
 #endif
 
-  bool graph_fusion_enabled = options->value.graph_optimization_level > TransformerLevel::Level1;
+  // Disable DML_GRAPH_DESC fusion if the user wants to export the model because otherwise the graph cannot be
+  // reloaded again since all nodes were fused into a single large IDMLOperator (which isn't any kind of
+  // registered ONNX operator).
+  bool graph_fusion_enabled = options->value.optimized_model_filepath.empty();
 
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(dml_device->GetParentDevice(IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
