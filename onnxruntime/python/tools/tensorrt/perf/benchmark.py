@@ -279,7 +279,11 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
                 mem_usages.append(mem_usage) 
             else: 
                 runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, args.io_binding, io_binding)
-            runtimes += runtime[1:] # remove warmup
+            
+            if args.input_data == "fix":
+                runtime = runtime[1:] # remove warmup
+            
+            runtimes += runtime 
         
         except Exception as e:
             logger.error(e)
