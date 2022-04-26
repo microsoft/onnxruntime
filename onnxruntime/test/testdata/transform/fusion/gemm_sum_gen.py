@@ -1,7 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 12
@@ -14,16 +12,13 @@ opsets = [onnxdomain, msdomain]
 
 
 def save(model_path, nodes, inputs, outputs, initializers):
-    graph = helper.make_graph(
-        nodes,
-        "GemmSumTest",
-        inputs, outputs, initializers)
+    graph = helper.make_graph(nodes, "GemmSumTest", inputs, outputs, initializers)
 
-    model = helper.make_model(
-        graph, opset_imports=opsets, producer_name="onnxruntime-test")
+    model = helper.make_model(graph, opset_imports=opsets, producer_name="onnxruntime-test")
 
     print(model_path)
     onnx.save(model, model_path)
+
 
 def gen_gemm_sum_basic(model_path):
     nodes = [
@@ -32,34 +27,40 @@ def gen_gemm_sum_basic(model_path):
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, ['M', 'N'])
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, ["M", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
 
+
 def gen_gemm_sum_attributes(model_path):
     nodes = [
-        helper.make_node(op_type="Gemm", inputs=["A", "B"], outputs=["tp0"], alpha=3.5, beta=6.25, transA=False, transB=True),
+        helper.make_node(
+            op_type="Gemm",
+            inputs=["A", "B"],
+            outputs=["tp0"],
+            alpha=3.5,
+            beta=6.25,
+            transA=False,
+            transB=True,
+        ),
         helper.make_node(op_type="Sum", inputs=["tp0", "C"], outputs=["output"]),
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['N', 'K']),
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, ['M', 'N'])
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["N", "K"]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, ["M", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
+
 
 def gen_gemm_sum_internal_nodes(model_path):
     nodes = [
@@ -72,16 +73,15 @@ def gen_gemm_sum_internal_nodes(model_path):
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, ['M', 'N'])
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, ["M", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
+
 
 def gen_gemm_sum_no_fusion_c_used(model_path):
     nodes = [
@@ -90,17 +90,16 @@ def gen_gemm_sum_no_fusion_c_used(model_path):
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, ['M', 'N']),
-        helper.make_tensor_value_info("D", TensorProto.FLOAT, ['M', 'N']),
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, ["M", "N"]),
+        helper.make_tensor_value_info("D", TensorProto.FLOAT, ["M", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
+
 
 def gen_gemm_sum_no_fusion_sum_multiple_inputs(model_path):
     nodes = [
@@ -109,17 +108,16 @@ def gen_gemm_sum_no_fusion_sum_multiple_inputs(model_path):
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, ['M', 'N']),
-        helper.make_tensor_value_info("D", TensorProto.FLOAT, ['M', 'N']),
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, ["M", "N"]),
+        helper.make_tensor_value_info("D", TensorProto.FLOAT, ["M", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
+
 
 def gen_gemm_sum_fusion_broadcast(model_path):
     nodes = [
@@ -128,16 +126,15 @@ def gen_gemm_sum_fusion_broadcast(model_path):
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, [1, 'N']),
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, [1, "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
+
 
 def gen_gemm_sum_no_fusion_broadcast_failure(model_path):
     nodes = [
@@ -146,17 +143,16 @@ def gen_gemm_sum_no_fusion_broadcast_failure(model_path):
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
         # should work with multidirectional broadcast as second argument, but not unidirectional.
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, [1, 'M', 'N']), 
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, [1, "M", "N"]),
     ]
 
-    outputs = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 'M', 'N'])
-    ]
+    outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, "M", "N"])]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
+
 
 def gen_gemm_sum_no_fusion_original_gemm_output_used(model_path):
     nodes = [
@@ -165,17 +161,18 @@ def gen_gemm_sum_no_fusion_original_gemm_output_used(model_path):
     ]
 
     inputs = [
-        helper.make_tensor_value_info("A", TensorProto.FLOAT, ['M', 'K']),
-        helper.make_tensor_value_info("B", TensorProto.FLOAT, ['K', 'N']),
-        helper.make_tensor_value_info("C", TensorProto.FLOAT, ['M', 'N']), 
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, ["M", "N"]),
     ]
 
     outputs = [
-        helper.make_tensor_value_info("tp0", TensorProto.FLOAT, ['M', 'N']),
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, ['M', 'N'])
+        helper.make_tensor_value_info("tp0", TensorProto.FLOAT, ["M", "N"]),
+        helper.make_tensor_value_info("output", TensorProto.FLOAT, ["M", "N"]),
     ]
 
     save(model_path, nodes, inputs, outputs, initializers=[])
+
 
 gen_gemm_sum_basic("gemm_sum_basic.onnx")
 gen_gemm_sum_attributes("gemm_sum_attributes.onnx")

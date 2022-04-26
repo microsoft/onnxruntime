@@ -1,14 +1,18 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import sys
 import os
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import (Session, InferenceSession, IOBinding,
-                                                               check_and_normalize_provider_args)
+from onnxruntime.capi.onnxruntime_inference_collection import (
+    Session,
+    InferenceSession,
+    IOBinding,
+    check_and_normalize_provider_args,
+)
 
 
 class TrainingSession(InferenceSession):
@@ -25,8 +29,9 @@ class TrainingSession(InferenceSession):
         if providers is None:
             providers = C.get_available_providers()
 
-        providers, provider_options = check_and_normalize_provider_args(providers, provider_options,
-                                                                        C.get_available_providers())
+        providers, provider_options = check_and_normalize_provider_args(
+            providers, provider_options, C.get_available_providers()
+        )
 
         if isinstance(path_or_bytes, str):
             config_result = self._sess.load_model(path_or_bytes, parameters, providers, provider_options)
@@ -49,7 +54,7 @@ class TrainingSession(InferenceSession):
 
     def get_model_state(self, include_mixed_precision_weights=False):
         return self._sess.get_model_state(include_mixed_precision_weights)
-    
+
     def get_optimizer_state(self):
         return self._sess.get_optimizer_state()
 

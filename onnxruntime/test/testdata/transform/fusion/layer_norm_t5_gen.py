@@ -1,8 +1,7 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
 from enum import Enum
+
+import onnx
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 
 def GenerateModel(model_name, has_casts=False):
@@ -24,10 +23,14 @@ def GenerateModel(model_name, has_casts=False):
         )
 
     initializers = [  # initializers
-        helper.make_tensor('pow_in_2', TensorProto.FLOAT, [], [2]),
-        helper.make_tensor('const_e12', TensorProto.FLOAT, [], [1e-12]),
-        helper.make_tensor('gamma', TensorProto.FLOAT16 if has_casts else
-                           TensorProto.FLOAT, [4], [1, 2, 3, 4]),
+        helper.make_tensor("pow_in_2", TensorProto.FLOAT, [], [2]),
+        helper.make_tensor("const_e12", TensorProto.FLOAT, [], [1e-12]),
+        helper.make_tensor(
+            "gamma",
+            TensorProto.FLOAT16 if has_casts else TensorProto.FLOAT,
+            [4],
+            [1, 2, 3, 4],
+        ),
     ]
 
     input_type = TensorProto.FLOAT16 if has_casts else TensorProto.FLOAT
@@ -35,14 +38,15 @@ def GenerateModel(model_name, has_casts=False):
 
     graph = helper.make_graph(
         nodes,
-        "SimplifiedLayerNorm",  #name
+        "SimplifiedLayerNorm",  # name
         [  # inputs
-            helper.make_tensor_value_info('A', input_type, [16, 32, 4]),
+            helper.make_tensor_value_info("A", input_type, [16, 32, 4]),
         ],
         [  # outputs
-            helper.make_tensor_value_info('C', output_type, [16, 32, 4]),
+            helper.make_tensor_value_info("C", output_type, [16, 32, 4]),
         ],
-        initializers)
+        initializers,
+    )
 
     onnxdomain = OperatorSetIdProto()
     onnxdomain.version = 12
@@ -57,5 +61,5 @@ def GenerateModel(model_name, has_casts=False):
     onnx.save(model, model_name)
 
 
-GenerateModel('layer_norm_t5.onnx')
-GenerateModel('simplified_layer_norm_with_casts.onnx', True)
+GenerateModel("layer_norm_t5.onnx")
+GenerateModel("simplified_layer_norm_with_casts.onnx", True)
