@@ -409,11 +409,9 @@ Status Shaper::DepthToSpaceImpl(const std::string& input_name,
                                 bool nchw,
                                 const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
-  // input: [NCHW]
 
   // Make output dimensions
   Shape output_dimen = shape_map_.at(input_name);
-  // For DepthToSpace, only supports 4d [N,C,H,W] input tensor shape
   if (nchw) {
     output_dimen[0] = input_dimen[0];
     output_dimen[1] = input_dimen[1] / (blocksize * blocksize);
