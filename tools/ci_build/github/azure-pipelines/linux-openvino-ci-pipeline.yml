@@ -1,7 +1,7 @@
 jobs:
 - template: templates/linux-ci.yml
   parameters:
-    AgentPool : 'Linux-CPU-2019'
+    AgentPool : 'Linux-CPU'
     JobName: 'Linux_CI_Dev'
     RunDockerBuildArgs: '-o ubuntu20.04 -d openvino -v 2022.1.0 -x "--use_openvino CPU_FP32 --build_wheel --skip_tests"'
     DoNugetPack:  'false'
