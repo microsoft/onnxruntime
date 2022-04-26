@@ -11,7 +11,7 @@ class _SaveOnnxOptions:
     """Configurable option to save ORTModule intermediate onnx models."""
 
     # class variable
-    _path_environment_key = 'ORTMODULE_SAVE_ONNX_PATH'
+    _path_environment_key = "ORTMODULE_SAVE_ONNX_PATH"
 
     def __init__(self, save, name_prefix):
         self._save, self._name_prefix, self._path = self._extract_info(save, name_prefix)
@@ -27,7 +27,9 @@ class _SaveOnnxOptions:
     def _validate(self, save, name_prefix, destination_path):
         # check if directory is writable
         if not os.access(destination_path, os.W_OK):
-            raise OSError(f"Directory {destination_path} is not writable. Please set the {_SaveOnnxOptions._path_environment_key} environment variable to a writable path.")
+            raise OSError(
+                f"Directory {destination_path} is not writable. Please set the {_SaveOnnxOptions._path_environment_key} environment variable to a writable path."
+            )
 
         # check if input prefix is a string
         if not isinstance(name_prefix, str):
@@ -54,7 +56,7 @@ class _LoggingOptions:
     """Configurable option to set the log level in ORTModule."""
 
     # class variable
-    _log_level_environment_key = 'ORTMODULE_LOG_LEVEL'
+    _log_level_environment_key = "ORTMODULE_LOG_LEVEL"
 
     def __init__(self, log_level):
         self._log_level = self._extract_info(log_level)
@@ -74,6 +76,7 @@ class _LoggingOptions:
     @property
     def log_level(self):
         return self._log_level
+
 
 class DebugOptions:
     """Configurable debugging options for ORTModule.
@@ -98,10 +101,7 @@ class DebugOptions:
 
     """
 
-    def __init__(self,
-                 log_level=LogLevel.WARNING,
-                 save_onnx=False,
-                 onnx_prefix=''):
+    def __init__(self, log_level=LogLevel.WARNING, save_onnx=False, onnx_prefix=""):
         self._save_onnx_models = _SaveOnnxOptions(save_onnx, onnx_prefix)
         self._logging = _LoggingOptions(log_level)
 
