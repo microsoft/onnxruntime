@@ -604,6 +604,7 @@ def update_fail_report(fail_results, model, ep, e_type, e):
 
     fail_results.append(result)
 
+
 def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
     if len(ep_to_operator) == 0:
         return
@@ -615,7 +616,7 @@ def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
         if ep not in model_to_metrics[model_name]:
             model_to_metrics[model_name][ep] = {}
 
-        model_to_metrics[model_name][ep]['op_breakdown'] = get_op_breakdown(op_map)
+        model_to_metrics[model_name][ep]["op_breakdown"] = get_op_breakdown(op_map)
 
 
 ###################################################################################################
@@ -1715,55 +1716,58 @@ def output_latency(results, csv_filename):
 
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
+
 def get_model_cuda_op_info(model, ep_info, fp16):
     cuda_key = cuda_fp16 if fp16 else cuda
-    op_breakdown = ep_info[cuda_key]['op_breakdown']
+    op_breakdown = ep_info[cuda_key]["op_breakdown"]
     model_cuda_op_info = {
-            'model_name': model,
-            'ep': cuda_key,
-            'num_cpu_ops': op_breakdown[cpu_ep]['num_ops'],
-            'cpu_exec_time': op_breakdown[cpu_ep]['exec_time'],
-            'cpu_ops': op_breakdown[cpu_ep]['ops'],
-            'num_cuda_ops': op_breakdown[cuda_ep]['num_ops'],
-            'cuda_exec_time': op_breakdown[cuda_ep]['exec_time'],
-            'cuda_ops': op_breakdown[cuda_ep]['ops'],
-            'num_trt_ops': op_breakdown[trt_ep]['num_ops'], # Should be 0
-            'trt_exec_time': op_breakdown[trt_ep]['exec_time'], # Should be 0
-            'trt_ops': op_breakdown[trt_ep]['ops'] # Should be empty
-            }
+        "model_name": model,
+        "ep": cuda_key,
+        "num_cpu_ops": op_breakdown[cpu_ep]["num_ops"],
+        "cpu_exec_time": op_breakdown[cpu_ep]["exec_time"],
+        "cpu_ops": op_breakdown[cpu_ep]["ops"],
+        "num_cuda_ops": op_breakdown[cuda_ep]["num_ops"],
+        "cuda_exec_time": op_breakdown[cuda_ep]["exec_time"],
+        "cuda_ops": op_breakdown[cuda_ep]["ops"],
+        "num_trt_ops": op_breakdown[trt_ep]["num_ops"],  # Should be 0
+        "trt_exec_time": op_breakdown[trt_ep]["exec_time"],  # Should be 0
+        "trt_ops": op_breakdown[trt_ep]["ops"],  # Should be empty
+    }
 
     return model_cuda_op_info
 
+
 def get_model_trt_op_info(model, ep_info, model_cuda_op_info, fp16):
     trt_key = trt_fp16 if fp16 else trt
-    op_breakdown = ep_info[trt_key]['op_breakdown']
+    op_breakdown = ep_info[trt_key]["op_breakdown"]
 
     # Because we can't directly parse the number of trt ops from profile data, we need to
     # calculate the number of trt ops as:
     # trt_num_ops = (total num ops in ORT-CUDAFpxx) - (cuda and cpu ops in ORT-TRTFpxx)
-    num_cpu_ops = op_breakdown[cpu_ep]['num_ops']
-    num_cuda_ops = op_breakdown[cuda_ep]['num_ops']
+    num_cpu_ops = op_breakdown[cpu_ep]["num_ops"]
+    num_cuda_ops = op_breakdown[cuda_ep]["num_ops"]
     num_cuda_cpu_ops = num_cpu_ops + num_cuda_ops
-    num_trt_ops = (model_cuda_op_info['num_cpu_ops'] + model_cuda_op_info['num_cuda_ops']) - num_cuda_cpu_ops
+    num_trt_ops = (model_cuda_op_info["num_cpu_ops"] + model_cuda_op_info["num_cuda_ops"]) - num_cuda_cpu_ops
 
     model_trt_op_info = {
-            'model_name': model,
-            'ep': trt_key,
-            'num_cpu_ops': num_cpu_ops,
-            'cpu_exec_time': op_breakdown[cpu_ep]['exec_time'],
-            'cpu_ops': op_breakdown[cpu_ep]['ops'],
-            'num_cuda_ops': num_cuda_ops,
-            'cuda_exec_time': op_breakdown[cuda_ep]['exec_time'],
-            'cuda_ops': op_breakdown[cuda_ep]['ops'],
-            'num_trt_ops': num_trt_ops,
-            'trt_exec_time': op_breakdown[trt_ep]['exec_time'],
-            'trt_ops': op_breakdown[trt_ep]['ops']
-            }
+        "model_name": model,
+        "ep": trt_key,
+        "num_cpu_ops": num_cpu_ops,
+        "cpu_exec_time": op_breakdown[cpu_ep]["exec_time"],
+        "cpu_ops": op_breakdown[cpu_ep]["ops"],
+        "num_cuda_ops": num_cuda_ops,
+        "cuda_exec_time": op_breakdown[cuda_ep]["exec_time"],
+        "cuda_ops": op_breakdown[cuda_ep]["ops"],
+        "num_trt_ops": num_trt_ops,
+        "trt_exec_time": op_breakdown[trt_ep]["exec_time"],
+        "trt_ops": op_breakdown[trt_ep]["ops"],
+    }
 
     return model_trt_op_info
 
+
 def output_metrics(model_to_metrics, csv_filename):
-    with open(csv_filename, mode="w", newline='') as csv_file:
+    with open(csv_filename, mode="w", newline="") as csv_file:
         column_names = [c[1] for c in op_metrics_columns]
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(column_names)
@@ -1785,7 +1789,7 @@ def output_metrics(model_to_metrics, csv_filename):
                 if trt_fp16 in ep_info:
                     model_trt_op_info = get_model_trt_op_info(model, ep_info, model_cuda_op_info, True)
                     results.append(model_trt_op_info)
-        
+
         for value in results:
             row = [value[c[0]] for c in op_metrics_columns]
             csv_writer.writerow(row)

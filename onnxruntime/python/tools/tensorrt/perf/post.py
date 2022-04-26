@@ -115,6 +115,7 @@ def get_session(session, model_group):
     session = adjust_columns(session, session_columns, session_db_columns, model_group)
     return session
 
+
 def get_op_metrics(op_metrics, model_group):
     csv_columns, db_columns = [], []
 
@@ -123,6 +124,7 @@ def get_op_metrics(op_metrics, model_group):
         db_columns.append(db_col)
 
     return adjust_columns(op_metrics, csv_columns, db_columns, model_group)
+
 
 def write_table(ingest_client, table, table_name, commit_time, identifier):
     if table.empty:

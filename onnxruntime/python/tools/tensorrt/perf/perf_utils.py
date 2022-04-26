@@ -44,20 +44,20 @@ group_title = "Group"
 
 # List of column name tuples for operator metrics: (<map_key>, <csv_column>, <db_column>)
 op_metrics_columns = [
-    ('model_name', 'Model', 'Model'),
-    ('ep', 'Input EP', 'InputEP'),
-    ('num_cpu_ops', 'Num CPU Ops', 'NumCPUOps'),
-    ('cpu_exec_time', 'CPU Ops execution time', 'CPUExecTime'),
-    ('cpu_ops', 'CPU Ops', 'CPUOps'),
-    ('num_cuda_ops', 'Num CUDA Ops', 'NumCUDAOps'),
-    ('cuda_exec_time', 'CUDA Ops execution time', 'CUDAExecTime'),
-    ('cuda_ops', 'CUDA Ops', 'CUDAOps'),
-    ('num_trt_ops', 'Num TRT Ops', 'NumTRTOps'),
-    ('trt_exec_time', 'TRT Ops execution time', 'TRTExecTime'),
-    ('trt_ops', 'TRT Ops', 'TRTOps')
+    ("model_name", "Model", "Model"),
+    ("ep", "Input EP", "InputEP"),
+    ("num_cpu_ops", "Num CPU Ops", "NumCPUOps"),
+    ("cpu_exec_time", "CPU Ops execution time", "CPUExecTime"),
+    ("cpu_ops", "CPU Ops", "CPUOps"),
+    ("num_cuda_ops", "Num CUDA Ops", "NumCUDAOps"),
+    ("cuda_exec_time", "CUDA Ops execution time", "CUDAExecTime"),
+    ("cuda_ops", "CUDA Ops", "CUDAOps"),
+    ("num_trt_ops", "Num TRT Ops", "NumTRTOps"),
+    ("trt_exec_time", "TRT Ops execution time", "TRTExecTime"),
+    ("trt_ops", "TRT Ops", "TRTOps"),
 ]
 
-# endings 
+# endings
 second = "_second"
 csv_ending = ".csv"
 avg_ending = " \nmean (ms)"
@@ -186,18 +186,20 @@ def parse_single_file(f):
 
     return None
 
+
 def get_ep_op_metrics(ep, op_map):
-    op_metrics = {'num_ops': 0, 'exec_time': 0, 'ops': '{}'}
+    op_metrics = {"num_ops": 0, "exec_time": 0, "ops": "{}"}
 
     if ep in op_map:
         ops = op_map[ep]
-        op_metrics['ops'] = json.dumps(ops)
-        op_metrics['num_ops'] = len(ops)
+        op_metrics["ops"] = json.dumps(ops)
+        op_metrics["num_ops"] = len(ops)
 
         for _, exec_time in ops.items():
-            op_metrics['exec_time'] += int(exec_time)
+            op_metrics["exec_time"] += int(exec_time)
 
     return op_metrics
+
 
 ######################################################################################################
 # Parameters: op_map: A dictionary that maps EPs to a dictionary of operator durations.
@@ -235,6 +237,7 @@ def get_op_breakdown(op_map):
     trt_op_metrics = get_ep_op_metrics(trt_ep, op_map)
 
     return {cpu_ep: cpu_op_metrics, cuda_ep: cuda_op_metrics, trt_ep: trt_op_metrics}
+
 
 def get_profile_metrics(path, profile_already_parsed, logger=None):
     logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
