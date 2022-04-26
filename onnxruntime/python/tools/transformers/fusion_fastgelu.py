@@ -1,12 +1,13 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
-from typing import Dict, Optional
+# --------------------------------------------------------------------------
 from logging import getLogger
+from typing import Dict, Optional
+
+from fusion_base import Fusion
 from onnx import helper
 from onnx_model import OnnxModel
-from fusion_base import Fusion
 
 logger = getLogger(__name__)
 
@@ -40,7 +41,7 @@ class FusionFastGelu(Fusion):
         if tanh_node.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[tanh_node.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Add':
+        if len(children) != 1 or children[0].op_type != "Add":
             return
         add_after_tanh = children[0]
 
@@ -50,11 +51,11 @@ class FusionFastGelu(Fusion):
         if add_after_tanh.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[add_after_tanh.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_after_tanh = children[0]
 
-        mul_half = self.model.match_parent(mul_after_tanh, 'Mul', None, output_name_to_node)
+        mul_half = self.model.match_parent(mul_after_tanh, "Mul", None, output_name_to_node)
         if mul_half is None:
             return
 
@@ -64,10 +65,10 @@ class FusionFastGelu(Fusion):
 
         root_input = mul_half.input[0 if i == 1 else 1]
 
-        #root_node could be None when root_input is graph input
+        # root_node could be None when root_input is graph input
         root_node = self.model.get_parent(mul_half, 0 if i == 1 else 1, output_name_to_node)
 
-        mul_before_tanh = self.model.match_parent(tanh_node, 'Mul', 0, output_name_to_node)
+        mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
         if mul_before_tanh is None:
             return
 
@@ -75,15 +76,17 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        add_before_tanh = self.model.match_parent(mul_before_tanh, 'Add', 0 if i == 1 else 1, output_name_to_node)
+        add_before_tanh = self.model.match_parent(mul_before_tanh, "Add", 0 if i == 1 else 1, output_name_to_node)
         if add_before_tanh is None:
             return
 
-        mul_after_pow = self.model.match_parent(add_before_tanh,
-                                                'Mul',
-                                                None,
-                                                output_name_to_node,
-                                                exclude=[root_node] if root_node else [])
+        mul_after_pow = self.model.match_parent(
+            add_before_tanh,
+            "Mul",
+            None,
+            output_name_to_node,
+            exclude=[root_node] if root_node else [],
+        )
         if mul_after_pow is None:
             return
 
@@ -91,7 +94,7 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        pow = self.model.match_parent(mul_after_pow, 'Pow', 0 if i == 1 else 1, output_name_to_node)
+        pow = self.model.match_parent(mul_after_pow, "Pow", 0 if i == 1 else 1, output_name_to_node)
         if pow is None:
             return
 
@@ -102,17 +105,30 @@ class FusionFastGelu(Fusion):
             return
 
         subgraph_nodes = [
-            mul_after_tanh, mul_half, add_after_tanh, tanh_node, mul_before_tanh, add_before_tanh, mul_after_pow, pow
+            mul_after_tanh,
+            mul_half,
+            add_after_tanh,
+            tanh_node,
+            mul_before_tanh,
+            add_before_tanh,
+            mul_after_pow,
+            pow,
         ]
-        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, [mul_after_tanh.output[0]], input_name_to_nodes,
-                                                output_name_to_node):
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes,
+            [mul_after_tanh.output[0]],
+            input_name_to_nodes,
+            output_name_to_node,
+        ):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node('FastGelu',
-                                      inputs=[root_input],
-                                      outputs=mul_after_tanh.output,
-                                      name=self.model.create_node_name('FastGelu'))
+        fused_node = helper.make_node(
+            "FastGelu",
+            inputs=[root_input],
+            outputs=mul_after_tanh.output,
+            name=self.model.create_node_name("FastGelu"),
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
@@ -134,7 +150,7 @@ class FusionFastGelu(Fusion):
         if tanh_node.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[tanh_node.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Add':
+        if len(children) != 1 or children[0].op_type != "Add":
             return
         add_after_tanh = children[0]
 
@@ -144,7 +160,7 @@ class FusionFastGelu(Fusion):
         if add_after_tanh.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[add_after_tanh.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_half = children[0]
 
@@ -155,17 +171,19 @@ class FusionFastGelu(Fusion):
         if mul_half.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[mul_half.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_after_mul_half = children[0]
 
-        root_node = self.model.get_parent(mul_after_mul_half,
-                                          0 if mul_after_mul_half.input[1] == mul_half.output[0] else 1,
-                                          output_name_to_node)
+        root_node = self.model.get_parent(
+            mul_after_mul_half,
+            0 if mul_after_mul_half.input[1] == mul_half.output[0] else 1,
+            output_name_to_node,
+        )
         if root_node is None:
             return
 
-        mul_before_tanh = self.model.match_parent(tanh_node, 'Mul', 0, output_name_to_node)
+        mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
         if mul_before_tanh is None:
             return
 
@@ -173,11 +191,11 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        add_before_tanh = self.model.match_parent(mul_before_tanh, 'Add', 0 if i == 1 else 1, output_name_to_node)
+        add_before_tanh = self.model.match_parent(mul_before_tanh, "Add", 0 if i == 1 else 1, output_name_to_node)
         if add_before_tanh is None:
             return
 
-        mul_after_pow = self.model.match_parent(add_before_tanh, 'Mul', None, output_name_to_node, exclude=[root_node])
+        mul_after_pow = self.model.match_parent(add_before_tanh, "Mul", None, output_name_to_node, exclude=[root_node])
         if mul_after_pow is None:
             return
 
@@ -185,7 +203,7 @@ class FusionFastGelu(Fusion):
         if i < 0:
             return
 
-        pow = self.model.match_parent(mul_after_pow, 'Pow', 0 if i == 1 else 1, output_name_to_node)
+        pow = self.model.match_parent(mul_after_pow, "Pow", 0 if i == 1 else 1, output_name_to_node)
         if pow is None:
             return
 
@@ -196,18 +214,30 @@ class FusionFastGelu(Fusion):
             return
 
         subgraph_nodes = [
-            mul_after_mul_half, mul_half, add_after_tanh, tanh_node, mul_before_tanh, add_before_tanh, mul_after_pow,
-            pow
+            mul_after_mul_half,
+            mul_half,
+            add_after_tanh,
+            tanh_node,
+            mul_before_tanh,
+            add_before_tanh,
+            mul_after_pow,
+            pow,
         ]
-        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, [mul_after_mul_half.output[0]], input_name_to_nodes,
-                                                output_name_to_node):
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes,
+            [mul_after_mul_half.output[0]],
+            input_name_to_nodes,
+            output_name_to_node,
+        ):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node('FastGelu',
-                                      inputs=[root_node.output[0]],
-                                      outputs=mul_after_mul_half.output,
-                                      name=self.model.create_node_name('FastGelu'))
+        fused_node = helper.make_node(
+            "FastGelu",
+            inputs=[root_node.output[0]],
+            outputs=mul_after_mul_half.output,
+            name=self.model.create_node_name("FastGelu"),
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
@@ -215,25 +245,25 @@ class FusionFastGelu(Fusion):
 
     def fuse_3(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
-            OpenAI's gelu implementation, also used in Megatron:
-               Gelu(x) = x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1.0 + 0.044715 * x * x)))
+        OpenAI's gelu implementation, also used in Megatron:
+           Gelu(x) = x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1.0 + 0.044715 * x * x)))
 
-            Fuse subgraph into a FastGelu node:
-                +------------ Mul (B=0.79788456) -------------------+
-                |                                                   |
-                +-------------------------------+                   |
-                |                               |                   |
-                |                               v                   v
-              [root] --> Mul (B=0.044715) --> Mul --> Add(B=1) --> Mul --> Tanh --> Add(B=1) --> Mul-->
-                |                                                                                 ^
-                |                                                                                 |
-                +-----------> Mul (B=0.5) --------------------------------------------------------+
-            """
+        Fuse subgraph into a FastGelu node:
+            +------------ Mul (B=0.79788456) -------------------+
+            |                                                   |
+            +-------------------------------+                   |
+            |                               |                   |
+            |                               v                   v
+          [root] --> Mul (B=0.044715) --> Mul --> Add(B=1) --> Mul --> Tanh --> Add(B=1) --> Mul-->
+            |                                                                                 ^
+            |                                                                                 |
+            +-----------> Mul (B=0.5) --------------------------------------------------------+
+        """
         if tanh_node.output[0] not in input_name_to_nodes:
             return
 
         children = input_name_to_nodes[tanh_node.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Add':
+        if len(children) != 1 or children[0].op_type != "Add":
             return
         add_after_tanh = children[0]
 
@@ -243,11 +273,11 @@ class FusionFastGelu(Fusion):
         if add_after_tanh.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[add_after_tanh.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_last = children[0]
 
-        mul_half = self.model.match_parent(mul_last, 'Mul', None, output_name_to_node)
+        mul_half = self.model.match_parent(mul_last, "Mul", None, output_name_to_node)
         if mul_half is None:
             return
 
@@ -257,18 +287,18 @@ class FusionFastGelu(Fusion):
 
         root_input = mul_half.input[0 if i == 1 else 1]
 
-        mul_before_tanh = self.model.match_parent(tanh_node, 'Mul', 0, output_name_to_node)
+        mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
         if mul_before_tanh is None:
             return
 
-        add_1 = self.model.match_parent(mul_before_tanh, 'Add', None, output_name_to_node)
+        add_1 = self.model.match_parent(mul_before_tanh, "Add", None, output_name_to_node)
         if add_1 is None:
             return
         j = self.model.find_constant_input(add_1, 1.0)
         if j < 0:
             return
 
-        mul_7978 = self.model.match_parent(mul_before_tanh, 'Mul', None, output_name_to_node)
+        mul_7978 = self.model.match_parent(mul_before_tanh, "Mul", None, output_name_to_node)
         if mul_7978 is None:
             return
         k = self.model.find_constant_input(mul_7978, 0.7978, delta=0.0001)
@@ -277,7 +307,7 @@ class FusionFastGelu(Fusion):
         if mul_7978.input[0 if k == 1 else 1] != root_input:
             return
 
-        mul_before_add_1 = self.model.match_parent(add_1, 'Mul', 0 if j == 1 else 1, output_name_to_node)
+        mul_before_add_1 = self.model.match_parent(add_1, "Mul", 0 if j == 1 else 1, output_name_to_node)
         if mul_before_add_1 is None:
             return
 
@@ -288,7 +318,7 @@ class FusionFastGelu(Fusion):
         else:
             return
 
-        mul_0447 = self.model.match_parent(mul_before_add_1, 'Mul', another, output_name_to_node)
+        mul_0447 = self.model.match_parent(mul_before_add_1, "Mul", another, output_name_to_node)
         if mul_0447 is None:
             return
         m = self.model.find_constant_input(mul_0447, 0.0447, delta=0.0001)
@@ -299,17 +329,31 @@ class FusionFastGelu(Fusion):
             return
 
         subgraph_nodes = [
-            mul_0447, mul_before_add_1, add_1, mul_before_tanh, tanh_node, add_after_tanh, mul_7978, mul_half, mul_last
+            mul_0447,
+            mul_before_add_1,
+            add_1,
+            mul_before_tanh,
+            tanh_node,
+            add_after_tanh,
+            mul_7978,
+            mul_half,
+            mul_last,
         ]
-        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, [mul_last.output[0]], input_name_to_nodes,
-                                                output_name_to_node):
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes,
+            [mul_last.output[0]],
+            input_name_to_nodes,
+            output_name_to_node,
+        ):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node('FastGelu',
-                                      inputs=[root_input],
-                                      outputs=mul_last.output,
-                                      name=self.model.create_node_name('FastGelu'))
+        fused_node = helper.make_node(
+            "FastGelu",
+            inputs=[root_input],
+            outputs=mul_last.output,
+            name=self.model.create_node_name("FastGelu"),
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
