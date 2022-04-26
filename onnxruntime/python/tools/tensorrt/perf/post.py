@@ -33,10 +33,6 @@ def parse_arguments():
         "-d", "--datetime", help="Commit Datetime", required=True)
     return parser.parse_args()
 
-def parse_csv(report_file):
-    table = pd.read_csv(report_file)
-    return table
-
 def adjust_columns(table, columns, db_columns, model_group): 
     table = table[columns]
     table = table.set_axis(db_columns, axis=1)
@@ -84,10 +80,12 @@ def get_status(status, model_group):
     return status
 
 def get_specs(specs, branch, commit_id, date_time):
-    specs = specs.append({'.': 6, 'Spec': 'Branch', 'Version' : branch}, ignore_index=True)
-    specs = specs.append({'.': 7, 'Spec': 'CommitId', 'Version' : commit_id}, ignore_index=True)
-    specs = specs.append({'.': 8, 'Spec': 'CommitTime', 'Version' : date_time}, ignore_index=True)
-    return specs
+    init_id = int(specs.tail(1).get('.', 0)) + 1
+    specs_additional = pd.DataFrame({'.': [init_id, init_id + 1, init_id + 2],
+                                     'Spec': ['Branch', 'CommitId', 'CommitTime'],
+                                     'Version': [branch, commit_id, date_time]})
+
+    return pd.concat([specs, specs_additional], ignore_index=True)
 
 def get_session(session, model_group):
     session_columns = session.keys()
@@ -142,18 +140,18 @@ def main():
             os.chdir(model_group)
             csv_filenames = os.listdir()
             for csv in csv_filenames:
-                table = parse_csv(csv)
-                if session_name in csv: 
+                table = pd.read_csv(csv)
+                if session_name in csv:
                     table_results[session_name] = table_results[session_name].append(get_session(table, model_group), ignore_index=True)
-                if specs_name in csv: 
+                elif specs_name in csv:
                     table_results[specs_name] = table_results[specs_name].append(get_specs(table, args.branch, args.commit_hash, date_time), ignore_index=True)
-                if fail_name in csv:
+                elif fail_name in csv:
                     table_results[fail_name] = table_results[fail_name].append(get_failures(table, model_group), ignore_index=True)
-                if latency_name in csv:
+                elif latency_name in csv:
                     table_results[memory_name] = table_results[memory_name].append(get_memory(table, model_group), ignore_index=True)
                     table_results[latency_name] = table_results[latency_name].append(get_latency(table, model_group), ignore_index=True)
                     table_results[latency_over_time_name] = table_results[latency_over_time_name].append(get_latency_over_time(args.commit_hash, args.report_url, args.branch, table_results[latency_name]), ignore_index=True)
-                if status_name in csv: 
+                elif status_name in csv:
                     table_results[status_name] = table_results[status_name].append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
         for table in tables: 
