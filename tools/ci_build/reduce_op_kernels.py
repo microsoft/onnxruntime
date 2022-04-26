@@ -258,6 +258,8 @@ def reduce_ops(config_path: str, build_dir: str, enable_type_reduction: bool, us
     :param build_dir: Path to the build directory. The op reduction files will be generated under the build directory.
     :param enable_type_reduction: Whether per operator type reduction is enabled
     :param use_cuda: Whether to reduce op kernels for the CUDA provider
+    :param is_extended_minimal_build_or_higher: Whether this build has at least the features of an extended minimal
+                                                build enabled.
     '''
     build_dir = Path(build_dir).resolve()
     build_dir.mkdir(parents=True, exist_ok=True)

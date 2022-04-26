@@ -16,6 +16,7 @@ std::optional<HashValue> GetHashValueFromStaticKernelHashMap(const std::string& 
   // we maintain a static map of nodes to hash value. This hash value can then be used to retrieve the
   // kernel for the given op.
   static const std::unordered_map<std::string, HashValue> static_kernel_hashes{
+      // Note: these region_begin/end markers are used by tools/ci_build/reduce_op_kernels.py
       // @@region_begin(layout_transformation_required_kernels)@@
       {"Transpose_1", 4324835766923221184ULL},
       {"Transpose_13", 17267477159887372848ULL},
