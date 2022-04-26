@@ -41,17 +41,19 @@ session_name = 'session'
 model_title = 'Model'
 group_title = 'Group'
 
-# List of column name tuples for operator metrics: (<csv_column>, <db_column)
+# List of column name tuples for operator metrics: (<map_key>, <csv_column>, <db_column>)
 op_metrics_columns = [
-    ('Model', 'Model'),
-    ('Fp16', 'Fp16'),
-    ('% CUDA operators (not fallback to CPU)', 'CUDAOpPercent'),
-    ('Total TRT operators', 'TotalTRTOps'),
-    ('Total operators', 'TotalOps'),
-    ('% TRT operators', 'TRTOpPercent'),
-    ('Total TRT execution time', 'TotalTRTExecTime'),
-    ('Total execution time', 'TotalExecTime'),
-    ('% TRT execution time', 'TRTExecPercent')
+    ('model_name', 'Model', 'Model'),
+    ('ep', 'Input EP', 'InputEP'),
+    ('num_cpu_ops', 'Num CPU Ops', 'NumCPUOps'),
+    ('cpu_op_exec_time', 'CPU Ops execution time', 'CPUOpExecTime'),
+    ('cpu_ops', 'CPU Ops', 'CPUOps'),
+    ('num_cuda_ops', 'Num CUDA Ops', 'NumCUDAOps'),
+    ('cuda_op_exec_time', 'CUDA Ops execution time', 'CUDAOpExecTime'),
+    ('cuda_ops', 'CUDA Ops', 'CUDAOps'),
+    ('num_trt_ops', 'Num TRT Ops', 'NumTRTOps'),
+    ('trt_op_exec_time', 'TRT Ops execution time', 'TRTOpExecTime'),
+    ('trt_ops', 'TRT Ops', 'TRTOps')
 ]
 
 # endings 
@@ -170,6 +172,7 @@ def parse_single_file(f):
 
     return None
 
+# TODO: Remove (unused after removing update_metrics_map_ori)
 def calculate_cuda_op_percentage(cuda_op_map):
     if not cuda_op_map or len(cuda_op_map) == 0:
         return 0
@@ -190,6 +193,7 @@ def calculate_cuda_op_percentage(cuda_op_map):
 #         total ops,
 #         ratio of ops executed in TRT,
 ##########################################
+# TODO: Remove (unused after remove update_metrics_map_ori)
 def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
     # % of TRT ops
     total_ops = 0
@@ -222,21 +226,44 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
-def get_total_ops(op_map):
-    total_ops = 0
+def get_op_breakdown(op_map):
+    cpu_op_info = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
+    cuda_op_info = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
+    trt_op_info = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
 
-    for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]:
-        if ep in op_map:
-            total_ops += len(op_map[ep])
+    if cpu_ep in op_map:
+        ops = op_map[cpu_ep]
+        cpu_op_info['ops'] = json.dumps(ops)
+        cpu_op_info['num_ops'] = len(ops)
 
-    return total_ops
+        for _, exec_time in ops.items():
+            cpu_op_info['op_exec_time'] += int(exec_time)
 
+    if cuda_ep in op_map:
+        ops = op_map[cuda_ep]
+        cuda_op_info['ops'] = json.dumps(ops)
+        cuda_op_info['num_ops'] = len(ops)
+
+        for _, exec_time in ops.items():
+            cuda_op_info['op_exec_time'] += int(exec_time)
+
+    if trt_ep in op_map:
+        ops = op_map[trt_ep]
+        trt_op_info['ops'] = json.dumps(ops)
+        trt_op_info['num_ops'] = len(ops) # Will be 1 (needs to be compared to inference run with ORT-CUDAFpxx)
+                                          # trt_num_ops = total ops in cuda - cuda and cpu ops in trt
+
+        for _, exec_time in ops.items():
+            trt_op_info['op_exec_time'] += int(exec_time)
+
+    return {cpu_ep: cpu_op_info, cuda_ep: cuda_op_info, trt_ep: trt_op_info}
 
 ##########################################
 # Return: total TRT execution time,
 #         total execution time,
 #         ratio of execution time in TRT
 ##########################################
+# TODO: Remove (unused after removing update_metrics_map_ori)
 def calculate_trt_latency_percentage(trt_op_map):
     # % of TRT execution time
     total_execution_time = 0

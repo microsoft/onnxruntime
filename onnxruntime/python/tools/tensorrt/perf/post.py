@@ -96,7 +96,7 @@ def get_session(session, model_group):
 def get_op_metrics(op_metrics, model_group):
     csv_columns, db_columns = [], []
 
-    for csv_col, db_col in op_metrics_columns:
+    for _, csv_col, db_col in op_metrics_columns:
         csv_columns.append(csv_col)
         db_columns.append(db_col)
 
@@ -162,7 +162,7 @@ def main():
                     table_results[latency_over_time_name] = table_results[latency_over_time_name].append(get_latency_over_time(args.commit_hash, args.report_url, args.branch, table_results[latency_name]), ignore_index=True)
                 elif status_name in csv:
                     table_results[status_name] = table_results[status_name].append(get_status(table, model_group), ignore_index=True)
-                if metrics_name in csv:
+                elif metrics_name in csv:
                     table_results[metrics_name] = tabel_results[metrics_name].append(get_op_metrics(table, model_group), ignore_index=True)
 
             os.chdir(result_file)
