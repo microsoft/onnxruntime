@@ -11,6 +11,7 @@ extend_skip_glob = [
     "orttraining/*",
     "onnxruntime/core/flatbuffers/*",
 ]
+target_version = "py37"
 
 [tool.pydocstyle]
 convention = "google"

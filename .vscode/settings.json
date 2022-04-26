@@ -19,7 +19,9 @@
     "python.formatting.provider": "black",
     "python.formatting.blackArgs": [
         "--line-length",
-        "120"
+        "120",
+        "--target-version",
+        "py37",
     ],
     "python.sortImports.args": [
         "--profile",
