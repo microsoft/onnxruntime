@@ -362,7 +362,6 @@ void HostApplyLayerNorm(
     const V* beta) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
-  printf("warp_size: %d==%d \n", warp_size, GPU_WARP_SIZE_HOST);
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
   dim3 threads(warp_size, 4, 1);
