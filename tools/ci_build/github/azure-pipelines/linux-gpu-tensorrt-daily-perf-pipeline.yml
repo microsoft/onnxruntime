@@ -121,6 +121,8 @@ jobs:
           allowPartiallySucceededBuilds: false
           artifact: 'onnxruntime_gpu'
           targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      
+    - ${{ if eq(parameters.RunNvidiaContainer, true) }}:
       - script: 'docker pull $(nvidia_dockerfile)'
         displayName: 'Pull Nvidia Dockerfile'
 
@@ -135,7 +137,7 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
     - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
         displayName: 'Run Memory Test'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
