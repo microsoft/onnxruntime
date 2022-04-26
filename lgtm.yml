@@ -1,3 +1,10 @@
+path_classifiers:
+  library:
+    - exclude: cmake
+
+queries:
+  - include: "*"
+
 extraction:
   cpp:
     after_prepare:
@@ -23,7 +30,4 @@ extraction:
       gradle:
         version: 7.4
       build_command:
-      - ./build.sh --parallel --skip_tests --build_java
-
-queries:
-  - include: "*"
+        - ./build.sh --parallel --skip_tests --build_java
