@@ -25,8 +25,6 @@ ONNX_CPU_OPERATOR_KERNEL(
                                                         DataTypeImpl::GetTensorType<int64_t>()}),
     GatherElements);
 
-static constexpr int kParallelizationThreshold = 10 * 1000;
-
 // Some helpers needed for GatherElements op -
 
 // The following method computes the offset in the flattened array
@@ -91,7 +89,7 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
 template <typename T>
 inline int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
   int64_t index = indices[i];
-  if (index < 0) // Handle negative indices
+  if (index < 0)  // Handle negative indices
     index += axis_size;
   if (std::make_unsigned_t<T>(index) >= std::make_unsigned_t<T>(axis_size))
     ORT_THROW("GatherElements op: Value in indices must be within bounds [-", axis_size, " , ", axis_size - 1, "]. Actual value is ", indices[i]);
@@ -107,7 +105,6 @@ inline int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
 
 template <typename Tin>
 static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, Tensor* output_tensor, int64_t axis) {
-
   // Get input & output pointers
   const int8_t* input_data = reinterpret_cast<const int8_t*>(input_tensor->DataRaw());
   int8_t* output_data = reinterpret_cast<int8_t*>(output_tensor->MutableDataRaw());
@@ -137,7 +134,7 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
       output[i] = input[GetIndex(i, indices_data, axis_size)];
   };
 
-  auto MainLoop = [&](auto *output, auto *input, auto LoopFn) {
+  auto MainLoop = [&](auto* output, auto* input, auto LoopFn) {
     while (num_inner_dim-- != 0) {
       LoopFn(output, input + compute_base_offset(process_dims, input_shape_pitches, axis));
       output += inner_dim_size;
