@@ -172,60 +172,6 @@ def parse_single_file(f):
 
     return None
 
-# TODO: Remove (unused after removing update_metrics_map_ori)
-def calculate_cuda_op_percentage(cuda_op_map):
-    if not cuda_op_map or len(cuda_op_map) == 0:
-        return 0
-
-    cuda_ops = 0
-    cpu_ops = 0
-    for key, value in cuda_op_map.items():
-        if key == 'CUDAExecutionProvider':
-            cuda_ops += len(value)
-
-        if key == 'CPUExecutionProvider':
-            cpu_ops += len(value)
-
-    return cuda_ops / (cuda_ops + cpu_ops)
-
-##########################################
-# Return: total ops executed in TRT,
-#         total ops,
-#         ratio of ops executed in TRT,
-##########################################
-# TODO: Remove (unused after remove update_metrics_map_ori)
-def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
-    # % of TRT ops
-    total_ops = 0
-    total_cuda_and_cpu_ops = 0
-    for ep in ["CUDAExecutionProvider", "CPUExecutionProvider"]:
-        if ep in cuda_op_map:
-            op_map = cuda_op_map[ep]
-            total_ops += len(op_map)
-
-        if ep in trt_op_map:
-            op_map = trt_op_map[ep]
-            total_cuda_and_cpu_ops += len(op_map)
-
-    if total_ops == 0:
-        print("Error ...")
-        raise
-
-    if len(trt_op_map) == 0:
-        total_cuda_and_cpu_ops = total_ops
-
-    #
-    # equation of % TRT ops:
-    # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
-    #
-    ratio_of_ops_in_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
-    if debug:
-        print("total_cuda_and_cpu_ops: {}".format(total_cuda_and_cpu_ops))
-        print("total_ops: {}".format(total_ops))
-        print("ratio_of_ops_in_trt: {}".format(ratio_of_ops_in_trt))
-
-    return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
-
 def get_ep_op_metrics(ep, op_map):
     op_metrics = {'num_ops': 0, 'exec_time': 0, 'ops': '{}'}
 
@@ -275,44 +221,6 @@ def get_op_breakdown(op_map):
     trt_op_metrics = get_ep_op_metrics(trt_ep, op_map)
 
     return {cpu_ep: cpu_op_metrics, cuda_ep: cuda_op_metrics, trt_ep: trt_op_metrics}
-
-##########################################
-# Return: total TRT execution time,
-#         total execution time,
-#         ratio of execution time in TRT
-##########################################
-# TODO: Remove (unused after removing update_metrics_map_ori)
-def calculate_trt_latency_percentage(trt_op_map):
-    # % of TRT execution time
-    total_execution_time = 0
-    total_trt_execution_time = 0
-    for ep in ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]:
-        if ep in trt_op_map:
-            op_map = trt_op_map[ep]
-
-            total_time = 0
-            for key, value in op_map.items():
-                total_time += int(value)
-
-            if ep == "TensorrtExecutionProvider":
-                total_trt_execution_time = total_time
-
-            total_execution_time += total_time
-
-
-
-    if total_execution_time == 0:
-        ratio_of_trt_execution_time = 0
-    else:
-        ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
-
-    if debug:
-        print("total_trt_execution_time: {}".format(total_trt_execution_time))
-        print("total_execution_time: {}".format(total_execution_time))
-        print("ratio_of_trt_execution_time: {}".format(ratio_of_trt_execution_time))
-
-    return (total_trt_execution_time, total_execution_time, ratio_of_trt_execution_time)
-
 
 def get_profile_metrics(path, profile_already_parsed, logger=None):
     logger.info("Parsing/Analyzing profiling files in {} ...".format(path))

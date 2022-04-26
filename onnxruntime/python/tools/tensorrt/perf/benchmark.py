@@ -538,68 +538,6 @@ def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
 
         model_to_metrics[model_name][ep]['op_breakdown'] = get_op_breakdown(op_map)
 
-# TODO: Remove (unused)
-def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
-    if len(ep_to_operator) <= 0:
-        return
-
-    trt_op_map = None
-    trt_fp16_op_map = None
-    cuda_op_map = None
-    cuda_fp16_op_map = None
-
-    for ep, op_map in ep_to_operator.items():
-        if ep == cuda:
-            cuda_op_map = op_map
-        elif ep == cuda_fp16:
-            cuda_fp16_op_map = op_map
-        elif ep == trt:
-            trt_op_map = op_map
-        elif ep == trt_fp16:
-            trt_fp16_op_map = op_map
-
-
-    if name not in model_to_metrics:
-        model_to_metrics[name] = {}
-
-    if cuda_op_map:
-        model_to_metrics[name]['ratio_of_ops_in_cuda_not_fallback_cpu'] = calculate_cuda_op_percentage(cuda_op_map) 
-
-    if trt_op_map:
-        total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_op_map)
-        model_to_metrics[name]['total_trt_execution_time'] = total_trt_execution_time
-        model_to_metrics[name]['total_execution_time'] = total_execution_time
-        model_to_metrics[name]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
-        if cuda_op_map:
-            total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_op_map, cuda_op_map)
-            model_to_metrics[name]['total_ops_in_trt'] = total_ops_in_trt
-            model_to_metrics[name]['total_ops'] = total_ops
-            model_to_metrics[name]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
-
-    if trt_fp16_op_map:
-        total_trt_execution_time, total_execution_time, ratio_of_execution_time_in_trt = calculate_trt_latency_percentage(trt_fp16_op_map)
-        name_ = name + " (FP16)"
-        model_to_metrics[name_] = {}
-        model_to_metrics[name_]['total_trt_execution_time'] = total_trt_execution_time
-        model_to_metrics[name_]['total_execution_time'] = total_execution_time
-        model_to_metrics[name_]['ratio_of_execution_time_in_trt'] = ratio_of_execution_time_in_trt
-        if cuda_fp16_op_map:
-            total_ops_in_trt, total_ops, ratio_of_ops_in_trt = calculate_trt_op_percentage(trt_fp16_op_map, cuda_op_map)
-            model_to_metrics[name_]['total_ops_in_trt'] = total_ops_in_trt
-            model_to_metrics[name_]['total_ops'] = total_ops
-            model_to_metrics[name_]['ratio_of_ops_in_trt'] = ratio_of_ops_in_trt
-
-    if debug:
-        pp = pprint.PrettyPrinter(indent=4)
-        logger.info('CUDA operator map:')
-        pp.pprint(cuda_op_map)
-        logger.info('TRT operator map:')
-        pp.pprint(trt_op_map)
-        logger.info('CUDA FP16 operator map:')
-        pp.pprint(cuda_fp16_op_map)
-        logger.info('TRT FP16 operator map:')
-        pp.pprint(trt_fp16_op_map)
-
 ###################################################################################################
 #
 # model: {ep1: {error_type: xxx, error_message: xxx}, ep2: {error_type: xx, error_message: xx}}
@@ -1224,10 +1162,7 @@ def run_onnxruntime(args, models):
         # end of iterate ep
         ####################
 
-
         # get percentage of execution time and operators in TRT
-        # TODO: REMOVE
-        #update_metrics_map(model_to_metrics, name, ep_to_operator)
         update_op_metrics_map(model_to_metrics, name, ep_to_operator)
 
         # cleanup_files()
