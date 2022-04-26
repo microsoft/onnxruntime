@@ -4896,3 +4896,54 @@ def test_squeeze_custom_symbolic_registry():
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+@pytest.mark.parametrize("M, N", [(2400, 128), (2400, 256), (2400, 512), (2400, 1024), (2400, 2048), (2400, 4096), (2400, 12800)])
+def test_tensorrt_train_sample_model(M, N):
+    os.environ['ORTMODULE_USE_TENSORRT_BACKEND'] = 'True'
+    class MemoryBoundModule(torch.nn.Module):
+        def __init__(self):
+            super(MemoryBoundModule, self).__init__()
+            self.m = torch.nn.Softmax(dim=1)
+
+        def cosine(self, w1, w2, w12, dim=1, eps=1e-6):
+            n12 = (w1 * w2).clamp_min_(eps * eps).sqrt_()
+            return w12.div_(n12)
+
+        def forward(self, user_ids, item_ids):
+            batch_uu = user_ids * user_ids
+            uu = torch.sum(batch_uu, dim=-1)
+            batch_up = user_ids * item_ids
+            up = torch.sum(batch_up, dim=-1)
+            batch_pp = item_ids * item_ids
+            pp = torch.sum(batch_pp, dim=-1)
+            u_p_consine = self.cosine(uu, pp, up)
+            factor = 0.07
+            factor = torch.tensor(factor).to(device)
+            scores = u_p_consine / factor
+            print("scores.shape", scores.shape, scores.dtype)
+            return torch.mean(scores)
+
+    def run_step(model, x, y):
+        prediction = model(x, y)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = MemoryBoundModule().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.rand((M, N), requires_grad=True, device=device)
+    pt_y = torch.rand((M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+    ort_y = copy.deepcopy(pt_y)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x, pt_y)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x, ort_y)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+    _test_helpers.assert_values_are_close(pt_y.grad, ort_y.grad)
+
+    del os.environ['ORTMODULE_USE_TENSORRT_BACKEND']

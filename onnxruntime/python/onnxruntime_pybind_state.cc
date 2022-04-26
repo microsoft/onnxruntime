@@ -411,7 +411,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "user_compute_stream") {
             if (!option.second.empty()) {
-              std::cout << "user_compute_stream in onnxruntime_pybind_state.cc:" << option.second << std::endl;
               size_t user_compute_stream_obj_address_int;
               ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(option.second, user_compute_stream_obj_address_int));
               void* user_compute_stream_obj = reinterpret_cast<void*>(user_compute_stream_obj_address_int);

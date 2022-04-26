@@ -147,8 +147,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # PyTorch custom Autograd function support
         self._enable_custom_autograd_function = custom_autograd_function_enabler.state
 
-        self._use_tensorrt_backend = ortmodule._defined_from_envvar(
-            'ORTMODULE_USE_TENSORRT_BACKEND', False, warn=True)
+        # Allow using TensorRT + CUDA EPs as training backend.
+        self._use_tensorrt_backend = os.getenv('ORTMODULE_FALLBACK_RETRY',str('ORTMODULE_USE_TENSORRT_BACKEND')).lower() in ['true', '1', 'yes']
 
         self._input_info = None
         self._module_output_schema = None
