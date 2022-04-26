@@ -2,42 +2,41 @@
 # Licensed under the MIT License.
 # orttraining_test_ortmodule_api.py
 
+import copy
 import itertools
 import math
-import random
-import copy
-import torch
-from transformers import AutoConfig, BertForSequenceClassification, Trainer
-from transformers.modeling_outputs import SequenceClassifierOutput
-import pytest
-from time import sleep
-import warnings
-from unittest.mock import patch
-from collections import OrderedDict
-from collections import namedtuple
-from inspect import signature
-import tempfile
 import os
 import pickle
+import random
+import tempfile
+import warnings
+from collections import OrderedDict, namedtuple
 from distutils.version import LooseVersion
-from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
-from onnxruntime.training.ortmodule import (ORTModule,
-                                            _utils,
-                                            _io,
-                                            DebugOptions,
-                                            LogLevel,
-                                            _fallback,
-                                            _graph_execution_manager)
-import onnxruntime.training.ortmodule as ortmodule_module
-
-from onnxruntime.training.optim import FusedAdam, AdamWMode
-from transformers import AdamW
+from inspect import signature
+from time import sleep
+from unittest.mock import patch
 
 import _test_helpers
+import pytest
+import torch
 
 # Import autocasting libs
 from torch.cuda import amp
+from transformers import AdamW, AutoConfig, BertForSequenceClassification, Trainer
+from transformers.modeling_outputs import SequenceClassifierOutput
 
+import onnxruntime.training.ortmodule as ortmodule_module
+from onnxruntime.training.optim import AdamWMode, FusedAdam
+from onnxruntime.training.ortmodule import (
+    DebugOptions,
+    LogLevel,
+    ORTModule,
+    _fallback,
+    _graph_execution_manager,
+    _io,
+    _utils,
+)
+from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 
 DEFAULT_OPSET = 14
 
@@ -2491,7 +2490,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy, ORTModuleDeviceException
+    from onnxruntime.training.ortmodule._fallback import ORTModuleDeviceException, _FallbackPolicy
     if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         with pytest.raises(RuntimeError) as runtime_error:
