@@ -12,7 +12,7 @@ try:
     import torch
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
-        "This module is only useful in combination with PyTorch. " "To install PyTorch see https://pytorch.org/."
+        "This module is only useful in combination with PyTorch. To install PyTorch see https://pytorch.org/."
     )
 
 import torch.onnx
