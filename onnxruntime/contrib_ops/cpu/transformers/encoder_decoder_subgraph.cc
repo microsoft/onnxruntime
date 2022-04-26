@@ -339,7 +339,7 @@ DecoderSubgraph::DecoderSubgraph(
 
 Status DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                              const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_outputs != 49, "bugbug");
+  ORT_RETURN_IF(num_subgraph_outputs != 25, "bugbug");
 
   ORT_RETURN_IF(num_subgraph_inputs != 50, "bugbug");
 

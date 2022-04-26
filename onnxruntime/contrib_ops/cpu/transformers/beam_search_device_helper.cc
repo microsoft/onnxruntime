@@ -341,9 +341,6 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
   // present_key_self_i, present_value_self_i, present_key_cross_i, present_value_cross_i
 
   for (size_t i = 1; i < last_outputs.size(); ++i) {
-    if (i % 4 == 0 || i % 4 ==3) {
-      continue;
-    }
     const OrtValue& present = last_outputs[i];  // shape is like (batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
     // Create a tensor with same shape.
@@ -361,8 +358,11 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
       gsl::span<T> past_span_i = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
       gsl::copy(present_span_i, past_span_i);
     }
-
-    next_inputs[i + 1] = past;
+    if (i % 2 == 0) {
+      next_inputs[2 * i - 1] = past;
+    } else {
+      next_inputs[2 * i] = past;
+    }
   }
 }
 
