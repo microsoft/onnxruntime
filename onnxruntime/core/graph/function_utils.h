@@ -43,7 +43,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
 * @param function_domain Domain for the function.
 * @param function_name Name of the function. Name should match the OpType of the node which references the function.
 */
-inline std::string GetFunctionIdentifier(const std::string_view function_domain, const std::string_view function_name) {
+inline std::string GetFunctionIdentifier(std::string_view function_domain, std::string_view function_name) {
   return function_domain.data() + std::string(":") + function_name.data();
 }
 
