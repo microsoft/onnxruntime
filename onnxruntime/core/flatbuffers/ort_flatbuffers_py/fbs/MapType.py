@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class MapType(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsMapType(cls, buf, offset):
@@ -39,24 +37,12 @@ class MapType(object):
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from ort_flatbuffers_py.fbs.TypeInfo import TypeInfo
-
             obj = TypeInfo()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-
-def MapTypeStart(builder):
-    builder.StartObject(2)
-
-
-def MapTypeAddKeyType(builder, keyType):
-    builder.PrependInt32Slot(0, keyType, 0)
-
-
-def MapTypeAddValueType(builder, valueType):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(valueType), 0)
-
-
-def MapTypeEnd(builder):
-    return builder.EndObject()
+def MapTypeStart(builder): builder.StartObject(2)
+def MapTypeAddKeyType(builder, keyType): builder.PrependInt32Slot(0, keyType, 0)
+def MapTypeAddValueType(builder, valueType): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(valueType), 0)
+def MapTypeEnd(builder): return builder.EndObject()

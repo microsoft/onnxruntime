@@ -2,9 +2,9 @@
 
 # namespace: fbs
 
-
 class TypeInfoValue(object):
     NONE = 0
     tensor_type = 1
     sequence_type = 2
     map_type = 3
+

@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class NodeIndexAndKernelDefHash(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsNodeIndexAndKernelDefHash(cls, buf, offset):
@@ -40,18 +38,7 @@ class NodeIndexAndKernelDefHash(object):
             return self._tab.Get(flatbuffers.number_types.Uint64Flags, o + self._tab.Pos)
         return 0
 
-
-def NodeIndexAndKernelDefHashStart(builder):
-    builder.StartObject(2)
-
-
-def NodeIndexAndKernelDefHashAddNodeIndex(builder, nodeIndex):
-    builder.PrependUint32Slot(0, nodeIndex, 0)
-
-
-def NodeIndexAndKernelDefHashAddKernelDefHash(builder, kernelDefHash):
-    builder.PrependUint64Slot(1, kernelDefHash, 0)
-
-
-def NodeIndexAndKernelDefHashEnd(builder):
-    return builder.EndObject()
+def NodeIndexAndKernelDefHashStart(builder): builder.StartObject(2)
+def NodeIndexAndKernelDefHashAddNodeIndex(builder, nodeIndex): builder.PrependUint32Slot(0, nodeIndex, 0)
+def NodeIndexAndKernelDefHashAddKernelDefHash(builder, kernelDefHash): builder.PrependUint64Slot(1, kernelDefHash, 0)
+def NodeIndexAndKernelDefHashEnd(builder): return builder.EndObject()

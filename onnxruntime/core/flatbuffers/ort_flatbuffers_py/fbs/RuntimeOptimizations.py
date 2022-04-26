@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class RuntimeOptimizations(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsRuntimeOptimizations(cls, buf, offset):
@@ -34,10 +32,7 @@ class RuntimeOptimizations(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.fbs.RuntimeOptimizationRecordContainerEntry import (
-                RuntimeOptimizationRecordContainerEntry,
-            )
-
+            from ort_flatbuffers_py.fbs.RuntimeOptimizationRecordContainerEntry import RuntimeOptimizationRecordContainerEntry
             obj = RuntimeOptimizationRecordContainerEntry()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -55,18 +50,7 @@ class RuntimeOptimizations(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
-
-def RuntimeOptimizationsStart(builder):
-    builder.StartObject(1)
-
-
-def RuntimeOptimizationsAddRecords(builder, records):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(records), 0)
-
-
-def RuntimeOptimizationsStartRecordsVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def RuntimeOptimizationsEnd(builder):
-    return builder.EndObject()
+def RuntimeOptimizationsStart(builder): builder.StartObject(1)
+def RuntimeOptimizationsAddRecords(builder, records): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(records), 0)
+def RuntimeOptimizationsStartRecordsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def RuntimeOptimizationsEnd(builder): return builder.EndObject()

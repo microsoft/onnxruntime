@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class DimensionValue(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsDimensionValue(cls, buf, offset):
@@ -47,22 +45,8 @@ class DimensionValue(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-
-def DimensionValueStart(builder):
-    builder.StartObject(3)
-
-
-def DimensionValueAddDimType(builder, dimType):
-    builder.PrependInt8Slot(0, dimType, 0)
-
-
-def DimensionValueAddDimValue(builder, dimValue):
-    builder.PrependInt64Slot(1, dimValue, 0)
-
-
-def DimensionValueAddDimParam(builder, dimParam):
-    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(dimParam), 0)
-
-
-def DimensionValueEnd(builder):
-    return builder.EndObject()
+def DimensionValueStart(builder): builder.StartObject(3)
+def DimensionValueAddDimType(builder, dimType): builder.PrependInt8Slot(0, dimType, 0)
+def DimensionValueAddDimValue(builder, dimValue): builder.PrependInt64Slot(1, dimValue, 0)
+def DimensionValueAddDimParam(builder, dimParam): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(dimParam), 0)
+def DimensionValueEnd(builder): return builder.EndObject()

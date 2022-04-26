@@ -4,13 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
 # nodes to consider for a runtime optimization
 # see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
 class NodesToOptimizeIndices(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsNodesToOptimizeIndices(cls, buf, offset):
@@ -32,9 +31,7 @@ class NodesToOptimizeIndices(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(
-                flatbuffers.number_types.Uint32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4)
-            )
+            return self._tab.Get(flatbuffers.number_types.Uint32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
         return 0
 
     # NodesToOptimizeIndices
@@ -98,42 +95,13 @@ class NodesToOptimizeIndices(object):
             return self._tab.Get(flatbuffers.number_types.Uint32Flags, o + self._tab.Pos)
         return 0
 
-
-def NodesToOptimizeIndicesStart(builder):
-    builder.StartObject(7)
-
-
-def NodesToOptimizeIndicesAddNodeIndices(builder, nodeIndices):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(nodeIndices), 0)
-
-
-def NodesToOptimizeIndicesStartNodeIndicesVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def NodesToOptimizeIndicesAddNumInputs(builder, numInputs):
-    builder.PrependUint32Slot(1, numInputs, 0)
-
-
-def NodesToOptimizeIndicesAddNumOutputs(builder, numOutputs):
-    builder.PrependUint32Slot(2, numOutputs, 0)
-
-
-def NodesToOptimizeIndicesAddHasVariadicInput(builder, hasVariadicInput):
-    builder.PrependBoolSlot(3, hasVariadicInput, 0)
-
-
-def NodesToOptimizeIndicesAddHasVariadicOutput(builder, hasVariadicOutput):
-    builder.PrependBoolSlot(4, hasVariadicOutput, 0)
-
-
-def NodesToOptimizeIndicesAddNumVariadicInputs(builder, numVariadicInputs):
-    builder.PrependUint32Slot(5, numVariadicInputs, 0)
-
-
-def NodesToOptimizeIndicesAddNumVariadicOutputs(builder, numVariadicOutputs):
-    builder.PrependUint32Slot(6, numVariadicOutputs, 0)
-
-
-def NodesToOptimizeIndicesEnd(builder):
-    return builder.EndObject()
+def NodesToOptimizeIndicesStart(builder): builder.StartObject(7)
+def NodesToOptimizeIndicesAddNodeIndices(builder, nodeIndices): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(nodeIndices), 0)
+def NodesToOptimizeIndicesStartNodeIndicesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def NodesToOptimizeIndicesAddNumInputs(builder, numInputs): builder.PrependUint32Slot(1, numInputs, 0)
+def NodesToOptimizeIndicesAddNumOutputs(builder, numOutputs): builder.PrependUint32Slot(2, numOutputs, 0)
+def NodesToOptimizeIndicesAddHasVariadicInput(builder, hasVariadicInput): builder.PrependBoolSlot(3, hasVariadicInput, 0)
+def NodesToOptimizeIndicesAddHasVariadicOutput(builder, hasVariadicOutput): builder.PrependBoolSlot(4, hasVariadicOutput, 0)
+def NodesToOptimizeIndicesAddNumVariadicInputs(builder, numVariadicInputs): builder.PrependUint32Slot(5, numVariadicInputs, 0)
+def NodesToOptimizeIndicesAddNumVariadicOutputs(builder, numVariadicOutputs): builder.PrependUint32Slot(6, numVariadicOutputs, 0)
+def NodesToOptimizeIndicesEnd(builder): return builder.EndObject()

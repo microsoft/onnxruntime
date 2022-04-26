@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class Node(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsNode(cls, buf, offset):
@@ -130,7 +128,6 @@ class Node(object):
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
             from ort_flatbuffers_py.fbs.Attribute import Attribute
-
             obj = Attribute()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -153,9 +150,7 @@ class Node(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(26))
         if o != 0:
             a = self._tab.Vector(o)
-            return self._tab.Get(
-                flatbuffers.number_types.Int32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4)
-            )
+            return self._tab.Get(flatbuffers.number_types.Int32Flags, a + flatbuffers.number_types.UOffsetTFlags.py_type(j * 4))
         return 0
 
     # Node
@@ -197,82 +192,23 @@ class Node(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(28))
         return o == 0
 
-
-def NodeStart(builder):
-    builder.StartObject(13)
-
-
-def NodeAddName(builder, name):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
-
-
-def NodeAddDocString(builder, docString):
-    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
-
-
-def NodeAddDomain(builder, domain):
-    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(domain), 0)
-
-
-def NodeAddSinceVersion(builder, sinceVersion):
-    builder.PrependInt32Slot(3, sinceVersion, 0)
-
-
-def NodeAddIndex(builder, index):
-    builder.PrependUint32Slot(4, index, 0)
-
-
-def NodeAddOpType(builder, opType):
-    builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(opType), 0)
-
-
-def NodeAddType(builder, type):
-    builder.PrependInt32Slot(6, type, 0)
-
-
-def NodeAddExecutionProviderType(builder, executionProviderType):
-    builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(executionProviderType), 0)
-
-
-def NodeAddInputs(builder, inputs):
-    builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(inputs), 0)
-
-
-def NodeStartInputsVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def NodeAddOutputs(builder, outputs):
-    builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(outputs), 0)
-
-
-def NodeStartOutputsVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def NodeAddAttributes(builder, attributes):
-    builder.PrependUOffsetTRelativeSlot(10, flatbuffers.number_types.UOffsetTFlags.py_type(attributes), 0)
-
-
-def NodeStartAttributesVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def NodeAddInputArgCounts(builder, inputArgCounts):
-    builder.PrependUOffsetTRelativeSlot(11, flatbuffers.number_types.UOffsetTFlags.py_type(inputArgCounts), 0)
-
-
-def NodeStartInputArgCountsVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def NodeAddImplicitInputs(builder, implicitInputs):
-    builder.PrependUOffsetTRelativeSlot(12, flatbuffers.number_types.UOffsetTFlags.py_type(implicitInputs), 0)
-
-
-def NodeStartImplicitInputsVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def NodeEnd(builder):
-    return builder.EndObject()
+def NodeStart(builder): builder.StartObject(13)
+def NodeAddName(builder, name): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(name), 0)
+def NodeAddDocString(builder, docString): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(docString), 0)
+def NodeAddDomain(builder, domain): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(domain), 0)
+def NodeAddSinceVersion(builder, sinceVersion): builder.PrependInt32Slot(3, sinceVersion, 0)
+def NodeAddIndex(builder, index): builder.PrependUint32Slot(4, index, 0)
+def NodeAddOpType(builder, opType): builder.PrependUOffsetTRelativeSlot(5, flatbuffers.number_types.UOffsetTFlags.py_type(opType), 0)
+def NodeAddType(builder, type): builder.PrependInt32Slot(6, type, 0)
+def NodeAddExecutionProviderType(builder, executionProviderType): builder.PrependUOffsetTRelativeSlot(7, flatbuffers.number_types.UOffsetTFlags.py_type(executionProviderType), 0)
+def NodeAddInputs(builder, inputs): builder.PrependUOffsetTRelativeSlot(8, flatbuffers.number_types.UOffsetTFlags.py_type(inputs), 0)
+def NodeStartInputsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def NodeAddOutputs(builder, outputs): builder.PrependUOffsetTRelativeSlot(9, flatbuffers.number_types.UOffsetTFlags.py_type(outputs), 0)
+def NodeStartOutputsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def NodeAddAttributes(builder, attributes): builder.PrependUOffsetTRelativeSlot(10, flatbuffers.number_types.UOffsetTFlags.py_type(attributes), 0)
+def NodeStartAttributesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def NodeAddInputArgCounts(builder, inputArgCounts): builder.PrependUOffsetTRelativeSlot(11, flatbuffers.number_types.UOffsetTFlags.py_type(inputArgCounts), 0)
+def NodeStartInputArgCountsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def NodeAddImplicitInputs(builder, implicitInputs): builder.PrependUOffsetTRelativeSlot(12, flatbuffers.number_types.UOffsetTFlags.py_type(implicitInputs), 0)
+def NodeStartImplicitInputsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def NodeEnd(builder): return builder.EndObject()

@@ -4,35 +4,21 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class EdgeEnd(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     # EdgeEnd
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
     # EdgeEnd
-    def NodeIndex(self):
-        return self._tab.Get(
-            flatbuffers.number_types.Uint32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(0)
-        )
-
+    def NodeIndex(self): return self._tab.Get(flatbuffers.number_types.Uint32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(0))
     # EdgeEnd
-    def SrcArgIndex(self):
-        return self._tab.Get(
-            flatbuffers.number_types.Int32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(4)
-        )
-
+    def SrcArgIndex(self): return self._tab.Get(flatbuffers.number_types.Int32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(4))
     # EdgeEnd
-    def DstArgIndex(self):
-        return self._tab.Get(
-            flatbuffers.number_types.Int32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(8)
-        )
-
+    def DstArgIndex(self): return self._tab.Get(flatbuffers.number_types.Int32Flags, self._tab.Pos + flatbuffers.number_types.UOffsetTFlags.py_type(8))
 
 def CreateEdgeEnd(builder, nodeIndex, srcArgIndex, dstArgIndex):
     builder.Prep(4, 12)

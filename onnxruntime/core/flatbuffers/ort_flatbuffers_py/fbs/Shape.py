@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class Shape(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsShape(cls, buf, offset):
@@ -34,7 +32,6 @@ class Shape(object):
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
             from ort_flatbuffers_py.fbs.Dimension import Dimension
-
             obj = Dimension()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -52,18 +49,7 @@ class Shape(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
-
-def ShapeStart(builder):
-    builder.StartObject(1)
-
-
-def ShapeAddDim(builder, dim):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(dim), 0)
-
-
-def ShapeStartDimVector(builder, numElems):
-    return builder.StartVector(4, numElems, 4)
-
-
-def ShapeEnd(builder):
-    return builder.EndObject()
+def ShapeStart(builder): builder.StartObject(1)
+def ShapeAddDim(builder, dim): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(dim), 0)
+def ShapeStartDimVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def ShapeEnd(builder): return builder.EndObject()

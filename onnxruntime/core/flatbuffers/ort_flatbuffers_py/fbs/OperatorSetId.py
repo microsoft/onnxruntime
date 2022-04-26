@@ -4,12 +4,10 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
-
 np = import_numpy()
 
-
 class OperatorSetId(object):
-    __slots__ = ["_tab"]
+    __slots__ = ['_tab']
 
     @classmethod
     def GetRootAsOperatorSetId(cls, buf, offset):
@@ -40,18 +38,7 @@ class OperatorSetId(object):
             return self._tab.Get(flatbuffers.number_types.Int64Flags, o + self._tab.Pos)
         return 0
 
-
-def OperatorSetIdStart(builder):
-    builder.StartObject(2)
-
-
-def OperatorSetIdAddDomain(builder, domain):
-    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(domain), 0)
-
-
-def OperatorSetIdAddVersion(builder, version):
-    builder.PrependInt64Slot(1, version, 0)
-
-
-def OperatorSetIdEnd(builder):
-    return builder.EndObject()
+def OperatorSetIdStart(builder): builder.StartObject(2)
+def OperatorSetIdAddDomain(builder, domain): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(domain), 0)
+def OperatorSetIdAddVersion(builder, version): builder.PrependInt64Slot(1, version, 0)
+def OperatorSetIdEnd(builder): return builder.EndObject()
