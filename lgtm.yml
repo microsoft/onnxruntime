@@ -2,11 +2,12 @@ extraction:
   cpp:
     after_prepare:
       # Install cmake
-      - mkdir -p $LGTM_WORKSPACE/custom_cmake
-      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.20.1/cmake-3.20.1.tar.gz" | tar --strip-components=1 -xz -C $LGTM_WORKSPACE/custom_cmake
+      - mkdir custom_cmake
+      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1-linux-x86_64.tar.gz" | tar --strip-components=1 -xz -C custom_cmake
+      - "export PATH=$(pwd)/custom_cmake/bin:${PATH}"
     index:
       build_command:
-        - ./build.sh --config RelWithDebInfo --parallel --skip_tests --cmake_path $LGTM_WORKSPACE/custom_cmake/bin/cmake
+        - ./build.sh --config RelWithDebInfo --parallel --skip_tests
   csharp:
     index:
       solution: ["csharp/OnnxRuntime.DesktopOnly.CSharp.sln"]
@@ -14,11 +15,12 @@ extraction:
   java:
     after_prepare:
       # Install cmake
-      - mkdir -p $LGTM_WORKSPACE/custom_cmake
-      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.20.1/cmake-3.20.1.tar.gz" | tar --strip-components=1 -xz -C $LGTM_WORKSPACE/custom_cmake
+      - mkdir custom_cmake
+      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1-linux-x86_64.tar.gz" | tar --strip-components=1 -xz -C custom_cmake
+      - "export PATH=$(pwd)/custom_cmake/bin:${PATH}"
     index:
       build_command:
-      - ./build.sh --parallel --skip_tests --build_java --cmake_path $LGTM_WORKSPACE/custom_cmake/bin/cmake
+      - ./build.sh --parallel --skip_tests --build_java
 
 queries:
   - include: "*"
