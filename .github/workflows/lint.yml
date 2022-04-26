@@ -24,7 +24,7 @@ jobs:
           filter_mode: file
       - uses: reviewdog/action-flake8@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: error
           filter_mode: file
@@ -53,7 +53,7 @@ jobs:
       - name: markdownlint
         uses: reviewdog/action-markdownlint@v0.7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: info
           filter_mode: file
