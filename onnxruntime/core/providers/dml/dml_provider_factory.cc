@@ -64,7 +64,7 @@ void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(IDMLDevice* dml_device,
                                                                               ID3D12CommandQueue* cmd_queue,
-                                                                              _In_ OrtSessionOptions* options) {
+                                                                              _In_opt_ OrtSessionOptions* options) {
 #ifndef _GAMING_XBOX
   // Validate that the D3D12 devices match between DML and the command queue. This specifically asks for IUnknown in
   // order to be able to compare the pointers for COM object identity.
@@ -81,7 +81,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(ID
   // Disable DML_GRAPH_DESC fusion if the user wants to export the model because otherwise the graph cannot be
   // reloaded again since all nodes were fused into a single large IDMLOperator (which isn't any kind of
   // registered ONNX operator).
-  bool graph_fusion_enabled = options->value.optimized_model_filepath.empty();
+  bool graph_fusion_enabled = true;
+  if (options) {
+    graph_fusion_enabled = options->value.optimized_model_filepath.empty();
+  }
 
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(dml_device->GetParentDevice(IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
@@ -111,11 +114,11 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     auto isBasicRenderDriverVendorId = desc.VendorId == 0x1414;
     auto isBasicRenderDriverDeviceId = desc.DeviceId == 0x8c;
     auto isSoftwareAdapter = desc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
-    
+
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id, _In_ OrtSessionOptions* options) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id, OrtSessionOptions* options) {
 #ifdef _GAMING_XBOX
     ComPtr<ID3D12Device> d3d12_device;
     D3D12XBOX_CREATE_DEVICE_PARAMETERS params = {};
@@ -167,6 +170,10 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
   return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get(), options);
 }
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id) {
+  return CreateExecutionProviderFactory_DML(device_id, nullptr);
+}
+
 }  // namespace onnxruntime
 
 // [[deprecated]]
@@ -182,7 +189,7 @@ API_IMPL_END
 // [[deprecated]]
 // This export should be deprecated.
 // The OrtSessionOptionsAppendExecutionProvider_DML1 export on the OrtDmlApi should be used instead.
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_opt_ OrtSessionOptions* options,
                     _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue) {
 API_IMPL_BEGIN
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(dml_device,
