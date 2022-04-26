@@ -5,17 +5,17 @@
 # --------------------------------------------------------------------------
 # This script helps evaluation of GPT-2 model.
 import logging
-import torch
-import numpy
-import timeit
 import math
+import os
 import statistics
+import sys
+import timeit
+
+import numpy
+import torch
 from gpt2_helper import Gpt2Helper, Gpt2Inputs
 
-import sys
-import os
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from benchmark_helper import Precision
 
@@ -23,8 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class Gpt2Metric:
-
-    def __init__(self, treatment_name, baseline_name='Torch', top_k=20):
+    def __init__(self, treatment_name, baseline_name="Torch", top_k=20):
         assert top_k > 1 and top_k <= 100
         self.baseline = baseline_name
         self.treatment = treatment_name
@@ -64,7 +63,7 @@ class Gpt2Metric:
                 if key == 0:
                     print("\t{}:         \t{:.2f} ms".format(key, average))
                 else:
-                    print("\t[{}, {}]:\t{:.2f} ms".format(2**key, 2**(key + 1) - 1, average))
+                    print("\t[{}, {}]:\t{:.2f} ms".format(2**key, 2 ** (key + 1) - 1, average))
                 total += average * len(self.seq_len_latency[key])
                 count += len(self.seq_len_latency[key])
             print("Average Latency: {:.2f} ms".format(total / count))
@@ -100,9 +99,11 @@ class Gpt2Metric:
             else:
                 if verbose:
                     print(
-                        f"Top {top_k} tokens not matched for {self.name}. This will lead to wrong beam search results")
-                self.batch_topk_error |= (torch.eq(baseline_topk, treatment_topk).logical_not().sum(1).unsqueeze(dim=1)
-                                          > 0)
+                        f"Top {top_k} tokens not matched for {self.name}. This will lead to wrong beam search results"
+                    )
+                self.batch_topk_error |= (
+                    torch.eq(baseline_topk, treatment_topk).logical_not().sum(1).unsqueeze(dim=1) > 0
+                )
 
     def end_batch(self):
         self.top_1_error += self.batch_top1_error.sum()
@@ -116,18 +117,19 @@ class Gpt2Metric:
 
 
 class Gpt2Tester:
-
-    def __init__(self,
-                 input_ids,
-                 position_ids,
-                 attention_mask,
-                 num_attention_heads,
-                 hidden_size,
-                 num_layer,
-                 device,
-                 is_fp16=False,
-                 top_k=20,
-                 top_k_required_order=False):
+    def __init__(
+        self,
+        input_ids,
+        position_ids,
+        attention_mask,
+        num_attention_heads,
+        hidden_size,
+        num_layer,
+        device,
+        is_fp16=False,
+        top_k=20,
+        top_k_required_order=False,
+    ):
 
         self.batch_size = input_ids.shape[0]
         self.input_length = input_ids.shape[1]
@@ -142,7 +144,13 @@ class Gpt2Tester:
 
         # Emtpy past state for first inference
         self.past = []
-        past_shape = [2, self.batch_size, num_attention_heads, 0, hidden_size // num_attention_heads]
+        past_shape = [
+            2,
+            self.batch_size,
+            num_attention_heads,
+            0,
+            hidden_size // num_attention_heads,
+        ]
         for i in range(num_layer):
             empty_past = torch.empty(past_shape).type(torch.float16 if is_fp16 else torch.float32)
             self.past.append(empty_past.to(device))
@@ -159,7 +167,7 @@ class Gpt2Tester:
     def save_test_data(self, session, output, save_test_data_dir, test_case_id):
         from onnx import numpy_helper
 
-        path = os.path.join(save_test_data_dir, 'test_data_set_' + str(test_case_id))
+        path = os.path.join(save_test_data_dir, "test_data_set_" + str(test_case_id))
         if os.path.exists(path):
             print(f"Directory {path} existed. Skip saving test data")
             return
@@ -179,17 +187,18 @@ class Gpt2Tester:
             add_tensor(input_tensors, self.attention_mask, "attention_mask")
 
         for i in range(self.n_layer):
-            add_tensor(input_tensors, self.past[i], 'past_' + str(i))
+            add_tensor(input_tensors, self.past[i], "past_" + str(i))
 
         for i, tensor in enumerate(input_tensors):
-            with open(os.path.join(path, 'input_{}.pb'.format(i)), 'wb') as f:
+            with open(os.path.join(path, "input_{}.pb".format(i)), "wb") as f:
                 f.write(tensor.SerializeToString())
 
         output_names = [output.name for output in session.get_outputs()]
         for i, name in enumerate(output_names):
             tensor = numpy_helper.from_array(
-                output[i] if isinstance(output[i], numpy.ndarray) else output[i].clone().cpu().numpy())
-            with open(os.path.join(path, 'output_{}.pb'.format(i)), 'wb') as f:
+                output[i] if isinstance(output[i], numpy.ndarray) else output[i].clone().cpu().numpy()
+            )
+            with open(os.path.join(path, "output_{}.pb".format(i)), "wb") as f:
                 f.write(tensor.SerializeToString())
 
         print(f"Test data saved to directory {path}")
@@ -198,8 +207,9 @@ class Gpt2Tester:
         """
         Update the inputs for next inference.
         """
-        self.logits = torch.from_numpy(output[0]) if isinstance(output[0],
-                                                                numpy.ndarray) else output[0].clone().detach().cpu()
+        self.logits = (
+            torch.from_numpy(output[0]) if isinstance(output[0], numpy.ndarray) else output[0].clone().detach().cpu()
+        )
 
         self.top_1_tokens = Gpt2Tester.predict_next_token(self.logits)
         self.top_k_tokens = Gpt2Tester.predict_next_token(self.logits, self.top_k, self.top_k_required_order)
@@ -207,13 +217,18 @@ class Gpt2Tester:
         self.input_ids = self.top_1_tokens.clone().detach().reshape([self.batch_size, 1]).to(device)
 
         if self.has_position_ids:
-            self.position_ids = torch.tensor([self.input_length + step - 1]).unsqueeze(0).repeat(self.batch_size,
-                                                                                                 1).to(device)
+            self.position_ids = (
+                torch.tensor([self.input_length + step - 1]).unsqueeze(0).repeat(self.batch_size, 1).to(device)
+            )
 
         if self.has_attention_mask:
             self.attention_mask = torch.cat(
-                [self.attention_mask,
-                 torch.ones([self.batch_size, 1]).type_as(self.attention_mask)], 1).to(device)
+                [
+                    self.attention_mask,
+                    torch.ones([self.batch_size, 1]).type_as(self.attention_mask),
+                ],
+                1,
+            ).to(device)
 
         self.past = []
 
@@ -221,8 +236,11 @@ class Gpt2Tester:
             self.past = list(output[1])
         else:
             for i in range(self.n_layer):
-                past_i = torch.from_numpy(output[i + 1]) if isinstance(
-                    output[i + 1], numpy.ndarray) else output[i + 1].clone().detach()
+                past_i = (
+                    torch.from_numpy(output[i + 1])
+                    if isinstance(output[i + 1], numpy.ndarray)
+                    else output[i + 1].clone().detach()
+                )
                 self.past.append(past_i.to(device))
 
     def diff(self, baseline):
@@ -234,18 +252,26 @@ class Gpt2Tester:
         if self.logits is not None:
             max_io_diff = (self.logits - baseline.logits).abs().max()
             if max_io_diff > 1e-4:
-                print(f'Max logits difference is too large: {max_io_diff}')
+                print(f"Max logits difference is too large: {max_io_diff}")
 
         if not torch.all(self.input_ids == baseline.input_ids):
-            print('Input_ids is different', self.input_ids, baseline.input_ids)
+            print("Input_ids is different", self.input_ids, baseline.input_ids)
 
         if self.has_position_ids:
             if not torch.all(self.position_ids == baseline.position_ids):
-                print('position_ids is different', self.position_ids, baseline.position_ids)
+                print(
+                    "position_ids is different",
+                    self.position_ids,
+                    baseline.position_ids,
+                )
 
         if self.has_attention_mask:
             if not torch.all(self.attention_mask == baseline.attention_mask):
-                print('attention_mask is different', self.attention_mask, baseline.attention_mask)
+                print(
+                    "attention_mask is different",
+                    self.attention_mask,
+                    baseline.attention_mask,
+                )
 
         assert len(self.past) == len(baseline.past)
 
@@ -282,10 +308,16 @@ class Gpt2Tester:
         """
         present_diff_max = []
         for i in range(n_layer):
-            onnx_present_i = torch.from_numpy(onnx_output[i + 1]) if isinstance(onnx_output[i + 1],
-                                                                                numpy.ndarray) else onnx_output[i + 1]
-            onnx_io_present_i = torch.from_numpy(onnx_io_output[i + 1]) if isinstance(
-                onnx_io_output[i + 1], numpy.ndarray) else onnx_io_output[i + 1]
+            onnx_present_i = (
+                torch.from_numpy(onnx_output[i + 1])
+                if isinstance(onnx_output[i + 1], numpy.ndarray)
+                else onnx_output[i + 1]
+            )
+            onnx_io_present_i = (
+                torch.from_numpy(onnx_io_output[i + 1])
+                if isinstance(onnx_io_output[i + 1], numpy.ndarray)
+                else onnx_io_output[i + 1]
+            )
             max_diff = (onnx_present_i - onnx_io_present_i).abs().max()
             present_diff_max.append(max_diff)
         print(f"present_diff_max={present_diff_max}")
@@ -296,24 +328,28 @@ class Gpt2Tester:
         Returns True if the ONNX model is quantized.
         """
         from onnx import load
+
         model = load(onnx_model_path)
         from onnxruntime.quantization.quantize import __producer__ as quantize_producer
+
         return model.producer_name == quantize_producer
 
     @staticmethod
-    def test_generation(session,
-                        model,
-                        device,
-                        test_inputs,
-                        precision=Precision.FLOAT32,
-                        model_class='Gpt2LMHeadModel',
-                        top_k=20,
-                        top_k_no_order=True,
-                        max_steps=24,
-                        max_inputs=0,
-                        verbose=False,
-                        save_test_data=0,
-                        save_test_data_dir='.'):
+    def test_generation(
+        session,
+        model,
+        device,
+        test_inputs,
+        precision=Precision.FLOAT32,
+        model_class="Gpt2LMHeadModel",
+        top_k=20,
+        top_k_no_order=True,
+        max_steps=24,
+        max_inputs=0,
+        verbose=False,
+        save_test_data=0,
+        save_test_data_dir=".",
+    ):
         """
         Test Generation using greedy beam search (without sampling) to compare PyTorch and ONNX model.
         It will print top 1 and top k errors on the given test inputs.
@@ -327,29 +363,31 @@ class Gpt2Tester:
         eos_token_id = model.config.eos_token_id
         test_data_saved = 0
 
-        is_float16 = (precision == Precision.FLOAT16)
+        is_float16 = precision == Precision.FLOAT16
         if is_float16:
-            assert 'float16' in session.get_outputs()[0].type
+            assert "float16" in session.get_outputs()[0].type
 
         # We will still use fp32 torch model as baseline when onnx model if fp16
         model.eval().to(device)
 
         # Allocate initial buffers for IO Binding of ONNX Runtimne. The buffer size will automatically increase later.
-        init_output_shapes = Gpt2Helper.get_output_shapes(batch_size=4,
-                                                          past_sequence_length=128,
-                                                          sequence_length=32,
-                                                          config=model.config,
-                                                          model_class=model_class)
+        init_output_shapes = Gpt2Helper.get_output_shapes(
+            batch_size=4,
+            past_sequence_length=128,
+            sequence_length=32,
+            config=model.config,
+            model_class=model_class,
+        )
         output_buffers = Gpt2Helper.get_output_buffers(init_output_shapes, device, is_float16=is_float16)
 
-        baseline_name = 'Torch'
-        treatment_name = 'Quantized Onnx' if precision == Precision.INT8 else "Onnx"
+        baseline_name = "Torch"
+        treatment_name = "Quantized Onnx" if precision == Precision.INT8 else "Onnx"
         torch_metric = Gpt2Metric(baseline_name, baseline_name, top_k)
         onnx_metric = Gpt2Metric(treatment_name, baseline_name, top_k)
-        onnx_io_metric = Gpt2Metric(treatment_name + ' with IO Binding', baseline_name, top_k)
+        onnx_io_metric = Gpt2Metric(treatment_name + " with IO Binding", baseline_name, top_k)
 
         for i, inputs in enumerate(test_inputs):
-            if (max_inputs > 0 and i == max_inputs):
+            if max_inputs > 0 and i == max_inputs:
                 break
             if i % 10 == 0:
                 print(f"{i}")
@@ -357,12 +395,42 @@ class Gpt2Tester:
             position_ids = inputs["position_ids"] if "position_ids" in inputs else None
             attention_mask = inputs["attention_mask"] if "attention_mask" in inputs else None
 
-            onnx_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
-                                     is_float16, top_k, not top_k_no_order)
-            onnx_io_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device,
-                                        is_float16, top_k, not top_k_no_order)
-            torch_runner = Gpt2Tester(input_ids, position_ids, attention_mask, n_head, n_embd, n_layer, device, False,
-                                      top_k, not top_k_no_order)  # Torch model baseline is fp32
+            onnx_runner = Gpt2Tester(
+                input_ids,
+                position_ids,
+                attention_mask,
+                n_head,
+                n_embd,
+                n_layer,
+                device,
+                is_float16,
+                top_k,
+                not top_k_no_order,
+            )
+            onnx_io_runner = Gpt2Tester(
+                input_ids,
+                position_ids,
+                attention_mask,
+                n_head,
+                n_embd,
+                n_layer,
+                device,
+                is_float16,
+                top_k,
+                not top_k_no_order,
+            )
+            torch_runner = Gpt2Tester(
+                input_ids,
+                position_ids,
+                attention_mask,
+                n_head,
+                n_embd,
+                n_layer,
+                device,
+                False,
+                top_k,
+                not top_k_no_order,
+            )  # Torch model baseline is fp32
 
             batch_size = torch_runner.batch_size
             onnx_metric.start_batch(batch_size)
@@ -379,27 +447,30 @@ class Gpt2Tester:
                     torch_metric.add_latency(past_seq_len, timeit.default_timer() - start_time)
                     torch_runner.update(pytorch_output, step, device)
 
-                    onnx_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference(session,
-                                                                                   onnx_runner.get_inputs(),
-                                                                                   total_runs=1)
+                    onnx_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference(
+                        session, onnx_runner.get_inputs(), total_runs=1
+                    )
                     onnx_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
                     onnx_runner.update(onnx_output, step, device)
 
-                    output_shapes = Gpt2Helper.get_output_shapes(batch_size,
-                                                                 past_seq_len,
-                                                                 seq_len,
-                                                                 model.config,
-                                                                 model_class=model_class)
+                    output_shapes = Gpt2Helper.get_output_shapes(
+                        batch_size,
+                        past_seq_len,
+                        seq_len,
+                        model.config,
+                        model_class=model_class,
+                    )
                     Gpt2Helper.auto_increase_buffer_size(output_buffers, output_shapes)
 
-                    onnx_io_output, avg_latency_ms = Gpt2Helper.onnxruntime_inference_with_binded_io(
+                    (onnx_io_output, avg_latency_ms,) = Gpt2Helper.onnxruntime_inference_with_binded_io(
                         session,
                         onnx_io_runner.get_inputs(),
                         output_buffers,
                         output_shapes,
                         total_runs=1,
                         return_numpy=False,
-                        include_copy_output_latency=True)
+                        include_copy_output_latency=True,
+                    )
                     onnx_io_metric.add_latency(past_seq_len, avg_latency_ms / 1000.0)
 
                     if test_data_saved < save_test_data:

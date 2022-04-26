@@ -2,11 +2,12 @@
 # Licensed under the MIT License.
 
 import logging
-import onnx
 import pathlib
 import unittest
 
+import onnx
 from testfixtures import LogCapture
+
 from ..check_model_can_use_ort_mobile_pkg import run_check, run_check_with_model
 
 # example usage from <ort root>/tools/python
@@ -16,12 +17,13 @@ from ..check_model_can_use_ort_mobile_pkg import run_check, run_check_with_model
 script_dir = pathlib.Path(__file__).parent
 ort_root = script_dir.parents[4]
 
-ort_package_build_config_filename = \
-    ort_root / 'tools' / 'ci_build' / 'github' / 'android' / 'mobile_package.required_operators.config'
+ort_package_build_config_filename = (
+    ort_root / "tools" / "ci_build" / "github" / "android" / "mobile_package.required_operators.config"
+)
 
 
 def _create_logger():
-    logger = logging.getLogger('default')
+    logger = logging.getLogger("default")
     logger.setLevel(logging.DEBUG)
     return logger
 
@@ -30,32 +32,32 @@ class TestMobilePackageModelChecker(unittest.TestCase):
     def test_supported_model(self):
         with LogCapture() as log_capture:
             logger = _create_logger()
-            model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'ort_github_issue_4031.onnx'
+            model_path = ort_root / "onnxruntime" / "test" / "testdata" / "ort_github_issue_4031.onnx"
             supported = run_check(model_path, ort_package_build_config_filename, logger)
             self.assertTrue(supported)
 
             # print(log_capture)
             log_capture.check_present(
-                ('default', 'INFO', 'Model should work with the pre-built package.'),
+                ("default", "INFO", "Model should work with the pre-built package."),
             )
 
     def test_model_invalid_opset(self):
         with LogCapture() as log_capture:
             logger = _create_logger()
-            model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'mnist.onnx'
+            model_path = ort_root / "onnxruntime" / "test" / "testdata" / "mnist.onnx"
             supported = run_check(model_path, ort_package_build_config_filename, logger)
             self.assertFalse(supported)
 
             # print(log_capture)
             log_capture.check_present(
-                ('default', 'INFO', 'Model uses ONNX opset 8.'),
-                ('default', 'INFO', 'The pre-built package only supports ONNX opsets [12, 13, 14, 15].')
+                ("default", "INFO", "Model uses ONNX opset 8."),
+                ("default", "INFO", "The pre-built package only supports ONNX opsets [12, 13, 14, 15]."),
             )
 
     def test_model_unsupported_op_and_types(self):
         with LogCapture() as log_capture:
             logger = _create_logger()
-            model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'sequence_insert.onnx'
+            model_path = ort_root / "onnxruntime" / "test" / "testdata" / "sequence_insert.onnx"
 
             # Model uses opset 11 which is not supported in the mobile package. Update to supported opset first
             # Note: Ideally this would use update_onnx_opset however the ONNX opset update tools isn't working with
@@ -73,7 +75,7 @@ class TestMobilePackageModelChecker(unittest.TestCase):
 
             # print(log_capture)
             log_capture.check_present(
-                ('default', 'DEBUG', 'Data type sequence_type of graph input input_seq is not supported.'),
-                ('default', 'INFO', 'Unsupported operators:'),
-                ('default', 'INFO', '  ai.onnx:13:SequenceInsert'),
+                ("default", "DEBUG", "Data type sequence_type of graph input input_seq is not supported."),
+                ("default", "INFO", "Unsupported operators:"),
+                ("default", "INFO", "  ai.onnx:13:SequenceInsert"),
             )

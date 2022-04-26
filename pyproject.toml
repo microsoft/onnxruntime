@@ -1,0 +1,16 @@
+[tool.black]
+line-length = 120
+# extend-exclude needs to be a regular expression
+extend-exclude = "cmake|onnxruntime/core/flatbuffers/"
+
+[tool.isort]
+profile = "black"
+line_length = 120
+extend_skip_glob = [
+    "cmake/*",
+    "orttraining/*",
+    "onnxruntime/core/flatbuffers/*",
+]
+
+[tool.pydocstyle]
+convention = "google"
