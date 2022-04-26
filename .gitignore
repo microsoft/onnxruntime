@@ -56,7 +56,3 @@ onnxruntime/python/version_info.py
 .envrc
 .psenvrc
 *.csproj.user
-
-
-# logs
-log_*
