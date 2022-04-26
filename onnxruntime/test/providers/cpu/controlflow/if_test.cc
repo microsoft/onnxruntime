@@ -503,11 +503,9 @@ class IfOpTesterWithOptionalTypeAsOutput : public OpTester {
       std::unordered_map<std::string, int> domain_to_version;
       domain_to_version.insert({"", 16});  // Opset 16 model
 
-      // Since this test is being written at a time when only opset 15  has been released, we pass in
-      // 'false' for `allow_released_opset_only` while instantiating Model to allow this test to run
       Model subgraph(then_branch ? "Then_subgraph" : "Else_subgraph", false, ModelMetaData(), PathString(), {},
                      domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-                     DefaultLoggingManager().DefaultLogger(), false);
+                     DefaultLoggingManager().DefaultLogger());
 
       auto& graph = subgraph.MainGraph();
 
@@ -551,7 +549,7 @@ TEST(If, TestIfWithOptionalTypeTensorAsOutput) {
     test.AddInput<bool>("If_input", {1}, {true});
     test.AddOptionalTypeTensorInput<float>("A", {}, nullptr);                            // None
     test.AddOptionalTypeTensorOutput<float>("Y", {}, nullptr);                           // None
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
   }
 
   // CASE 2: Optional tensor + non-none
@@ -561,7 +559,7 @@ TEST(If, TestIfWithOptionalTypeTensorAsOutput) {
     std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
     test.AddOptionalTypeTensorInput<float>("A", {2}, &data);                             // Non-None
     test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);                            // Non-None
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
   }
 
   // CASE 3: Optional tensor sequence + none
@@ -570,7 +568,7 @@ TEST(If, TestIfWithOptionalTypeTensorAsOutput) {
     test.AddInput<bool>("If_input", {1}, {true});
     test.AddOptionalTypeSeqInput<float>("A", nullptr);                                   // None
     test.AddOptionalTypeSeqOutput<float>("Y", nullptr);                                  // None
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
   }
 
   // CASE 4: Optional tensor sequence + non-none
@@ -585,7 +583,7 @@ TEST(If, TestIfWithOptionalTypeTensorAsOutput) {
 
     test.AddOptionalTypeSeqInput<float>("A", &seq);                                      // Non-None
     test.AddOptionalTypeSeqOutput<float>("Y", &seq);                                     // Non-None
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: opset 16 is not supported yet
   }
 }
 

@@ -503,8 +503,31 @@ inline SessionOptions& SessionOptions::AddInitializer(const char* name, const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AddExternalInitializers(const std::vector<std::string>& names,
+                                                               const std::vector<Value>& ort_values) {
+  const size_t inputs_num = names.size();
+  if (inputs_num != ort_values.size()) {
+    ORT_CXX_API_THROW("Expecting names and ort_values to have the same length", ORT_INVALID_ARGUMENT);
+  }
+  std::vector<const char*> names_ptr;
+  std::vector<const OrtValue*> ort_values_ptrs;
+  names_ptr.reserve(inputs_num);
+  ort_values_ptrs.reserve(inputs_num);
+  for (size_t i = 0; i < inputs_num; ++i) {
+    names_ptr.push_back(names[i].c_str());
+    ort_values_ptrs.push_back(ort_values[i]);
+  }
+  ThrowOnError(GetApi().AddExternalInitializers(p_, names_ptr.data(), ort_values_ptrs.data(), inputs_num));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA(p_, &provider_options));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA_V2(p_, &provider_options));
   return *this;
 }
 
@@ -1133,7 +1156,7 @@ inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
 
 inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue* value) {
   const OrtMemoryInfo* mem_info;
-  ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info)); 
+  ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info));
   return mem_info;
 }
 

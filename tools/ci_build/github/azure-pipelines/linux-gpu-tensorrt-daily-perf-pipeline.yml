@@ -3,7 +3,7 @@ parameters:
 - name: BuildORT
   displayName: Build ORT
   type: boolean
-  default: true
+  default: false
 
 - name: PostToDashboard
   displayName: Post to Dashboard
@@ -12,11 +12,6 @@ parameters:
 
 - name: RunNvidiaContainer
   displayName: Run in Nvidia Container (or set trtContainer Variable)
-  type: boolean
-  default: true
-
-- name: RunDocker
-  displayName: Run on Docker
   type: boolean
   default: true
 
@@ -34,11 +29,6 @@ parameters:
   type: boolean
   default: false
 
-- name: PublishWheel
-  displayName: Publish Wheel 
-  type: boolean
-  default: false
-
 - name: ModelGroups
   type: object
   default: 
@@ -50,6 +40,18 @@ parameters:
   type: boolean
   default: false
 
+- name: TrtEPOptions
+  displayName: TensorRT EP options
+  type: object
+  default:
+    - trt_max_workspace_size=4294967296
+    - trt_engine_cache_enable=True
+
+- name: CUDAEPOptions
+  displayName: CUDA EP options
+  type: object
+  default: []
+
 jobs:
 - job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
   workspace:
@@ -58,79 +60,72 @@ jobs:
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   
   variables:
-    - name: trt_dockerfile
-      ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
-        value: Dockerfile.ubuntu_cuda11_4_tensorrt8_2
-      ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
-        value: Dockerfile.ubuntu_cuda11_4_tensorrt8_0
-      ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
-        value: Dockerfile.ubuntu_cuda11_4_tensorrt7_2
-    
-    - name: trtContainer
-      ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
-        value: 21.12
-      ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
-        value: 21.07
-      ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
-        value: 20.12
-        
-    - name: anubis_image
-      value: ort-master-py38
+    - name: trtContainerVersion
+      ${{ if eq(parameters.RunNvidiaContainer, true)}}:
+        ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
+          value: 21.12
+        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
+          value: 21.07
+        ${{ elseif eq(parameters.TrtVersion, '7.2.3.4') }}:
+          value: 20.12
 
-    - name: build_args
+    - name: dockerfile
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: Dockerfile.tensorrt-perf -t $(trtContainer) -v ${{parameters.TrtVersion}} -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
-      ${{ if ne(parameters.RunNvidiaContainer, true) }}:
-        value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(trt_dockerfile)
+        value: nvcr.io/nvidia/tensorrt:$(trtContainerVersion)-py3
+      ${{ else }}:
+        ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
+          value: Dockerfile.ubuntu_cuda11_4_tensorrt8_2
+        ${{ elseif eq(parameters.TrtVersion, '8.0.1.6') }}:
+          value: Dockerfile.ubuntu_cuda11_4_tensorrt8_0
+        ${{ elseif eq(parameters.TrtVersion, '7.2.3.4') }}:
+          value: Dockerfile.ubuntu_cuda11_4_tensorrt7_2
 
-    - name: environment
-      ${{ if eq(parameters.RunDocker, true) }}:
-        value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume)
-      ${{ if ne(parameters.RunDocker, true) }}:
-        value: machine.sh
-        
-    - name: with_arguments
-      value: $(environment) -e "$(epList)" 
-    
+    - name: image
+      ${{ if eq(parameters.BuildORT, true) }}:
+        value: ort-$(branch)
+      ${{ else }}:
+        value: $(dockerfile)
+
+    - name: trtEPOptionsArg
+      ${{ if not(eq(length(parameters.TrtEPOptions), 0)) }}:
+        value: --trt_ep_options ${{ join(',',parameters.TrtEPOptions) }}
+
+    - name: cudaEPOptionsArg
+      ${{ if not(eq(length(parameters.CUDAEPOptions), 0)) }}:
+        value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
+
     - name: optional_arguments
-      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
+      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
   steps:
+    - ${{ if eq(parameters.BuildORT, false) }}:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          buildType: 'specific'
+          project: 'Lotus'
+          preferTriggeringPipeline: true 
+          pipeline: '841'
+          runBranch: 'ref/heads/master'
+          buildVersionToDownload: 'latest'
+          allowPartiallySucceededBuilds: false
+          artifact: 'onnxruntime_gpu'
+          targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      - script: 'docker pull $(dockerfile)'
+        displayName: 'Pull Nvidia Dockerfile'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
-      - ${{ if eq(parameters.RunDocker, true) }}: 
-        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/$(build_args) -b $(branch) -i ort-$(branch) -c 75'
+      - ${{ if eq(parameters.RunNvidiaContainer, true) }}: 
+        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
+          displayName: 'Build latest ORT Image in Nvidia Container'
+          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      - ${{ else }}: 
+        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(dockerfile) -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
           displayName: 'Build latest ORT Image'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-      - ${{ if ne(parameters.RunDocker, true) }}:
-        - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
-          displayName: 'Build latest ORT'
-          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-
-    - ${{ if eq(parameters.PublishWheel, true) }}:
-      
-      - script: 'docker build --build-arg IMAGE=ort-master -t $(anubis_image) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
-        displayName: 'Build Python 3.8 Images'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer) -i $(anubis_image)'
-        displayName: 'Copy Wheel from Docker'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis'
-    
-      - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$(Build.BuildNumber)/$OUTPUT'
-        displayName: 'Upload Wheel File'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
-      - task: PowerShell@2
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/start_job.ps1'
-          arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer) -csc $(csc)'
-        displayName: 'Start Anubis Job'
-
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}}) $(optional_arguments)'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -b ${{ parameters.BuildORT }} -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
@@ -174,7 +169,7 @@ jobs:
           scriptLocation: inlineScript
           scriptType: bash
           inlineScript: |
-            short_hash=$(git rev-parse --short HEAD^) &&
+            short_hash=$(git rev-parse --short HEAD) &&
             commit_date=$(git log -1 --date=short --pretty=format:%cd) &&
             python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
     

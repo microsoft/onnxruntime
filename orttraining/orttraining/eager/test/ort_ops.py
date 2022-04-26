@@ -114,11 +114,27 @@ class OrtOpTests(unittest.TestCase):
     x = cpu_tensor.min()
     assert torch.allclose(x, y.cpu())
 
+  def test_torch_ones(self):
+    device = self.get_device()
+    cpu_ones = torch.ones((10,10))
+    ort_ones = cpu_ones.to(device)
+    ort_ones_device = torch.ones((10, 10), device = device)
+    assert torch.allclose(cpu_ones, ort_ones.cpu())
+    assert torch.allclose(cpu_ones, ort_ones_device.cpu())
+  
   def test_narrow(self):
     cpu_tensor = torch.rand(10, 10)
     cpu_narrow = cpu_tensor.narrow(0, 5, 5)
     ort_narrow = cpu_narrow.to('ort')
     assert torch.allclose(cpu_narrow, ort_narrow.cpu())
+
+  def test_zero_stride(self):
+    print('ssssss')
+    device = self.get_device()
+    t = torch.empty_strided(size=(6, 1024, 512), stride=(0, 0, 0))
+    assert(t.storage().size() == 1)  # This test is trying to confirm that transferring a tensor with a storage size of 1 works
+    ort_t = t.to(device)
+    assert torch.allclose(t, ort_t.cpu())
 
 if __name__ == '__main__':
   unittest.main()

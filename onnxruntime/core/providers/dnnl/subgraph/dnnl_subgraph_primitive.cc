@@ -7,10 +7,12 @@
 #include "dnnl_binary.h"
 #include "dnnl_cast.h"
 #include "dnnl_conv.h"
+#include "dnnl_dequantizelinear.h"
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
 #include "dnnl_gelu.h"
 #include "dnnl_gemm.h"
+#include "dnnl_layernorm.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
@@ -34,7 +36,35 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <iostream>
+#include <iomanip>
 
+/*
+* The DNNL_TENSOR_PRINT_MEMORY should always be 0 unless debugging
+*
+* These macros can be used to print the contents of a OneDNN tensor
+* This can be used to debug and investigate the values inputs and outputs
+* of OneDNN ops.
+*
+* To use set DNNL_TENSOR_PRINT_MEMORY to 1
+* Find the operator you want to investigate and add the memory you want to print when
+* calling AddPrimitive() for example:
+* Change this code:
+* ```
+* sp.AddPrimitive(elemenwise_primitive,
+                  {{DNNL_ARG_SRC, elementwise_src_mem}, {DNNL_ARG_DST, elementwise_dst_mem}});
+* ```
+* to
+* ```
+* sp.AddPrimitive(elemenwise_primitive,
+                  {{DNNL_ARG_SRC, elementwise_src_mem}, {DNNL_ARG_DST, elementwise_dst_mem}},
+                  {DNNL_ARG_SRC, DNNL_ARG_DST});
+* ```
+* Then rebuild and run the code.
+* This is a developer only solution to investigating contents of OneDNN's tensors.
+*/
+#define DNNL_TENSOR_PRINT_MEMORY 0
+#define DNNL_TENSOR_PRINT_MEMORY_MAX_TENSOR_ELEMENTS 150
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -44,12 +74,12 @@ inline bool Contains(const Map& map, const Key& key) {
   return map.find(key) != map.end();
 }
 
-
+#if DNNL_TENSOR_PRINT_MEMORY
 void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
   auto md = mem.get_desc();
   auto dt = md.data_type();
   auto dims = md.dims();
-  if (Product(dims) > 50) {
+  if (Product(dims) > DNNL_TENSOR_PRINT_MEMORY_MAX_TENSOR_ELEMENTS) {
     printf("tensor too long ignore printing \n");
     return;
   }
@@ -73,10 +103,12 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
       ((char*)data_vec.data())[i] = ((char*)dh)[i];
     }
 
+    std::cout << "[";
     for (auto& data : data_vec) {
-      printf("%.6f \n", data);
+      std::cout << std::setprecision(6) << data;
+      if (&data != &data_vec.back()) std::cout << ", ";
     }
-    printf("\n");
+    std::cout << "]\n";
   }
   else if (dt == dnnl::memory::data_type::u8) {
     std::vector<uint8_t> data_vec(Product(dims));
@@ -85,10 +117,12 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
       ((char*)data_vec.data())[i] = ((char*)dh)[i];
     }
 
+    std::cout << "[";
     for (auto& data : data_vec) {
-      printf("%" PRIu8 "\n", data);
+      std::cout << +data;
+      if (&data != &data_vec.back()) std::cout << ", ";
     }
-    printf("\n");
+    std::cout << "]\n";
   } else if (dt == dnnl::memory::data_type::s8) {
     std::vector<int8_t> data_vec(Product(dims));
     auto dh = to_mem.get_data_handle();
@@ -96,10 +130,12 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
       ((char*)data_vec.data())[i] = ((char*)dh)[i];
     }
 
+    std::cout << "[";
     for (auto& data : data_vec) {
-      printf("%" PRIi8 "\n", data);
+      std::cout << +data;
+      if (&data != &data_vec.back()) std::cout << ", ";
     }
-    printf("\n");
+    std::cout << "]\n";
   } else if (dt == dnnl::memory::data_type::s32) {
     std::vector<int32_t> data_vec(Product(dims));
     auto dh = to_mem.get_data_handle();
@@ -107,14 +143,17 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
     ((char*)data_vec.data())[i] = ((char*)dh)[i];
     }
 
+    std::cout << "[";
     for (auto& data : data_vec) {
-      printf("%" PRIi32 "\n", data);
+      std::cout << data;
+      if (&data != &data_vec.back()) std::cout << ", ";
     }
-    printf("\n");
+    std::cout << "]\n";
   } else {
     ORT_THROW("Cannot print such data type");
   }
 }
+#endif // DNNL_TENSOR_PRINT_MEMORY
 
 int Product(dnnl::memory::dims d) {
   int result = 1;
@@ -140,6 +179,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlCast().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "DequantizeLinear") {
+      DnnlDequantizeLinear().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DynamicQuantizeLinear") {
       DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
@@ -148,11 +189,13 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlGelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gelu" || node.OpType() == "BiasGelu") {
       DnnlGelu().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "LayerNormalization" || node.OpType() == "SkipLayerNormalization") {
+      DnnlLayerNorm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Gemm") {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd") {
+    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
@@ -641,9 +684,8 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
   for (size_t i = 0; i < net_.size(); ++i) {
     net_.at(i).execute(stream, net_args_.at(i));
     stream.wait();
-    
+#if DNNL_TENSOR_PRINT_MEMORY
     //for debug memory purpose
-    /*
     for (auto e : items_to_print_) {
       auto net_index = e.first;
       auto net_arg_index = e.second;
@@ -651,8 +693,7 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
         PrintMemory(net_args_.at(i)[net_arg_index]);
       }
     }
-    */
-    
+#endif  //DNNL_TENSOR_PRINT_MEMORY
   }
 
   return Status::OK();

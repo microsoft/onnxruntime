@@ -76,6 +76,12 @@ def parse_arguments():
     parser.add_argument('-w', '--overwrite', required=False, action='store_true', help="overwrite existing ONNX model")
     parser.set_defaults(overwrite=False)
 
+    parser.add_argument('--disable_auto_mixed_precision',
+                        required=False,
+                        action='store_true',
+                        help="use pure fp16 instead of mixed precision")
+    parser.set_defaults(disable_auto_mixed_precision=False)
+
     args = parser.parse_args()
 
     return args
@@ -91,7 +97,8 @@ def export_onnx_models(model_name_or_path,
                        verbose,
                        use_decoder_start_token: bool = True,
                        merge_encoder_and_decoder_init: bool = True,
-                       overwrite: bool = False):
+                       overwrite: bool = False,
+                       disable_auto_mixed_precision: bool = False):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
     models = T5Helper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init)
@@ -102,6 +109,7 @@ def export_onnx_models(model_name_or_path,
 
     output_paths = []
     for name, model in models.items():
+        model.to(device)
         filename_suffix = "_" + name
 
         onnx_path = T5Helper.get_onnx_path(output_dir,
@@ -112,7 +120,8 @@ def export_onnx_models(model_name_or_path,
         if overwrite or not os.path.exists(onnx_path):
             logger.info(f"Exporting ONNX model to {onnx_path}")
             # We have to clone model before exporting onnx, otherwise verify_onnx will report large difference.
-            T5Helper.export_onnx(copy.deepcopy(model),
+            cloned_model = copy.deepcopy(model).to(device)
+            T5Helper.export_onnx(cloned_model,
                                  device,
                                  onnx_path,
                                  verbose,
@@ -130,8 +139,13 @@ def export_onnx_models(model_name_or_path,
 
             if overwrite or not os.path.exists(output_path):
                 logger.info(f"Optimizing model to {output_path}")
-                T5Helper.optimize_onnx(onnx_path, output_path, precision == Precision.FLOAT16, config.num_heads,
-                                       config.hidden_size, use_external_data_format)
+                T5Helper.optimize_onnx(onnx_path,
+                                       output_path,
+                                       precision == Precision.FLOAT16,
+                                       config.num_heads,
+                                       config.hidden_size,
+                                       use_external_data_format,
+                                       auto_mixed_precision=not disable_auto_mixed_precision)
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
         else:
@@ -175,7 +189,7 @@ def main():
         output_paths = export_onnx_models(args.model_name_or_path, cache_dir, output_dir, args.use_gpu,
                                           args.use_external_data_format, args.optimize_onnx, args.precision,
                                           args.verbose, args.use_decoder_start_token, merge_encoder_and_decoder_init,
-                                          args.overwrite)
+                                          args.overwrite, args.disable_auto_mixed_precision)
 
     logger.info(f"Done! Outputs: {output_paths}")
 
