@@ -13,7 +13,8 @@ VOLUMES="-v $HOME/dockerx:/dockerx -v /data:/data"
 WORK_DIR="/dockerx/$(basename $(pwd))"
 
 # IMAGE_NAME=ort_rocm
-IMAGE_NAME=rocm/pytorch-private:ort_navi
+# IMAGE_NAME=rocm/pytorch-private:ort_navi
+IMAGE_NAME=rocm/pytorch
 
 CONTAINER_NAME=ort
 

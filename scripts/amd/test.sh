@@ -18,13 +18,13 @@ cd $TMP_DIR
 
 cd build/RelWithDebInfo
 
-# ../../tools/ci_build/github/pai/pai_test_launcher.sh 2>&1 | tee $LOG_DIR/ort_full_test.log
+../../tools/ci_build/github/pai/pai_test_launcher.sh 2>&1 | tee $LOG_DIR/ort_full_test.log
 
 # Failing Tests
 # ./onnxruntime_test_all "--gtest_filter=GraphTransformationTests.ComputationReductionTransformer_GatherND_E2E" 2>&1 | tee $LOG_DIR/ort_filter_test.log
 # ./onnxruntime_test_all "--gtest_filter=LayerNormTest.BERTLayerNorm" 2>&1 | tee $LOG_DIR/ort_filter_test.log
-# ./onnxruntime_test_all "--gtest_filter=GradientCheckerTest.ReduceLogSumExpGrad" # segfault 2>&1 | tee $LOG_DIR/ort_filter_test.log
-./onnxruntime_test_all "--gtest_filter=CudaKernelTest.SoftmaxCrossEntropy_SmallSizeTensor" 2>&1 | tee $LOG_DIR/ort_filter_test.log
+# ./onnxruntime_test_all "--gtest_filter=GradientCheckerTest.ReduceLogSumExpGrad" 2>&1 | tee $LOG_DIR/ort_filter_test.log # segfault 
+# ./onnxruntime_test_all "--gtest_filter=CudaKernelTest.SoftmaxCrossEntropy_SmallSizeTensor" 2>&1 | tee $LOG_DIR/ort_filter_test.log
 # ./onnxruntime_test_all "--gtest_filter="  2>&1 | tee $LOG_DIR/ort_filter_test.log
 
 

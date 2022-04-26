@@ -1,0 +1,5 @@
+FROM rocm/pytorch:latest
+
+RUN aria2c -q -d /tmp -o cmake-3.20.0-linux-x86_64.tar.gz \
+https://github.com/Kitware/CMake/releases/download/v3.20.0/cmake-3.20.0-linux-x86_64.tar.gz &&\
+tar -zxf /tmp/cmake-3.20.0-linux-x86_64.tar.gz --strip=1 -C /usr
