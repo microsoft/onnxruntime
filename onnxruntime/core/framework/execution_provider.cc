@@ -152,7 +152,7 @@ void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager>) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-// !!!!This API will be deprecate soon, if your execution provider override this api 
+// !!!!This API will be deprecated soon. If your execution provider overrides this API
 // !!!!Please migrate it to the "Compile" API with FusedNodeAndGraph type.
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& /*fused_node*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
