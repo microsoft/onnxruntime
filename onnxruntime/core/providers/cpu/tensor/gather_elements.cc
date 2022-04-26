@@ -86,13 +86,22 @@ static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, 
   }
 }
 
+#if defined(_MSC_VER)
+#define FORCEINLINE __forceinline
+#else
+#define FORCEINLINE __attribute__((always_inline)) inline
+#endif
+
 template <typename T>
-inline int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
+FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
   int64_t index = indices[i];
   if (index < 0)  // Handle negative indices
     index += axis_size;
   if (std::make_unsigned_t<T>(index) >= std::make_unsigned_t<T>(axis_size))
-    ORT_THROW("GatherElements op: Value in indices must be within bounds [-", axis_size, " , ", axis_size - 1, "]. Actual value is ", indices[i]);
+    index = 0;
+
+    //  if (std::make_unsigned_t<T>(index) >= std::make_unsigned_t<T>(axis_size))
+//    ORT_THROW("GatherElements op: Value in indices must be within bounds [-", axis_size, " , ", axis_size - 1, "]. Actual value is ", indices[i]);
   return index;
 };
 
