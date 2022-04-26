@@ -580,7 +580,6 @@ def parse_arguments():
     )
     # Please note in our CMakeLists.txt this is already default on. But in this file we reverse it to default OFF.
     parser.add_argument("--disable_rtti", action="store_true", help="Disable RTTI (reduces binary size)")
-    parser.add_argument("--disable_abseil", action='store_true', help="Do no use abseil and default to STL")
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
@@ -838,7 +837,6 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_RTTI="
         + ("ON" if args.disable_rtti or (args.minimal_build is not None and not args.enable_pybind) else "OFF"),
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
-        "-Donnxruntime_DISABLE_ABSEIL=" + ("ON" if args.disable_abseil else "OFF"),
         # Need to use 'is not None' with minimal_build check as it could be an empty list.
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
         "-Donnxruntime_EXTENDED_MINIMAL_BUILD="
