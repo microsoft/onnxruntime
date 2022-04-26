@@ -401,6 +401,24 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
             }
+          } else if (option.first == "has_user_compute_stream") {
+            if (!option.second.empty()) {
+              bool has_user_compute_stream;
+              ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(option.second, has_user_compute_stream));
+              params.has_user_compute_stream = has_user_compute_stream;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_user_compute_stream' should not empty.\n");
+            }
+          } else if (option.first == "user_compute_stream") {
+            if (!option.second.empty()) {
+              std::cout << "user_compute_stream in onnxruntime_pybind_state.cc:" << option.second << std::endl;
+              size_t user_compute_stream_obj_address_int;
+              ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(option.second, user_compute_stream_obj_address_int));
+              void* user_compute_stream_obj = reinterpret_cast<void*>(user_compute_stream_obj_address_int);
+              params.user_compute_stream = user_compute_stream_obj;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a stream object address string'.\n");
+            }
           } else if (option.first == "trt_max_partition_iterations") {
             if (!option.second.empty()) {
               params.trt_max_partition_iterations = std::stoi(option.second);
@@ -1249,7 +1267,7 @@ RunOptions instance. The individual calls will exit gracefully and return an err
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
-            //config_key and config_value will be copied
+            // config_key and config_value will be copied
             const Status status = options->config_options.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());

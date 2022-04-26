@@ -276,8 +276,13 @@ class GraphExecutionManager(GraphExecutionInterface):
             else:
                 if self._use_tensorrt_backend:
                     providers.append("TensorrtExecutionProvider")
+                    # TODO: pass current torch stream into backend.
+                    # Currently, fix the compute stream onto default stream, aligned with CUDA EP.
+                    default_stream_object_ptr = "0"
                     trt_provider_option_map = {
-                        "device_id": str(self._device.index)
+                        "device_id": str(self._device.index),
+                        "has_user_compute_stream" : "true",
+                        "user_compute_stream" : default_stream_object_ptr
                     }
                     provider_options.append(trt_provider_option_map)
 
