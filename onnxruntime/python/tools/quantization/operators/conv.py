@@ -1,9 +1,17 @@
-import onnx
 import numpy as np
+import onnx
+from onnx import onnx_pb as onnx_proto
+
+from ..quant_utils import (
+    BiasToQuantize,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    find_by_name,
+    get_mul_node,
+)
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
-from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType, attribute_to_kwarg, BiasToQuantize
-from onnx import onnx_pb as onnx_proto
 
 
 class ConvInteger(QuantOperatorBase):
@@ -11,7 +19,7 @@ class ConvInteger(QuantOperatorBase):
         super().__init__(onnx_quantizer, onnx_node)
 
     def add_bias(self, nodes, scaled_output):
-        '''
+        """
         Given a node, this function handles bias add by adding a "reshape" node on bias and an "add" node
             parameter nodes: new nodes would be appended into nodes
             parameter node: current node (Conv)
@@ -19,7 +27,7 @@ class ConvInteger(QuantOperatorBase):
             parameter output: output of Conv
             parameter bias_name: bias of Conv
             return: the name of output
-        '''
+        """
         node = self.node
         model = self.quantizer.model
         # Add tensors for the shape to be reshaped to
@@ -29,14 +37,15 @@ class ConvInteger(QuantOperatorBase):
 
         # Add reshape for correct broadcase
         output = node.output[0]
-        reshape_input_data = node.input[2] # bias of Conv
+        reshape_input_data = node.input[2]  # bias of Conv
         reshape_input_shape = output + "_bias_reshape_shape"
         reshape_output = output + "_bias_reshape_output"
 
         shape = np.ones((len(weight.dims)), dtype=np.int64)
         shape[1] = -1
-        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)],
-                                             shape)
+        init_shape = onnx.helper.make_tensor(
+            reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)], shape
+        )
         model.add_initializer(init_shape)
 
         reshape_node = onnx.helper.make_node("Reshape", [reshape_input_data, reshape_input_shape], [reshape_output])
@@ -48,10 +57,14 @@ class ConvInteger(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert (node.op_type == "Conv")
+        assert node.op_type == "Conv"
 
-        (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
+        (
+            quantized_input_names,
+            zero_point_names,
+            scale_names,
+            nodes,
+        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         conv_integer_output = node.output[0] + "_output_quantized"
         conv_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -59,19 +72,24 @@ class ConvInteger(QuantOperatorBase):
         kwargs = {}
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
-        conv_integer_node = onnx.helper.make_node("ConvInteger", quantized_input_names + zero_point_names,
-                                                  [conv_integer_output], conv_integer_name, **kwargs)
+        conv_integer_node = onnx.helper.make_node(
+            "ConvInteger", quantized_input_names + zero_point_names, [conv_integer_output], conv_integer_name, **kwargs
+        )
         nodes.append(conv_integer_node)
 
         # Add cast operation to cast convInteger output to float.
         cast_op_output = conv_integer_output + "_cast_output"
-        cast_node = onnx.helper.make_node("Cast", [conv_integer_output], [cast_op_output],
-                                          conv_integer_output + "_cast",
-                                          to=onnx_proto.TensorProto.FLOAT)
+        cast_node = onnx.helper.make_node(
+            "Cast",
+            [conv_integer_output],
+            [cast_op_output],
+            conv_integer_output + "_cast",
+            to=onnx_proto.TensorProto.FLOAT,
+        )
         nodes.append(cast_node)
 
         # Add mul operation to multiply scales of two inputs.
-        assert (len(scale_names) == 2)
+        assert len(scale_names) == 2
         if conv_integer_name != "":
             scales_mul_op = conv_integer_name + "_scales_mul"
         else:
@@ -90,7 +108,13 @@ class ConvInteger(QuantOperatorBase):
         # Add mul operation to multiply mul_scales_op result with output of ConvInteger
         # and make the output of this node the same as output of original conv node.
         output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name != "" else ""
-        nodes.append(get_mul_node([cast_op_output, scales_mul_op_output], scaled_output_name, output_scale_mul_op))
+        nodes.append(
+            get_mul_node(
+                [cast_op_output, scales_mul_op_output],
+                scaled_output_name,
+                output_scale_mul_op,
+            )
+        )
 
         if has_bias:
             self.add_bias(nodes, scaled_output_name)
@@ -104,22 +128,36 @@ class QLinearConv(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert (node.op_type == "Conv")
+        assert node.op_type == "Conv"
 
-        data_found, output_scale_name, output_zp_name, _, _ = \
-            self.quantizer._get_quantization_params(node.output[0])
+        (
+            data_found,
+            output_scale_name,
+            output_zp_name,
+            _,
+            _,
+        ) = self.quantizer._get_quantization_params(node.output[0])
 
         if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
-            (quantized_input_names, zero_point_names, scale_names, nodes) = \
-                self.quantizer.quantize_inputs(node, [0], reduce_range=self.quantizer.reduce_range)
-            quant_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], onnx_proto.TensorProto.INT8,
-                                                                            0)
+            (
+                quantized_input_names,
+                zero_point_names,
+                scale_names,
+                nodes,
+            ) = self.quantizer.quantize_inputs(node, [0], reduce_range=self.quantizer.reduce_range)
+            quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
+                node.input[1], onnx_proto.TensorProto.INT8, 0
+            )
             quantized_input_names.append(quant_weight_tuple[0])
             zero_point_names.append(quant_weight_tuple[1])
             scale_names.append(quant_weight_tuple[2])
         else:
-            (quantized_input_names, zero_point_names, scale_names, nodes) = \
-                self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
+            (
+                quantized_input_names,
+                zero_point_names,
+                scale_names,
+                nodes,
+            ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         if not data_found or quantized_input_names is None:
             return super().quantize()
@@ -153,13 +191,19 @@ class QLinearConv(QuantOperatorBase):
         if bias_present:
             qlinear_conv_inputs.append(quantized_bias_name)
 
-        qlinear_conv_node = onnx.helper.make_node("QLinearConv", qlinear_conv_inputs, [qlinear_conv_output],
-                                                  qlinear_conv_name, **kwargs)
+        qlinear_conv_node = onnx.helper.make_node(
+            "QLinearConv", qlinear_conv_inputs, [qlinear_conv_output], qlinear_conv_name, **kwargs
+        )
         nodes.append(qlinear_conv_node)
 
         # Create an entry for this quantized value
-        q_output = QuantizedValue(node.output[0], qlinear_conv_output, output_scale_name, output_zp_name,
-                                  QuantizedValueType.Input)
+        q_output = QuantizedValue(
+            node.output[0],
+            qlinear_conv_output,
+            output_scale_name,
+            output_zp_name,
+            QuantizedValueType.Input,
+        )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
         self.quantizer.new_nodes += nodes
@@ -171,7 +215,7 @@ class QDQConv(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert (node.op_type == "Conv")
+        assert node.op_type == "Conv"
 
         self.quantizer.quantize_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:

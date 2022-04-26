@@ -5,6 +5,7 @@
 
 from ._modifier_registry import OptimizerModifierTypeRegistry
 
+
 def FP16_Optimizer(optimizer, **kwargs):
     """
     Simple wrapper to replace inefficient FP16_Optimizer function calls implemented by libraries for example
@@ -76,15 +77,16 @@ def FP16_Optimizer(optimizer, **kwargs):
         The modified FP16_Optimizer instance
 
     """
+
     def get_full_qualified_type_name(o):
         if hasattr(optimizer, "_amp_stash"):
             return "apex.amp.optimizer.unique_name_as_id"
 
         klass = o.__class__
         module = klass.__module__
-        if module == 'builtins':
+        if module == "builtins":
             return klass.__qualname__
-        return module + '.' + klass.__qualname__
+        return module + "." + klass.__qualname__
 
     optimizer_full_qualified_name = get_full_qualified_type_name(optimizer)
     if optimizer_full_qualified_name not in OptimizerModifierTypeRegistry:
