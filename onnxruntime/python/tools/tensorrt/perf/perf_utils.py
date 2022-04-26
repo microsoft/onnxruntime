@@ -226,37 +226,55 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
+def get_ep_op_metrics(ep, op_map):
+    op_metrics = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
+
+    if ep in op_map:
+        ops = op_map[ep]
+        op_metrics['ops'] = json.dumps(ops)
+        op_metrics['num_ops'] = len(ops)
+
+        for _, exec_time in ops.items():
+            op_metrics['op_exec_time'] += int(exec_time)
+
+    return op_metrics
+
+######################################################################################################
+# Parameters: op_map: A dictionary that maps EPs to a operator durations.
+#                     EX: {'CUDAExecutionProvider': { 'op0': 200, 'op1': 100 }, 'CPUExec...': {...}}
+#
+# Return: A dictionary that maps an execution provider to a dictionary of operator metrics.
+#         EX: {'CPUExecutionProvider' : { 'num_ops': x, 'op_exec_time': y, 'ops': 'ops json string'},
+#              'CUDAExecutionProvider': { ... }, 'TensorrtExecutionProvider: { ... }}
+######################################################################################################
 def get_op_breakdown(op_map):
-    cpu_op_info = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
-    cuda_op_info = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
-    trt_op_info = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
+    cpu_op_metrics = get_ep_op_metrics(cpu_ep, op_map)
+    cuda_op_metrics = get_ep_op_metrics(cuda_ep, op_map)
 
-    if cpu_ep in op_map:
-        ops = op_map[cpu_ep]
-        cpu_op_info['ops'] = json.dumps(ops)
-        cpu_op_info['num_ops'] = len(ops)
+    # Note that the number of TensorRT ops obtained from op_map, which is built by parsing profile data,
+    # is incorrect. The profile data does not breakdown the individual operators used in TRT, and instead
+    # provides only the total execution time of a particular TRT subgraph.
+    #
+    # In order to determine the number of operators handled by TRT, we first need to obtain profile data for an
+    # inference session that uses only CUDA and CPU eps. This CUDA/CPU profile data serves as a baseline. Then,
+    # the number of ops handled by TRT is calculated as follows:
+    #
+    # num_trt_ops = (baseline number of cuda/cpu ops) - (number of cpu/cuda ops used in trt inference session)
+    #
+    # EX: ep_to_operator = {
+    #                        'ORT-CUDAFp32': {'CUDAExecutionProvider': { 'op0': 200, 'op1': 100 },
+    #                                         'CPUExecutionProvider': { 'op2': 10, 'op3': 300 }},
+    #                        'ORT-TRTFp32': {'CUDAExecutionProvider': { 'op1': 100 },
+    #                                        'CPUExecutionProvider': { 'op2' : 10 },
+    #                                        'TensorrtExecutionProvider': { 'subgraph0': 400 }}
+    #                      }
+    #
+    # num_trt_ops = 4 - 2 = 2
+    #
+    # See output_metrics() for the code that performs the above computations/fixups.
+    trt_op_metrics = get_ep_op_metrics(trt_ep, op_map)
 
-        for _, exec_time in ops.items():
-            cpu_op_info['op_exec_time'] += int(exec_time)
-
-    if cuda_ep in op_map:
-        ops = op_map[cuda_ep]
-        cuda_op_info['ops'] = json.dumps(ops)
-        cuda_op_info['num_ops'] = len(ops)
-
-        for _, exec_time in ops.items():
-            cuda_op_info['op_exec_time'] += int(exec_time)
-
-    if trt_ep in op_map:
-        ops = op_map[trt_ep]
-        trt_op_info['ops'] = json.dumps(ops)
-        trt_op_info['num_ops'] = len(ops) # Will be 1 (needs to be compared to inference run with ORT-CUDAFpxx)
-                                          # trt_num_ops = total ops in cuda - cuda and cpu ops in trt
-
-        for _, exec_time in ops.items():
-            trt_op_info['op_exec_time'] += int(exec_time)
-
-    return {cpu_ep: cpu_op_info, cuda_ep: cuda_op_info, trt_ep: trt_op_info}
+    return {cpu_ep: cpu_op_metrics, cuda_ep: cuda_op_metrics, trt_ep: trt_op_metrics}
 
 ##########################################
 # Return: total TRT execution time,
