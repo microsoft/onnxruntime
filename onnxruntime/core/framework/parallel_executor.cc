@@ -212,6 +212,10 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       break;
     }
 
+#ifdef DEBUG_NODE_INPUTS_OUTPUTS
+    utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
+#endif
+
     if (f_profiler_enabled) {
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node.Name() + "_kernel_time",

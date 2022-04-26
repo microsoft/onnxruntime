@@ -19,6 +19,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/framework/parallel_execution_plan.h"
 
 using namespace ::onnxruntime::common;
 
@@ -183,6 +184,8 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
 }
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
+
+ParallelExecutionPlan* SessionState::GetParalllelExecutionPlan() { return p_para_exec_plan_.get(); }
 
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
                                           bool constant, bool sparse) {
@@ -1388,6 +1391,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
+
+  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, 2);
+
   // Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout

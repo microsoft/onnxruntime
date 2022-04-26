@@ -37,6 +37,8 @@
 #include "core/framework/memory_info.h"
 #endif
 
+#include "core/framework/parallel_execution_plan.h"
+
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -191,6 +193,9 @@ class SessionState {
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
+
+  ParallelExecutionPlan* GetParalllelExecutionPlan();
+
   /**
   Get the logger for this session.
   Falls back to returning Logging::LoggingManager::DefaultLogger if SetLogger has not been called.
@@ -465,6 +470,8 @@ class SessionState {
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::vector<BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
+
+  std::unique_ptr<ParallelExecutionPlan> p_para_exec_plan_ = nullptr;
 
   const logging::Logger& logger_;
   profiling::Profiler& profiler_;
