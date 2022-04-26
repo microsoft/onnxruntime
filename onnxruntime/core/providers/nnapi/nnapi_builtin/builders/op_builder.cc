@@ -1490,14 +1490,17 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
+  bool use_nchw = model_builder.UseNCHW();
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
+
   const auto blocksize = helper.Get("blocksize", 2);
+  LOGS_DEFAULT(VERBOSE) << "check blocksize catch:" << blocksize;
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, blocksize);
 
-  
-  ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, output));
+  ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, use_nchw, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
                                                  {output_operand_type}));
