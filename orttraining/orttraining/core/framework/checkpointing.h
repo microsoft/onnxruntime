@@ -77,7 +77,8 @@ common::Status SaveRuntimeTensors(
     const PathString& tensors_path,
     const PathString& tensors_data_path,
     const DataTransferManager& data_transfer_manager,
-    const NameMLValMap& ort_values);
+    const NameMLValMap& ort_values,
+    bool force_save_as_external_data = false);
 
 /**
  * @brief Saves list of tensor proto in the specified location.

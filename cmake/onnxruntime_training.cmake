@@ -243,7 +243,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   # Training API Tests
   # Currently disable it by default for internal development usage.
   if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    file(GLOB_RECURSE training_api_test_runner_src
+    # Only files in the direct folder will be compiled into test runner.
+    file(GLOB training_api_test_runner_src
         "${ORTTRAINING_SOURCE_DIR}/test/training_api/*.h"
         "${ORTTRAINING_SOURCE_DIR}/test/training_api/*.cc"
     )

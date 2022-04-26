@@ -30,16 +30,16 @@ PathString CreateFolderIfNotExists(const PathString& path, const std::string& fo
 }
 
 Status CreateOrtValuesFromTensorProtos(
-    const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
+    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
     NameMLValMap& name_to_ort_value) {
   static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
   std::vector<std::vector<char>> tensor_buffers{};
 
-  for (const auto& tensor_proto : tensor_protos) {
-    const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type());
+  for (const auto tensor_proto : tensor_protos) {
+    const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type());
     const size_t element_size = tensor_type->GetElementType()->Size();
     const TensorShape shape{
-        tensor_proto.dims().data(), static_cast<size_t>(tensor_proto.dims().size())};
+        tensor_proto->dims().data(), static_cast<size_t>(tensor_proto->dims().size())};
 
     std::vector<char> tensor_buffer{};
     tensor_buffer.resize(element_size * shape.Size());
@@ -49,10 +49,10 @@ Status CreateOrtValuesFromTensorProtos(
     OrtValue ort_value;
 
     ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToMLValue(
-        Env::Default(), nullptr, tensor_proto, mem_buffer,
+        Env::Default(), nullptr, *tensor_proto, mem_buffer,
         ort_value));
 
-    name_to_ort_value.emplace(tensor_proto.name(), ort_value);
+    name_to_ort_value.emplace(tensor_proto->name(), ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
   }
 
@@ -87,23 +87,31 @@ const std::vector<std::string> ParseStringData(
   return res;
 }
 
-Status CheckpointUtils::Ort_Save_Internal(
-    const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
+Status CheckpointUtils::OrtSaveInternal(
+    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
     const PathString& checkpoint_path) {
   std::unordered_map<std::string, OrtValue> name_to_ort_value;
   ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(tensor_protos, name_to_ort_value));
 
+  auto cpu_data_transfer = std::make_unique<CPUDataTransfer>();
+  DataTransferManager data_transfer_mgr;
+  auto st = data_transfer_mgr.RegisterDataTransfer(std::move(cpu_data_transfer));
+  if (!st.IsOK()) {
+    return st;
+  }
+
   CheckpointStates states;
+  states.module_checkpoint_states.train_session_data_transfer_mgr_ = &data_transfer_mgr;
   auto& named_parameters = states.module_checkpoint_states.named_parameters;
   for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
     named_parameters.insert({it->first, std::make_shared<Parameter>(it->first, it->second)});
   }
 
-  ORT_RETURN_IF_ERROR(Ort_Save_Internal(states, checkpoint_path));
+  ORT_RETURN_IF_ERROR(OrtSaveInternal(states, checkpoint_path));
   return Status::OK();
 }
 
-Status CheckpointUtils::Ort_Save_Internal(
+Status CheckpointUtils::OrtSaveInternal(
     CheckpointStates& states, const PathString& checkpoint_path) {
   LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
   LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
@@ -119,6 +127,8 @@ Status CheckpointUtils::Ort_Save_Internal(
       model_parameter_ort_values.insert({it->first, it->second->data()});
     }
 
+    ORT_ENFORCE(states.module_checkpoint_states.train_session_data_transfer_mgr_,
+                "module checkpoint state has null train_session_data_transfer_mgr.");
     ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
         GetCheckpointTensorsFilePath(parameter_folder_path),
         GetCheckpointTensorsDataFilePath(parameter_folder_path),
@@ -167,6 +177,9 @@ Status CheckpointUtils::Ort_Save_Internal(
         const auto& state_name = pair.first;
         const std::unordered_map<std::string, OrtValue>& param_name_to_ortvalue = pair.second;
         const PathString opt_state_folder_path = CreateFolderIfNotExists(optimizer_folder_path, state_name);
+
+        ORT_ENFORCE(states.optimizer_checkpoint_states.optimizer_session_data_transfer_mgr_,
+                    "optimizer checkpoint state has null optimizer_session_data_transfer_mgr.");
         ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
             GetCheckpointTensorsFilePath(opt_state_folder_path),
             GetCheckpointTensorsDataFilePath(opt_state_folder_path),
@@ -209,7 +222,7 @@ Status CheckpointUtils::Ort_Save_Internal(
   return Status::OK();
 }
 
-Status CheckpointUtils::Ort_Load_Internal(const PathString& checkpoint_path, CheckpointStates& states) {
+Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& states) {
   // Parameter parsing.
   {
     auto& named_parameters = states.module_checkpoint_states.named_parameters;
@@ -223,8 +236,13 @@ Status CheckpointUtils::Ort_Load_Internal(const PathString& checkpoint_path, Che
           return Status::OK();
         }));
 
+    std::vector<const ONNX_NAMESPACE::TensorProto*> param_tensor_proto_ptrs{};
+    for (ONNX_NAMESPACE::TensorProto& param_tensor_proto : param_tensor_protos) {
+      param_tensor_proto_ptrs.emplace_back(&param_tensor_proto);
+    }
+
     std::unordered_map<std::string, OrtValue> name_to_ort_values;
-    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_protos, name_to_ort_values));
+    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_proto_ptrs, name_to_ort_values));
     for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
       named_parameters.insert({it->first, std::make_shared<Parameter>(it->first, it->second)});
     }
@@ -281,8 +299,13 @@ Status CheckpointUtils::Ort_Load_Internal(const PathString& checkpoint_path, Che
               return Status::OK();
             }));
 
+        std::vector<const ONNX_NAMESPACE::TensorProto*> param_optimizer_state_tensor_proto_ptrs{};
+        for (ONNX_NAMESPACE::TensorProto& param_optimizer_state_tensor_proto : param_optimizer_state_tensor_protos) {
+          param_optimizer_state_tensor_proto_ptrs.emplace_back(&param_optimizer_state_tensor_proto);
+        }
+
         std::unordered_map<std::string, OrtValue> name_to_ort_values;
-        ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_protos, name_to_ort_values));
+        ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_proto_ptrs, name_to_ort_values));
 
         for (auto& pair : name_to_ort_values) {
           auto& param_name = pair.first;

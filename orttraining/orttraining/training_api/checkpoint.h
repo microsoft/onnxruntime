@@ -79,9 +79,9 @@ struct CheckpointStates {
 
 PathString CreateFolderIfNotExists(const PathString& path, const std::string& folder_name);
 
-Status CreateOrtValuesFromTensorProtos(const PathString& model_location,
-                                       const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                                       NameMLValMap& name_to_ort_value);
+Status CreateOrtValuesFromTensorProtos(
+    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+    NameMLValMap& name_to_ort_value);
 
 /**
  * @brief A single entry for checkpoint utilities.
@@ -117,9 +117,9 @@ struct CheckpointUtils {
    * @param model_location onnx model path.
    * @return Status
    */
-  static Status Ort_Save(const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                         const PathString& checkpoint_path) {
-    ORT_RETURN_IF_ERROR(GetInstance().Ort_Save_Internal(tensor_protos, checkpoint_path));
+  static Status SaveORTCheckpoint(const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+                                  const PathString& checkpoint_path) {
+    ORT_RETURN_IF_ERROR(GetInstance().OrtSaveInternal(tensor_protos, checkpoint_path));
     return Status::OK();
   }
 
@@ -130,8 +130,8 @@ struct CheckpointUtils {
    * @param checkpoint_path folder where checkpoint is saved.
    * @return Status
    */
-  static Status Ort_Save(CheckpointStates& states, const PathString& checkpoint_path) {
-    ORT_RETURN_IF_ERROR(GetInstance().Ort_Save_Internal(states, checkpoint_path));
+  static Status SaveORTCheckpoint(CheckpointStates& states, const PathString& checkpoint_path) {
+    ORT_RETURN_IF_ERROR(GetInstance().OrtSaveInternal(states, checkpoint_path));
     return Status::OK();
   }
 
@@ -142,15 +142,15 @@ struct CheckpointUtils {
    * @param checkpoint_states parameter/optimizer and other user defined training states.
    * @return Status
    */
-  static Status Ort_Load(const PathString& checkpoint_path, CheckpointStates& checkpoint_states) {
-    ORT_RETURN_IF_ERROR(GetInstance().Ort_Load_Internal(checkpoint_path, checkpoint_states));
+  static Status LoadORTCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states) {
+    ORT_RETURN_IF_ERROR(GetInstance().OrtLoadInternal(checkpoint_path, checkpoint_states));
     return Status::OK();
   }
 
-  Status Ort_Save_Internal(const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                           const PathString& checkpoint_path);
-  Status Ort_Save_Internal(CheckpointStates& states, const PathString& checkpoint_path);
-  Status Ort_Load_Internal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
+  Status OrtSaveInternal(const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+                         const PathString& checkpoint_path);
+  Status OrtSaveInternal(CheckpointStates& states, const PathString& checkpoint_path);
+  Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
 
  private:
   CheckpointUtils() {}

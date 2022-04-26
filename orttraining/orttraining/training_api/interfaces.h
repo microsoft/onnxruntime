@@ -13,8 +13,8 @@ namespace api_test {
 class Parameter {
  public:
   // create parameter
-  Parameter(std::string /*name*/, const OrtValue& /*data*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
+  Parameter(std::string name, const OrtValue& data)
+      : name_(name), data_(data) {
   }
 
   // Return the mutable data
@@ -36,8 +36,8 @@ class Parameter {
   }
   // need to set grad but not public api
  private:
-  OrtValue data_;
   std::string name_;
+  OrtValue data_;
 
   OrtValue gradient_;
   std::string gradient_name_;
