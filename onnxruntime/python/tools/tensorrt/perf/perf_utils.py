@@ -46,13 +46,13 @@ op_metrics_columns = [
     ('model_name', 'Model', 'Model'),
     ('ep', 'Input EP', 'InputEP'),
     ('num_cpu_ops', 'Num CPU Ops', 'NumCPUOps'),
-    ('cpu_op_exec_time', 'CPU Ops execution time', 'CPUOpExecTime'),
+    ('cpu_exec_time', 'CPU Ops execution time', 'CPUExecTime'),
     ('cpu_ops', 'CPU Ops', 'CPUOps'),
     ('num_cuda_ops', 'Num CUDA Ops', 'NumCUDAOps'),
-    ('cuda_op_exec_time', 'CUDA Ops execution time', 'CUDAOpExecTime'),
+    ('cuda_exec_time', 'CUDA Ops execution time', 'CUDAExecTime'),
     ('cuda_ops', 'CUDA Ops', 'CUDAOps'),
     ('num_trt_ops', 'Num TRT Ops', 'NumTRTOps'),
-    ('trt_op_exec_time', 'TRT Ops execution time', 'TRTOpExecTime'),
+    ('trt_exec_time', 'TRT Ops execution time', 'TRTExecTime'),
     ('trt_ops', 'TRT Ops', 'TRTOps')
 ]
 
@@ -227,7 +227,7 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
 def get_ep_op_metrics(ep, op_map):
-    op_metrics = {'num_ops': 0, 'op_exec_time': 0, 'ops': '{}'}
+    op_metrics = {'num_ops': 0, 'exec_time': 0, 'ops': '{}'}
 
     if ep in op_map:
         ops = op_map[ep]
@@ -235,16 +235,16 @@ def get_ep_op_metrics(ep, op_map):
         op_metrics['num_ops'] = len(ops)
 
         for _, exec_time in ops.items():
-            op_metrics['op_exec_time'] += int(exec_time)
+            op_metrics['exec_time'] += int(exec_time)
 
     return op_metrics
 
 ######################################################################################################
-# Parameters: op_map: A dictionary that maps EPs to a operator durations.
+# Parameters: op_map: A dictionary that maps EPs to a dictionary of operator durations.
 #                     EX: {'CUDAExecutionProvider': { 'op0': 200, 'op1': 100 }, 'CPUExec...': {...}}
 #
 # Return: A dictionary that maps an execution provider to a dictionary of operator metrics.
-#         EX: {'CPUExecutionProvider' : { 'num_ops': x, 'op_exec_time': y, 'ops': 'ops json string'},
+#         EX: {'CPUExecutionProvider' : { 'num_ops': x, 'exec_time': y, 'ops': 'ops json string'},
 #              'CUDAExecutionProvider': { ... }, 'TensorrtExecutionProvider: { ... }}
 ######################################################################################################
 def get_op_breakdown(op_map):
@@ -256,8 +256,8 @@ def get_op_breakdown(op_map):
     # provides only the total execution time of a particular TRT subgraph.
     #
     # In order to determine the number of operators handled by TRT, we first need to obtain profile data for an
-    # inference session that uses only CUDA and CPU eps. This CUDA/CPU profile data serves as a baseline. Then,
-    # the number of ops handled by TRT is calculated as follows:
+    # inference session that uses only the CUDA and CPU EPs. This CUDA/CPU profile data serves as a baseline.
+    # Then, the number of ops handled by TRT is calculated as follows:
     #
     # num_trt_ops = (baseline number of cuda/cpu ops) - (number of cpu/cuda ops used in trt inference session)
     #

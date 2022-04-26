@@ -1591,13 +1591,13 @@ def get_model_cuda_op_info(model, ep_info, fp16):
             'model_name': model,
             'ep': cuda_key,
             'num_cpu_ops': op_breakdown[cpu_ep]['num_ops'],
-            'cpu_op_exec_time': op_breakdown[cpu_ep]['op_exec_time'],
+            'cpu_exec_time': op_breakdown[cpu_ep]['exec_time'],
             'cpu_ops': op_breakdown[cpu_ep]['ops'],
             'num_cuda_ops': op_breakdown[cuda_ep]['num_ops'],
-            'cuda_op_exec_time': op_breakdown[cuda_ep]['op_exec_time'],
+            'cuda_exec_time': op_breakdown[cuda_ep]['exec_time'],
             'cuda_ops': op_breakdown[cuda_ep]['ops'],
             'num_trt_ops': op_breakdown[trt_ep]['num_ops'], # Should be 0
-            'trt_op_exec_time': op_breakdown[trt_ep]['op_exec_time'], # Should be 0
+            'trt_exec_time': op_breakdown[trt_ep]['exec_time'], # Should be 0
             'trt_ops': op_breakdown[trt_ep]['ops'] # Should be empty
             }
 
@@ -1619,13 +1619,13 @@ def get_model_trt_op_info(model, ep_info, model_cuda_op_info, fp16):
             'model_name': model,
             'ep': trt_key,
             'num_cpu_ops': num_cpu_ops,
-            'cpu_op_exec_time': op_breakdown[cpu_ep]['op_exec_time'],
+            'cpu_exec_time': op_breakdown[cpu_ep]['exec_time'],
             'cpu_ops': op_breakdown[cpu_ep]['ops'],
             'num_cuda_ops': num_cuda_ops,
-            'cuda_op_exec_time': op_breakdown[cuda_ep]['op_exec_time'],
+            'cuda_exec_time': op_breakdown[cuda_ep]['exec_time'],
             'cuda_ops': op_breakdown[cuda_ep]['ops'],
             'num_trt_ops': num_trt_ops,
-            'trt_op_exec_time': op_breakdown[trt_ep]['op_exec_time'],
+            'trt_exec_time': op_breakdown[trt_ep]['exec_time'],
             'trt_ops': op_breakdown[trt_ep]['ops']
             }
 
