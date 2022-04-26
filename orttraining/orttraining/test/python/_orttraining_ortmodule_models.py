@@ -8,7 +8,7 @@ import torch
 class MyCustomClassInputNet(torch.nn.Module):
     def forward(self, x, custom_class_obj):
         if custom_class_obj.x == 1:
-            return x+1
+            return x + 1
         return x
 
 
@@ -68,10 +68,11 @@ class MyCustomFunctionReluModel(torch.nn.Module):
 
             @staticmethod
             def backward(ctx, grad_output):
-                input, = ctx.saved_tensors
+                (input,) = ctx.saved_tensors
                 grad_input = grad_output.clone()
                 grad_input[input < 0] = 0
                 return grad_input
+
         self.relu = MyReLU.apply
 
     def forward(self, input):
