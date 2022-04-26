@@ -221,9 +221,8 @@ class IExecutionProvider {
   };
 
   virtual FusionStyle GetFusionStyle() const {
-    // existing EPs use this mode so default to it.
-    // newer EPs that can use the cheaper approach, or need to run in a minimal build, should override to return
-    // FilteredGraphViewer
+    // All the ORT build in EP has migrate to FilteredGraphViewer style except Nuphar.
+    // For newer EPs, please avoid use Function style as it will be deprecated soon.
     return FusionStyle::FilteredGraphViewer;
   }
 
@@ -240,8 +239,8 @@ class IExecutionProvider {
   /**
   Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
   return create_state/compute/release_state func for each node.
-  @remarks This is an optional interface that is only needed if the execution provider compiles nodes
-           in a scenario involving the minimal build. i.e. on a mobile or embedded device with ORT format model.
+  @remarks This is now the default interface when execution provider wants to compile nodes
+           for both minimal build and complete ort build.
 
            Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
            as it is only valid for the duration of the call to Compile.

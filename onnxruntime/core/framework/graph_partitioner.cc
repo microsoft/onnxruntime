@@ -350,6 +350,12 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // TODO: Nuphar is out of maintain. Use the old api temporarily.
       // We want to deprecate it soon.
       // Create a Function based node where the fused nodes have a new Graph instance.
+      static std::once_flag legacy_compile_method_warning_flag;
+      std::call_once(legacy_compile_method_warning_flag, [](std::string_view ep_type) {
+        LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Funciton style Compile API, "
+                              << " which will be deprecated soon, please migrate to the new Compile API based on "
+                              << " FilteredGraphViewer. ";
+      }, type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
 
       if (node_compute_funcs.size() != nodes_to_compile.size()) {
