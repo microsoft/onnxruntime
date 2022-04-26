@@ -7,14 +7,16 @@ PyTorch-ONNX exporter (torch.onnx.export).
 """
 import typing
 
-import torch._C
 try:
-    from torch.onnx import register_custom_op_symbolic
+    # TODO(justinchuby): Create a function to alert users when torch is not installed
+    import torch
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "This module is only useful in combination with PyTorch. "
         "To install PyTorch see https://pytorch.org/.")
+
 import torch.onnx
+from torch.onnx import register_custom_op_symbolic
 import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
 
