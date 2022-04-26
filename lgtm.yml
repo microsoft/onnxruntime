@@ -1,0 +1,15 @@
+extraction:
+  cpp:
+    index:
+      build_command:
+        - ./build.sh --config RelWithDebInfo --parallel --skip_tests
+  csharp:
+    index:
+      solution: ["csharp/OnnxRuntime.DesktopOnly.CSharp.sln"]
+      msbuild:
+        configuration: release
+        platform: x64
+  java:
+    index:
+      build_command:
+      - ./build.sh --parallel --skip_tests --build_java
