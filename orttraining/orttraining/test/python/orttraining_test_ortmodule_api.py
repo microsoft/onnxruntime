@@ -1012,9 +1012,9 @@ def test_gradient_correctness_max(operator, dim, keepdim):
     class NeuralNetMax(torch.nn.Module):
         def forward(self, input):
             if dim is None:
-                return func(input)
+                return func(input), None
             # torch.max(input, dim, keepdim) returns (max_values, max_indices)
-            return func(input, dim=dim, keepdim=keepdim)[0]
+            return func(input, dim=dim, keepdim=keepdim)
 
     N, C, D = 16, 256, 128
     device = 'cuda'
@@ -1022,16 +1022,19 @@ def test_gradient_correctness_max(operator, dim, keepdim):
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, input):
-        prediction = model(input)
+        prediction, indices = model(input)
         loss = prediction.sum()
         loss.backward()
-        return prediction
+        return prediction, indices
 
     for _ in range(10):
         pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
         ort_input = copy.deepcopy(pt_input)
-        pt_prediction = run_step(pt_model, pt_input)
-        ort_prediction = run_step(ort_model, ort_input)
+        pt_prediction, pt_indices = run_step(pt_model, pt_input)
+        ort_prediction, ort_indices = run_step(ort_model, ort_input)
+
+        if dim is not None: # For torch.max(input, dim, keepdim), also check the max_indices
+            assert torch.equal(ort_indices, pt_indices)
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
@@ -3005,7 +3008,7 @@ def test_train_eval_with_various_outputs():
         def forward(self, input1):
             out1 = self.fc1(input1)
             out2 = self.relu(out1)
-            # return different number of outputs for train ane eval mode
+            # return different number of outputs for train and eval mode
             if self.training:
                 return out1, out2
             else:

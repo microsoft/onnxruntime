@@ -1158,12 +1158,14 @@ class SymbolicShapeInference:
         if len(node.input) == 1:
             vi.CopyFrom(helper.make_tensor_value_info(
                 node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, []))
-        else: # len(node.input) == 3
-            dim = self._try_get_value(node, 1)
+        else:
+            assert len(node.input) == 3
             keepdim = self._try_get_value(node, 2)
+            assert keepdim is not None # can only handle known keepdim case.
+            dim = self._try_get_value(node, 1)
             if dim is None:
-                assert keepdim # can only handle keepdim == True case when dim is unknown.
-                output_shape = self._new_symbolic_shape(self._get_shape_rank(node, 0), node)
+                rank = self._get_shape_rank(node, 0)
+                output_shape = self._new_symbolic_shape(rank if keepdim else rank - 1, node)
             else:
                 shape = self._get_sympy_shape(node, 0)
                 dim = handle_negative_axis(dim, len(shape))
