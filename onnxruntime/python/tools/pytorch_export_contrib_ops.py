@@ -5,11 +5,9 @@
 Support for registering ONNX Runtime's built-in contrib ops with
 PyTorch-ONNX exporter (torch.onnx.export).
 """
-# Enable postponed evaluation of annotations. See https://peps.python.org/pep-0563/
-from __future__ import annotations
-
 import typing
 
+import torch._C
 try:
     from torch.onnx import register_custom_op_symbolic
 except ModuleNotFoundError:
@@ -19,10 +17,6 @@ except ModuleNotFoundError:
 import torch.onnx
 import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
-
-if typing.TYPE_CHECKING:
-    # Import modules needed only for type checking.
-    import torch._C
 
 _OPSET_VERSION = 1
 _registered_ops: typing.AbstractSet[str] = set()
