@@ -1342,10 +1342,10 @@ if (onnxruntime_USE_ROCM)
   list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
 
   # Generate GPU code for GFX9 Generation
-  list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx1030)
-  # if (ROCM_VERSION_DEV_INT GREATER_EQUAL 50000)
-  #   list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a)
-  # endif()
+  list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908 --amdgpu-target=gfx1030)
+  if (ROCM_VERSION_DEV_INT GREATER_EQUAL 50000)
+    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a)
+  endif()
 
   #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
   hip_add_library(onnxruntime_providers_rocm MODULE ${onnxruntime_providers_rocm_src})
