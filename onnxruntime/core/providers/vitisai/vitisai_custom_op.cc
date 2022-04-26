@@ -40,7 +40,7 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true);
+  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
 
   return model_proto;
 }

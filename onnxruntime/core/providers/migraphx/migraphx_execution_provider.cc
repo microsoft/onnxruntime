@@ -892,7 +892,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
-  graph_viewer.ToProto(*model_proto->mutable_graph(), true);
+  graph_viewer.ToProto(*model_proto->mutable_graph(), true, true);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
@@ -1008,7 +1008,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
     auto model = graph_body_viewer.CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true);
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);

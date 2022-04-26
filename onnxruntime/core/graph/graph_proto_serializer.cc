@@ -5,7 +5,10 @@
 
 namespace onnxruntime {
 
-void GraphViewerToProto(const GraphViewer& graph_view, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializer) {
+void GraphViewerToProto(const GraphViewer& graph_view, 
+                        ONNX_NAMESPACE::GraphProto& graph_proto, 
+                        bool include_initializer,
+                        bool include_outer_scope_args) {
   graph_proto.set_name(graph_view.Name());
   graph_proto.set_doc_string(graph_view.Description());
 
@@ -21,13 +24,15 @@ void GraphViewerToProto(const GraphViewer& graph_view, ONNX_NAMESPACE::GraphProt
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
-  // add the NodeArg info for outer scope NodeArgs so we capture the type information
-  for (const auto& name : graph_view.GetOuterScopeNodeArgNames()) {
-    auto* node_arg = graph_view.GetNodeArg(name);
-    ORT_ENFORCE(node_arg, "Outer scope node arg name '" + name + "'was added but does not exist. ");
-    *(graph_proto.mutable_value_info()->Add()) = node_arg->ToProto();
+  if (include_outer_scope_args){
+    // add the NodeArg info for outer scope NodeArgs so we capture the type information
+    for (const auto& name : graph_view.GetOuterScopeNodeArgNames()) {
+      auto* node_arg = graph_view.GetNodeArg(name);
+      ORT_ENFORCE(node_arg, "Outer scope node arg name '" + name + "'was added but does not exist. ");
+      *(graph_proto.mutable_value_info()->Add()) = node_arg->ToProto();
+    }
   }
-
+  
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
   for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
     const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};

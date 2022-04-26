@@ -268,7 +268,7 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
                              std::vector<ONNX_NAMESPACE::FunctionProto>(),
                              *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true);
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     // Build map from input name to its index in input definitions
