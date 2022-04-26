@@ -1,5 +1,10 @@
 extraction:
   cpp:
+    after_prepare:
+      # Install cmake
+      - mkdir custom_cmake
+      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.20.1/cmake-3.20.1.tar.gz" | tar --strip-components=1 -xz -C custom_cmake
+      - export PATH=$(pwd)/custom_cmake/bin:${PATH}
     index:
       build_command:
         - ./build.sh --config RelWithDebInfo --parallel --skip_tests
@@ -10,6 +15,11 @@ extraction:
         configuration: release
         platform: x64
   java:
+    after_prepare:
+      # Install cmake
+      - mkdir custom_cmake
+      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.20.1/cmake-3.20.1.tar.gz" | tar --strip-components=1 -xz -C custom_cmake
+      - export PATH=$(pwd)/custom_cmake/bin:${PATH}
     index:
       build_command:
       - ./build.sh --parallel --skip_tests --build_java
