@@ -2411,12 +2411,14 @@ def main():
         if is_reduced_ops_build(args):
             from reduce_op_kernels import reduce_ops
 
+            is_extended_minimal_build_or_higher = args.minimal_build is None or "extended" in args.minimal_build
             for config in configs:
                 reduce_ops(
                     config_path=args.include_ops_by_config,
                     build_dir=get_config_build_dir(build_dir, config),
                     enable_type_reduction=args.enable_reduced_operator_type_support,
                     use_cuda=args.use_cuda,
+                    is_extended_minimal_build_or_higher=is_extended_minimal_build_or_higher,
                 )
 
         cmake_extra_args = []
