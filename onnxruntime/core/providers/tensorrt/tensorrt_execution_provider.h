@@ -107,6 +107,9 @@ struct TensorrtFuncState {
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
   int (*engine_encryption)(const char*, char*, size_t);
+  // If sub-graph has dynamic input shape and the shape range changes, or the first time writing out engine cache, this flag is set to true and engine cache will be saved. Otherwise the flag is false.
+  // Note: For dynamic input shape, if update_engine_cache flag is true, profile cache will be saved as well.
+  bool update_engine_cache;
 };
 
 // Logical device representation.
@@ -191,7 +194,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const GraphViewer& graph, bool* early_termination) const;
 
-  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
+  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
 
   /** 
   Get a unique_lock object to control the concurrency behavior. 
