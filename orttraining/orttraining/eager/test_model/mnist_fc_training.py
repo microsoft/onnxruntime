@@ -96,7 +96,7 @@ def main():
         ),
         batch_size=args.batch_size,
         shuffle=True,
-        **kwargs
+        **kwargs,
     )
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
@@ -106,7 +106,7 @@ def main():
         ),
         batch_size=args.test_batch_size,
         shuffle=True,
-        **kwargs
+        **kwargs,
     )
 
     # set device
