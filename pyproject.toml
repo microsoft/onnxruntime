@@ -2,6 +2,7 @@
 line-length = 120
 # extend-exclude needs to be a regular expression
 extend-exclude = "cmake|onnxruntime/core/flatbuffers/"
+target-version = "py37"
 
 [tool.isort]
 profile = "black"
@@ -11,7 +12,6 @@ extend_skip_glob = [
     "orttraining/*",
     "onnxruntime/core/flatbuffers/*",
 ]
-target_version = "py37"
 
 [tool.pydocstyle]
 convention = "google"
