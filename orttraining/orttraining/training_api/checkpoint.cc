@@ -16,6 +16,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+
 namespace onnxruntime {
 namespace training {
 namespace api_test {
@@ -30,37 +32,6 @@ PathString CreateFolderIfNotExists(const PathString& path, const std::string& fo
 
   return new_folder_path;
 }
-
-Status CreateOrtValuesFromTensorProtos(
-    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
-    NameMLValMap& name_to_ort_value) {
-  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-  std::vector<std::vector<char>> tensor_buffers{};
-
-  for (const auto tensor_proto : tensor_protos) {
-    const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type());
-    const size_t element_size = tensor_type->GetElementType()->Size();
-    const TensorShape shape{
-        tensor_proto->dims().data(), static_cast<size_t>(tensor_proto->dims().size())};
-
-    std::vector<char> tensor_buffer{};
-    tensor_buffer.resize(element_size * shape.Size());
-
-    const MemBuffer mem_buffer{tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info};
-
-    OrtValue ort_value;
-
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToMLValue(
-        Env::Default(), nullptr, *tensor_proto, mem_buffer,
-        ort_value));
-
-    name_to_ort_value.emplace(tensor_proto->name(), ort_value);
-    tensor_buffers.emplace_back(std::move(tensor_buffer));
-  }
-
-  return Status::OK();
-}
-}  // namespace
 
 const std::vector<std::string> ParseStringData(
     const ONNX_NAMESPACE::TensorProto* tensor_proto) {
@@ -88,6 +59,28 @@ const std::vector<std::string> ParseStringData(
   ORT_ENFORCE(tensor_proto->dims_size() != 0 && data.size() != expected_size, "Data size mismatch.");
   res.insert(res.end(), data.begin(), data.end());
   return res;
+}
+}  // namespace
+
+Status CreateOrtValuesFromTensorProtos(
+    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+    NameMLValMap& name_to_ort_value) {
+  static CPUExecutionProviderInfo info;
+  static CPUExecutionProvider cpu_provider(info);
+  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
+
+  for (const auto tensor_proto : tensor_protos) {
+    TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(*tensor_proto)};
+    const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type())->GetElementType();
+    auto p_tensor = std::make_unique<Tensor>(tensor_dtype, tensor_shape, cpu_allocator);
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), nullptr, *tensor_proto, *p_tensor));
+
+    OrtValue ort_value;
+    ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+    name_to_ort_value.emplace(tensor_proto->name(), ort_value);
+  }
+
+  return Status::OK();
 }
 
 Status CheckpointUtils::OrtSaveInternal(
@@ -186,9 +179,13 @@ Status CheckpointUtils::OrtSaveModuleStatesInternal(ModuleCheckpointStates& modu
 }
 
 Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states,
-                                                       const PathString& optimizer_folder_path) {
+                                                       const PathString& checkpoint_path) {
+  if (optimizer_states.group_named_optimizer_states.empty()) {
+    return Status::OK();
+  }
+  const std::string optimizer_root_prefix = "optimizer";
   // Write optimizer state tensors files.
-
+  const PathString optimizer_folder_path = CreateFolderIfNotExists(checkpoint_path, "optimizers");
   // Currently we only have one single group, but it would be simple to extend
   // supporting multiple groups in the future.
   for (auto& group_named_optimizer_state : optimizer_states.group_named_optimizer_states) {
@@ -237,9 +234,6 @@ Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates
           param_name_to_ortvalue));
     }
 
-    //,
-    // TypedCheckpointProperty("step_", group_optimizer_state_ptr->step_)
-
     // Storing group-wise properties.
     std::vector<std::unique_ptr<CheckpointProperty>> group_wise_properties;
     group_wise_properties.emplace_back(
@@ -260,173 +254,193 @@ Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates
   return Status::OK();
 }
 
-Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& states) {
+Status CheckpointUtils::OrtLoadModuleStatesInternal(const PathString& parameter_folder_path, ModuleCheckpointStates& module_states) {
   // Parameter parsing.
-  {
-    auto& named_parameters = states.module_checkpoint_states.named_parameters;
-    PathString param_folder_path = checkpoint_path + GetPathSep<PathChar>() + ORT_TSTR("parameters");
-    std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
-    ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetCheckpointTensorsFilePath(param_folder_path), true,
-        [&param_tensor_protos](int fd) {
-          google::protobuf::io::FileInputStream input{fd};
-          ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_tensor_protos, input));
-          return Status::OK();
-        }));
+  const PathString module_state_file_path = GetCheckpointTensorsFilePath(parameter_folder_path);
+  auto& named_parameters = module_states.named_parameters;
+  std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
+  auto file_read_status = WithOpenFile(
+      module_state_file_path, true,
+      [&param_tensor_protos](int fd) {
+        google::protobuf::io::FileInputStream input{fd};
+        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_tensor_protos, input));
+        return Status::OK();
+      });
 
-    std::vector<const ONNX_NAMESPACE::TensorProto*> param_tensor_proto_ptrs{};
-    for (ONNX_NAMESPACE::TensorProto& param_tensor_proto : param_tensor_protos) {
-      param_tensor_proto_ptrs.emplace_back(&param_tensor_proto);
-    }
+  if (!file_read_status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << ToUTF8String(module_state_file_path) << " module state file read failure, skip it.";
+    return Status::OK();
+  }
 
-    std::unordered_map<std::string, OrtValue> name_to_ort_values;
-    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_proto_ptrs, name_to_ort_values));
-    for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
-      named_parameters.insert({it->first, std::make_shared<Parameter>(it->first, it->second)});
-    }
+  std::vector<const ONNX_NAMESPACE::TensorProto*> param_tensor_proto_ptrs{};
+  for (ONNX_NAMESPACE::TensorProto& param_tensor_proto : param_tensor_protos) {
+    param_tensor_proto_ptrs.emplace_back(&param_tensor_proto);
+  }
+
+  std::unordered_map<std::string, OrtValue> name_to_ort_values;
+  ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_proto_ptrs, name_to_ort_values));
+  for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
+    named_parameters.insert({it->first, std::make_shared<Parameter>(it->first, it->second)});
+  }
+
+  return Status::OK();
+}
+
+Status CheckpointUtils::OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path, OptimizerCheckpointStates& optimizer_states) {
+  if (!Env::Default().FolderExists(optimizer_folder_path)) {
+    return Status::OK();
   }
 
   // Optimizer states parsing.
-  {
-    auto& grouped_optimizer_states = states.optimizer_checkpoint_states.group_named_optimizer_states;
-    const PathString optimizer_folder_path = checkpoint_path + GetPathSep<PathChar>() + ORT_TSTR("optimizers");
+  auto& grouped_optimizer_states = optimizer_states.group_named_optimizer_states;
+  std::unordered_map<std::string, PathString> group_folder_paths;
+  LoopDir(optimizer_folder_path,
+          [&group_folder_paths, &optimizer_folder_path](const PathChar* filename, OrtFileType file_type) -> bool {
+            PathString filename_str = filename;
+            if (filename_str[0] == '.' ||
+                file_type != OrtFileType::TYPE_DIR) {
+              return true;
+            }
+            group_folder_paths.insert({filename_str, ConcatPathComponent<PathChar>(optimizer_folder_path, filename_str)});
+            return true;
+          });
 
-    std::unordered_map<std::string, PathString> group_folder_paths;
-    LoopDir(optimizer_folder_path,
-            [&group_folder_paths, &optimizer_folder_path](const PathChar* filename, OrtFileType file_type) -> bool {
+  // Go though every group.
+  for (auto& group : group_folder_paths) {
+    const auto& group_name = group.first;
+    const auto& group_folder_path = group.second;
+    auto optimizer_state_in_this_group = std::make_shared<GroupOptimizerState>();
+    std::unordered_map<std::string, ParameterOptimizerState>&
+        param_optimizer_state = optimizer_state_in_this_group->param_named_optimizer_states_;
+
+    std::unordered_map<std::string, PathString> param_optimizer_state_folder_paths_in_this_group;
+    LoopDir(group.second,
+            [&param_optimizer_state_folder_paths_in_this_group, &group_folder_path](
+                const PathChar* filename, OrtFileType file_type) -> bool {
               PathString filename_str = filename;
               if (filename_str[0] == '.' ||
                   file_type != OrtFileType::TYPE_DIR) {
                 return true;
               }
-              group_folder_paths.insert({filename_str, ConcatPathComponent<PathChar>(optimizer_folder_path, filename_str)});
+              param_optimizer_state_folder_paths_in_this_group.insert(
+                  {filename_str, ConcatPathComponent<PathChar>(group_folder_path, filename_str)});
               return true;
             });
 
-    // Go though every group.
-    for (auto& group : group_folder_paths) {
-      const auto& group_name = group.first;
-      const auto& group_folder_path = group.second;
-      auto optimizer_state_in_this_group = std::make_shared<GroupOptimizerState>();
-      std::unordered_map<std::string, ParameterOptimizerState>&
-          param_optimizer_state = optimizer_state_in_this_group->param_named_optimizer_states_;
-
-      std::unordered_map<std::string, PathString> param_optimizer_state_folder_paths_in_this_group;
-      LoopDir(group.second,
-              [&param_optimizer_state_folder_paths_in_this_group, &group_folder_path](
-                  const PathChar* filename, OrtFileType file_type) -> bool {
-                PathString filename_str = filename;
-                if (filename_str[0] == '.' ||
-                    file_type != OrtFileType::TYPE_DIR) {
-                  return true;
-                }
-                param_optimizer_state_folder_paths_in_this_group.insert(
-                    {filename_str, ConcatPathComponent<PathChar>(group_folder_path, filename_str)});
-                return true;
-              });
-
-      // Process momentum_1 for all parameters in the first iteration; then momentum_2 in the second iteration.
-      for (auto& state_name_to_folder : param_optimizer_state_folder_paths_in_this_group) {
-        auto& state_name = state_name_to_folder.first;
-        std::vector<ONNX_NAMESPACE::TensorProto> param_optimizer_state_tensor_protos{};
-        ORT_RETURN_IF_ERROR(WithOpenFile(
-            GetCheckpointTensorsFilePath(state_name_to_folder.second), true,
-            [&param_optimizer_state_tensor_protos](int fd) {
-              google::protobuf::io::FileInputStream input{fd};
-              ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_optimizer_state_tensor_protos, input));
-              return Status::OK();
-            }));
-
-        std::vector<const ONNX_NAMESPACE::TensorProto*> param_optimizer_state_tensor_proto_ptrs{};
-        for (ONNX_NAMESPACE::TensorProto& param_optimizer_state_tensor_proto : param_optimizer_state_tensor_protos) {
-          param_optimizer_state_tensor_proto_ptrs.emplace_back(&param_optimizer_state_tensor_proto);
-        }
-
-        std::unordered_map<std::string, OrtValue> name_to_ort_values;
-        ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_proto_ptrs, name_to_ort_values));
-
-        for (auto& pair : name_to_ort_values) {
-          auto& param_name = pair.first;
-          if (param_optimizer_state.find(param_name) == param_optimizer_state.end()) {
-            ParameterOptimizerState param_state;
-            param_optimizer_state.insert({param_name, param_state});
-          }
-          param_optimizer_state[param_name].states_.insert({state_name, std::make_shared<OrtValue>(pair.second)});
-        }
-      }
-
-      // Parse group-wise properties.
-      std::vector<ONNX_NAMESPACE::TensorProto> group_wise_property_protos{};
+    // Process momentum_1 for all parameters in the first iteration; then momentum_2 in the second iteration.
+    for (auto& state_name_to_folder : param_optimizer_state_folder_paths_in_this_group) {
+      auto& state_name = state_name_to_folder.first;
+      std::vector<ONNX_NAMESPACE::TensorProto> param_optimizer_state_tensor_protos{};
       ORT_RETURN_IF_ERROR(WithOpenFile(
-          GetCheckpointPropertiesFilePath(group.second), true,
-          [&group_wise_property_protos](int fd) {
+          GetCheckpointTensorsFilePath(state_name_to_folder.second), true,
+          [&param_optimizer_state_tensor_protos](int fd) {
             google::protobuf::io::FileInputStream input{fd};
-            ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(group_wise_property_protos, input));
+            ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_optimizer_state_tensor_protos, input));
             return Status::OK();
           }));
 
-      for (auto& property_proto : group_wise_property_protos) {
-        if (property_proto.name().compare("learning_rate_") == 0) {
-          optimizer_state_in_this_group->learning_rate_ = ONNX_NAMESPACE::ParseData<float>(&property_proto).at(0);
-        } else if (property_proto.name().compare("step_") == 0) {
-          optimizer_state_in_this_group->step_ = ONNX_NAMESPACE::ParseData<int64_t>(&property_proto).at(0);
-        } else {
-          continue;
-        }
+      std::vector<const ONNX_NAMESPACE::TensorProto*> param_optimizer_state_tensor_proto_ptrs{};
+      for (ONNX_NAMESPACE::TensorProto& param_optimizer_state_tensor_proto : param_optimizer_state_tensor_protos) {
+        param_optimizer_state_tensor_proto_ptrs.emplace_back(&param_optimizer_state_tensor_proto);
       }
 
-      grouped_optimizer_states.insert({group_name, optimizer_state_in_this_group});
+      std::unordered_map<std::string, OrtValue> name_to_ort_values;
+      ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_proto_ptrs, name_to_ort_values));
+
+      for (auto& pair : name_to_ort_values) {
+        auto& param_name = pair.first;
+        if (param_optimizer_state.find(param_name) == param_optimizer_state.end()) {
+          ParameterOptimizerState param_state;
+          param_optimizer_state.insert({param_name, param_state});
+        }
+        param_optimizer_state[param_name].states_.insert({state_name, std::make_shared<OrtValue>(pair.second)});
+      }
     }
-  }
 
-  // Parse other checkpoint properties.
-  {
-    std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>>&
-        named_properties = states.named_properties;
-
-    std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
+    // Parse group-wise properties.
+    std::vector<ONNX_NAMESPACE::TensorProto> group_wise_property_protos{};
     ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetCheckpointPropertiesFilePath(checkpoint_path), true,
-        [&property_protos](int fd) {
+        GetCheckpointPropertiesFilePath(group.second), true,
+        [&group_wise_property_protos](int fd) {
           google::protobuf::io::FileInputStream input{fd};
-          ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(property_protos, input));
+          ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(group_wise_property_protos, input));
           return Status::OK();
         }));
 
-    for (auto& property_proto : property_protos) {
-      const std::string& tensor_name = property_proto.name();
-      auto data_type = property_proto.data_type();
-      switch (data_type) {
-        case ONNX_NAMESPACE::TensorProto::FLOAT: {
-          const std::vector<float>& flt_parsed = ONNX_NAMESPACE::ParseData<float>(&property_proto);
-          ORT_ENFORCE(flt_parsed.size() == static_cast<size_t>(1), "only support scalar float properties.");
-          named_properties.insert({tensor_name,
-                                   std::make_shared<TypedCheckpointProperty<float>>(
-                                       tensor_name,
-                                       flt_parsed.at(0))});
-          break;
-        }
-        case ONNX_NAMESPACE::TensorProto::STRING: {
-          const std::vector<std::string>& str_parsed = ParseStringData(&property_proto);
-          ORT_ENFORCE(str_parsed.size() == static_cast<size_t>(1), "only support scalar string properties.");
-          named_properties.insert({tensor_name,
-                                   std::make_shared<TypedCheckpointProperty<std::string>>(
-                                       tensor_name,
-                                       str_parsed.at(0))});
-          break;
-        }
-        case ONNX_NAMESPACE::TensorProto::INT64: {
-          const std::vector<int64_t>& int_parsed = ONNX_NAMESPACE::ParseData<int64_t>(&property_proto);
-          ORT_ENFORCE(int_parsed.size() == static_cast<size_t>(1), "only support scalar int64_t properties.");
-          named_properties.insert({tensor_name,
-                                   std::make_shared<TypedCheckpointProperty<int64_t>>(
-                                       tensor_name,
-                                       int_parsed.at(0))});
-          break;
-        }
-        default:
-          ORT_THROW("Unsupported input data type of ", data_type);
+    for (auto& property_proto : group_wise_property_protos) {
+      if (property_proto.name().compare("learning_rate_") == 0) {
+        optimizer_state_in_this_group->learning_rate_ = ONNX_NAMESPACE::ParseData<float>(&property_proto).at(0);
+      } else if (property_proto.name().compare("step_") == 0) {
+        optimizer_state_in_this_group->step_ = ONNX_NAMESPACE::ParseData<int64_t>(&property_proto).at(0);
+      } else {
+        continue;
       }
+    }
+
+    grouped_optimizer_states.insert({group_name, optimizer_state_in_this_group});
+  }
+
+  return Status::OK();
+}
+
+Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& states) {
+  ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, states.module_checkpoint_states));
+
+  const PathString optimizer_folder_path = checkpoint_path + GetPathSep<PathChar>() + ORT_TSTR("optimizers");
+  ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(optimizer_folder_path, states.optimizer_checkpoint_states));
+
+  // Parse other checkpoint properties.
+  const PathString property_file_path = GetCheckpointPropertiesFilePath(checkpoint_path);
+
+  std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
+  auto file_read_status = WithOpenFile(
+      property_file_path, true,
+      [&property_protos](int fd) {
+        google::protobuf::io::FileInputStream input{fd};
+        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(property_protos, input));
+        return Status::OK();
+      });
+
+  if (!file_read_status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " optimizer state file read failure, skip it.";
+    return Status::OK();
+  }
+
+  std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>>&
+      named_properties = states.named_properties;
+  for (auto& property_proto : property_protos) {
+    const std::string& tensor_name = property_proto.name();
+    auto data_type = property_proto.data_type();
+    switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto::FLOAT: {
+        const std::vector<float>& flt_parsed = ONNX_NAMESPACE::ParseData<float>(&property_proto);
+        ORT_ENFORCE(flt_parsed.size() == static_cast<size_t>(1), "only support scalar float properties.");
+        named_properties.insert({tensor_name,
+                                 std::make_shared<TypedCheckpointProperty<float>>(
+                                     tensor_name,
+                                     flt_parsed.at(0))});
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto::STRING: {
+        const std::vector<std::string>& str_parsed = ParseStringData(&property_proto);
+        ORT_ENFORCE(str_parsed.size() == static_cast<size_t>(1), "only support scalar string properties.");
+        named_properties.insert({tensor_name,
+                                 std::make_shared<TypedCheckpointProperty<std::string>>(
+                                     tensor_name,
+                                     str_parsed.at(0))});
+        break;
+      }
+      case ONNX_NAMESPACE::TensorProto::INT64: {
+        const std::vector<int64_t>& int_parsed = ONNX_NAMESPACE::ParseData<int64_t>(&property_proto);
+        ORT_ENFORCE(int_parsed.size() == static_cast<size_t>(1), "only support scalar int64_t properties.");
+        named_properties.insert({tensor_name,
+                                 std::make_shared<TypedCheckpointProperty<int64_t>>(
+                                     tensor_name,
+                                     int_parsed.at(0))});
+        break;
+      }
+      default:
+        ORT_THROW("Unsupported input data type of ", data_type);
     }
   }
 

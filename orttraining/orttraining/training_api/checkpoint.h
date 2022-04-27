@@ -139,13 +139,18 @@ struct CheckpointUtils {
                                 const std::vector<std::string>& trainable_param_names,
                                 const PathString& checkpoint_path);
 
-  static Status OrtSaveModuleStatesInternal(ModuleCheckpointStates& module_states,
-                                            const PathString& parameter_folder_path);
-  static Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states,
-                                               const PathString& optimizer_folder_path);
+  static Status OrtSaveModuleStatesInternal(ModuleCheckpointStates& module_states, const PathString& parameter_folder_path);
+  static Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states, const PathString& optimizer_folder_path);
   static Status OrtSaveInternal(CheckpointStates& states, const PathString& checkpoint_path);
+
+  static Status OrtLoadModuleStatesInternal(const PathString& parameter_folder_path, ModuleCheckpointStates& module_states);
+  static Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path, OptimizerCheckpointStates& optimizer_states);
   static Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
 };
+
+Status CreateOrtValuesFromTensorProtos(
+    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+    NameMLValMap& name_to_ort_value);
 
 }  // namespace api_test
 }  // namespace training

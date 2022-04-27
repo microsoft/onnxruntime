@@ -943,7 +943,7 @@ for every transfered tensor.
   m.def("save_checkpoint",
         [](const std::string& model_path,
            const std::vector<std::string>& trainable_weight_names,
-           const std::string& checkpoint_path) -> void {
+           const std::string& checkpoint_path) {
           ORT_THROW_IF_ERROR(onnxruntime::training::api_test::CheckpointUtils::SaveORTCheckpoint(model_path, trainable_weight_names, checkpoint_path));
         });
 #endif
