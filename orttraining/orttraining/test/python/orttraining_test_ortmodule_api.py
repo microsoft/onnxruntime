@@ -1123,37 +1123,6 @@ def test_gradient_correctness_max(operator, dim, keepdim):
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
-@pytest.mark.parametrize("operator", ["min", "max"])
-def test_gradient_correctness_max_two_tensors(operator):
-    func = getattr(torch, operator)
-
-    class NeuralNetMaxTwoTensors(torch.nn.Module):
-        def forward(self, input, other):
-            return func(input, other)
-
-    N, C, D = 16, 256, 128
-    device = "cuda"
-    pt_model = NeuralNetMaxTwoTensors().to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
-
-    def run_step(model, *input):
-        prediction = model(*input)
-        loss = prediction.sum()
-        loss.backward()
-        return prediction
-
-    for _ in range(10):
-        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
-        pt_other = torch.rand((N, C, D), device=device, requires_grad=True)
-        ort_input = copy.deepcopy(pt_input)
-        ort_other = copy.deepcopy(pt_other)
-        pt_prediction = run_step(pt_model, pt_input, pt_other)
-        ort_prediction = run_step(ort_model, ort_input, ort_other)
-
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
-
-
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):
         def __init__(self, input_size, hidden_size, unfold_dim, unfold_size, unfold_step):
