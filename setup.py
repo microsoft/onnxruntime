@@ -326,15 +326,17 @@ packages = [
     'onnxruntime.transformers.models.t5',
 ]
 
+package_data = {}
+data_files = []
+
+package_data["onnxruntime.tools.mobile_helpers"] = ["*.md", "*.config"]
+
 requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, '--disable_auditwheel_repair')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
-
-package_data = {}
-data_files = []
 
 classifiers = [
     'Development Status :: 5 - Production/Stable',
