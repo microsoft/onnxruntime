@@ -19,6 +19,7 @@ namespace onnxruntime {
 namespace training {
 namespace api_test {
 
+namespace {
 PathString CreateFolderIfNotExists(const PathString& path, const std::string& folder_name) {
   PathString new_folder_path = path + GetPathSep<PathChar>() + ORT_TSTR(folder_name);
   LOGS_DEFAULT_IF(Env::Default().FolderExists(new_folder_path), WARNING)
@@ -58,6 +59,7 @@ Status CreateOrtValuesFromTensorProtos(
 
   return Status::OK();
 }
+}  // namespace
 
 const std::vector<std::string> ParseStringData(
     const ONNX_NAMESPACE::TensorProto* tensor_proto) {
@@ -89,6 +91,7 @@ const std::vector<std::string> ParseStringData(
 
 Status CheckpointUtils::OrtSaveInternal(
     const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+    const std::vector<std::string>& trainable_param_names,
     const PathString& checkpoint_path) {
   std::unordered_map<std::string, OrtValue> name_to_ort_value;
   ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(tensor_protos, name_to_ort_value));
@@ -104,7 +107,11 @@ Status CheckpointUtils::OrtSaveInternal(
   states.module_checkpoint_states.train_session_data_transfer_mgr_ = &data_transfer_mgr;
   auto& named_parameters = states.module_checkpoint_states.named_parameters;
   for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
-    named_parameters.insert({it->first, std::make_shared<Parameter>(it->first, it->second)});
+    auto param = std::make_shared<Parameter>(it->first, it->second);
+    bool is_trainable =
+        std::find(trainable_param_names.begin(), trainable_param_names.end(), param->Name()) == trainable_param_names.end();
+    ORT_RETURN_IF_ERROR(param->SetRequiresGrad(is_trainable));
+    named_parameters.insert({it->first, param});
   }
 
   ORT_RETURN_IF_ERROR(OrtSaveInternal(states, checkpoint_path));
@@ -124,7 +131,7 @@ Status CheckpointUtils::OrtSaveInternal(
     const auto& param_states = states.module_checkpoint_states.named_parameters;
     std::unordered_map<std::string, OrtValue> model_parameter_ort_values;
     for (auto it = param_states.begin(); it != param_states.end(); ++it) {
-      model_parameter_ort_values.insert({it->first, it->second->data()});
+      model_parameter_ort_values.insert({it->first, it->second->Data()});
     }
 
     ORT_ENFORCE(states.module_checkpoint_states.train_session_data_transfer_mgr_,
@@ -132,7 +139,8 @@ Status CheckpointUtils::OrtSaveInternal(
     ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
         GetCheckpointTensorsFilePath(parameter_folder_path),
         GetCheckpointTensorsDataFilePath(parameter_folder_path),
-        *states.module_checkpoint_states.train_session_data_transfer_mgr_, model_parameter_ort_values));
+        *states.module_checkpoint_states.train_session_data_transfer_mgr_,
+        model_parameter_ort_values));
   }
 
   {

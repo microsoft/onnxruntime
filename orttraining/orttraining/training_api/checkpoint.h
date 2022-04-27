@@ -77,12 +77,6 @@ struct CheckpointStates {
   std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties;
 };
 
-PathString CreateFolderIfNotExists(const PathString& path, const std::string& folder_name);
-
-Status CreateOrtValuesFromTensorProtos(
-    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
-    NameMLValMap& name_to_ort_value);
-
 /**
  * @brief A single entry for checkpoint utilities.
  *
@@ -90,37 +84,30 @@ Status CreateOrtValuesFromTensorProtos(
  * checkpoint/
  *   parameters/
  *       tensors.pbseq - tensor protobuf messages
- *       tensors.bin - tensor binary data
  *   optimizers/
  *       group_0/
  *           momentum_0/
  *               tensors.pbseq - tensor protobuf messages
- *               tensors.bin - tensor binary data
  *           momentum_1/
  *               tensors.pbseq - tensor protobuf messages
- *               tensors.bin - tensor binary data
  *           properties.pbseq - group-wise property protobuf messages
  *   properties.pbseq - property protobuf messages
  */
 struct CheckpointUtils {
  public:
-  static CheckpointUtils GetInstance() {
-    static CheckpointUtils ckpt;
-    return ckpt;
-  }
-
   /**
    * @brief Save ONNX initializers as ORT checkpoint.
    *
-   * @param tensor_protos trainable parameters in TensorProto format.
+   * @param tensor_protos parameters in TensorProto format.
+   * @param trainable_param_names trainable parameter names.
    * @param checkpoint_path folder where checkpoint is saved.
    * @param model_location onnx model path.
    * @return Status
    */
   static Status SaveORTCheckpoint(const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+                                  const std::vector<std::string>& trainable_param_names,
                                   const PathString& checkpoint_path) {
-    ORT_RETURN_IF_ERROR(GetInstance().OrtSaveInternal(tensor_protos, checkpoint_path));
-    return Status::OK();
+    return OrtSaveInternal(tensor_protos, trainable_param_names, checkpoint_path);
   }
 
   /**
@@ -131,8 +118,7 @@ struct CheckpointUtils {
    * @return Status
    */
   static Status SaveORTCheckpoint(CheckpointStates& states, const PathString& checkpoint_path) {
-    ORT_RETURN_IF_ERROR(GetInstance().OrtSaveInternal(states, checkpoint_path));
-    return Status::OK();
+    return OrtSaveInternal(states, checkpoint_path);
   }
 
   /**
@@ -143,17 +129,17 @@ struct CheckpointUtils {
    * @return Status
    */
   static Status LoadORTCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states) {
-    ORT_RETURN_IF_ERROR(GetInstance().OrtLoadInternal(checkpoint_path, checkpoint_states));
-    return Status::OK();
+    return OrtLoadInternal(checkpoint_path, checkpoint_states);
   }
-
-  Status OrtSaveInternal(const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
-                         const PathString& checkpoint_path);
-  Status OrtSaveInternal(CheckpointStates& states, const PathString& checkpoint_path);
-  Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
 
  private:
   CheckpointUtils() {}
+
+  static Status OrtSaveInternal(const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+                                const std::vector<std::string>& trainable_param_names,
+                                const PathString& checkpoint_path);
+  static Status OrtSaveInternal(CheckpointStates& states, const PathString& checkpoint_path);
+  static Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
 };
 
 }  // namespace api_test

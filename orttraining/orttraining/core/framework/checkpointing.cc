@@ -24,16 +24,16 @@
 namespace onnxruntime {
 namespace training {
 
-PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, k_tensors_file_name);
+PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
+  return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix) + k_tensors_file_name);
 }
 
-PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directory) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, k_tensors_data_file_name);
+PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
+  return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix) + k_tensors_data_file_name);
 }
 
-PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, k_properties_file_name);
+PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
+  return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix) + k_properties_file_name);
 }
 
 namespace {
@@ -84,7 +84,6 @@ Status SaveRuntimeTensors(
   static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
   std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos{};
   saved_tensor_protos.reserve(ordered_tensor_names.size());
-  std::ofstream tensors_data_file{tensors_data_path};
 
   for (const auto& tensor_name : ordered_tensor_names) {
     const OrtValue& ort_value = ort_values.at(tensor_name);

@@ -18,22 +18,28 @@ class Parameter {
   }
 
   // Return the mutable data
-  OrtValue& data() { return data_; }
-  std::string name() const { return name_; }
+  OrtValue& Data() { return data_; }
+  std::string Name() const { return name_; }
 
   // Return if trainable. The trainable property of a param
   // cannot change over the lifetime of the on-device training
   // session since the gradient graph is prebuilt for this setting.
-  bool requires_grad() const { return requires_grad_; }
+  bool RequiresGrad() const { return requires_grad_; }
 
   // Return the mutable gradient for trainable parameter
-  OrtValue& gradient() { return gradient_; }
-  std::string gradient_name() const { return gradient_name_; }
+  OrtValue& Gradient() { return gradient_; }
+  std::string GradientName() const { return gradient_name_; }
 
   // Reset and release the gradient buffer of this Parameter
   Status ResetGrad() {
     return Status::OK();
   }
+
+  Status SetRequiresGrad(bool requires_grad) {
+    requires_grad_ = requires_grad;
+    return Status::OK();
+  }
+
   // need to set grad but not public api
  private:
   std::string name_;
