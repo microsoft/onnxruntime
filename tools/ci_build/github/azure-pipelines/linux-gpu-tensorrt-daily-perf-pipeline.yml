@@ -69,6 +69,7 @@ jobs:
     - name: nvidia_dockerfile
       ${{ if eq(parameters.RunNvidiaContainer, true)}}:
         value: nvcr.io/nvidia/tensorrt:$(trtContainerVersion)-py3
+      
 
     - name: dockerfile_path
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
@@ -109,7 +110,7 @@ jobs:
       value: -a "-a -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
   steps:
-    - ${{ if eq(parameters.BuildORT, false) }}:
+    - ${{ if and( eq(parameters.BuildORT, false), eq(parameters.TrtVersion, '8.2.1.8')) }}:
       - task: DownloadPipelineArtifact@2
         inputs:
           buildType: 'specific'
@@ -125,10 +126,13 @@ jobs:
     - ${{ if eq(parameters.RunNvidiaContainer, true) }}:
       - script: 'docker pull $(nvidia_dockerfile)'
         displayName: 'Pull Nvidia Dockerfile'
+      ${{ else }}:
+      - script: 'Can only run pip package in Nvidia Container'
+        displayName: 'Please Re-run'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/$(dockerfile) -b $(branch) -t $(tensorrt_version) -i $(image) -c 75 '
-        displayName: 'Build latest ORT Image in Nvidia Container'
+        displayName: 'Build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ each option in parameters.ModelGroups }}:
