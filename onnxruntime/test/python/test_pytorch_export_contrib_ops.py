@@ -16,8 +16,8 @@ import onnxruntime
 from onnxruntime.tools import pytorch_export_contrib_ops
 
 
-def _torch_version_lower_than(v):
-    return distutils.version.LooseVersion(torch.__version__) < distutils.version.LooseVersion(v)
+def _torch_version_lower_than(version: str):
+    return distutils.version.LooseVersion(torch.__version__) < distutils.version.LooseVersion(version)
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):
