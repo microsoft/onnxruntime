@@ -1,24 +1,32 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import os
 import sys
+
 import onnx
 
 # In ORT Package the symbolic_shape_infer.py is in ../tools
 file_path = os.path.dirname(__file__)
 if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
-    sys.path.append(os.path.join(file_path, '../tools'))
+    sys.path.append(os.path.join(file_path, "../tools"))
 else:
-    sys.path.append(os.path.join(file_path, '..'))
+    sys.path.append(os.path.join(file_path, ".."))
 
 from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy
 
 
 class SymbolicShapeInferenceHelper(SymbolicShapeInference):
-    def __init__(self, model, verbose=0, int_max=2**31 - 1, auto_merge=True, guess_output_rank=False):
+    def __init__(
+        self,
+        model,
+        verbose=0,
+        int_max=2**31 - 1,
+        auto_merge=True,
+        guess_output_rank=False,
+    ):
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
         self.model_ = onnx.ModelProto()
         self.model_.CopyFrom(model)
@@ -46,8 +54,16 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         self.initializers_ = dict([(i.name, i) for i in self.out_mp_.graph.initializer])
         self.known_vi_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
         self.known_vi_.update(
-            dict([(i.name, onnx.helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)))
-                  for i in self.out_mp_.graph.initializer]))
+            dict(
+                [
+                    (
+                        i.name,
+                        onnx.helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)),
+                    )
+                    for i in self.out_mp_.graph.initializer
+                ]
+            )
+        )
 
     # Override _get_sympy_shape() in symbolic_shape_infer.py to ensure shape inference by giving the actual value of dynamic axis
     def _get_sympy_shape(self, node, idx):
@@ -66,7 +82,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         return sympy_shape
 
     def get_edge_shape(self, edge):
-        assert (self.all_shapes_inferred_ == True)
+        assert self.all_shapes_inferred_ == True
         if edge not in self.known_vi_:
             print("Cannot retrive the shape of " + str(edge))
             return None
@@ -79,7 +95,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         return shape
 
     def compare_shape(self, edge, edge_other):
-        assert (self.all_shapes_inferred_ == True)
+        assert self.all_shapes_inferred_ == True
         shape = self.get_edge_shape(edge)
         shape_other = self.get_edge_shape(edge_other)
         if shape is None or shape_other is None:
