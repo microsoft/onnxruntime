@@ -3,13 +3,15 @@
 
 """Test export of PyTorch operators using ONNX Runtime contrib ops."""
 
+import copy
+import io
+import unittest
+
+import numpy as np
 import torch
+
 import onnxruntime
 from onnxruntime.tools import pytorch_export_contrib_ops
-import numpy as np
-import unittest
-import io
-import copy
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):
@@ -39,6 +41,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
 # PyTorch and ORT.
 class ONNXExporterTest(unittest.TestCase):
     from torch.onnx.symbolic_helper import _export_onnx_opset_version
+
     opset_version = _export_onnx_opset_version
     keep_initializers_as_inputs = True  # For IR version 3 type export.
 
@@ -46,13 +49,20 @@ class ONNXExporterTest(unittest.TestCase):
         torch.manual_seed(0)
         pytorch_export_contrib_ops.register()
 
-    def run_test(self, model, input=None,
-                 custom_opsets=None,
-                 batch_size=2,
-                 rtol=0.001, atol=1e-7,
-                 do_constant_folding=True,
-                 dynamic_axes=None, test_with_inputs=None,
-                 input_names=None, output_names=None):
+    def run_test(
+        self,
+        model,
+        input=None,
+        custom_opsets=None,
+        batch_size=2,
+        rtol=0.001,
+        atol=1e-7,
+        do_constant_folding=True,
+        dynamic_axes=None,
+        test_with_inputs=None,
+        input_names=None,
+        output_names=None,
+    ):
         model.eval()
 
         if input is None:
@@ -70,17 +80,21 @@ class ONNXExporterTest(unittest.TestCase):
 
             # export the model to ONNX
             f = io.BytesIO()
-            torch.onnx.export(model, input_copy, f,
-                              opset_version=self.opset_version,
-                              do_constant_folding=do_constant_folding,
-                              keep_initializers_as_inputs=self.keep_initializers_as_inputs,
-                              dynamic_axes=dynamic_axes,
-                              input_names=input_names, output_names=output_names,
-                              custom_opsets=custom_opsets)
+            torch.onnx.export(
+                model,
+                input_copy,
+                f,
+                opset_version=self.opset_version,
+                do_constant_folding=do_constant_folding,
+                keep_initializers_as_inputs=self.keep_initializers_as_inputs,
+                dynamic_axes=dynamic_axes,
+                input_names=input_names,
+                output_names=output_names,
+                custom_opsets=custom_opsets,
+            )
 
             # compute onnxruntime output prediction
-            ort_sess = onnxruntime.InferenceSession(f.getvalue(),
-                                                    providers=onnxruntime.get_available_providers())
+            ort_sess = onnxruntime.InferenceSession(f.getvalue(), providers=onnxruntime.get_available_providers())
             input_copy = copy.deepcopy(input)
             ort_test_with_input(ort_sess, input_copy, output, rtol, atol)
 
@@ -111,6 +125,7 @@ class ONNXExporterTest(unittest.TestCase):
 
     def test_triu(self):
         for i in range(-5, 5):
+
             class Module(torch.nn.Module):
                 def forward(self, input):
                     return input.triu(diagonal=i)
@@ -126,6 +141,7 @@ class ONNXExporterTest(unittest.TestCase):
             self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
         for i in range(-5, 5):
+
             class Module2D(torch.nn.Module):
                 def forward(self, input):
                     return input.triu(diagonal=i)
@@ -142,6 +158,7 @@ class ONNXExporterTest(unittest.TestCase):
 
     def test_tril(self):
         for i in range(-5, 5):
+
             class Module(torch.nn.Module):
                 def forward(self, input):
                     return input.tril(diagonal=i)
@@ -157,6 +174,7 @@ class ONNXExporterTest(unittest.TestCase):
             self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
         for i in range(-5, 5):
+
             class Module2D(torch.nn.Module):
                 def forward(self, input):
                     return input.tril(diagonal=i)
@@ -174,10 +192,11 @@ class ONNXExporterTest(unittest.TestCase):
 
 # opset 9 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
-ONNXExporterTest_opset9_IRv4 = type(str("TestONNXRuntime_opset9_IRv4"),
-                                    (unittest.TestCase,),
-                                    dict(ONNXExporterTest.__dict__,
-                                         keep_initializers_as_inputs=False))
+ONNXExporterTest_opset9_IRv4 = type(
+    str("TestONNXRuntime_opset9_IRv4"),
+    (unittest.TestCase,),
+    dict(ONNXExporterTest.__dict__, keep_initializers_as_inputs=False),
+)
 
 
 if __name__ == "__main__":

@@ -220,20 +220,33 @@ TEST(TensorTest, Strided) {
   TensorShapeVector strides{12, 4, 1};
   ASSERT_EQ(t.Shape(), shape);
   ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(strides.cbegin(), strides.cend())));
+  ASSERT_EQ(t.SizeInBytes(), sizeof(float) * 24);
   TensorShape new_shape({4, 2, 3});
   TensorShapeVector new_strides{1, 12, 4};
   t.SetShapeAndStrides(new_shape, new_strides);
   EXPECT_FALSE(t.IsContiguous());
   ASSERT_EQ(t.Shape(), new_shape);
   ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(new_strides.cbegin(), new_strides.cend())));
+  ASSERT_EQ(t.SizeInBytes(), sizeof(float) * 24);
   Tensor t2(DataTypeImpl::GetType<float>(), new_shape, data, alloc->Info(), 0L, gsl::make_span(new_strides));
   EXPECT_FALSE(t2.IsContiguous());
-  ASSERT_EQ(t.Shape(), new_shape);
+  ASSERT_EQ(t2.Shape(), new_shape);
   ASSERT_THAT(t2.Strides(), testing::ContainerEq(gsl::make_span(new_strides.cbegin(), new_strides.cend())));
+  ASSERT_EQ(t2.SizeInBytes(), sizeof(float) * 24);
   t2.SetShapeAndStrides(shape, strides);
   EXPECT_TRUE(t2.IsContiguous());
-  ASSERT_EQ(t.Shape(), new_shape);
+  ASSERT_EQ(t2.Shape(), shape);
   ASSERT_THAT(t2.Strides(), testing::ContainerEq(gsl::make_span(strides.cbegin(), strides.cend())));
+  ASSERT_EQ(t2.SizeInBytes(), sizeof(float) * 24);
+  alloc->Free(data);
+  data = alloc->Alloc(sizeof(int64_t));
+  TensorShapeVector single_element_strides{0, 0, 0};
+  Tensor t3(DataTypeImpl::GetType<int64_t>(), shape, data, alloc->Info(), 0L, gsl::make_span(single_element_strides));
+  EXPECT_FALSE(t3.IsContiguous());
+  ASSERT_EQ(t3.Shape(), shape);
+  ASSERT_THAT(t3.Strides(),
+              testing::ContainerEq(gsl::make_span(single_element_strides.cbegin(), single_element_strides.cend())));
+  ASSERT_EQ(t3.SizeInBytes(), sizeof(int64_t));
   alloc->Free(data);
 }
 #endif

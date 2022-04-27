@@ -75,6 +75,11 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
 
+// Given a tensor proto with external data obtain a pointer to the data and its length.
+// The ext_data_deleter argument is updated with a callback that owns/releases the data.
+Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter);
+
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
 // the data location is external. i.e. it does not load the external data.
@@ -292,6 +297,10 @@ inline bool HasExternalData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
 
 inline bool HasDataType(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
+}
+
+inline bool HasString(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  return ten_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING;
 }
 
 #ifndef SHARED_PROVIDER

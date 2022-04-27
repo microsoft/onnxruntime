@@ -226,7 +226,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
           // the requested types.
           auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            const auto& types = node_op_schema->inputs().at(i).GetTypes();
+            const auto& types = node_op_schema->outputs().at(i).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
             for (auto* data_type : types) {
               dest_types.emplace_back(*data_type);
@@ -300,7 +300,7 @@ static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
                           << onnx_function_proto.name()
 #ifndef ORT_NO_EXCEPTIONS
                           << "'. Error message " << e.what()
-#endif  //ORT_NO_EXCEPTIONS
+#endif  // ORT_NO_EXCEPTIONS
                           << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
@@ -420,7 +420,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(),
             IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-            graph.DomainToVersionMap(), {}, logger) {
+            graph.DomainToVersionMap(), {}, logger, ModelOptions(true, graph.StrictShapeTypeInference())) {
   auto& function_body_graph = body_.MainGraph();
 
   auto* meta_def = nodes_to_fuse.GetMetaDef();
@@ -449,9 +449,9 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   function_body_graph.SetInputs(function_body_graph_inputs);
   function_body_graph.SetOutputs(function_body_graph_outputs);
 
-  //Add node and node args
-  //TODO: for better performance, we could try to transfer the nodes in parent graph to sub-graph directly,
-  //instead of create new nodes.
+  // Add node and node args
+  // TODO: for better performance, we could try to transfer the nodes in parent graph to sub-graph directly,
+  // instead of create new nodes.
   for (auto& node_index : nodes_to_fuse.nodes) {
     auto node = parent_graph_->GetNode(node_index);
     std::vector<onnxruntime::NodeArg*> inputs;
@@ -488,7 +488,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     }
   }
 
-  //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
+  // TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
   auto status = function_body_graph.Resolve();
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 }
@@ -504,7 +504,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
             onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
-            {}, logger),
+            {}, logger, ModelOptions(true, graph.StrictShapeTypeInference())),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
@@ -577,7 +577,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   }
 
   op_schema_->Finalize();
-  //construct body
+  // construct body
   std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
       graph_outputs(node_in_parent_graph->OutputDefs().size(), nullptr);
 
@@ -623,6 +623,11 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 
     for (int idx = 0; idx < (*node).input_size(); ++idx) {
       const std::string& tensor_name = (*node).input().Get(idx);
+      if (tensor_name.empty()) {
+        auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
+        inputs.push_back(&no_arg);
+        continue;        
+      }
       auto iter = input_name_idx_map.find(tensor_name);
       if (iter != input_name_idx_map.end()) {
         // If input is part of function inputs, preserve NodeArg and input/output names
@@ -671,6 +676,11 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 
     for (int idx = 0; idx < (*node).output_size(); ++idx) {
       std::string tensor_name = (*node).output().Get(idx);
+      if (tensor_name.empty()) {
+        auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
+        outputs.push_back(&no_arg);
+        continue;
+      }
       auto iter = output_name_idx_map.find(tensor_name);
       if (iter != output_name_idx_map.end()) {
         // Preserving NodeArg and input/output names

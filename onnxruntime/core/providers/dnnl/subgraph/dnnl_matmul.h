@@ -22,6 +22,17 @@ class DnnlMatMul {
 
   DnnlMatMul();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
+ 
+ private:
+  bool GetTransA(DnnlNode& node);
+  bool GetTransBatchA(DnnlNode& node);
+  bool GetTransB(DnnlNode& node);
+  bool GetTransBatchB(DnnlNode& node);
+  float GetAlpha(DnnlNode& node);
+  dnnl::memory::dims GetStrides(dnnl::memory::dims& data_dims,
+                                bool trans,
+                                bool transBatch,
+                                dnnl::memory::dims& transposed_dims);
 };
 
 }  // namespace ort_dnnl

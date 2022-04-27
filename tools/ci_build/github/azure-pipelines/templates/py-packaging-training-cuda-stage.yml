@@ -49,6 +49,15 @@ parameters:
 stages:
 - stage: Python_Packaging
 
+  variables:
+    - name: isMain
+      value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/master') }}
+    - name: finalStorage
+      ${{ if eq(variables['isMain'], 'true') }}:
+        value: '--final_storage'
+      ${{ else }}:
+        value: ''
+
   jobs:
     - job: Linux_py_Training_Cuda_Wheels
       timeoutInMinutes: 180
@@ -83,6 +92,14 @@ stages:
             UploadWheel: ${{ parameters.upload_wheel }}
 
       steps:
+      - task: CmdLine@2
+        displayName: 'check variables'
+        inputs:
+          script: |
+            echo "Branch is "${{ variables['Build.SourceBranch'] }} && \
+            echo "isMain is "${{ variables['isMain'] }} && \
+            echo "final_storage is "${{ variables['finalStorage'] }}
+     
       - checkout: self
         clean: true
         submodules: recursive
@@ -206,22 +223,16 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
 
-      - task: AzureCLI@2
+      - task: CmdLine@2
+        displayName: 'Upload wheel'
         condition: and(succeeded(), eq(variables['UploadWheel'], 'yes'))
         inputs:
-          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-          scriptType: 'bash'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
-            python3 -m pip install azure-storage-blob==2.1.0
+          script: |
+            set -e -x
             files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
             python3 tools/ci_build/upload_python_package_to_azure_storage.py \
-                --python_wheel_path ${files[0]} \
-                --account_name onnxruntimepackages \
-                --account_key $(orttrainingpackagestorageaccountkey) \
-                --container_name '$web'
-          displayName:
+                --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
 
       - template: component-governance-component-detection-steps.yml
         parameters:

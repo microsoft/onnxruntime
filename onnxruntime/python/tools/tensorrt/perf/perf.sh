@@ -1,12 +1,13 @@
 #!/bin/bash
 
-while getopts d:o:m:e:a: parameter
+while getopts d:o:m:e:b:a: parameter
 do case "${parameter}"
 in
 d) PERF_DIR=${OPTARG};;
 o) OPTION=${OPTARG};;
 m) MODEL_PATH=${OPTARG};;
 e) EP_LIST=${OPTARG};;
+b) BUILD_ORT=${OPTARG};;
 a) OPTIONAL_ARGS=${OPTARG};;
 esac
 done 
@@ -50,10 +51,19 @@ download_files() {
 }
 
 setup() {
+    apt update
+    apt-get install -y --no-install-recommends pciutils
+    pip install --upgrade pip 
+    pip install -r requirements.txt    
+    if [ "$BUILD_ORT" = "False" ]
+    then
+        echo 'installing the nightly wheel file'
+        ls Release/dist/* | xargs -n 1 pip install
+    fi
     cleanup_files
     download_files
 }
 
 setup
-python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS 
-python3 benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS
+python benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS 
+python benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS

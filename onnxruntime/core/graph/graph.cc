@@ -12,6 +12,7 @@
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
+#include "core/common/inlined_containers.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
@@ -47,22 +48,6 @@ namespace onnxruntime {
     { __VA_ARGS__; }                                 \
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
-
-static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
-  bool is_latest_opset = false;
-  auto onnx_opset = opset_versions.find(kOnnxDomain);
-
-  if (onnx_opset != opset_versions.cend()) {
-    static int latest_onnx_version = model_load_utils::IsAllowReleasedONNXOpsetsOnlySet()
-                                         ? ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().LastReleaseVersionMap().at(ONNX_NAMESPACE::ONNX_DOMAIN)
-                                         : ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
-    if (onnx_opset->second == latest_onnx_version) {
-      is_latest_opset = true;
-    }
-  }
-
-  return is_latest_opset;
-}
 
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
@@ -1075,14 +1060,16 @@ Graph::Graph(const Model& owning_model,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-             const logging::Logger& logger)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {}
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger, strict_shape_type_inference) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
              const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1093,10 +1080,10 @@ Graph::Graph(const Model& owning_model,
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
-      using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),
+      strict_shape_type_inference_(strict_shape_type_inference),
       is_loaded_from_model_file_(GraphLoadedFromModelFile(graph_proto_)) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
@@ -1255,7 +1242,8 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
             &parent_node, {},
-            parent_graph.logger_) {
+            parent_graph.logger_,
+            parent_graph.strict_shape_type_inference_) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -2365,7 +2353,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
 #endif
-        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, using_latest_onnx_opset_, logger_);
+        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, strict_shape_type_inference_, logger_);
         if (!status.IsOK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
         }
@@ -2885,7 +2873,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external) {
   // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
   // look up the const pointer by name, then find and modify the mutable
   // pointed-to TensorProto in graph_proto_.
@@ -2904,6 +2892,8 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
     return true;
   };
 
+  ORT_RETURN_IF_NOT(!is_external || utils::HasExternalData(old_initializer), "Trying to replace non-external initializer with external data");
+
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
                     "Replacement tensor's data type does not match.");
@@ -2917,10 +2907,28 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
               "graph_proto_ is not in sync with name_to_initial_tensor_");
 
-  **existing_entry = new_initializer;
+  **existing_entry = std::move(new_initializer);
 
   return Status::OK();
 }
+
+Status Graph::ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer) {
+  return ReplaceInitializedTensorImpl(std::move(new_initializer), false);
+}
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers) {
+  for (const auto& e : external_initializers) {
+    const auto& name = e.first;
+    const OrtValue& ort_value = e.second;
+    auto tensor_proto = utils::TensorToTensorProto(ort_value.Get<Tensor>(), name);
+    ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(tensor_proto), true));
+    LOGS(logger_, INFO) << "Replaced external initializer: " << name;
+  }
+  return Status::OK();
+}
+#endif // DISABLE_EXTERNAL_INITIALIZERS
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorProto*& value) const {
@@ -4033,7 +4041,11 @@ Status Graph::InlineFunction(Node& node) {
     } else {
       std::vector<NodeArg*> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
-        if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
+        if (input->Name().empty()) {
+          // This is a missing (optional) input. No need to rename.
+          auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+          inputs.push_back(&n_input);
+        } else if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(input->Name());
           if (it != remap_input_output.end()) {
             // This is a function input/output and needs to be remapped to node input for correctness
@@ -4051,7 +4063,11 @@ Status Graph::InlineFunction(Node& node) {
         }
       }
       for (auto* output : subgraph_node.OutputDefs()) {
-        if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
+        if (output->Name().empty()) {
+          // Create empty arg (no renaming) for missing optional-outputs
+          auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+          outputs.push_back(&n_output);
+        } else if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(output->Name());
           if (it != remap_input_output.end()) {
             outputs.push_back(it->second);
@@ -4213,7 +4229,9 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 #if !defined(ORT_MINIMAL_BUILD)
                                   schema_registry,
 #endif
-                                  nullptr, nullptr, logger);
+                                  nullptr, nullptr, logger,
+                                  // Assume anything in ORT format has already been validated.
+                                  false);
 
   ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
 
@@ -4238,7 +4256,9 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   parent_graph.schema_registry_,
 #endif
                                   &parent_graph, &parent_node,
-                                  logger);
+                                  logger,
+                                  // Assume anything in ORT format has already been validated.
+                                  false);
 
   return graph->LoadFromOrtFormat(fbs_graph);
 }
@@ -4249,7 +4269,8 @@ Graph::Graph(const Model& owning_model,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
              Graph* parent_graph, const Node* parent_node,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -4264,6 +4285,7 @@ Graph::Graph(const Model& owning_model,
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),
+      strict_shape_type_inference_(strict_shape_type_inference),
       is_loaded_from_model_file_(true) {  // true as the Graph isn't manually constructed from scratch
 }
 

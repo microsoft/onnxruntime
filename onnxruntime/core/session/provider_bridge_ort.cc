@@ -954,26 +954,17 @@ struct ProviderHostImpl : ProviderHost {
 #pragma warning(pop)
 #endif
 struct ProviderSharedLibrary {
-  bool Ensure() {
+  void Ensure() {
     if (handle_)
-      return true;
+      return;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
-    auto error = Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_);
-    if (!error.IsOK()) {
-      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
-      return false;
-    }
+    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
-    error = Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost);
-    if (!error.IsOK()) {
-      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
-      return false;
-    }
+    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
 
     PProvider_SetHost(&provider_host_);
-    return true;
   }
 
   void Unload() {
@@ -999,8 +990,11 @@ struct ProviderSharedLibrary {
 
 static ProviderSharedLibrary s_library_shared;
 
-bool InitProvidersSharedLibrary() {
-  return s_library_shared.Ensure();
+bool InitProvidersSharedLibrary() try {
+  s_library_shared.Ensure();
+  return true;
+} catch (const std::exception&) {
+  return false;
 }
 
 struct ProviderLibrary {
@@ -1009,32 +1003,33 @@ struct ProviderLibrary {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
   }
 
-  Provider* Get() {
-    if (provider_)
-      return provider_;
+  Provider& Get() {
+    std::lock_guard<std::mutex> lock{mutex_};
+    try {
+      if (!provider_) {
+        s_library_shared.Ensure();
 
-    if (!s_library_shared.Ensure())
-      return nullptr;
+        std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
+        ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
-    std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
-    auto error = Env::Default().LoadDynamicLibrary(full_path, false, &handle_);
-    if (!error.IsOK()) {
-      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
-      return nullptr;
+        Provider* (*PGetProvider)();
+        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+
+        provider_ = PGetProvider();
+        provider_->Initialize();
+      }
+      return *provider_;
+    } catch (...) {
+      Unload();  // If anything fails we unload the library and rethrow
+      throw;
     }
-
-    Provider* (*PGetProvider)();
-    error = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
-    if (!error.IsOK()) {
-      LOGS_DEFAULT(ERROR) << error.ErrorMessage();
-      return nullptr;
-    }
-
-    provider_ = PGetProvider();
-    return provider_;
   }
 
   void Unload() {
+    // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
+    // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
+    // std::lock_guard<std::mutex> lock{mutex_};
+
     if (handle_) {
       if (provider_)
         provider_->Shutdown();
@@ -1052,6 +1047,7 @@ struct ProviderLibrary {
   }
 
  private:
+  std::mutex mutex_;
   const char* filename_;
   bool unload_;
   Provider* provider_{};
@@ -1124,45 +1120,27 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
   OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
-  if (auto* provider = s_library_cuda.Get())
-    return provider->CreateExecutionProviderFactory(&cuda_options_converted);
-
-  return nullptr;
+  return s_library_cuda.Get().CreateExecutionProviderFactory(&cuda_options_converted);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptionsV2* provider_options) {
-  if (auto* provider = s_library_cuda.Get())
-    return provider->CreateExecutionProviderFactory(provider_options);
-
-  return nullptr;
+  return s_library_cuda.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options) {
-  if (auto* provider = s_library_rocm.Get())
-    return provider->CreateExecutionProviderFactory(provider_options);
-
-  return nullptr;
+  return s_library_rocm.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
-  if (auto* provider = s_library_dnnl.Get())
-    return provider->CreateExecutionProviderFactory(use_arena);
-
-  return nullptr;
+  return s_library_dnnl.Get().CreateExecutionProviderFactory(use_arena);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
-  if (auto* provider = s_library_tensorrt.Get())
-    return provider->CreateExecutionProviderFactory(device_id);
-
-  return nullptr;
+  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
-  if (auto* provider = s_library_migraphx.Get())
-    return provider->CreateExecutionProviderFactory(device_id);
-
-  return nullptr;
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(device_id);
 }
 
 // Adapter to convert the legacy OrtTensorRTProviderOptions to the latest OrtTensorRTProviderOptionsV2
@@ -1195,43 +1173,29 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
-  if (auto* provider = s_library_tensorrt.Get())
-    return provider->CreateExecutionProviderFactory(&trt_options_converted);
-
-  return nullptr;
+  return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* provider_options) {
-  if (auto* provider = s_library_tensorrt.Get())
-    return provider->CreateExecutionProviderFactory(provider_options);
-
-  return nullptr;
+  return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* provider_options) {
-  if (auto* provider = s_library_migraphx.Get())
-    return provider->CreateExecutionProviderFactory(provider_options);
-
-  return nullptr;
+  return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* provider_options) {
-  if (auto* provider = s_library_openvino.Get())
-    return provider->CreateExecutionProviderFactory(provider_options);
-
-  return nullptr;
+  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
-  if (auto* provider = s_library_openvino.Get())
-    return reinterpret_cast<ProviderInfo_OpenVINO*>(provider->GetInfo());
-  return nullptr;
+  return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
 }
 
-ProviderInfo_CUDA* TryGetProviderInfo_CUDA() {
-  if (auto* provider = s_library_cuda.Get())
-    return reinterpret_cast<ProviderInfo_CUDA*>(provider->GetInfo());
-
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
+  return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
   return nullptr;
 }
 
@@ -1242,10 +1206,10 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
-ProviderInfo_ROCM* TryGetProviderInfo_ROCM() {
-  if (auto* provider = s_library_rocm.Get())
-    return reinterpret_cast<ProviderInfo_ROCM*>(provider->GetInfo());
-
+ProviderInfo_ROCM* TryGetProviderInfo_ROCM() try {
+  return reinterpret_cast<ProviderInfo_ROCM*>(s_library_rocm.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
   return nullptr;
 }
 
@@ -1306,31 +1270,19 @@ INcclService& INcclService::GetInstance() {
 #endif
 
 void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
-  if (auto provider = s_library_tensorrt.Get()) {
-    provider->UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
-  }
+  s_library_tensorrt.Get().UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
 }
 
 ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
-  if (auto provider = s_library_tensorrt.Get()) {
-    return provider->GetProviderOptions(reinterpret_cast<const void*>(provider_options));
-  }
-
-  return {};
+  return s_library_tensorrt.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
 }
 
 void UpdateProviderInfo_Cuda(OrtCUDAProviderOptionsV2* provider_options, const ProviderOptions& options) {
-  if (auto provider = s_library_cuda.Get()) {
-    provider->UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
-  }
+  return s_library_cuda.Get().UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
 }
 
 ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_options) {
-  if (auto provider = s_library_cuda.Get()) {
-    return provider->GetProviderOptions(reinterpret_cast<const void*>(provider_options));
-  }
-
-  return {};
+  return s_library_cuda.Get().GetProviderOptions(reinterpret_cast<const void*>(provider_options));
 }
 
 }  // namespace onnxruntime

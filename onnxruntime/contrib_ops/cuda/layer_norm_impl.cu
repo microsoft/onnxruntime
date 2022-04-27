@@ -201,8 +201,8 @@ __device__ void cuWelfordMuSigma2(
     for (; l + 7 < n2; l += 8 * numx) {
       for (int k = 0; k < 8; k += 2) {
         float2 curr = __half22float2(*((__half2*)(lvals + l + k)));
-        cuWelfordOnlineSum<float, simplified>(static_cast<float>(curr.x), mu, sigma2, count);
-        cuWelfordOnlineSum<float, simplified>(static_cast<float>(curr.y), mu, sigma2, count);
+        cuWelfordOnlineSum<float, simplified>(curr.x, mu, sigma2, count);
+        cuWelfordOnlineSum<float, simplified>(curr.y, mu, sigma2, count);
       }
     }
     for (; l < n2; ++l) {
@@ -305,17 +305,17 @@ struct SharedMemory<double> {
 };
 }  // namespace
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, typename V, bool simplified>
 __global__ void cuApplyLayerNorm(
-    T* __restrict__ output_vals,
+    V* __restrict__ output_vals,
     U* __restrict__ mean,
     U* __restrict__ inv_std_dev,
     const T* __restrict__ vals,
     const int n1,
     const int n2,
     const U epsilon,
-    const T* __restrict__ gamma,
-    const T* __restrict__ beta) {
+    const V* __restrict__ gamma,
+    const V* __restrict__ beta) {
   // Assumptions:
   // 1) blockDim.x == GPU_WARP_SIZE
   // 2) Tensors are contiguous
@@ -326,18 +326,18 @@ __global__ void cuApplyLayerNorm(
     U mu, sigma2;
     cuWelfordMuSigma2<T, U, simplified>(vals, n1, n2, i1, mu, sigma2, buf);
     const T* lvals = vals + i1 * n2;
-    T* ovals = output_vals + i1 * n2;
+    V* ovals = output_vals + i1 * n2;
     U c_inv_std_dev = rsqrt(sigma2 + epsilon);
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     for (int i = thrx; i < n2; i += numx) {
       U curr = static_cast<U>(lvals[i]);
-      T gamma_i = (gamma != NULL) ? gamma[i]: (T)1;
-      T beta_i = (beta != NULL) ? beta[i] : (T) 0;
+      V gamma_i = (gamma != NULL) ? gamma[i] : (V)1;
+      V beta_i = (beta != NULL) ? beta[i] : (V)0;
       if (simplified) {
-        ovals[i] = gamma_i * static_cast<T>(c_inv_std_dev * curr);
+        ovals[i] = gamma_i * static_cast<V>(c_inv_std_dev * curr);
       } else {
-        ovals[i] = gamma_i * static_cast<T>(c_inv_std_dev * (curr - mu)) + beta_i;
+        ovals[i] = gamma_i * static_cast<V>(c_inv_std_dev * (curr - mu)) + beta_i;
       }
     }
     if (threadIdx.x == 0 && threadIdx.y == 0) {
@@ -347,19 +347,19 @@ __global__ void cuApplyLayerNorm(
   }
 }
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, typename V, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
-    T* output,
+    V* output,
     U* mean,
     U* inv_std_dev,
     const T* input,
     int n1,
     int n2,
     double epsilon,
-    const T* gamma,
-    const T* beta) {
+    const V* gamma,
+    const V* beta) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
@@ -372,7 +372,7 @@ void HostApplyLayerNorm(
   const dim3 blocks(1, std::min<unsigned int>(n1, maxGridY), 1);
   int nshared =
       threads.y > 1 ? threads.y * sizeof(U) + (threads.y / 2) * sizeof(U) : 0;
-  cuApplyLayerNorm<T, U, simplified><<<blocks, threads, nshared, stream>>>(
+  cuApplyLayerNorm<T, U, V, simplified><<<blocks, threads, nshared, stream>>>(
       output,
       mean,
       inv_std_dev,
@@ -382,20 +382,21 @@ void HostApplyLayerNorm(
       gamma, beta);
 }
 
-#define LAYERNORM_LINEAR_IMPL(T, U, simplified)                                                                                                 \
-  template void HostApplyLayerNorm<T, U, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, T* output, U* mean, U* inv_std_dev, const T* input, int n1, int n2, \
-                                                     double epsilon, const T* gamma, const T* beta);
+#define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                  \
+  template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output, \
+                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,    \
+                                                        double epsilon, const V* gamma, const V* beta);
 
-LAYERNORM_LINEAR_IMPL(float, float, true)
-LAYERNORM_LINEAR_IMPL(half, float, true)
-LAYERNORM_LINEAR_IMPL(double, double, true)
-LAYERNORM_LINEAR_IMPL(float, float, false)
-LAYERNORM_LINEAR_IMPL(half, float, false)
-LAYERNORM_LINEAR_IMPL(double, double, false)
-
-//LAYERNORM_LINEAR_IMPL(half, half)
-LAYERNORM_LINEAR_IMPL(BFloat16, float, true)
-LAYERNORM_LINEAR_IMPL(BFloat16, float, false)
+LAYERNORM_LINEAR_IMPL(float, float, float, true)
+LAYERNORM_LINEAR_IMPL(half, float, half, true)
+LAYERNORM_LINEAR_IMPL(double, double, double, true)
+LAYERNORM_LINEAR_IMPL(float, float, half, true)
+LAYERNORM_LINEAR_IMPL(float, float, float, false)
+LAYERNORM_LINEAR_IMPL(half, float, half, false)
+LAYERNORM_LINEAR_IMPL(double, double, double, false)
+LAYERNORM_LINEAR_IMPL(float, float, half, false)
+LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, true)
+LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
 
 }  // namespace cuda
 }  // namespace contrib

@@ -131,6 +131,11 @@ std::vector<ScaleMergeInfo> GetInputNodeMerges(
     ORT_ENFORCE(input_node.InputDefs().size() == 2 && scale_and_index->second < 2);
     const int to_scale_index = 1 - scale_and_index->second;
 
+    // check if the non-scale input is scalar 
+    const auto non_scale_node_arg = input_node.InputDefs()[to_scale_index];
+    const auto* shape = non_scale_node_arg->Shape();
+    if (shape == nullptr || shape->dim_size() == 0) continue;
+
     input_node_merges.push_back(
         {input_edge,
          scale_and_index->first,

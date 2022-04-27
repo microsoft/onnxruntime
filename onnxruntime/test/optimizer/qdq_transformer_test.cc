@@ -2267,7 +2267,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 }
 
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer
-TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        bool block_removal_of_last_dq = false,
                        bool block_removal_of_first_dq = false) {
@@ -2314,7 +2314,7 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
       EXPECT_EQ(op_to_count["Concat"], 1);
     };
 
-    std::function<void(SessionOptions&)> func = [](SessionOptions& so) {
+    auto add_session_options = [](SessionOptions& so) {
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
     };
 
@@ -2327,8 +2327,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
                       12 /*opset_version*/,
                       0.025f /*per_sample_tolerance*/,
                       0.01f /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQFinalCleanupTransformer>(),
-                      &func);
+                      std::make_unique<QDQFinalCleanupTransformer>(true /*enable_q_dq_cleanup*/),
+                      add_session_options);
   };
 
   test_case({{1, 2, 4}, {1, 3, 4}});
@@ -2337,41 +2337,107 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
   test_case({{1, 2, 4}, {1, 3, 4}}, true, true);   // block removal of first and last dq
 }
 
-// test removal when we have graph input -> Q -> DQ -> graph output
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
+  auto test_case = [](bool use_matching_qdq_params) {
+    // input -> Q -> DQ -> Q -> DQ -> output
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      const float scale_1 = 0.05f;
+      const uint8_t zp_1 = 128;
+      auto* const input = builder.MakeInput<float>({1, 2, 4}, -1.0f, 1.0f);
+      auto* const dq_1_out = AddQDQNodePair<uint8_t>(builder, input, scale_1, zp_1);
+
+      const float scale_2 = use_matching_qdq_params ? scale_1 : scale_1 + 0.01f;
+      const uint8_t zp_2 = use_matching_qdq_params ? zp_1 : zp_1 + 1;
+      AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, dq_1_out, scale_2, zp_2);
+    };
+
+    auto check_graph = [&](const InferenceSessionWrapper& session) {
+      const auto ops_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      const auto expected_ops_in_order = [&]() -> std::vector<std::string> {
+        if (use_matching_qdq_params) {
+          // DQ/Q cleanup removes middle DQ/Q
+          return {"QuantizeLinear", "DequantizeLinear"};
+        }
+
+        // removes nothing
+        return {"QuantizeLinear", "DequantizeLinear", "QuantizeLinear", "DequantizeLinear"};
+      }();
+
+      EXPECT_EQ(ops_in_order, expected_ops_in_order);
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.0f /*per_sample_tolerance*/,
+                      0.0f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(false /*enable_q_dq_cleanup*/));
+  };
+
+  test_case(true);
+  test_case(false);
+}
+
+// test removal when we have graph input -> Q/DQ pair -> graph output
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
-  // create model with float input to -> Q -> DQ -> output
-  auto build_test_case = [&](ModelTestBuilder& builder) {
-    NodeArg* input = builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f);
-    NodeArg* q_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<uint8_t>(input, 0.05f, 128, q_output);
-    auto* output_arg = builder.MakeOutput();
-    builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, output_arg);
+  auto test_case = [](bool is_q_dq) {
+    // create model with input -> Q/DQ pair -> output
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      const float scale = 0.05f;
+      const uint8_t zp = 128;
+      NodeArg* input = is_q_dq ? builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f)
+                               : builder.MakeInput<uint8_t>({1, 2, 4},
+                                                            std::numeric_limits<uint8_t>::min(),
+                                                            std::numeric_limits<uint8_t>::max());
+
+      NodeArg* first_node_output = builder.MakeIntermediate();
+
+      is_q_dq ? builder.AddQuantizeLinearNode<uint8_t>(input, scale, zp, first_node_output)
+              : builder.AddDequantizeLinearNode<uint8_t>(input, scale, zp, first_node_output);
+
+      auto* second_node_output = builder.MakeOutput();
+
+      is_q_dq ? builder.AddDequantizeLinearNode<uint8_t>(first_node_output, scale, zp, second_node_output)
+              : builder.AddQuantizeLinearNode<uint8_t>(first_node_output, scale, zp, second_node_output);
+    };
+
+    // with the Q/DQ pair being dropped we should have inserted an Identity node
+    // to connect the graph input to the graph output
+    auto check_graph = [](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["Identity"], 1);
+    };
+
+    auto add_session_options = [&](SessionOptions& so) {
+      if (is_q_dq) {
+        ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+      }
+    };
+
+    const auto [per_sample_tolerance, relative_per_sample_tolerance] =
+        is_q_dq
+            // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
+            // essentially rounding the input values.
+            ? std::pair{0.025f, 0.01f}
+            : std::pair{0.0f, 0.0f};
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      per_sample_tolerance,
+                      relative_per_sample_tolerance,
+                      std::make_unique<QDQFinalCleanupTransformer>(is_q_dq /*enable_q_dq_cleanup*/),
+                      add_session_options);
   };
 
-  // with the Q->DQ being dropped we should have inserted an Identity node
-  // to connect the graph input to the graph output
-  auto check_graph = [](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
-    EXPECT_EQ(op_to_count["Identity"], 1);
-  };
-
-  std::function<void(SessionOptions&)> func = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
-  };
-
-  // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
-  // essentially rounding the input values.
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    12 /*opset_version*/,
-                    0.025f /*per_sample_tolerance*/,
-                    0.01f /*relative_per_sample_tolerance*/,
-                    std::make_unique<QDQFinalCleanupTransformer>(),
-                    &func);
+  test_case(true);
+  test_case(false);
 }
 
 }  // namespace test
