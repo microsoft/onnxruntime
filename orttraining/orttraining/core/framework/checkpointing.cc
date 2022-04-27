@@ -24,19 +24,23 @@
 namespace onnxruntime {
 namespace training {
 
-PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix) + k_tensors_file_name);
-}
-
-PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix) + k_tensors_data_file_name);
-}
-
-PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix) + k_properties_file_name);
-}
-
 namespace {
+
+constexpr const PathChar* k_tensors_file_name = ORT_TSTR("tensors.pbseq");
+constexpr const PathChar* k_tensors_data_file_name = ORT_TSTR("tensors.bin");
+constexpr const PathChar* k_properties_file_name = ORT_TSTR("properties.pbseq");
+
+PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory) {
+  return ConcatPathComponent<PathChar>(checkpoint_directory, k_tensors_file_name);
+}
+
+PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directory) {
+  return ConcatPathComponent<PathChar>(checkpoint_directory, k_tensors_data_file_name);
+}
+
+PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory) {
+  return ConcatPathComponent<PathChar>(checkpoint_directory, k_properties_file_name);
+}
 
 std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_value) {
   std::vector<std::string> ordered_names{};

@@ -18,16 +18,6 @@
 namespace onnxruntime {
 namespace training {
 
-constexpr const PathChar* k_tensors_file_name = ORT_TSTR("tensors.pbseq");
-constexpr const PathChar* k_tensors_data_file_name = ORT_TSTR("tensors.bin");
-constexpr const PathChar* k_properties_file_name = ORT_TSTR("properties.pbseq");
-
-PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix = "");
-
-PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix = "");
-
-PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix = "");
-
 /**
  * A checkpoint is a directory of files:
  * checkpoint/
