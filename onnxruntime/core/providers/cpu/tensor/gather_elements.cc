@@ -33,7 +33,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 // 'indices' value
 // This prevents the need to compute this offset for every element within the same 'inner_dimension' chunk
 // as this value just differs by 1 for the chunk elements and we can have this cached and re-use as needed
-static inline size_t compute_base_offset(const std::vector<int64_t>& shape, const TensorPitches& pitches, int64_t skip_axis) {
+static inline size_t compute_base_offset(const TensorShapeVector& shape, const TensorPitches& pitches, int64_t skip_axis) {
   // in this context, rank can never be < 1, so saving checking overhead
   auto loop_size = static_cast<int64_t>(shape.size()) - 1;
 
@@ -63,7 +63,7 @@ static int64_t calculate_num_inner_dim(const TensorShape& dims) {
 
 // Example 2: current_dims = [0, 0, x] tensor_dims = [1, 2, 2], then current_dims = [0, 1, x]
 //            current_dims = [0, 1, x] tensor_dims = [1, 2, 2], then current_dims = [0, 0, x]
-static inline void increment_over_inner_dim(std::vector<int64_t>& current_dims, const TensorShape& tensor_dims) {
+static inline void increment_over_inner_dim(TensorShapeVector& current_dims, const TensorShape& tensor_dims) {
   // in this context, rank can never be < 1, so saving checking overhead
   int64_t rank = static_cast<int64_t>(current_dims.size());
 
@@ -98,10 +98,7 @@ FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
   if (index < 0)  // Handle negative indices
     index += axis_size;
   if (std::make_unsigned_t<T>(index) >= std::make_unsigned_t<T>(axis_size))
-    index = 0;
-
-    //  if (std::make_unsigned_t<T>(index) >= std::make_unsigned_t<T>(axis_size))
-//    ORT_THROW("GatherElements op: Value in indices must be within bounds [-", axis_size, " , ", axis_size - 1, "]. Actual value is ", indices[i]);
+    ORT_THROW("GatherElements op: Value in indices must be within bounds [-", axis_size, " , ", axis_size - 1, "]. Actual value is ", indices[i]);
   return index;
 };
 
@@ -125,29 +122,29 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
   const TensorShape& indices_shape = indices_tensor->Shape();
   size_t num_inner_dim = calculate_num_inner_dim(indices_shape);
   size_t inner_dim_size = indices_shape[input_rank - 1];
-  const Tin* indices_data = indices_tensor->Data<Tin>();
+  const Tin* indices = indices_tensor->Data<Tin>();
 
-  std::vector<int64_t> process_dims(input_rank, 0);
+  TensorShapeVector process_dims(input_rank, 0);
   const TensorPitches input_shape_pitches(*input_tensor);
   int64_t axis_pitch = input_shape_pitches[axis];
   int64_t axis_size = input_tensor->Shape()[axis];
 
-  auto DoAxis = [&](auto* output, auto* input) {
+  auto DoAxis = [](auto* output, auto* input, auto* indices, size_t inner_dim_size, int64_t axis_size, int64_t axis_pitch) {
     for (size_t i = 0; i < inner_dim_size; i++)
-      output[i] = input[GetIndex(i, indices_data, axis_size) * axis_pitch + i];
+      output[i] = input[GetIndex(i, indices, axis_size) * axis_pitch + i];
   };
 
   // Special case required for innermost axis, no axis_pitch multiply needed or adding i
-  auto DoInnermostAxis = [&](auto* output, auto* input) {
+  auto DoInnermostAxis = [](auto* output, auto* input, auto* indices, size_t inner_dim_size, int64_t axis_size, int64_t /*axis_pitch*/) {
     for (size_t i = 0; i < inner_dim_size; i++)
-      output[i] = input[GetIndex(i, indices_data, axis_size)];
+      output[i] = input[GetIndex(i, indices, axis_size)];
   };
 
   auto MainLoop = [&](auto* output, auto* input, auto LoopFn) {
     while (num_inner_dim-- != 0) {
-      LoopFn(output, input + compute_base_offset(process_dims, input_shape_pitches, axis));
+      LoopFn(output, input + compute_base_offset(process_dims, input_shape_pitches, axis), indices, inner_dim_size, axis_size, axis_pitch);
       output += inner_dim_size;
-      indices_data += static_cast<Tin>(inner_dim_size);
+      indices += static_cast<Tin>(inner_dim_size);
       increment_over_inner_dim(process_dims, indices_shape);
     }
   };
@@ -155,16 +152,16 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
   // Iterate over the elements based on the element size (or if it's a string). For everything but strings
   // we do a binary copy, so handling the 1, 2, 4, and 8 byte sizes covers all cases
   auto SwitchOnSizes = [&](auto LoopFn) {
-    if (element_size == sizeof(uint8_t))
-      MainLoop(reinterpret_cast<uint8_t*>(output_data), reinterpret_cast<const uint8_t*>(input_data), LoopFn);
-    else if (element_size == sizeof(uint16_t))
-      MainLoop(reinterpret_cast<uint16_t*>(output_data), reinterpret_cast<const uint16_t*>(input_data), LoopFn);
+    if (is_string)
+      MainLoop(reinterpret_cast<std::string*>(output_data), reinterpret_cast<const std::string*>(input_data), LoopFn);
     else if (element_size == sizeof(uint32_t))
       MainLoop(reinterpret_cast<uint32_t*>(output_data), reinterpret_cast<const uint32_t*>(input_data), LoopFn);
+    else if (element_size == sizeof(uint16_t))
+      MainLoop(reinterpret_cast<uint16_t*>(output_data), reinterpret_cast<const uint16_t*>(input_data), LoopFn);
+    else if (element_size == sizeof(uint8_t))
+      MainLoop(reinterpret_cast<uint8_t*>(output_data), reinterpret_cast<const uint8_t*>(input_data), LoopFn);
     else if (element_size == sizeof(uint64_t))
       MainLoop(reinterpret_cast<uint64_t*>(output_data), reinterpret_cast<const uint64_t*>(input_data), LoopFn);
-    else if (is_string)
-      MainLoop(reinterpret_cast<std::string*>(output_data), reinterpret_cast<const std::string*>(input_data), LoopFn);
     else
       ORT_THROW("GatherElements op: Unsupported tensor type, size:", element_size);
   };
