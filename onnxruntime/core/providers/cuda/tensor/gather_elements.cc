@@ -110,10 +110,11 @@ void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indic
   TensorPitches masked_input_strides_vec(input_shape);
   input_stride_along_axis = masked_input_strides_vec[new_axis];
   masked_input_strides_vec[new_axis] = 0;
-  masked_input_strides.SetSize(new_rank);
-  indices_fdms.SetSize(new_rank);
+  int32_t new_rank_32bit = static_cast<int32_t>(new_rank);
+  masked_input_strides.SetSize(new_rank_32bit);
+  indices_fdms.SetSize(new_rank_32bit);
   TensorPitches indices_strides(indices_shape);
-  for (auto i = 0; i < new_rank; ++i) {
+  for (auto i = 0; i < new_rank_32bit; ++i) {
     masked_input_strides[i] = masked_input_strides_vec[i];
     indices_fdms[i] = fast_divmod(gsl::narrow_cast<int>(indices_strides[i]));
   }

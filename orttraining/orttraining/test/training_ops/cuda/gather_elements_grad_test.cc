@@ -63,7 +63,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(rank) : axis;
   std::vector<TIndex> indices_data(indices_size);
   std::vector<T> dX_data(input_size, static_cast<T>(0.f));
-  std::srand(std::time(0));
+  std::srand(static_cast<unsigned>(std::time(0)));
   for (size_t i = 0; i < indices_size; ++i) {
     // Negative index possible.
     int64_t index = (static_cast<int64_t>(std::rand()) % (input_dims[new_axis] * 2)) - input_dims[new_axis];
