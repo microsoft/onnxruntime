@@ -15,6 +15,9 @@ namespace training {
 // TODO: Rename to api after all major classes implemented.
 namespace api_test {
 
+template <typename T>
+struct TypedCheckpointProperty;
+
 /**
  * @brief Base class for user defined checkpoint property.
  */
@@ -29,6 +32,13 @@ struct CheckpointProperty {
 
   std::string GetName() const {
     return prop_name_;
+  }
+
+  template <typename T>
+  T GetData() {
+    auto ptr = dynamic_cast<TypedCheckpointProperty<T>*>(this);
+    ORT_ENFORCE(ptr);
+    return ptr->GetData();
   }
 
  protected:
@@ -48,8 +58,7 @@ struct TypedCheckpointProperty : public CheckpointProperty {
 
   ONNX_NAMESPACE::TensorProto ToTensorProto() override {
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(prop_value_);
-
-    // We did not add dims assuming currently we only support scalars.
+    t_proto.set_name(prop_name_);
     return t_proto;
   }
 
@@ -72,7 +81,7 @@ struct CheckpointStates {
  public:
   ModuleCheckpointStates module_checkpoint_states;
   OptimizerCheckpointStates optimizer_checkpoint_states;
-  std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties;
+  std::vector<std::shared_ptr<CheckpointProperty>> custom_properties;
 };
 
 /**

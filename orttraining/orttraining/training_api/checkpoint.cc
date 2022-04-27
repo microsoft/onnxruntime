@@ -28,7 +28,7 @@ constexpr const char* k_tensor_proto_properties_file_name = ORT_TSTR("properties
 
 constexpr const char* k_param_root_prefix = "param";
 constexpr const char* k_optimizer_root_prefix = "optim";
-constexpr const char* k_property_root_prefix = "prop";
+constexpr const char* k_property_root_prefix = "custom";
 constexpr const char* k_name_seperator = "_";
 
 PathString GetTensorProtoFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
@@ -69,10 +69,7 @@ bool StringEndsWith(std::string const& s, std::string const& p) {
 
 const std::vector<std::string> ParseStringData(
     const ONNX_NAMESPACE::TensorProto* tensor_proto) {
-  ORT_ENFORCE(!tensor_proto->has_data_type() ||
-                  tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
-              "Invalid string data type.");
-  ORT_ENFORCE(tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
+  ORT_ENFORCE(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING,
               "ParseStringData type mismatch for tensor ");
 
   ORT_ENFORCE(!(tensor_proto->has_data_location() &&
@@ -90,7 +87,7 @@ const std::vector<std::string> ParseStringData(
     expected_size *= tensor_proto->dims(i);
   }
 
-  ORT_ENFORCE(tensor_proto->dims_size() != 0 && data.size() != expected_size, "Data size mismatch.");
+  ORT_ENFORCE(tensor_proto->dims_size() == 0 || data.size() == expected_size, "Data size mismatch.");
   res.insert(res.end(), data.begin(), data.end());
   return res;
 }
@@ -174,11 +171,11 @@ Status CheckpointUtils::OrtSaveInternal(
   ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(states.optimizer_checkpoint_states, checkpoint_path));
 
   // Write properties file
-  const std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>>& named_properties = states.named_properties;
-  if (!named_properties.empty()) {
+  const std::vector<std::shared_ptr<CheckpointProperty>>& custom_properties = states.custom_properties;
+  if (!custom_properties.empty()) {
     std::vector<ONNX_NAMESPACE::TensorProto> properties_tensor_protos;
-    for (auto it = named_properties.begin(); it != named_properties.end(); ++it) {
-      properties_tensor_protos.emplace_back(it->second->ToTensorProto());
+    for (auto it = custom_properties.begin(); it != custom_properties.end(); ++it) {
+      properties_tensor_protos.emplace_back((*it)->ToTensorProto());
     }
     ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(
         GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix),
@@ -292,7 +289,6 @@ Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, Check
 
   // Parse other checkpoint properties.
   const PathString property_file_path = GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix);
-
   std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
   auto file_read_status = WithOpenFile(
       property_file_path, true,
@@ -303,11 +299,11 @@ Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, Check
       });
 
   if (!file_read_status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " optimizer state file read failure, skip it.";
+    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " custom property file read failure, skip it.";
     return Status::OK();
   }
 
-  std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>>& named_properties = states.named_properties;
+  std::vector<std::shared_ptr<CheckpointProperty>>& custom_properties = states.custom_properties;
   for (auto& property_proto : property_protos) {
     const std::string& tensor_name = property_proto.name();
     auto data_type = property_proto.data_type();
@@ -315,28 +311,22 @@ Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, Check
       case ONNX_NAMESPACE::TensorProto::FLOAT: {
         const std::vector<float>& flt_parsed = ONNX_NAMESPACE::ParseData<float>(&property_proto);
         ORT_ENFORCE(flt_parsed.size() == static_cast<size_t>(1), "only support scalar float properties.");
-        named_properties.insert({tensor_name,
-                                 std::make_shared<TypedCheckpointProperty<float>>(
-                                     tensor_name,
-                                     flt_parsed.at(0))});
+        custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<float>>(
+            tensor_name, flt_parsed.at(0)));
         break;
       }
       case ONNX_NAMESPACE::TensorProto::STRING: {
         const std::vector<std::string>& str_parsed = ParseStringData(&property_proto);
         ORT_ENFORCE(str_parsed.size() == static_cast<size_t>(1), "only support scalar string properties.");
-        named_properties.insert({tensor_name,
-                                 std::make_shared<TypedCheckpointProperty<std::string>>(
-                                     tensor_name,
-                                     str_parsed.at(0))});
+        custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<std::string>>(
+            tensor_name, str_parsed.at(0)));
         break;
       }
       case ONNX_NAMESPACE::TensorProto::INT64: {
         const std::vector<int64_t>& int_parsed = ONNX_NAMESPACE::ParseData<int64_t>(&property_proto);
         ORT_ENFORCE(int_parsed.size() == static_cast<size_t>(1), "only support scalar int64_t properties.");
-        named_properties.insert({tensor_name,
-                                 std::make_shared<TypedCheckpointProperty<int64_t>>(
-                                     tensor_name,
-                                     int_parsed.at(0))});
+        custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<int64_t>>(
+            tensor_name, int_parsed.at(0)));
         break;
       }
       default:

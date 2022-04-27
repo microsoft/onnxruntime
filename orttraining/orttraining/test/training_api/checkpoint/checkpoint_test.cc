@@ -27,7 +27,7 @@
 #include "core/graph/model.h"
 
 using onnxruntime::test::TemporaryDirectory;
-
+using namespace onnxruntime::training::api_test;
 namespace onnxruntime {
 namespace training {
 namespace test {
@@ -65,7 +65,7 @@ TEST(CheckPointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   }
 
   std::unordered_map<std::string, OrtValue> expected_param_name_to_ort_value;
-  ORT_ENFORCE(api_test::CreateOrtValuesFromTensorProtos(trainable_param_values, expected_param_name_to_ort_value).IsOK());
+  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_param_name_to_ort_value).IsOK());
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -77,7 +77,7 @@ TEST(CheckPointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(api_test::CheckpointUtils::SaveORTCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
+  ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{"param_tensors.pbseq"};  //
@@ -97,9 +97,9 @@ TEST(CheckPointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   ASSERT_EQ(expected_file_names, valid_file_names);
 
   // Call Load APIs
-  api_test::CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(api_test::CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
-  api_test::ModuleCheckpointStates module_states = checkpoint_states.module_checkpoint_states;
+  CheckpointStates checkpoint_states;
+  ASSERT_STATUS_OK(CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
+  ModuleCheckpointStates module_states = checkpoint_states.module_checkpoint_states;
   const auto& param_states = module_states.named_parameters;
   std::unordered_map<std::string, OrtValue> restored_param_name_to_ort_values;
   std::vector<std::string> restored_trainable_param_names;
@@ -169,17 +169,17 @@ TEST(CheckPointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   }
 
   // Optimizer creation and trainable parameter name definitions.
-  std::unordered_map<std::string, std::shared_ptr<api_test::Parameter>> named_parameters;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
-    auto param = std::make_shared<api_test::Parameter>(it->first, it->second);
+    auto param = std::make_shared<Parameter>(it->first, it->second);
     bool is_trainable =
         std::find(trainable_param_names.begin(), trainable_param_names.end(), param->Name()) != trainable_param_names.end();
     ASSERT_STATUS_OK(param->SetRequiresGrad(is_trainable));
     named_parameters.insert({it->first, param});
   }
-  auto optimizer = api_test::Optimizer(model_uri, named_parameters);
+  auto optimizer = Optimizer(model_uri, named_parameters);
 
-  api_test::CheckpointStates state_dicts_to_save;
+  CheckpointStates state_dicts_to_save;
   ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_checkpoint_states).IsOK());
 
   // Remove the tempoprary directory if it already exists.
@@ -192,7 +192,7 @@ TEST(CheckPointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(api_test::CheckpointUtils::SaveORTCheckpoint(state_dicts_to_save, checkpoint_path));
+  ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(state_dicts_to_save, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -217,16 +217,16 @@ TEST(CheckPointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   ASSERT_EQ(expected_file_names, valid_file_names);
 
   // Call Load APIs
-  api_test::CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(api_test::CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
-  api_test::OptimizerCheckpointStates optimizer_states = checkpoint_states.optimizer_checkpoint_states;
-  std::unordered_map<std::string, std::shared_ptr<api_test::GroupOptimizerState>>&
+  CheckpointStates checkpoint_states;
+  ASSERT_STATUS_OK(CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
+  OptimizerCheckpointStates optimizer_states = checkpoint_states.optimizer_checkpoint_states;
+  std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>>&
       group_optimizer_states = optimizer_states.group_named_optimizer_states;
 
   ASSERT_EQ(group_optimizer_states.size(), 1);
   ASSERT_EQ(group_optimizer_states.begin()->first, "group0");
 
-  std::unordered_map<std::string, api_test::ParameterOptimizerState>&
+  std::unordered_map<std::string, ParameterOptimizerState>&
       param_named_optimizer_states = group_optimizer_states["group0"]->param_named_optimizer_states_;
 
   ASSERT_EQ(param_named_optimizer_states.size(), 2);
@@ -249,6 +249,75 @@ TEST(CheckPointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
       ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
     }
   }
+}
+
+TEST(CheckPointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
+  CheckpointStates state_dicts_to_save;
+  std::vector<std::shared_ptr<CheckpointProperty>>&
+      custom_properties = state_dicts_to_save.custom_properties;
+
+  float f_data = 0.5f;
+  custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<float>>("float_number", f_data));
+
+  int64_t i_data = 400;
+  custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<int64_t>>("dataset_epoch_index", i_data));
+
+  std::string s_data("/data/path/train.bin");
+  custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<std::string>>("train_data_path", s_data));
+
+  // Remove the tempoprary directory if it already exists.
+  auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
+  if (Env::Default().FolderExists(ckpt_test_root_dir)) {
+    ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
+  }
+  TemporaryDirectory tmp_dir{ckpt_test_root_dir};
+
+  // Call Save APIs.
+  PathString checkpoint_path{
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
+  ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(state_dicts_to_save, checkpoint_path));
+
+  // Check the ckpt files in the directory.
+  std::set<PathString> expected_file_names{
+      "custom_properties.pbseq",
+  };
+
+  std::set<PathString> valid_file_names;
+  LoopDir(checkpoint_path,
+          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
+            PathString filename_str = filename;
+            bool is_valid_ckpt_file_exts =
+                HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
+            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
+              return true;
+            }
+            valid_file_names.emplace(filename_str);
+            return true;
+          });
+
+  ASSERT_EQ(expected_file_names, valid_file_names);
+
+  // Call Load APIs
+  CheckpointStates checkpoint_states;
+  ASSERT_STATUS_OK(CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
+  std::vector<std::shared_ptr<CheckpointProperty>>&
+      restored_custom_properties = checkpoint_states.custom_properties;
+
+  ASSERT_EQ(restored_custom_properties.size(), 3);
+
+  std::shared_ptr<CheckpointProperty>& float_prop = restored_custom_properties[0];
+  std::shared_ptr<CheckpointProperty>& int_prop = restored_custom_properties[1];
+  std::shared_ptr<CheckpointProperty>& str_prop = restored_custom_properties[2];
+  ASSERT_EQ(float_prop->GetName(), "float_number");
+  ASSERT_EQ(int_prop->GetName(), "dataset_epoch_index");
+  ASSERT_EQ(str_prop->GetName(), "train_data_path");
+
+  float restored_f_data = float_prop->GetData<float>();
+  ASSERT_FLOAT_EQ(f_data, restored_f_data);
+  int64_t restored_i_data = int_prop->GetData<int64_t>();
+  ASSERT_EQ(i_data, restored_i_data);
+  std::string restored_s_data = str_prop->GetData<std::string>();
+  ASSERT_EQ(s_data, restored_s_data);
 }
 
 }  // namespace training_api
