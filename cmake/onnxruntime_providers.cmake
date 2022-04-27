@@ -956,13 +956,14 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   else()
     file(GLOB
       onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/model.*"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.cc"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/helper.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/helper.cc"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.*"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.*"
     )
   endif()
 

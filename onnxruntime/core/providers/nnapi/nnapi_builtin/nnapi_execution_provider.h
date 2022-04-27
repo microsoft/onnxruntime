@@ -42,8 +42,6 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   const std::unordered_set<std::string> partitioning_stop_ops_;
 
-#ifdef __ANDROID__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
-#endif
 };
 }  // namespace onnxruntime
