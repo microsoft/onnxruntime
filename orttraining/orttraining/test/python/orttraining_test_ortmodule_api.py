@@ -1085,6 +1085,7 @@ def test_export_correctness_pool2d(pool_type, stride):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
+
 @pytest.mark.parametrize("operator", ["min", "max"])
 @pytest.mark.parametrize("dim", [None, 0, -1])
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -1115,15 +1116,17 @@ def test_gradient_correctness_max(operator, dim, keepdim):
         pt_prediction, pt_indices = run_step(pt_model, pt_input)
         ort_prediction, ort_indices = run_step(ort_model, ort_input)
 
-        if dim is not None: # For torch.max(input, dim, keepdim), also check the max_indices
+        if dim is not None:  # For torch.max(input, dim, keepdim), also check the max_indices
             assert torch.equal(ort_indices, pt_indices)
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+
 @pytest.mark.parametrize("operator", ["min", "max"])
 def test_gradient_correctness_max_two_tensors(operator):
     func = getattr(torch, operator)
+
     class NeuralNetMaxTwoTensors(torch.nn.Module):
         def forward(self, input, other):
             return func(input, other)
@@ -1149,6 +1152,7 @@ def test_gradient_correctness_max_two_tensors(operator):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):

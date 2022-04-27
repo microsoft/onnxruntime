@@ -134,13 +134,14 @@ def minmax_gradient():
     #       print(x.grad)     (tensor([0.0000, 0.3333, 0.3333, 0.0000, 0.3333]))
     return [
         ("Equal", ["I(0)", "O(0)"], ["Mask"]),
-        ("Constant", [], ["Const_0"], {"value": {"value": 0., "dtype": "IElemType(0)", "is_tensor": True}}),
-        ("Constant", [], ["Const_1"], {"value": {"value": 1., "dtype": "IElemType(0)", "is_tensor": True}}),
+        ("Constant", [], ["Const_0"], {"value": {"value": 0.0, "dtype": "IElemType(0)", "is_tensor": True}}),
+        ("Constant", [], ["Const_1"], {"value": {"value": 1.0, "dtype": "IElemType(0)", "is_tensor": True}}),
         ("Where", ["Mask", "Const_1", "Const_0"], ["MaskValue"]),
-        ("ReduceSum", ["MaskValue"], ["MaskSum"], {"keepdims":{"value": 0, "dtype": "int"}}),
+        ("ReduceSum", ["MaskValue"], ["MaskSum"], {"keepdims": {"value": 0, "dtype": "int"}}),
         ("Div", ["GO(0)", "MaskSum"], ["DistributedGrad"]),
-        ("Mul", ["MaskValue", "DistributedGrad"], ["GI(0)"])
+        ("Mul", ["MaskValue", "DistributedGrad"], ["GI(0)"]),
     ]
+
 
 min_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::min", "")(minmax_gradient)
 max_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::max", "")(minmax_gradient)
@@ -160,9 +161,10 @@ def minmax_dim_gradient():
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "I(1)", "O(1)", "Shape_X", "I(2)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::value_selecting_reduction_backward", "dtype": "string"}}
+            {"operator": {"value": "aten::value_selecting_reduction_backward", "dtype": "string"}},
         ),
     ]
+
 
 min_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::min", "dim")(minmax_dim_gradient)
 max_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::max", "dim")(minmax_dim_gradient)

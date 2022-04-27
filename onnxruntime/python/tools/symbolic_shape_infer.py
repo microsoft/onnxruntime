@@ -1267,12 +1267,15 @@ class SymbolicShapeInference:
     def _infer_aten_minmax(self, node):
         vi = self.known_vi_[node.output[0]]
         if len(node.input) == 1:
-            vi.CopyFrom(helper.make_tensor_value_info(
-                node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, []))
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, []
+                )
+            )
         else:
             assert len(node.input) == 3
             keepdim = self._try_get_value(node, 2)
-            assert keepdim is not None # can only handle known keepdim case.
+            assert keepdim is not None  # can only handle known keepdim case.
             dim = self._try_get_value(node, 1)
             if dim is None:
                 rank = self._get_shape_rank(node, 0)
@@ -1281,12 +1284,16 @@ class SymbolicShapeInference:
                 shape = self._get_sympy_shape(node, 0)
                 dim = handle_negative_axis(dim, len(shape))
                 output_shape = shape[:dim]
-                if keepdim: output_shape += [1]
-                output_shape += shape[dim+1:]
+                if keepdim:
+                    output_shape += [1]
+                output_shape += shape[dim + 1 :]
 
             output_shape = get_shape_from_sympy_shape(output_shape)
-            vi.CopyFrom(helper.make_tensor_value_info(
-                node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, output_shape))
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, output_shape
+                )
+            )
             vi1 = self.known_vi_[node.output[1]]
             vi1.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT64, output_shape))
 
@@ -2224,7 +2231,7 @@ class SymbolicShapeInference:
                             "LessOrEqual",
                             "GreaterOrEqual",
                             "Min",
-                            "Max"
+                            "Max",
                         ]:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in [

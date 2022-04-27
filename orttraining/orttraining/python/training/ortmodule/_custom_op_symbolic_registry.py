@@ -127,13 +127,7 @@ def max(g, self, dim_or_y=None, keepdim=None):
         return g.op("Max", self, dim_or_y)
     # torch.max(input, dim, keepdim), returns (max_values, max_indices)
     return g.op(
-        "org.pytorch.aten::ATen",
-        self,
-        dim_or_y,
-        keepdim,
-        operator_s="aten::max",
-        overload_name_s="dim",
-        outputs=2
+        "org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s="aten::max", overload_name_s="dim", outputs=2
     )
 
 
@@ -147,13 +141,7 @@ def min(g, self, dim_or_y=None, keepdim=None):
         return g.op("Min", self, dim_or_y)
     # torch.min(input, dim, keepdim), returns (min_values, min_indices)
     return g.op(
-        "org.pytorch.aten::ATen",
-        self,
-        dim_or_y,
-        keepdim,
-        operator_s="aten::min",
-        overload_name_s="dim",
-        outputs=2
+        "org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s="aten::min", overload_name_s="dim", outputs=2
     )
 
 
