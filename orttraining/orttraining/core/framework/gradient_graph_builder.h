@@ -78,6 +78,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
 static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization",
                                                       "Relu"};
 
+static const std::unordered_set<size_t> CAST_STOP_EDGE{0};
+
 class GradientGraphBuilder {
  public:
   /**
@@ -138,6 +140,12 @@ class GradientGraphBuilder {
   // Tracks tensors that are stashed in the forward pass for later use in backward pass.
   std::unordered_set<std::string> stashed_tensors_;
 
+  const std::unordered_set<int64_t> GRAD_ALLOWED_TYPES{
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+      ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+  };
   const std::unordered_set<size_t>* GetStopGradientEdges(const Node& node) const;
 
   /**
@@ -165,7 +173,7 @@ class GradientGraphBuilder {
   */
   Status CheckNodeArgsReachable() const;
 
-  /** 
+  /**
   Check if node is reachable from the 'y_node_args_'
    **/
   bool IsReachable(const Node* node) const {

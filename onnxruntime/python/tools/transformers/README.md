@@ -38,22 +38,24 @@ The tool will also verify whether the ONNX model and corresponding PyTorch model
 
 ### Longformer Model conversion
 
-Requirement: Linux OS (For example Ubuntu 18.04 or 20.04) and a python environment like the following:
+Requirement: Linux OS (For example Ubuntu 18.04 or 20.04) and a python environment with PyTorch 1.9.* like the following:
 ```
-conda create -n longformer python=3.6
+conda create -n longformer python=3.8
 conda activate longformer
-conda install pytorch torchvision torchaudio cpuonly -c pytorch
-pip install onnx transformers onnxruntime
+pip install torch==1.9.1+cpu torchvision==0.10.1+cpu torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
+pip install onnx transformers==4.18.0 onnxruntime numpy
 ```
-Next, get the source of [torch extensions for Longformer exporting](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/torch_extensions), and run the following:
+Next, build the source of [torch extensions for Longformer ONNX exporting](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/torch_extensions) like the following:
 ```
+cd onnxruntime/python/tools/transformers/models/longformer/torch_extensions
 python setup.py install
 ```
-It will generate file like "build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so" under the directory.
+It will generate a PyTorch extension file like "build/lib.linux-x86_64-3.8/longformer_attention.cpython-38-x86_64-linux-gnu.so" under the directory.
 
-Finally, use [convert_longformer_to_onnx](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/longformer/convert_longformer_to_onnx.py) to convert to ONNX model like the following:
+Finally, convert longformer model to ONNX model like the following:
 ```
-python convert_longformer_to_onnx.py -m longformer-base-4096
+cd ..
+python convert_to_onnx.py -m longformer-base-4096
 ```
 
 The exported ONNX model can only run in GPU right now.
@@ -64,9 +66,9 @@ In your python code, you can use the optimizer like the following:
 
 ```python
 from onnxruntime.transformers import optimizer
-optimized_model = optimizer.optimize_model("gpt2.onnx", model_type='gpt2', num_heads=12, hidden_size=768)
+optimized_model = optimizer.optimize_model("bert.onnx", model_type='bert', num_heads=12, hidden_size=768)
 optimized_model.convert_float_to_float16()
-optimized_model.save_model_to_file("gpt2_fp16.onnx")
+optimized_model.save_model_to_file("bert_fp16.onnx")
 ```
 
 You can also use command line. Example of optimizing a BERT-large model to use mixed precision (float16):
@@ -76,7 +78,7 @@ python -m onnxruntime.transformers.optimizer --input bert_large.onnx --output be
 
 You can also download the latest script files from [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/). Then run it like the following:
 ```console
-python optimizer.py --input gpt2.onnx --output gpt2_opt.onnx --model_type gpt2
+python optimizer.py --input bert.onnx --output bert_opt.onnx --model_type bert
 ```
 
 ### Optimizer Options
@@ -162,11 +164,11 @@ The model has 12 layers and 768 hidden, with input_ids, position_ids, attention_
 
 Since past state is used, sequence length in input_ids is 1. For example, s=4 means the past sequence length is 4 and the total sequence length is 5.
 
-[benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/benchmark_gpt2.py) is used to get the results like the following commands:
+[benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/models/gpt2/benchmark_gpt2.py) is used to get the results like the following commands:
 
 ```console
-python -m onnxruntime.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
-python -m onnxruntime.transformers.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
+python -m onnxruntime.transformers.models.gpt2.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
+python -m onnxruntime.transformers.models.gpt2.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
 ```
 
 ### Benchmark.py

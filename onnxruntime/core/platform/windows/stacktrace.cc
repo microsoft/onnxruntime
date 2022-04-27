@@ -33,7 +33,7 @@ class CaptureStackTrace {
 std::vector<std::string> GetStackTrace() {
 #ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug helper now
-#if !(defined USE_NUPHAR_TVM) && !(defined _OPSCHEMA_LIB_)
+#if !(defined USE_NUPHAR_TVM) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
   return detail::CaptureStackTrace().Trace();
 #else
   return {};
@@ -45,7 +45,7 @@ std::vector<std::string> GetStackTrace() {
 
 namespace detail {
 #ifndef NDEBUG
-#if !(defined USE_NUPHAR_TVM) && !(defined _OPSCHEMA_LIB_)
+#if !(defined USE_NUPHAR_TVM) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
 class SymbolHelper {
  public:
   SymbolHelper() noexcept {

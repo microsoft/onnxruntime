@@ -11,13 +11,15 @@ from opgen.generator import ORTGen as ORTGen
 from importlib.machinery import SourceFileLoader
 import argparse
 
-parser = argparse.ArgumentParser(description='Generate ORT ATen operations')
-parser.add_argument('--ops_module', type=str,
-                    help='Python module containing the Onnx Operation signature and list of ops to map')
-parser.add_argument('--output_file', default=None, type=str, help='Output file [default to std out]')
-parser.add_argument('--header_file', type=str,
-                    help='Header file which contains ATen / Pytorch operation signature')
-parser.add_argument('--custom_ops', action='store_true', help='Whether we are generating code for custom ops or native operation')
+parser = argparse.ArgumentParser(description="Generate ORT ATen operations")
+parser.add_argument(
+    "--ops_module", type=str, help="Python module containing the Onnx Operation signature and list of ops to map"
+)
+parser.add_argument("--output_file", default=None, type=str, help="Output file [default to std out]")
+parser.add_argument("--header_file", type=str, help="Header file which contains ATen / Pytorch operation signature")
+parser.add_argument(
+    "--custom_ops", action="store_true", help="Whether we are generating code for custom ops or native operation"
+)
 
 args = parser.parse_args()
 ops_module = SourceFileLoader("opgen.customop", args.ops_module).load_module()
@@ -28,7 +30,7 @@ regdecs_path = args.header_file
 print(f"INFO: Using RegistrationDeclarations from: {regdecs_path}")
 output = sys.stdout
 if args.output_file:
-  output = open(args.output_file, 'wt')
+    output = open(args.output_file, "wt")
 
 with CPPParser(regdecs_path) as parser, SourceWriter(output) as writer:
-  ortgen.run(parser, writer)
+    ortgen.run(parser, writer)

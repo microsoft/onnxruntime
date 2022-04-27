@@ -10,6 +10,7 @@
 #include <gsl/gsl>
 #include "onnxruntime_config.h"
 
+#ifndef DISABLE_ABSEIL
 // Need to include abseil inlined_vector.h header directly here
 // as hash tables cause CUDA 10.2 compilers to fail. inlined_vector.h is fine.
 #ifdef _MSC_VER
@@ -26,7 +27,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-
+#endif  // DISABLE_ABSEIL
 
 namespace onnxruntime {
 #ifdef __GNUC__
@@ -38,8 +39,18 @@ namespace onnxruntime {
 
 constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
 
+#ifndef DISABLE_ABSEIL
 // Use this type to build a shape and then create TensorShape.
 using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
+#else
+class TensorShapeVector : public std::vector<int64_t> {
+  using Base = std::vector<int64_t>;
+
+ public:
+   using Base::Base;
+};
+
+#endif  // DISABLE_ABSEIL
 
 inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
   TensorShapeVector out;
@@ -60,7 +71,7 @@ class TensorShape {
 
   TensorShape(const TensorShape& other) : TensorShape(other.GetDims()) {}
   TensorShape& operator=(const TensorShape& other);
-  TensorShape& operator=(const gsl::span<const int64_t>& dims) { 
+  TensorShape& operator=(const gsl::span<const int64_t>& dims) {
     *this = TensorShape(dims);
     return *this;
   }
@@ -170,7 +181,6 @@ class TensorShape {
   }
 
  private:
-
   struct External {};
   TensorShape(External, gsl::span<int64_t> buffer) : values_{buffer} {}
 
@@ -180,7 +190,7 @@ class TensorShape {
   int64_t small_buffer_[kTensorShapeSmallBufferElementsSize];
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
-  friend struct ProviderHostImpl; // So that the shared provider interface can access Allocate
+  friend struct ProviderHostImpl;  // So that the shared provider interface can access Allocate
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

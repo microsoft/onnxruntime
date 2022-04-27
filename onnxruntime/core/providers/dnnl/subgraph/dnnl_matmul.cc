@@ -66,85 +66,91 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
 
   //Holds transposed matrices A and B. ToDo: Eliminate its usage if in place transpose is possbile for FusedMatmul
-  dnnl::memory::desc intermediateA_md;
-  dnnl::memory intermediateA_mem;
+  dnnl::memory::desc transposedA_md;
+  dnnl::memory transposedA_mem;
 
-  dnnl::memory::desc intermediateB_md;
-  dnnl::memory intermediateB_mem;
+  dnnl::memory::desc transposedB_md;
+  dnnl::memory transposedB_mem;
 
   if (is_fusedmatmul)
   {
     if (transA || transBatchA) {
       dnnl::memory::dims strides = GetStrides(dataA_dims, transA, transBatchA, transposedA_dims);
 
-      intermediateA_md = dnnl::memory::desc(dataA_dims, node.Input(IN_A).Type(), strides);
-      intermediateA_mem = dnnl::memory(intermediateA_md, eng);
+      dnnl::memory::desc intermediateA_md = dnnl::memory::desc(dataA_dims, node.Input(IN_A).Type(), strides);
+      dnnl::memory intermediateA_mem = dnnl::memory(intermediateA_md, eng);
 
       auto traspose_primitive = dnnl::reorder(dataA_mem, intermediateA_mem);
-      sp.AddPrimitive(traspose_primitive, {{DNNL_ARG_FROM, dataA_mem},
-                                           {DNNL_ARG_TO, intermediateA_mem}});
+      sp.AddPrimitive(traspose_primitive, {{DNNL_ARG_FROM, dataA_mem}, {DNNL_ARG_TO, intermediateA_mem}});
 
-      // The reorder from above will get the memory in the right order. The next few lines will create a memory and memory descriptor
-      // that will have the correct dimentions and correct memory::format
-      dnnl::memory::desc transposed_md = dnnl::memory::desc(transposedA_dims, node.Input(IN_A).Type(), sp.GetDnnlFormat(dataA_dims.size()));
-      dnnl::memory transposed_mem = dnnl::memory(transposed_md, eng, nullptr);
-      void* handle = intermediateA_mem.get_data_handle();
-      transposed_mem.set_data_handle(handle);
       while (transposedA_dims.size() < weights_dims.size()) {
         transposedA_dims.insert(transposedA_dims.begin(), 1);
       }
+
+      // The reorder from above will get the memory in the right order. The next few lines will create a memory and memory descriptor
+      // that will have the correct dimentions and correct memory::format
+      transposedA_md = dnnl::memory::desc(transposedA_dims, node.Input(IN_A).Type(), sp.GetDnnlFormat(transposedA_dims.size()));
+      transposedA_mem = dnnl::memory(transposedA_md, eng, nullptr);
+      void* handle = intermediateA_mem.get_data_handle();
+      transposedA_mem.set_data_handle(handle);
     }
     if (transB || transBatchB) {                // Exact same logic for matrix B as used for matrix A
       dnnl::memory::dims strides = GetStrides(dataB_dims, transB, transBatchB, transposedB_dims);
 
-      intermediateB_md = dnnl::memory::desc(dataB_dims, node.Input(IN_B).Type(), strides);
-      intermediateB_mem = dnnl::memory(intermediateB_md, eng);
+      dnnl::memory::desc intermediateB_md = dnnl::memory::desc(dataB_dims, node.Input(IN_B).Type(), strides);
+      dnnl::memory intermediateB_mem = dnnl::memory(intermediateB_md, eng);
 
       auto traspose_primitive = dnnl::reorder(dataB_mem, intermediateB_mem);
-      sp.AddPrimitive(traspose_primitive, {{DNNL_ARG_FROM, dataB_mem},
-                                           {DNNL_ARG_TO, intermediateB_mem}});
+      sp.AddPrimitive(traspose_primitive, {{DNNL_ARG_FROM, dataB_mem}, {DNNL_ARG_TO, intermediateB_mem}});
 
-      // The reorder from above will get the memory in the right order. The next few lines will create a memory and memory descriptor
-      // that will have the correct dimentions and correct memory::format
-      dnnl::memory::desc transposed_md = dnnl::memory::desc(transposedB_dims, node.Input(IN_A).Type(), sp.GetDnnlFormat(dataB_dims.size()));
-      dnnl::memory transposed_mem = dnnl::memory(transposed_md, eng, nullptr);
-      void* handle = intermediateB_mem.get_data_handle();
-      transposed_mem.set_data_handle(handle);
       while (src_dims.size() > transposedB_dims.size()) {
         transposedB_dims.insert(transposedB_dims.begin(), 1);
       }
+
+      // The reorder from above will get the memory in the right order. The next few lines will create a memory and memory descriptor
+      // that will have the correct dimentions and correct memory::format
+      transposedB_md = dnnl::memory::desc(transposedB_dims, node.Input(IN_B).Type(), sp.GetDnnlFormat(transposedB_dims.size()));
+      transposedB_mem = dnnl::memory(transposedB_md, eng, nullptr);
+      void* handle = intermediateB_mem.get_data_handle();
+      transposedB_mem.set_data_handle(handle);
+      
     }
   }
 
   dnnl::memory::desc src_md;
   if (transA || transBatchA) {
-    src_md = dnnl::memory::desc(transposedA_dims, node.Input(IN_A).Type(), dnnl::memory::format_tag::any);
+    src_md = transposedA_md;
   } else {
     src_md = dnnl::memory::desc(src_dims, node.Input(IN_A).Type(), dnnl::memory::format_tag::any);
   }
     
   dnnl::memory::desc weights_md;
   if (transB || transBatchB) {
-    weights_md = dnnl::memory::desc(transposedB_dims, node.Input(IN_B).Type(), dnnl::memory::format_tag::any);
+    weights_md = transposedB_md;
   } else {
     weights_md = dnnl::memory::desc(weights_dims, node.Input(IN_B).Type(), dnnl::memory::format_tag::any);
   }
     
 
   auto output_shape = src_dims;
-  if (transA || transBatchA)
+  if (transA || transBatchA) {
     output_shape = transposedA_dims;
+  }
   output_shape.pop_back();
-  if (transB || transBatchB)
+  if (transB || transBatchB) {
     output_shape.emplace_back(transposedB_dims.back());
-  else
+  } else {
     output_shape.emplace_back(weights_dims.back());
+  }
+    
   for (size_t i = 0; i < output_shape.size() - 2; i++) {
     if (output_shape[i] == 1) {
-      if (transB || transBatchB)
+        if (transB || transBatchB) {
         output_shape[i] = transposedB_dims[i];
-      else
-        output_shape[i] = weights_dims[i];
+      } else {
+          output_shape[i] = weights_dims[i];
+        }
+        
     }
   }
 
@@ -195,12 +201,12 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto matmul_prim = dnnl::matmul(matmul_pd);
 
   if (transA || transBatchA) {
-    matmul_src_mem = intermediateA_mem;
+    matmul_src_mem = transposedA_mem;
   } else {
     matmul_src_mem = sp.GetMemoryAndReshape(node.Input(IN_A), matmul_pd.src_desc(), eng);
   }
   if (transB || transBatchB) {
-    matmul_weights_mem = intermediateB_mem;
+    matmul_weights_mem = transposedB_mem;
   } else {
     matmul_weights_mem = sp.GetMemoryAndReshape(node.Input(IN_B), matmul_pd.weights_desc(), eng);
   }
