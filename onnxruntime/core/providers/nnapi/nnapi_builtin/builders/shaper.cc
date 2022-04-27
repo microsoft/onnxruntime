@@ -419,9 +419,9 @@ Status Shaper::DepthToSpaceImpl(const std::string& input_name,
     output_dimen[3] = input_dimen[3] * blocksize;
   } else {  // nhwc
     output_dimen[0] = input_dimen[0];
-    output_dimen[1] = input_dimen[2] * blocksize;
-    output_dimen[2] = input_dimen[3] * blocksize;
-    output_dimen[3] = input_dimen[1] / (blocksize * blocksize);
+    output_dimen[1] = input_dimen[1] * blocksize;
+    output_dimen[2] = input_dimen[2] * blocksize;
+    output_dimen[3] = input_dimen[3] / (blocksize * blocksize);
   }
 
   shape_map_[output_name] = output_dimen;

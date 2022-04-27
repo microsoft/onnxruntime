@@ -1485,6 +1485,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
   NodeAttrHelper helper(node_unit);
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
@@ -1498,6 +1499,11 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, blocksize);
+
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    // optional input to use nchw is available starting NNAPI feature level 3
+    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
+  }
 
   ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, use_nchw, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
