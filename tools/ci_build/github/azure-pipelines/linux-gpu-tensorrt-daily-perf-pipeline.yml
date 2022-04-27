@@ -126,7 +126,7 @@ jobs:
     - ${{ if eq(parameters.RunNvidiaContainer, true) }}:
       - script: 'docker pull $(nvidia_dockerfile)'
         displayName: 'Pull Nvidia Dockerfile'
-      ${{ else }}:
+    - ${{ if eq(parameters.RunNvidiaContainer, false) }}:
       - script: 'Can only run pip package in Nvidia Container'
         displayName: 'Please Re-run'
 
