@@ -190,7 +190,9 @@ asm(".linker_option \"-framework\", \"CoreML\"");
   compiled_model_path_ = [compileUrl path];
 
   MLModelConfiguration* config = [MLModelConfiguration alloc];
-  config.computeUnits = MLComputeUnitsAll;
+  config.computeUnits = (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY)
+                            ? MLComputeUnitsCPUOnly
+                            : MLComputeUnitsAll;
   _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
   if (error != NULL) {
@@ -216,7 +218,6 @@ asm(".linker_option \"-framework\", \"CoreML\"");
   }
 
   MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
-  options.usesCPUOnly = coreml_flags_ & COREML_FLAG_USE_CPU_ONLY;
   NSError* error = nil;
   id<MLFeatureProvider> output_feature = [_model predictionFromFeatures:input_feature
                                                                 options:options
@@ -268,7 +269,7 @@ asm(".linker_option \"-framework\", \"CoreML\"");
         break;
       }
       // For this case, since Coreml Spec only uses int32 for model output while onnx provides
-      // int64 for model output data type. We are doing a type casting (int32 -> int64) here 
+      // int64 for model output data type. We are doing a type casting (int32 -> int64) here
       // when copying the model to ORT
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
         if (model_output_type == MLMultiArrayDataTypeInt32) {
