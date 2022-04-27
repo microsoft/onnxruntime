@@ -29,4 +29,4 @@ then
 
 fi
 
-cd $CUR_PWD 
+cd "$CUR_PWD" 
