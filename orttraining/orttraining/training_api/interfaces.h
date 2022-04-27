@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
-
 #pragma once
 #include "core/session/inference_session.h"
 
@@ -218,5 +216,3 @@ class LinearScheduler : public LearningRateScheduler {
 }  // namespace api_test
 }  // namespace training
 }  // namespace onnxruntime
-
-#endif

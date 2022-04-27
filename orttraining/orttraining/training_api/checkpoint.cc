@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
-
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/platform/path_lib.h"
@@ -450,5 +448,3 @@ Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, Check
 }  // namespace api_test
 }  // namespace training
 }  // namespace onnxruntime
-
-#endif

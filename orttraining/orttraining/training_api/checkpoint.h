@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
-
 #pragma once
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
@@ -78,20 +76,15 @@ struct CheckpointStates {
 };
 
 /**
- * @brief A single entry for checkpoint utilities.
+ * @brief The single entry for checkpoint utilities.
  *
  * A checkpoint is a directory of files:
  * checkpoint/
- *   parameters/
- *       tensors.pbseq - tensor protobuf messages
- *   optimizers/
- *       group_0/
- *           momentum_0/
- *               tensors.pbseq - tensor protobuf messages
- *           momentum_1/
- *               tensors.pbseq - tensor protobuf messages
- *           properties.pbseq - group-wise property protobuf messages
- *   properties.pbseq - property protobuf messages
+ *   param_tensors.pbseq - parameter tensor protobuf messages
+ *   optim_group0_momentum0_tensors.pbseq - optimizer momentum state tensor protobuf messages
+ *   optim_group0_momentum1_tensors.pbseq - optimizer momentum state tensor protobuf messages
+ *   optim_group0_properties.pbseq - group-wise optimizer property tensor protobuf messages
+ *   properties.pbseq - custom property protobuf messages
  */
 struct CheckpointUtils {
  public:
@@ -155,5 +148,3 @@ Status CreateOrtValuesFromTensorProtos(
 }  // namespace api_test
 }  // namespace training
 }  // namespace onnxruntime
-
-#endif
