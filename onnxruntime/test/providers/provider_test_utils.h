@@ -3,31 +3,32 @@
 
 #pragma once
 
+#include <variant>
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include <gsl/gsl>
+
 #include "core/common/logging/logging.h"
 #include "core/common/optional.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/customregistry.h"
+#include "core/framework/data_types.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/run_options.h"
+#include "core/framework/session_options.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensor.h"
-#include "core/framework/prepacked_weights_container.h"
+#include "core/framework/TensorSeq.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/framework/data_types.h"
-#include "test/test_environment.h"
-#include "test/framework/TestAllocatorManager.h"
-#include "core/framework/TensorSeq.h"
-#include "core/framework/session_options.h"
 #include "core/providers/providers.h"
-#include "test/util/include/asserts.h"
-
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-#include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
-#include <variant>
+#include "test/framework/TestAllocatorManager.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 
 namespace onnxruntime {
 class InferenceSession;
@@ -48,84 +49,10 @@ struct SeqTensors {
   std::vector<Tensor<T>> tensors;
 };
 
-// Function templates to translate C++ types into ONNX_NAMESPACE::TensorProto_DataTypes
-template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType();
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<float>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<double>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<bool>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<int16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<uint64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<std::string>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<MLFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<BFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-}
-
 template <typename T>
 struct TTypeProto {
   explicit TTypeProto(const std::vector<int64_t>* shape = nullptr) {
-    proto.mutable_tensor_type()->set_elem_type(TypeToDataType<T>());
+    proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
     if (shape) {
       auto mutable_shape = proto.mutable_tensor_type()->mutable_shape();
       for (auto i : *shape) {
@@ -172,8 +99,8 @@ struct TSparseTensorProto {
 template <typename TKey, typename TVal>
 struct MTypeProto {
   MTypeProto() {
-    proto.mutable_map_type()->set_key_type(TypeToDataType<TKey>());
-    proto.mutable_map_type()->mutable_value_type()->mutable_tensor_type()->set_elem_type(TypeToDataType<TVal>());
+    proto.mutable_map_type()->set_key_type(utils::ToTensorProtoElementType<TKey>());
+    proto.mutable_map_type()->mutable_value_type()->mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<TVal>());
     proto.mutable_map_type()->mutable_value_type()->mutable_tensor_type()->mutable_shape()->clear_dim();
   }
   ONNX_NAMESPACE::TypeProto proto;
@@ -192,8 +119,8 @@ template <typename TKey, typename TVal>
 struct VectorOfMapTypeProto {
   VectorOfMapTypeProto() {
     auto* map_type = proto.mutable_sequence_type()->mutable_elem_type()->mutable_map_type();
-    map_type->set_key_type(TypeToDataType<TKey>());
-    map_type->mutable_value_type()->mutable_tensor_type()->set_elem_type(TypeToDataType<TVal>());
+    map_type->set_key_type(utils::ToTensorProtoElementType<TKey>());
+    map_type->mutable_value_type()->mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<TVal>());
     map_type->mutable_value_type()->mutable_tensor_type()->mutable_shape()->clear_dim();
   }
   ONNX_NAMESPACE::TypeProto proto;
@@ -249,9 +176,6 @@ struct CheckParams {
 //  4. Call AddOutput with all expected outputs,
 //     Or call AddReferenceOutputs to compute reference outputs with the model
 //  5. Call Run
-// Not all tensor types and output types are added, if a new input type is used, add it to the TypeToDataType list
-// above for new output types, add a new specialization for Check<> See current usage for an example, should be self
-// explanatory
 class OpTester {
  public:
   // Default to the first opset that ORT was available (7).
@@ -820,7 +744,7 @@ class OpTester {
   GetFetches() { return fetches_; }
 
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {},
-                                                 bool allow_released_onnx_opset_only = true);
+                                                 const ModelOptions& model_options = ModelOptions{});
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {

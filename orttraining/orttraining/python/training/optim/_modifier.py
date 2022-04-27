@@ -11,7 +11,9 @@
 import torch
 from numpy import inf
 from ._multi_tensor_apply import MultiTensorApply
+
 multi_tensor_applier = MultiTensorApply(2048 * 32)
+
 
 class FP16OptimizerModifier(object):
     def __init__(self, optimizer) -> None:
@@ -39,9 +41,11 @@ class FP16OptimizerModifier(object):
                     return False
         return True
 
+
 def check_overflow(params):
     grad_data = [p.grad.data for p in params if p.grad is not None]
-    return check_overflow_for_grads(grad_data) 
+    return check_overflow_for_grads(grad_data)
+
 
 def check_overflow_for_grads(grad_data):
     found_inf = torch.cuda.FloatTensor([0.0])
@@ -50,11 +54,13 @@ def check_overflow_for_grads(grad_data):
     torch._amp_foreach_non_finite_check_and_unscale_(grad_data, found_inf, scaler)
 
     # Check for nan.
-    overflow = (found_inf.item() > 0)
-    return overflow 
+    overflow = found_inf.item() > 0
+    return overflow
 
-def clip_grad_norm_fp32(parameters, max_norm, norm_type,
-                        get_horizontal_model_parallel_rank=None, get_horizontal_model_parallel_group=None):
+
+def clip_grad_norm_fp32(
+    parameters, max_norm, norm_type, get_horizontal_model_parallel_rank=None, get_horizontal_model_parallel_group=None
+):
     import amp_C
 
     horizontal_model_parallel_grad_norm_aggregation = False
@@ -62,7 +68,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
         horizontal_model_parallel_grad_norm_aggregation = True
 
     def param_is_not_tensor_parallel_duplicate(param):
-        is_mp_tensor = hasattr(param, 'model_parallel') and param.model_parallel
+        is_mp_tensor = hasattr(param, "model_parallel") and param.model_parallel
         return is_mp_tensor or (get_horizontal_model_parallel_rank() == 0)
 
     if isinstance(parameters, torch.Tensor):
@@ -77,7 +83,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
         grad = param.grad.detach()
         if grad_not_none:
             # Make sure the grads are in fp32
-            assert param.grad.type() == 'torch.cuda.FloatTensor'
+            assert param.grad.type() == "torch.cuda.FloatTensor"
             if horizontal_model_parallel_grad_norm_aggregation:
                 is_not_tp_duplicate = param_is_not_tensor_parallel_duplicate(param)
                 if grad_not_none and is_not_tp_duplicate:
@@ -98,9 +104,9 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
             total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
 
             # Take max across all model-parallel GPUs.
-            torch.distributed.all_reduce(total_norm_cuda,
-                                        op=torch.distributed.ReduceOp.MAX,
-                                        group=get_horizontal_model_parallel_group())
+            torch.distributed.all_reduce(
+                total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=get_horizontal_model_parallel_group()
+            )
             total_norm = total_norm_cuda[0].item()
 
     else:
@@ -109,10 +115,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
             # Multi-tensor applier takes a function and a list of list
             # and performs the operation on that list all in one kernel.
             grad_norm, _ = multi_tensor_applier(
-                amp_C.multi_tensor_l2norm,
-                dummy_overflow_buf,
-                [grads_for_norm],
-                False # no per-parameter norm
+                amp_C.multi_tensor_l2norm, dummy_overflow_buf, [grads_for_norm], False  # no per-parameter norm
             )
 
             if not horizontal_model_parallel_grad_norm_aggregation:
@@ -120,28 +123,23 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
 
             # Since we will be summing across data parallel groups,
             # we need the pow(norm-type).
-            total_norm = grad_norm ** norm_type
+            total_norm = grad_norm**norm_type
 
         else:
             for grad in grads_for_norm:
                 grad_norm = torch.norm(grad, norm_type)
-                total_norm += grad_norm ** norm_type
+                total_norm += grad_norm**norm_type
 
         if horizontal_model_parallel_grad_norm_aggregation:
             # Sum across all model-parallel GPUs.
-            torch.distributed.all_reduce(total_norm,
-                                        op=torch.distributed.ReduceOp.SUM,
-                                        group=get_horizontal_model_parallel_group())
+            torch.distributed.all_reduce(
+                total_norm, op=torch.distributed.ReduceOp.SUM, group=get_horizontal_model_parallel_group()
+            )
         total_norm = total_norm.item() ** (1.0 / norm_type)
         clip_coef = max_norm / (total_norm + 1e-6)
         # Filter parameters with gradients.
         grads = [p.grad for p in parameters if p.grad is not None]
         if clip_coef < 1.0:
-            multi_tensor_applier(
-                amp_C.multi_tensor_scale,
-                dummy_overflow_buf,
-                [grads, grads],
-                clip_coef)
+            multi_tensor_applier(amp_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coef)
 
     return total_norm
-

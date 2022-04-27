@@ -449,6 +449,44 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
 }
 #endif
 
+TEST(NnapiExecutionProviderTest, TestQDQGemm) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      true /* has_bias */,
+                      1 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_1",
+                  {ExpectedEPNodeAssignment::All});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoTransB) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      true /* has_bias */,
+                      0 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_2",
+                  {ExpectedEPNodeAssignment::All});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoBias) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      false /* has_bias */,
+                      1 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_3",
+                  {ExpectedEPNodeAssignment::All});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQMatMul) {
+  RunQDQModelTest(BuildQDQMatMulTestCase(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */),
+                  "nnapi_qdq_test_graph_matmul",
+                  {ExpectedEPNodeAssignment::All});
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
@@ -490,6 +528,22 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
       << "Some nodes should have been taken by the NNAPI EP";
 #endif
+}
+
+// test that NNAPI EP can process an activation node that is outside of its partition
+TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
+  // model starts with Conv -> Relu
+  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
+  const auto nnapi_partitioning_stop_ops = "Relu";
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(
+      std::make_unique<NnapiExecutionProvider>(0, nnapi_partitioning_stop_ops)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  // expect one NNAPI partition
+  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1);
 }
 
 }  // namespace test
