@@ -1,4 +1,4 @@
-#include "transpose_helper.h"
+#include "core/framework/transpose_helper.h"
 #include "core/mlas/inc/mlas.h"
 /*
 This file contains optimizations for moving a single axis either inwards or outwards.
@@ -78,7 +78,7 @@ typename std::enable_if<has_mlas_transpose<T>::value, void>::type SimpleTranspos
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 void TransposeSingleAxisOutwards(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                                 int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
+                                 size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -94,7 +94,8 @@ void TransposeSingleAxisOutwards(const gsl::span<const size_t>& permutations, co
   auto block_size = input_shape.SizeFromDimension(from + 1);
   auto writes_per_loop = int64_t(input_shape.Size() / num_loops / block_size);
   auto writes_per_writer_per_loop = int64_t(writes_per_loop / num_writers);
-  const int64_t bytes_per_write = block_size * element_size;
+  // TODO: check integer overflow
+  const size_t bytes_per_write = static_cast<size_t>(block_size) * element_size;
 
   switch (bytes_per_write) {
     case (sizeof(uint8_t)): {
@@ -184,7 +185,7 @@ typename std::enable_if<has_mlas_transpose<T>::value, void>::type SimpleTranspos
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 void TransposeSingleAxisInwards(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                                int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
+                                size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -200,7 +201,8 @@ void TransposeSingleAxisInwards(const gsl::span<const size_t>& permutations, con
   auto block_size = input_shape.SizeFromDimension(to + 1);
   auto reads_per_loop = int64_t(input_shape.Size() / num_loops / block_size);
   auto reads_per_reader_per_loop = int64_t(reads_per_loop / num_readers);
-  const int64_t bytes_per_read = block_size * element_size;
+  // TODO: check integer overflow
+  const size_t bytes_per_read = static_cast<size_t>(block_size) * element_size;
 
   switch (bytes_per_read) {
     case (sizeof(uint8_t)): {

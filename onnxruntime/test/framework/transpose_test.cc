@@ -11,16 +11,16 @@ TEST(TransposeIsMovingSingleAxis, test1) {
   std::array<size_t, 4> perm{1, 2, 3, 0};
   size_t from = 0, to = 0;
   ASSERT_TRUE(IsMovingSingleAxis(perm, from, to));
-  ASSERT_EQ(from, 0);
-  ASSERT_EQ(to, 3);
+  ASSERT_EQ(from, static_cast<size_t>(0));
+  ASSERT_EQ(to, static_cast<size_t>(3));
 }
 
 TEST(TransposeIsMovingSingleAxis, test2) {
   std::array<size_t, 4> perm{0, 2, 3, 1};
   size_t from = 0, to = 0;
   ASSERT_TRUE(IsMovingSingleAxis(perm, from, to));
-  ASSERT_EQ(from, 1);
-  ASSERT_EQ(to, 3);
+  ASSERT_EQ(from, static_cast<size_t>(1));
+  ASSERT_EQ(to, static_cast<size_t>(3));
 }
 
 TEST(TransposeIsMovingSingleAxis, test3) {
