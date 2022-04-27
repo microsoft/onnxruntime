@@ -137,6 +137,8 @@ class OrtOpTests(unittest.TestCase):
     ort_tensor = torch.empty_strided(size=(6, 1024, 512), stride=(0, 0, 0), device=device)
     assert(ort_tensor.is_ort)
     assert ort_tensor.stride() == (0, 0, 0)
+    cpu_tensor_copied = ort_tensor.cpu()
+    assert cpu_tensor_copied.stride() == (0,0,0)
 
 if __name__ == '__main__':
   unittest.main()
