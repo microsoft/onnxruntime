@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace training {
@@ -132,14 +132,9 @@ struct OptimizerCheckpointStates {
 static Status CreateOrtValueFromOrtValue(
     const OrtValue& src_ort_value,
     OrtValue& dest_ort_value,
-    onnxruntime::InferenceSession* /*sess*/) {
+    onnxruntime::InferenceSession* sess) {
   const Tensor& tensor = src_ort_value.Get<Tensor>();
-  // AllocatorPtr allocator = sess->GetAllocator(tensor.Location());
-  // TODO: use the sess->GetAllocator() instead of hard coded CPU allocator.
-  static CPUExecutionProviderInfo info;
-  static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
-
+  AllocatorPtr allocator = sess->GetAllocator(tensor.Location());
   const TensorShape& tensor_shape = tensor.Shape();
   MLDataType element_type = tensor.DataType();
 

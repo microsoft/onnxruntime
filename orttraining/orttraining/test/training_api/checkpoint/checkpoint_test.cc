@@ -9,22 +9,24 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
 #include "core/platform/path_lib.h"
+
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
+#include "test/util/include/test/test_environment.h"
+
 #include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utilities.h"
 #include "orttraining/training_api/interfaces.h"
-#include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
-#include "test/test_environment.h"
-#include "test/util/include/test/test_environment.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
 
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api_test;
@@ -35,7 +37,7 @@ namespace training_api {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/")
 
-TEST(CheckPointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
+TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   // Model path and trainable parameter name definitions.
   auto model_uri = MODEL_FOLDER "transform/computation_reduction/e2e.onnx";
   std::vector<std::string> expected_trainable_param_names{
@@ -152,7 +154,7 @@ class OrtValueTensorData {
   std::vector<float> data_;
 };
 
-TEST(CheckPointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
+TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   auto model_uri = MODEL_FOLDER "transform/computation_reduction/e2e.onnx";
   std::unordered_map<std::string, OrtValueTensorData> name_to_ort_value_data{
       {"param1", {{3}, {1.0f, 2.0f, 3.0f}}},
@@ -251,7 +253,7 @@ TEST(CheckPointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   }
 }
 
-TEST(CheckPointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
+TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   CheckpointStates state_dicts_to_save;
   std::vector<std::shared_ptr<CheckpointProperty>>&
       custom_properties = state_dicts_to_save.custom_properties;

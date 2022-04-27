@@ -4,10 +4,9 @@
 #pragma once
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
+#include "onnx/defs/tensor_proto_util.h"
 #include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/training_api/interfaces.h"
-#include <type_traits>
-#include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
 namespace training {
@@ -71,11 +70,10 @@ struct TypedCheckpointProperty : public CheckpointProperty {
 };
 
 /**
- * @brief A data class representing traing states.
- * Including:
- *     > Parameter states.
- *     > Optimizer states.
- *     > User defined training properties, for example 'epoch', 'best_score'.
+ * @brief A data class representing traing states, which include:
+ * 1). parameter states,
+ * 2). optimizer states,
+ * 3). user defined training properties, for example 'epoch', 'best_score'.
  */
 struct CheckpointStates {
  public:
@@ -93,17 +91,16 @@ struct CheckpointStates {
  *   optim_group0_momentum0_tensors.pbseq - optimizer momentum state tensor protobuf messages
  *   optim_group0_momentum1_tensors.pbseq - optimizer momentum state tensor protobuf messages
  *   optim_group0_properties.pbseq - group-wise optimizer property tensor protobuf messages
- *   properties.pbseq - custom property protobuf messages
+ *   custom_properties.pbseq - custom property protobuf messages
  */
 struct CheckpointUtils {
  public:
   /**
    * @brief Save ONNX initializers as ORT checkpoint.
    *
-   * @param tensor_protos parameters in TensorProto format.
+   * @param model_uri ONNX model file path.
    * @param trainable_param_names trainable parameter names.
    * @param checkpoint_path folder where checkpoint is saved.
-   * @param model_location onnx model path.
    * @return Status
    */
   static Status SaveORTCheckpoint(const std::string& model_uri,
