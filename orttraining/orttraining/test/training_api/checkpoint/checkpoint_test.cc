@@ -32,17 +32,11 @@ namespace onnxruntime {
 namespace training {
 namespace test {
 namespace training_api {
+
 #define MODEL_FOLDER ORT_TSTR("testdata/")
 
-TEST(CheckPointApiTest, Save_CPU) {
+TEST(CheckPointApiTest, SaveOnnxModelAsCheckpoint_CPU) {
   auto model_uri = MODEL_FOLDER "transform/computation_reduction/e2e.onnx";
-  std::shared_ptr<Model> p_model;
-
-  const auto& default_logger = onnxruntime::test::DefaultLoggingManager().DefaultLogger();
-
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, default_logger));
-  Graph& graph = p_model->MainGraph();
-
   std::vector<std::string> trainable_weight_names{
       "bert.encoder.layer.2.output.LayerNorm.weight",
       "bert.encoder.layer.2.output.LayerNorm.bias",
@@ -53,14 +47,6 @@ TEST(CheckPointApiTest, Save_CPU) {
       "cls.predictions.bias",
   };
 
-  std::vector<const ONNX_NAMESPACE::TensorProto*> trainable_weight_values;
-  trainable_weight_values.reserve(trainable_weight_names.size());
-  for (size_t i = 0; i < trainable_weight_names.size(); ++i) {
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-    ORT_ENFORCE(graph.GetInitializedTensor(trainable_weight_names[i], tensor_proto), "Failed to find weight values");
-    trainable_weight_values.emplace_back(tensor_proto);
-  }
-
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_test_dir");
   if (Env::Default().FolderExists(ckpt_test_root_dir)) {
     ORT_ENFORCE(Env::Default().DeleteFolder(ckpt_test_root_dir).IsOK());
@@ -69,20 +55,24 @@ TEST(CheckPointApiTest, Save_CPU) {
   TemporaryDirectory tmp_dir{ORT_TSTR("checkpointing_test_dir")};
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ORT_ENFORCE(api_test::CheckpointUtils::SaveORTCheckpoint(trainable_weight_values, trainable_weight_names, checkpoint_path).IsOK());
+  ORT_ENFORCE(api_test::CheckpointUtils::SaveORTCheckpoint(model_uri, trainable_weight_names, checkpoint_path).IsOK());
 
   // Check the ckpt files in the directory.
-  // std::unordered_map<std::string, PathString> group_folder_paths;
-  // LoopDir(checkpoint_path,
-  //         [&group_folder_paths, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
-  //           PathString filename_str = filename;
-  //           if (filename_str[0] == '.' ||
-  //               file_type != OrtFileType::TYPE_DIR) {
-  //             return true;
-  //           }
-  //           group_folder_paths.insert({filename_str, ConcatPathComponent<PathChar>(optimizer_folder_path, filename_str)});
-  //           return true;
-  //         });
+  std::set<PathString> expected_file_names{k_tensors_file_name};
+  std::set<PathString> valid_file_names;
+  LoopDir(checkpoint_path,
+          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
+            PathString filename_str = filename;
+            bool is_valid_ckpt_file_exts =
+                HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
+            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
+              return true;
+            }
+            valid_file_names.emplace(filename_str);
+            return true;
+          });
+
+  ASSERT_EQ(expected_file_names, valid_file_names);
 }
 
 }  // namespace training_api

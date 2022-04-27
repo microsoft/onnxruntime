@@ -14,7 +14,8 @@
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/framework/tensorprotoutils.h"
-
+#include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
 namespace onnxruntime {
 namespace training {
 namespace api_test {
@@ -90,11 +91,25 @@ const std::vector<std::string> ParseStringData(
 }
 
 Status CheckpointUtils::OrtSaveInternal(
-    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+    const std::string& model_uri,
     const std::vector<std::string>& trainable_param_names,
     const PathString& checkpoint_path) {
+  auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+  std::shared_ptr<Model> p_model;
+  ORT_RETURN_IF_ERROR(Model::Load(model_uri, p_model, nullptr, *logger_ptr));
+  Graph& graph = p_model->MainGraph();
+
+  std::vector<const ONNX_NAMESPACE::TensorProto*> trainable_weight_values;
+  trainable_weight_values.reserve(trainable_param_names.size());
+  for (size_t i = 0; i < trainable_param_names.size(); ++i) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    ORT_ENFORCE(graph.GetInitializedTensor(trainable_param_names[i], tensor_proto),
+                "Failed to find weight values: ", trainable_param_names[i]);
+    trainable_weight_values.emplace_back(tensor_proto);
+  }
+
   std::unordered_map<std::string, OrtValue> name_to_ort_value;
-  ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(tensor_protos, name_to_ort_value));
+  ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(trainable_weight_values, name_to_ort_value));
 
   auto cpu_data_transfer = std::make_unique<CPUDataTransfer>();
   DataTransferManager data_transfer_mgr;
@@ -125,108 +140,123 @@ Status CheckpointUtils::OrtSaveInternal(
       << "Checkpoint directory exists - data may be overwritten.";
   ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(checkpoint_path));
 
-  {
-    // Write weight tensors files.
-    const PathString parameter_folder_path = CreateFolderIfNotExists(checkpoint_path, "parameters");
-    const auto& param_states = states.module_checkpoint_states.named_parameters;
+  // Write weight tensors files.
+  ORT_RETURN_IF_ERROR(OrtSaveModuleStatesInternal(states.module_checkpoint_states, checkpoint_path));
+
+  // Write optimizer state tensors files.
+  const PathString optimizer_folder_path = CreateFolderIfNotExists(checkpoint_path, "optimizers");
+  ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(states.optimizer_checkpoint_states, optimizer_folder_path));
+
+  // Write properties file
+  // Save properties into a checkpoint property file (with postfix .prop).
+  const std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>>& named_properties = states.named_properties;
+  if (!named_properties.empty()) {
+    std::vector<ONNX_NAMESPACE::TensorProto> properties_tensor_protos;
+    for (auto it = named_properties.begin(); it != named_properties.end(); ++it) {
+      properties_tensor_protos.emplace_back(it->second->ToTensorProto());
+    }
+    ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(GetCheckpointPropertiesFilePath(checkpoint_path),
+                                               properties_tensor_protos));
+  }
+
+  LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
+  return Status::OK();
+}
+
+Status CheckpointUtils::OrtSaveModuleStatesInternal(ModuleCheckpointStates& module_states,
+                                                    const PathString& parameter_folder_path) {
+  // Write weight tensors files.
+  const auto& param_states = module_states.named_parameters;
+  if (!param_states.empty()) {
     std::unordered_map<std::string, OrtValue> model_parameter_ort_values;
     for (auto it = param_states.begin(); it != param_states.end(); ++it) {
       model_parameter_ort_values.insert({it->first, it->second->Data()});
     }
 
-    ORT_ENFORCE(states.module_checkpoint_states.train_session_data_transfer_mgr_,
+    ORT_ENFORCE(module_states.train_session_data_transfer_mgr_,
                 "module checkpoint state has null train_session_data_transfer_mgr.");
     ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
         GetCheckpointTensorsFilePath(parameter_folder_path),
         GetCheckpointTensorsDataFilePath(parameter_folder_path),
-        *states.module_checkpoint_states.train_session_data_transfer_mgr_,
+        *module_states.train_session_data_transfer_mgr_,
         model_parameter_ort_values));
   }
 
-  {
-    // Write optimizer state tensors files.
-    const PathString optimizer_folder_path = CreateFolderIfNotExists(checkpoint_path, "optimizers");
+  return Status::OK();
+}
 
-    // Currently we only have one single group, but it would be simple to extend
-    // supporting multiple groups in the future.
-    for (auto& group_named_optimizer_state : states.optimizer_checkpoint_states.group_named_optimizer_states) {
-      const std::string& group_folder_name = group_named_optimizer_state.first;
-      const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr = group_named_optimizer_state.second;
+Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states,
+                                                       const PathString& optimizer_folder_path) {
+  // Write optimizer state tensors files.
 
-      const PathString cur_group_folder_path = CreateFolderIfNotExists(optimizer_folder_path, group_folder_name);
+  // Currently we only have one single group, but it would be simple to extend
+  // supporting multiple groups in the future.
+  for (auto& group_named_optimizer_state : optimizer_states.group_named_optimizer_states) {
+    const std::string& group_folder_name = group_named_optimizer_state.first;
+    const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr = group_named_optimizer_state.second;
 
-      // Write optimizer states for parameters in current group.
-      // Under "group_<index>" folder, there will be multiple subfolders:
-      // Each folder represent a optimizer state (for example, momentum_1, momentus_2 for Adam optimizers)
+    const PathString cur_group_folder_path = CreateFolderIfNotExists(optimizer_folder_path, group_folder_name);
 
-      // Re-organize optimizer_state_ort_values mapping
-      // > Firstly indexed by moment state names;
-      // > Secondly indexed by parameter names.
-      std::unordered_map<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
-      for (const std::pair<std::string, ParameterOptimizerState>&
-               param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states_) {
-        const std::string& param_name = param_named_optimizer_state.first;
-        const auto& param_optimizer_state = param_named_optimizer_state.second;
+    // Write optimizer states for parameters in current group.
+    // Under "group_<index>" folder, there will be multiple subfolders:
+    // Each folder represent a optimizer state (for example, momentum_1, momentus_2 for Adam optimizers)
 
-        for (const std::pair<std::string, std::shared_ptr<OrtValue>>&
-                 m_state : param_optimizer_state.states_) {
-          const std::string& m_state_name = m_state.first;
-          const std::shared_ptr<OrtValue>& m_state_val = m_state.second;
+    // Re-organize optimizer_state_ort_values mapping
+    // > Firstly indexed by moment state names;
+    // > Secondly indexed by parameter names.
+    std::unordered_map<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
+    for (const std::pair<std::string, ParameterOptimizerState>&
+             param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states_) {
+      const std::string& param_name = param_named_optimizer_state.first;
+      const auto& param_optimizer_state = param_named_optimizer_state.second;
 
-          if (optimizer_state_ort_values.find(m_state_name) == optimizer_state_ort_values.end()) {
-            std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, *(m_state_val)}};
-            optimizer_state_ort_values.insert({m_state_name, param_name_to_ortvalue});
-          } else {
-            optimizer_state_ort_values[m_state_name].insert({param_name, *(m_state_val)});
-          }
+      for (const std::pair<std::string, std::shared_ptr<OrtValue>>&
+               m_state : param_optimizer_state.states_) {
+        const std::string& m_state_name = m_state.first;
+        const std::shared_ptr<OrtValue>& m_state_val = m_state.second;
+
+        if (optimizer_state_ort_values.find(m_state_name) == optimizer_state_ort_values.end()) {
+          std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, *(m_state_val)}};
+          optimizer_state_ort_values.insert({m_state_name, param_name_to_ortvalue});
+        } else {
+          optimizer_state_ort_values[m_state_name].insert({param_name, *(m_state_val)});
         }
       }
-      for (auto& pair : optimizer_state_ort_values) {
-        const auto& state_name = pair.first;
-        const std::unordered_map<std::string, OrtValue>& param_name_to_ortvalue = pair.second;
-        const PathString opt_state_folder_path = CreateFolderIfNotExists(optimizer_folder_path, state_name);
-
-        ORT_ENFORCE(states.optimizer_checkpoint_states.optimizer_session_data_transfer_mgr_,
-                    "optimizer checkpoint state has null optimizer_session_data_transfer_mgr.");
-        ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
-            GetCheckpointTensorsFilePath(opt_state_folder_path),
-            GetCheckpointTensorsDataFilePath(opt_state_folder_path),
-            *states.optimizer_checkpoint_states.optimizer_session_data_transfer_mgr_,
-            param_name_to_ortvalue));
-      }
-
-      //,
-      // TypedCheckpointProperty("step_", group_optimizer_state_ptr->step_)
-
-      // Storing group-wise properties.
-      std::vector<std::unique_ptr<CheckpointProperty>> group_wise_properties;
-      group_wise_properties.emplace_back(
-          std::make_unique<TypedCheckpointProperty<float>>("learning_rate_", group_optimizer_state_ptr->learning_rate_));
-      group_wise_properties.emplace_back(
-          std::make_unique<TypedCheckpointProperty<int64_t>>("step_", group_optimizer_state_ptr->step_));
-
-      std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
-      for (auto it = group_wise_properties.begin(); it != group_wise_properties.end(); ++it) {
-        group_wise_properties_tensor_protos.emplace_back((*it)->ToTensorProto());
-      }
-
-      ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(
-          GetCheckpointPropertiesFilePath(cur_group_folder_path),
-          group_wise_properties_tensor_protos));
     }
+    for (auto& pair : optimizer_state_ort_values) {
+      const auto& state_name = pair.first;
+      const std::unordered_map<std::string, OrtValue>& param_name_to_ortvalue = pair.second;
+      const PathString opt_state_folder_path = CreateFolderIfNotExists(optimizer_folder_path, state_name);
+
+      ORT_ENFORCE(optimizer_states.optimizer_session_data_transfer_mgr_,
+                  "optimizer checkpoint state has null optimizer_session_data_transfer_mgr.");
+      ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
+          GetCheckpointTensorsFilePath(opt_state_folder_path),
+          GetCheckpointTensorsDataFilePath(opt_state_folder_path),
+          *optimizer_states.optimizer_session_data_transfer_mgr_,
+          param_name_to_ortvalue));
+    }
+
+    //,
+    // TypedCheckpointProperty("step_", group_optimizer_state_ptr->step_)
+
+    // Storing group-wise properties.
+    std::vector<std::unique_ptr<CheckpointProperty>> group_wise_properties;
+    group_wise_properties.emplace_back(
+        std::make_unique<TypedCheckpointProperty<float>>("learning_rate_", group_optimizer_state_ptr->learning_rate_));
+    group_wise_properties.emplace_back(
+        std::make_unique<TypedCheckpointProperty<int64_t>>("step_", group_optimizer_state_ptr->step_));
+
+    std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
+    for (auto it = group_wise_properties.begin(); it != group_wise_properties.end(); ++it) {
+      group_wise_properties_tensor_protos.emplace_back((*it)->ToTensorProto());
+    }
+
+    ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(
+        GetCheckpointPropertiesFilePath(cur_group_folder_path),
+        group_wise_properties_tensor_protos));
   }
 
-  // Write properties file
-  // Save properties into a checkpoint property file (with postfix .prop).
-  const std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>>& named_properties = states.named_properties;
-  std::vector<ONNX_NAMESPACE::TensorProto> properties_tensor_protos;
-  for (auto it = named_properties.begin(); it != named_properties.end(); ++it) {
-    properties_tensor_protos.emplace_back(it->second->ToTensorProto());
-  }
-  ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(GetCheckpointPropertiesFilePath(checkpoint_path),
-                                             properties_tensor_protos));
-
-  LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
   return Status::OK();
 }
 

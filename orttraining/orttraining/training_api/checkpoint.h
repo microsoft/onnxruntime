@@ -104,10 +104,10 @@ struct CheckpointUtils {
    * @param model_location onnx model path.
    * @return Status
    */
-  static Status SaveORTCheckpoint(const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+  static Status SaveORTCheckpoint(const std::string& model_uri,
                                   const std::vector<std::string>& trainable_param_names,
                                   const PathString& checkpoint_path) {
-    return OrtSaveInternal(tensor_protos, trainable_param_names, checkpoint_path);
+    return OrtSaveInternal(model_uri, trainable_param_names, checkpoint_path);
   }
 
   /**
@@ -135,9 +135,14 @@ struct CheckpointUtils {
  private:
   CheckpointUtils() {}
 
-  static Status OrtSaveInternal(const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+  static Status OrtSaveInternal(const std::string& model_uri,
                                 const std::vector<std::string>& trainable_param_names,
                                 const PathString& checkpoint_path);
+
+  static Status OrtSaveModuleStatesInternal(ModuleCheckpointStates& module_states,
+                                            const PathString& parameter_folder_path);
+  static Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states,
+                                               const PathString& optimizer_folder_path);
   static Status OrtSaveInternal(CheckpointStates& states, const PathString& checkpoint_path);
   static Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
 };
