@@ -57,6 +57,6 @@ class QGlobalAveragePool(QuantOperatorBase):
             ],
             [quantized_output_value.q_name],
             qnode_name,
-            **kwargs
+            **kwargs,
         )
         self.quantizer.new_nodes += [qnode]
