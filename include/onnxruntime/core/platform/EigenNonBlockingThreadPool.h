@@ -1386,6 +1386,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         assert(seen != ThreadStatus::Blocking);
         if (seen == ThreadStatus::Blocked) {
           status = ThreadStatus::Waking;
+          lk.unlock();
           cv.notify_one();
         }
       }
