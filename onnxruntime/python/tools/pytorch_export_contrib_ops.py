@@ -15,10 +15,8 @@ except ModuleNotFoundError:
         "This module is only useful in combination with PyTorch. To install PyTorch see https://pytorch.org/."
     )
 
-import torch.onnx
 import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
-from torch.onnx import register_custom_op_symbolic
 
 _OPSET_VERSION = 1
 _registered_ops: typing.AbstractSet[str] = set()
@@ -26,7 +24,7 @@ _registered_ops: typing.AbstractSet[str] = set()
 
 def _reg(symbolic_fn: typing.Callable):
     name = "::%s" % symbolic_fn.__name__
-    register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
+    torch.onnx.register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
     _registered_ops.add(name)
 
 
