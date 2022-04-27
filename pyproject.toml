@@ -2,6 +2,7 @@
 line-length = 120
 # extend-exclude needs to be a regular expression
 extend-exclude = "cmake|onnxruntime/core/flatbuffers/"
+target-version = ["py37", "py38", "py39", "py310"]
 
 [tool.isort]
 profile = "black"
