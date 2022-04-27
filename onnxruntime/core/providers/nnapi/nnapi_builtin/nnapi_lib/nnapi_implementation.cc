@@ -11,6 +11,9 @@ limitations under the License.
 ==============================================================================*/
 #include "nnapi_implementation.h"
 
+// use real implementation on Android. 
+// use stub on other platforms to allow unit testing model building. 
+#if defined(__ANDROID__)
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -198,14 +201,10 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_finish);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_addOperand);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_setOperandValue);
-  LOAD_FUNCTION_OPTIONAL(
-      libneuralnetworks,
-      ANeuralNetworksModel_setOperandSymmPerChannelQuantParams);
-  LOAD_FUNCTION(libneuralnetworks,
-                ANeuralNetworksModel_setOperandValueFromMemory);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksModel_setOperandSymmPerChannelQuantParams);
+  LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_setOperandValueFromMemory);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_addOperation);
-  LOAD_FUNCTION(libneuralnetworks,
-                ANeuralNetworksModel_identifyInputsAndOutputs);
+  LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_identifyInputsAndOutputs);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_create);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_free);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_setPreference);
@@ -215,8 +214,7 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_setInput);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_setInputFromMemory);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_setOutput);
-  LOAD_FUNCTION(libneuralnetworks,
-                ANeuralNetworksExecution_setOutputFromMemory);
+  LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_setOutputFromMemory);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_startCompute);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_wait);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_free);
@@ -330,6 +328,173 @@ const NnApi LoadNnApi() {
 }
 
 }  // namespace
+
+#else
+//
+// Stub out the API with default implementations that do nothing.
+// 
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+
+const NnApi LoadNnApi() {
+  NnApi nnapi = {};
+  nnapi.android_sdk_version = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
+  nnapi.nnapi_runtime_feature_level = ANEURALNETWORKS_FEATURE_LEVEL_5;
+
+  nnapi.ANeuralNetworksMemory_createFromFd =
+      [](size_t, int, int, size_t, ANeuralNetworksMemory**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksMemory_free = [](ANeuralNetworksMemory*) {};
+  nnapi.ANeuralNetworksModel_create = [](ANeuralNetworksModel**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksModel_free = [](ANeuralNetworksModel*) {};
+  nnapi.ANeuralNetworksModel_finish = [](ANeuralNetworksModel*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksModel_addOperand = [](ANeuralNetworksModel*, const ANeuralNetworksOperandType*) {
+    return int(ANEURALNETWORKS_NO_ERROR);
+  };
+  nnapi.ANeuralNetworksModel_setOperandValue = [](ANeuralNetworksModel*, int32_t, const void*, size_t) {
+    return int(ANEURALNETWORKS_NO_ERROR);
+  };
+  nnapi.ANeuralNetworksModel_setOperandSymmPerChannelQuantParams =
+      [](ANeuralNetworksModel*, int32_t, const ANeuralNetworksSymmPerChannelQuantParams*) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksModel_setOperandValueFromMemory =
+      [](ANeuralNetworksModel*, int32_t, const ANeuralNetworksMemory*, size_t, size_t) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksModel_addOperation =
+      [](ANeuralNetworksModel*, ANeuralNetworksOperationType, uint32_t, const uint32_t*, uint32_t, const uint32_t*) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksModel_identifyInputsAndOutputs =
+      [](ANeuralNetworksModel*, uint32_t, const uint32_t*, uint32_t, const uint32_t*) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksModel_relaxComputationFloat32toFloat16 =
+      [](ANeuralNetworksModel*, bool) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksCompilation_create =
+      [](ANeuralNetworksModel*, ANeuralNetworksCompilation**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksCompilation_free = [](ANeuralNetworksCompilation*) {};
+  nnapi.ANeuralNetworksCompilation_setPreference =
+      [](ANeuralNetworksCompilation*, int32_t) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksCompilation_finish =
+      [](ANeuralNetworksCompilation*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_create =
+      [](ANeuralNetworksCompilation*, ANeuralNetworksExecution**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_free = [](ANeuralNetworksExecution*) {};
+  nnapi.ANeuralNetworksExecution_setInput =
+      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, const void*, size_t) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksExecution_setInputFromMemory =
+      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, const ANeuralNetworksMemory*, size_t, size_t) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksExecution_setOutput =
+      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, void*, size_t) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksExecution_setOutputFromMemory =
+      [](ANeuralNetworksExecution*, int32_t, const ANeuralNetworksOperandType*, const ANeuralNetworksMemory*, size_t, size_t) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksExecution_startCompute =
+      [](ANeuralNetworksExecution*, ANeuralNetworksEvent**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksEvent_wait = [](ANeuralNetworksEvent*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksEvent_free = [](ANeuralNetworksEvent*) {};
+  nnapi.ASharedMemory_create = [](const char*, size_t) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworks_getDeviceCount = [](uint32_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworks_getDevice = [](uint32_t, ANeuralNetworksDevice**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksDevice_getName =
+      [](const ANeuralNetworksDevice*, const char**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksDevice_getVersion =
+      [](const ANeuralNetworksDevice*, const char**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksDevice_getFeatureLevel =
+      [](const ANeuralNetworksDevice*, int64_t* feature_level) {
+        *feature_level = ANEURALNETWORKS_FEATURE_LEVEL_5;
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksDevice_getType =
+      [](const ANeuralNetworksDevice*, int32_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksModel_getSupportedOperationsForDevices =
+      [](const ANeuralNetworksModel*, const ANeuralNetworksDevice* const*, uint32_t, bool*) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksCompilation_createForDevices =
+      [](ANeuralNetworksModel*, const ANeuralNetworksDevice* const*, uint32_t, ANeuralNetworksCompilation**) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksCompilation_setCaching =
+      [](ANeuralNetworksCompilation*, const char*, const uint8_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksCompilation_setTimeout =
+      [](ANeuralNetworksCompilation*, uint64_t) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksCompilation_setPriority =
+      [](ANeuralNetworksCompilation*, int) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_compute =
+      [](ANeuralNetworksExecution*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_setTimeout =
+      [](ANeuralNetworksExecution*, uint64_t) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_setLoopTimeout =
+      [](ANeuralNetworksExecution*, uint64_t) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_getOutputOperandRank =
+      [](ANeuralNetworksExecution*, int32_t, uint32_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_getOutputOperandDimensions =
+      [](ANeuralNetworksExecution*, int32_t, uint32_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksBurst_create =
+      [](ANeuralNetworksCompilation*, ANeuralNetworksBurst**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksBurst_free = [](ANeuralNetworksBurst*) {};
+  nnapi.ANeuralNetworksExecution_burstCompute =
+      [](ANeuralNetworksExecution*, ANeuralNetworksBurst*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksMemory_createFromAHardwareBuffer =
+      [](const AHardwareBuffer*, ANeuralNetworksMemory**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_setMeasureTiming =
+      [](ANeuralNetworksExecution*, bool) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_getDuration =
+      [](const ANeuralNetworksExecution*, int32_t, uint64_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksDevice_getExtensionSupport =
+      [](const ANeuralNetworksDevice*, const char*, bool*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksModel_getExtensionOperandType =
+      [](ANeuralNetworksModel*, const char*, uint16_t, int32_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksModel_getExtensionOperationType =
+      [](ANeuralNetworksModel*, const char*, uint16_t, ANeuralNetworksOperationType*) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksModel_setOperandExtensionData =
+      [](ANeuralNetworksModel*, int32_t, const void*, size_t) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksMemoryDesc_create = [](ANeuralNetworksMemoryDesc**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksMemoryDesc_free = [](ANeuralNetworksMemoryDesc*) {};
+  nnapi.ANeuralNetworksMemoryDesc_addInputRole =
+      [](ANeuralNetworksMemoryDesc*, const ANeuralNetworksCompilation*, uint32_t, float) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksMemoryDesc_addOutputRole =
+      [](ANeuralNetworksMemoryDesc*, const ANeuralNetworksCompilation*, uint32_t, float) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksMemoryDesc_setDimensions =
+      [](ANeuralNetworksMemoryDesc*, uint32_t, const uint32_t*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksMemoryDesc_finish =
+      [](ANeuralNetworksMemoryDesc*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksMemory_createFromDesc =
+      [](const ANeuralNetworksMemoryDesc*, ANeuralNetworksMemory**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksMemory_copy =
+      [](const ANeuralNetworksMemory*, const ANeuralNetworksMemory*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksEvent_createFromSyncFenceFd =
+      [](int, ANeuralNetworksEvent**) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksEvent_getSyncFenceFd =
+      [](const ANeuralNetworksEvent*, int*) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_startComputeWithDependencies =
+      [](ANeuralNetworksExecution*, const ANeuralNetworksEvent* const*, uint32_t, uint64_t, ANeuralNetworksEvent**) {
+        return int(ANEURALNETWORKS_NO_ERROR);
+      };
+  nnapi.ANeuralNetworksExecution_enableInputAndOutputPadding =
+      [](ANeuralNetworksExecution*, bool) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworksExecution_setReusable =
+      [](ANeuralNetworksExecution*, bool) { return int(ANEURALNETWORKS_NO_ERROR); };
+  nnapi.ANeuralNetworks_getRuntimeFeatureLevel = []() { return int64_t(ANEURALNETWORKS_FEATURE_LEVEL_5); };
+
+  return nnapi;
+}
+#endif  // defined(__ANDROID__)
 
 const NnApi* NnApiImplementation() {
   static const NnApi nnapi = LoadNnApi();
