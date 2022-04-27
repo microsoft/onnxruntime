@@ -732,12 +732,6 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         blocked_(0),
         done_(false),
         should_spin_fn_(thread_options.is_session_run_in_progress_fn) {
-
-    if (!should_spin_fn_) {
-      // Traditional behavior, always spin unless disabled.
-      should_spin_fn_ = []() { return true; };
-    }
-
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
     // and NonEmptyQueueIndex. Iteration is based on the fact that if we take
@@ -1468,13 +1462,24 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Task t = q.PopFront();
       if (!t) {
         // Spin waiting for work.
-        for (int i = 0; i < spin_count && !t && should_spin_fn_() && !done_; i++) {
-          if (((i + 1) % steal_count == 0)) {
-            t = Steal(StealAttemptKind::TRY_ONE);
-          } else {
-            t = q.PopFront();
+        if (should_spin_fn_) {
+          for (int i = 0; i < spin_count && !t && should_spin_fn_() && !done_; i++) {
+            if (((i + 1) % steal_count == 0)) {
+              t = Steal(StealAttemptKind::TRY_ONE);
+            } else {
+              t = q.PopFront();
+            }
+            onnxruntime::concurrency::SpinPause();
           }
-          onnxruntime::concurrency::SpinPause();
+        } else {
+          for (int i = 0; i < spin_count && !t && !done_; i++) {
+            if (((i + 1) % steal_count == 0)) {
+              t = Steal(StealAttemptKind::TRY_ONE);
+            } else {
+              t = q.PopFront();
+            }
+            onnxruntime::concurrency::SpinPause();
+          }
         }
 
         // Attempt to block
