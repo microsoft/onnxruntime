@@ -45,16 +45,16 @@ group_title = "Group"
 # List of column name tuples for operator metrics: (<map_key>, <csv_column>, <db_column>)
 op_metrics_columns = [
     ("model_name", "Model", "Model"),
-    ("ep", "Input EP", "InputEP"),
+    ("ep", "EP", "EP"),
     ("num_cpu_ops", "Num CPU Ops", "NumCPUOps"),
     ("cpu_exec_time", "CPU Ops execution time", "CPUExecTime"),
-    ("cpu_ops", "CPU Ops", "CPUOps"),
+    ("cpu_ops", "CPU Ops", "CPUOperatorDurations"),
     ("num_cuda_ops", "Num CUDA Ops", "NumCUDAOps"),
     ("cuda_exec_time", "CUDA Ops execution time", "CUDAExecTime"),
-    ("cuda_ops", "CUDA Ops", "CUDAOps"),
+    ("cuda_ops", "CUDA Ops", "CUDAOperatorDurations"),
     ("num_trt_ops", "Num TRT Ops", "NumTRTOps"),
     ("trt_exec_time", "TRT Ops execution time", "TRTExecTime"),
-    ("trt_ops", "TRT Ops", "TRTOps"),
+    ("trt_ops", "TRT Ops", "TRTOperatorDurations"),
 ]
 
 # endings
