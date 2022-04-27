@@ -4,14 +4,20 @@
 """Test export of PyTorch operators using ONNX Runtime contrib ops."""
 
 import copy
+import distutils.version
 import io
 import unittest
 
 import numpy as np
+import parameterized
 import torch
 
 import onnxruntime
 from onnxruntime.tools import pytorch_export_contrib_ops
+
+
+def _torch_version_lower_than(v):
+    return distutils.version.LooseVersion(torch.__version__) < distutils.version.LooseVersion(v)
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):
@@ -123,14 +129,12 @@ class ONNXExporterTest(unittest.TestCase):
         x = torch.randn(3, 3)
         self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
-    def test_gelu_supports_approximate_param(self):
-        # TODO(justinchu): Change this to a parameterized test when we have
-        # parameterized as a dependency
-        for approximate in ("none", "tanh"):
-            with self.subTest(approximate=approximate):
-                model = torch.nn.GELU(approximate=approximate)
-                x = torch.randn(3, 3)
-                self.run_test(model, x, custom_opsets={"com.microsoft": 1})
+    @unittest.skipIf(_torch_version_lower_than("1.12"), "Gelu's approximate parameter unsupported in PyTorch < 1.12")
+    @parameterized.parameterized.expand([("none",), ("tanh",)])
+    def test_gelu_supports_approximate_param(self, approximate: str):
+        model = torch.nn.GELU(approximate=approximate)
+        x = torch.randn(3, 3)
+        self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
     def test_triu(self):
         for i in range(-5, 5):
