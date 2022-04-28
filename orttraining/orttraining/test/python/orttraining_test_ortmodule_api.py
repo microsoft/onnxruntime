@@ -1086,6 +1086,75 @@ def test_export_correctness_pool2d(pool_type, stride):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
 
+@pytest.mark.parametrize("operator", ["min", "max"])
+@pytest.mark.parametrize("dim", [None, 0, -1])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_gradient_correctness_max(operator, dim, keepdim):
+    func = getattr(torch, operator)
+
+    class NeuralNetMax(torch.nn.Module):
+        def forward(self, input):
+            if dim is None:
+                return func(input), None
+            # torch.max(input, dim, keepdim) returns (max_values, max_indices)
+            return func(input, dim=dim, keepdim=keepdim)
+
+    N, C, D = 16, 256, 128
+    device = "cuda"
+    pt_model = NeuralNetMax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction, indices = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, indices
+
+    for _ in range(10):
+        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction, pt_indices = run_step(pt_model, pt_input)
+        ort_prediction, ort_indices = run_step(ort_model, ort_input)
+
+        if dim is not None:  # For torch.max(input, dim, keepdim), also check the max_indices
+            assert torch.equal(ort_indices, pt_indices)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
+@pytest.mark.skip("temporarily disabled due to PyTorch's change of max implementation")
+@pytest.mark.parametrize("operator", ["min", "max"])
+def test_gradient_correctness_max_two_tensors(operator):
+    func = getattr(torch, operator)
+
+    class NeuralNetMaxTwoTensors(torch.nn.Module):
+        def forward(self, input, other):
+            return func(input, other)
+
+    N, C, D = 16, 256, 128
+    device = "cuda"
+    pt_model = NeuralNetMaxTwoTensors().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, *input):
+        prediction = model(*input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
+        pt_other = torch.rand((N, C, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        ort_other = copy.deepcopy(pt_other)
+        pt_prediction = run_step(pt_model, pt_input, pt_other)
+        ort_prediction = run_step(ort_model, ort_input, ort_other)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):
         def __init__(self, input_size, hidden_size, unfold_dim, unfold_size, unfold_step):
@@ -3120,7 +3189,7 @@ def test_train_eval_with_various_outputs():
         def forward(self, input1):
             out1 = self.fc1(input1)
             out2 = self.relu(out1)
-            # return different number of outputs for train ane eval mode
+            # return different number of outputs for train and eval mode
             if self.training:
                 return out1, out2
             else:
