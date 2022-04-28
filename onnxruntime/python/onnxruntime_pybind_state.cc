@@ -1563,8 +1563,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 }
 
-// static variable used to create inference session and training session.
-static std::unique_ptr<Environment> session_env;
+
 
 void CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
@@ -1596,10 +1595,6 @@ void CreateInferencePybindStateModule(py::module& m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
-  auto atexit = py::module_::import("atexit");
-  atexit.attr("register")(py::cpp_function([]() {
-    session_env = nullptr;
-  }));
 }
 
 void InitArray() {
@@ -1609,8 +1604,8 @@ void InitArray() {
   })();
 }
 
-void InitializeEnv() {
-  auto initialize = [&]() {
+std::unique_ptr<Environment> InitializeEnv() {
+    std::unique_ptr<Environment> session_env;
     // Initialization of the module
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
@@ -1619,20 +1614,11 @@ void InitializeEnv() {
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),
                                               session_env));
-
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
-    initialized = true;
-  };
-  initialize();
+    return session_env;
 }
 
 onnxruntime::Environment& GetEnv() {
-  if (!session_env) {
-    InitializeEnv();
-  }
+  static std::unique_ptr<Environment> session_env = InitializeEnv();
   return *session_env;
 }
 
