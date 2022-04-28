@@ -34,13 +34,15 @@ struct CPUNotification {
 };
 
 using NotificationIndex = size_t;
-using kernel_invoke_fn = std::function<void(NodeIndex)>;
-using notification_wait_fn = std::function<void(NotificationIndex)>;
-using notification_notify_fn = std::function<void(NotificationIndex)>;
-
+// this opaque handle could be anything the target device generated.
+// it could be a cuda event, or a cpu notification implementation
 using NotificationHandle = void*;
+// it can be either a cuda stream, or even nullptr for device doesn't have stream support like cpu.
 using StreamHandle = void*;
 
+// a stream abstraction which hold an opaque handle, and a reference to which EP instance this stream belong to.
+// it need to be EP instance as we might have different stream on different EP with same type.
+// i.e. different cuda stream on different GPU.
 struct Stream {
   StreamHandle handle;
   const IExecutionProvider* provider;
@@ -48,17 +50,23 @@ struct Stream {
   Stream::Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
 };
 
+// similiar as Stream
 struct Notification {
   NotificationHandle handle;
   const IExecutionProvider* provider;
 };
 
+// the definition for the handle for stream commands
+// EP can register the handle to the executor.
+// in the POC, just use primitive function pointer
+// TODO: use a better way to dispatch handles.
 using WaitNotificationFn = void (*)(Notification& notification);
 using NotifyNotificationFn = void (*)(Notification& notification);
 using CreateNotificationFn = void*(*)(const Stream&);
 using ReleaseNotificationFn = void(*)(void*);
 using KernelLaunchFn = void(*)(const OpKernel*, OpKernelContext*);
 
+// a simple registry which hold the handles EP registered.
 class StreamCommandHandleRegistry {
 public:
   CreateNotificationFn GetCreateNotificationFn(Stream* stream) {
@@ -76,6 +84,8 @@ public:
     return it == kernel_launch_map_.end() ? nullptr : it->second;
   }
 
+  // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
+  // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
   WaitNotificationFn GetWaitHandle(Stream* notification_owner_stream, const std::string& executor_ep_type) {
     auto it = notification_wait_map_.find(GetWaitKey(notification_owner_stream->provider->Type(), executor_ep_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
@@ -154,6 +164,9 @@ void RegisterStreamCommandHanler() {
   StreamCommandHandleRegistry::GetInstance().RegisterReleaseNotificationFn(kCpuExecutionProvider, ReleaseCPUNotification);
 }
 
+// execution context that support to execute a command on stream.
+// The notifications got instantiated when execution context is constructed.
+// TODO: if we merge the notifications to execution frame, we might don't need this.
 struct ExecutionContext {
   const SessionState* session_state;
   ExecutionFrame* frame;
@@ -175,6 +188,7 @@ struct ExecutionContext {
   }
 };
 
+// Command in the logic stream
 struct Command {
   enum CommandType : int {
     LaunchKernel,
@@ -187,9 +201,16 @@ struct Command {
   // if command type is wait/notify, arg is the notification id
   // if command type is release memory, arg is the tensor index
   size_t arg;
+  // the handle for this command. 
+  // since every node already been placed on a given EP. 
+  // the handle for current command can be statically determined.
   void (*handle)();
 };
 
+// a logic stream to execute command.
+// each command in the logic stream will be executed in FIFO
+// a logic stream will be binded to multiple device stream, as the command in the same logic stream may be executed on different EPs.
+// i.e., if we set concurrency level to 1, the single logic stream will be equal to our sequential execution plan, which has both cpu and gpu kernels
 struct LogicStream {
  
   std::vector<std::unique_ptr<Stream>> device_streams_;
@@ -234,13 +255,18 @@ struct ParallelExecutionPlanImpl {
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
   const SessionState& session_state_;
   int num_logic_streams_{};
-  //size_t num_notifications_{};
+  // the stream where the notificaiton got created.
   std::vector<Stream*> notification_owners_;
 };
+
+std::once_flag populate_command_handle_flag;
 
 //todo: remove dependency on session_state
 ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session_state,
                                                      int num_logic_streams) : session_state_(session_state), num_logic_streams_(num_logic_streams) {
+  // register handle once
+  std::call_once(populate_command_handle_flag, []() { RegisterStreamCommandHanler(); });
+  // instantiate logic streams
   std::vector<std::vector<std::string>> streams_stdout;
   for (int i = 0; i < num_logic_streams_; ++i) {
     logic_streams_.push_back(std::make_unique<LogicStream>());
@@ -345,8 +371,8 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         auto notify_handle = StreamCommandHandleRegistry::GetInstance().GetNotifyHandle(stream_it->get());
         //TODO: find a better way to bind function pointer
         logic_streams_[i]->commands_.push_back({
-            Command::LaunchKernel,
-            node_index,
+            Command::Notify,
+            notification_it->second,
             reinterpret_cast<void (*)()>(notify_handle),
         });
       }
@@ -412,6 +438,8 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
   for (int i = 0; i < num_logic_streams_-1; ++i) {
     barriers[i].wait();
   }
+
+  //TODO: we might need to flush all the stream before return the result.
 
   ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
   return Status::OK();
