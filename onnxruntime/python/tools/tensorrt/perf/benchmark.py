@@ -346,7 +346,9 @@ def inference_ort(
                     args.io_binding,
                     io_binding,
                 )
-            runtimes += runtime[1:]  # remove warmup
+            if args.input_data == "fix": 
+                runtime = runtime[1:] # remove warmup
+            runtimes += runtime  
 
         except Exception as e:
             logger.error(e)
@@ -1187,7 +1189,7 @@ def run_onnxruntime(args, models):
             inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
             # generate random input data
             if args.input_data == "random":
-                inputs = generate_onnx_model_random_input(args.test_times + 1, inputs[0])
+                inputs = generate_onnx_model_random_input(args.test_times, inputs[0])
 
             #######################################
             # benchmark or validation
