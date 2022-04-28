@@ -106,7 +106,7 @@ void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indic
   indices_shape.resize(new_rank);
   std::reverse(indices_shape.begin(), indices_shape.end());
 
-  // Set stride along axis to 0 so we don't need IF statment to check in kernel.
+  // Set stride along axis to 0 so we don't need IF statement to check in kernel.
   TensorPitches masked_input_strides_vec(input_shape);
   input_stride_along_axis = masked_input_strides_vec[new_axis];
   masked_input_strides_vec[new_axis] = 0;

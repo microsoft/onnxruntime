@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
-
 #include <ctime>
 #include <cstdlib>
+
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -81,11 +81,15 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   test.AddInput<TIndex>("indices", indices_dims, indices_data);
   test.AddInput<T>("updates", indices_dims, updates_data);
   test.AddOutput<T>("y", input_dims, output_data);
-  // Skip tensorrt for INT8 tests.
+  // OpenVINO doesn't support negative indices value.
+  // Disable TensorRT due to missing int8 calibrator.
+  // Nuphar doesn't have MLFloat16 impl.
   if (std::is_same<T, int8_t>::value) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  } else if (std::is_same<T, MLFloat16>::value) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kOpenVINOExecutionProvider});
   } else {
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
 
   onnxruntime::test::OpTester test1("ScatterElements", 11);
@@ -94,11 +98,12 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   test1.AddInput<TIndex>("indices", indices_dims, indices_data);
   test1.AddInput<T>("updates", indices_dims, updates_data);
   test1.AddOutput<T>("y", input_dims, output_data);
-  // Skip tensorrt for INT8 tests.
   if (std::is_same<T, int8_t>::value) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  } else if (std::is_same<T, MLFloat16>::value) {
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kOpenVINOExecutionProvider});
   } else {
-    test1.Run();
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
 }
 
@@ -147,9 +152,8 @@ void RunTestWrapper() {
   RunTest<T, int64_t>({2, 1, 1, 2, 3, 2, 3}, {2, 1, 1, 2, 3, 2, 2}, true, -5LL);
 }
 
-} // namespace
+}  // namespace
 
-// Disable TensorRT due to missing int8 calibrator
 TEST(Scatter, int8_t) { RunTestWrapper<int8_t>(); }
 
 TEST(Scatter, int16_t) { RunTestWrapper<int16_t>(); }
