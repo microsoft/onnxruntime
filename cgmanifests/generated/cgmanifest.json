@@ -104,7 +104,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a104e0cf23be4fe848f7ef1f3e8996fe429b06bb",
+          "commitHash": "ff15c6ada150a5018c5ef2172401cb4529eac9c0",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
         "comments": "git submodule at cmake/external/SafeInt/safeint"
@@ -164,7 +164,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "3acac70a551c321574732e5bfd67930244bb7151",
+          "commitHash": "fc645b7626ebf86530dbd82fbece74d457e7ae07",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -284,7 +284,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e9456d57605c883cdf985e634ab483e2c1500bb1",
+          "commitHash": "4f54a1950e1174dca490900eb7b07cc374f53d41",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"

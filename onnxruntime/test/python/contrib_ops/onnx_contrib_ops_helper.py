@@ -51,7 +51,7 @@ def expect(
     inputs,
     outputs,
     name,
-    **kwargs
+    **kwargs,
 ):  # type: (...) -> None
     present_inputs = [x for x in node.input if (x != "")]
     present_outputs = [x for x in node.output if (x != "")]

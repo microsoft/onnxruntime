@@ -50,6 +50,11 @@ enum class ExecutePreference {
   PREFER_SUSTAINED_SPEED = ANEURALNETWORKS_PREFER_SUSTAINED_SPEED
 };
 
+// handle clash with existing #define on Windows
+#ifdef _MSC_VER
+#undef NO_ERROR
+#endif
+
 enum class Result {
   NO_ERROR = ANEURALNETWORKS_NO_ERROR,
   OUT_OF_MEMORY = ANEURALNETWORKS_OUT_OF_MEMORY,
@@ -103,9 +108,9 @@ struct SymmPerChannelQuantParams {
   SymmPerChannelQuantParams(std::vector<float> scalesVec, uint32_t channelDim)
       : scales(std::move(scalesVec)) {
     params = {
-        .channelDim = channelDim,
-        .scaleCount = static_cast<uint32_t>(scales.size()),
-        .scales = scales.size() > 0 ? scales.data() : nullptr,
+        /*.channelDim = */ channelDim,
+        /*.scaleCount =*/static_cast<uint32_t>(scales.size()),
+        /*.scales = */ scales.size() > 0 ? scales.data() : nullptr,
     };
   }
   SymmPerChannelQuantParams(const SymmPerChannelQuantParams& other)

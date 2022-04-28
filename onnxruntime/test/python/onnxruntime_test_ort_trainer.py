@@ -374,7 +374,7 @@ class MNISTWrapper:
             ),
             batch_size=args_batch_size,
             shuffle=False,
-            **kwargs
+            **kwargs,
         )
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
@@ -384,7 +384,7 @@ class MNISTWrapper:
             ),
             batch_size=args_test_batch_size,
             shuffle=False,
-            **kwargs
+            **kwargs,
         )
 
         return train_loader, test_loader
