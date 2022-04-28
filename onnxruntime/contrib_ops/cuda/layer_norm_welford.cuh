@@ -42,11 +42,6 @@ __device__ inline ComputeType rsqrt(const ComputeType& x) {
 }
 
 template <>
-__device__ inline float rsqrt(const float& x) {
-  return rsqrtf(x);
-}
-
-template <>
 __device__ inline half rsqrt(const half& x) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   return hrsqrt(x);
@@ -56,8 +51,21 @@ __device__ inline half rsqrt(const half& x) {
 }
 
 template <>
+__device__ inline float rsqrt(const float& x) {
+  return rsqrtf(x);
+}
+
+template <>
 __device__ inline double rsqrt(const double& x) {
   return rsqrt(x);
+}
+
+__device__ inline half2 addhalf2(const half2 a, const half2 b) {
+#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
+  return __hadd2(a, b);
+#else
+  return __halves2half2(__hadd(a.x, b.x), __hadd(a.y, b.y));
+#endif
 }
 
 template<typename T>
@@ -77,7 +85,7 @@ __inline__ __device__ double Div<double>(double a, double b) {
   return a / b;
 }
 
-int64_t GetNumBlocksWrapImpl(const int64_t rows, int64_t const thread_group_width) {
+inline int64_t GetNumBlocksWrapImpl(const int64_t rows, const int64_t thread_group_width) {
   const int64_t thread_groups_per_block = KBlockSizeWrapImpl / thread_group_width;
   const int64_t num_blocks =
       (rows + thread_groups_per_block - 1) / thread_groups_per_block;
@@ -199,8 +207,8 @@ struct DirectLoadSkip<half, DST> {
     #pragma unroll
     for (int i = 0; i < N / 2; ++i) {
       const half2 pack2 = __halves2half2(pack.elem[i], pack.elem[i + 1]);
-      const half2 pack_size2 = __halves2half2(pack_skip.elem[i], pack_skip.elem[i + 1]);
-      half2 res = AddHalf2(pack2, pack_size2);
+      const half2 pack_skip2 = __halves2half2(pack_skip.elem[i], pack_skip.elem[i + 1]);
+      half2 res = addhalf2(pack2, pack_skip2);
       if (bias == nullptr) {
         dst[i] = static_cast<DST>(res.x);
         dst[i + 1] = static_cast<DST>(res.y);

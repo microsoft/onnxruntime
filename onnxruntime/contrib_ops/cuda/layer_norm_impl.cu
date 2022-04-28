@@ -23,7 +23,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "contrib_ops/cuda/layer_norm_welford.cuh"
+#include "layer_norm_welford.cuh"
 #include "layer_norm_impl.h"
 
 namespace onnxruntime {
@@ -41,6 +41,7 @@ void LaunchLayerNorm(cudaStream_t stream, const int64_t num_instances, const int
   AffineStore<ComputeType, V, do_scale, do_center, simplified> store(output, norm_size, gamma, beta);
   DispatchLayerNorm<decltype(load), decltype(store), ComputeType, simplified>(
       stream, load, store, num_instances, norm_size, epsilon, mean, inv_variance);
+  return;
 }
 
 template <typename T, typename U, typename V, bool simplified>
