@@ -1,12 +1,14 @@
+import os
+import unittest
+
+import numpy as np
 import torch
-from onnxruntime.capi import _pybind_state as torch_ort_eager
-from onnxruntime.training import ORTModule
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import numpy as np
-import os
-import unittest
+
+from onnxruntime.capi import _pybind_state as torch_ort_eager
+from onnxruntime.training import ORTModule
 
 
 def my_loss(x, target):
@@ -52,14 +54,14 @@ class OrtModuleEagerTest(unittest.TestCase):
         num_classes = 10
         batch_size = 128
         model = NeuralNet(input_size, hidden_size, num_classes)
-        device = torch.device('ort')
+        device = torch.device("ort")
         model.to(device)
         model = ORTModule(model)
 
         with torch.no_grad():
             data = torch.rand(batch_size, input_size)
             y = model(data.to(device))
-        print('Done')
+        print("Done")
 
     def test_ort_module_and_eager_mode(self):
         input_size = 784
