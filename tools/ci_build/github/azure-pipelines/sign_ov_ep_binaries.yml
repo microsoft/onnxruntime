@@ -1,0 +1,37 @@
+jobs:
+- job: 'Sign_OV_Files'
+  workspace:
+    clean: all
+  timeoutInMinutes: 3000
+  pool: 'onnxruntime-gpu-winbuild'
+  
+  steps:
+    - script: 'curl -fsSL "https://github.com/intel/onnxruntime/releases/download/v4.0/cpu_binaries_uep_v4.0.zip" -O'
+      displayName: 'get zip file'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+    
+    - script: 'unzip cpu_binaries_uep_v4.0.zip'
+      displayName: 'unzip zip file'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+      
+    - script: 'curl -fsSL "https://github.com/intel/onnxruntime/releases/download/v4.0/gpu_binaries_uep_v4.0.zip" -O'
+      displayName: 'get gpu zip file'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+    
+    - script: 'unzip gpu_binaries_uep_v4.0.zip'
+      displayName: 'unzip gpu zip file'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+
+    - template: templates/win-esrp-dll.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.ArtifactStagingDirectory)/'
+        DoEsrp: 'true'
+        Pattern: 'onnxruntime*.dll'
+        
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'gpu and cpu binaries'
+        
+    - template: templates/clean-agent-build-directory-step.yml
