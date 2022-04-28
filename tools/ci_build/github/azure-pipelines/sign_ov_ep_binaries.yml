@@ -22,16 +22,16 @@ jobs:
       displayName: 'unzip gpu zip file'
       workingDirectory: '$(Build.ArtifactStagingDirectory)/'
 
-    - template: templates/win-esrp-dll.yml
-      parameters:
-        DisplayName: 'ESRP - sign NuGet package'
-        FolderPath: '$(Build.ArtifactStagingDirectory)/'
-        DoEsrp: 'true'
-        Pattern: 'onnxruntime*.dll'
+    # - template: templates/win-esrp-dll.yml
+    #   parameters:
+    #     DisplayName: 'ESRP - sign NuGet package'
+    #     FolderPath: '$(Build.ArtifactStagingDirectory)/'
+    #     DoEsrp: 'true'
+    #     Pattern: 'onnxruntime*.dll'
     
-    - task: CodeSign@1
-      inputs:
-        Targets: '*.dll'
+    # - task: CodeSign@1
+    #   inputs:
+    #     Targets: '*.dll'
         
     - task: PublishBuildArtifacts@1
       inputs:
