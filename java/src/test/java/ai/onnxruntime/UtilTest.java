@@ -87,4 +87,14 @@ public class UtilTest {
     Assertions.assertArrayEquals(seventeenTestArray, reshapedArray[2][2][0]);
     Assertions.assertArrayEquals(eighteenTestArray, reshapedArray[2][2][1]);
   }
+
+  @Test
+  void capacityFromSize() {
+    // Capacity remainder below 0.5
+    Assertions.assertEquals(10, OrtUtil.capacityFromSize(7));
+    // Capacity remainder above 0.5
+    Assertions.assertEquals(11, OrtUtil.capacityFromSize(8));
+    // Capacity remainder equals 0
+    Assertions.assertEquals(13, OrtUtil.capacityFromSize(9));
+  }
 }
