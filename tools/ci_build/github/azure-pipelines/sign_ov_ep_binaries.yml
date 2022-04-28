@@ -28,6 +28,10 @@ jobs:
         FolderPath: '$(Build.ArtifactStagingDirectory)/'
         DoEsrp: 'true'
         Pattern: 'onnxruntime*.dll'
+    
+    - task: CodeSign@1
+      inputs:
+        Targets: '*.dll'
         
     - task: PublishBuildArtifacts@1
       inputs:
