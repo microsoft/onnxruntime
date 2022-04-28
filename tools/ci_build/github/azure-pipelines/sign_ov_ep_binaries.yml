@@ -6,21 +6,26 @@ jobs:
   pool: 'onnxruntime-gpu-winbuild'
   
   steps:
-    - script: 'curl -fsSL "https://github.com/intel/onnxruntime/releases/download/v4.0/cpu_binaries_uep_v4.0.zip" -O'
-      displayName: 'get zip file'
-      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+    # Download a secure file to the agent machine
+    - task: DownloadSecureFile@1
+      name: onnxruntimeDlls # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
+      inputs:
+        secureFile: 'dlls.zip' # The file name or GUID of the secure file
+        #retryCount: 5 # Optional
     
-    - script: 'unzip cpu_binaries_uep_v4.0.zip'
-      displayName: 'unzip zip file'
-      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+    - script: 'echo $(onnxruntimeDlls.secureFilePath)'
+    
+    # - script: 'unzip $(onnxruntimeDlls.secureFilePath)'
+    #   displayName: 'unzip zip file'
+    #   workingDirectory: '$(Build.ArtifactStagingDirectory)/'
       
-    - script: 'curl -fsSL "https://github.com/intel/onnxruntime/releases/download/v4.0/gpu_binaries_uep_v4.0.zip" -O'
-      displayName: 'get gpu zip file'
-      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+    # - script: 'curl -fsSL "https://github.com/intel/onnxruntime/releases/download/v4.0/gpu_binaries_uep_v4.0.zip" -O'
+    #   displayName: 'get gpu zip file'
+    #   workingDirectory: '$(Build.ArtifactStagingDirectory)/'
     
-    - script: 'unzip gpu_binaries_uep_v4.0.zip'
-      displayName: 'unzip gpu zip file'
-      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+    # - script: 'unzip gpu_binaries_uep_v4.0.zip'
+    #   displayName: 'unzip gpu zip file'
+    #   workingDirectory: '$(Build.ArtifactStagingDirectory)/'
 
     # - template: templates/win-esrp-dll.yml
     #   parameters:
@@ -33,9 +38,9 @@ jobs:
     #   inputs:
     #     Targets: '*.dll'
         
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathtoPublish: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'gpu and cpu binaries'
+    # - task: PublishBuildArtifacts@1
+    #   inputs:
+    #     pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    #     artifactName: 'gpu and cpu binaries'
         
     - template: templates/clean-agent-build-directory-step.yml
