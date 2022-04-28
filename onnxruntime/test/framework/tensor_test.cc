@@ -244,10 +244,15 @@ TEST(TensorTest, Strided) {
   Tensor t3(DataTypeImpl::GetType<int64_t>(), shape, data, alloc->Info(), 0L, gsl::make_span(single_element_strides));
   EXPECT_FALSE(t3.IsContiguous());
   ASSERT_EQ(t3.Shape(), shape);
-  ASSERT_THAT(t3.Strides(),
-              testing::ContainerEq(gsl::make_span(single_element_strides)));
+  ASSERT_THAT(t3.Strides(), testing::ContainerEq(gsl::make_span(single_element_strides)));
   ASSERT_EQ(t3.SizeInBytes(), sizeof(int64_t));
   alloc->Free(data);
+  const TensorShapeVector zero_strides{0, 0, 0};
+  Tensor t4(DataTypeImpl::GetType<float>(), shape, alloc, zero_strides);
+  EXPECT_FALSE(t4.IsContiguous());
+  EXPECT_EQ(t4.Shape(), shape);
+  ASSERT_THAT(t4.Strides(), testing::ContainerEq(gsl::make_span(zero_strides)));
+  ASSERT_EQ(t4.SizeInBytes(), sizeof(float));
 }
 #endif
 
