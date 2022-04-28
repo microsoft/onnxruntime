@@ -6,7 +6,7 @@ jobs:
   pool: 'onnxruntime-gpu-winbuild'
   
   steps:
-    - script: 'curl https://github.com/intel/onnxruntime/releases/download/v4.0/cpu_binaries_uep_v4.0.zip'
+    - script: 'curl https://objects.githubusercontent.com/github-production-release-asset-2e65be/183522394/bb3f9cad-7786-4992-93ef-e4b6bd3e3538?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20220428%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20220428T015443Z&X-Amz-Expires=300&X-Amz-Signature=9108d08ba681dc08e8c7a9c225062c9750e0f454f71795fdc3e6283c05beb6f4&X-Amz-SignedHeaders=host&actor_id=25233514&key_id=0&repo_id=183522394&response-content-disposition=attachment%3B%20filename%3Dcpu_binaries_uep_v4.0.zip&response-content-type=application%2Foctet-stream'
       displayName: 'get zip file'
       workingDirectory: '$(Build.ArtifactStagingDirectory)/'
     
