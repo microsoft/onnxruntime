@@ -20,7 +20,7 @@ jobs:
         FolderPath: '$(Build.ArtifactStagingDirectory)/'
         DoEsrp: 'true'
         
-     - task: PublishBuildArtifacts@1
+    - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.ArtifactStagingDirectory)'
         artifactName: 'cpu binaries'
