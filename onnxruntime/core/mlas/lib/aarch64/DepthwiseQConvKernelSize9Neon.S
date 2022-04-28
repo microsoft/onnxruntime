@@ -22,8 +22,12 @@ Abstract:
         .equ  .LConvSymDepthwisePostProcessParams_Bias,            0
         .equ  .LConvSymDepthwisePostProcessParams_Scale,           8
         .equ  .LConvSymDepthwisePostProcessParams_ZeroPoint,       24
+        .equ    .LConvSymPostProcessParams_Multiplier,             28
+        .equ    .LConvSymPostProcessParams_PreShift,               36
+        .equ    .LConvSymPostProcessParams_PostShift,              44
 
         .equ  .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX,    1
+        .equ  .LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE, 4
 
 //
 // Stack frame layout for the depthwise conv kernel. d8-d15, x19-x30 need save
@@ -37,8 +41,11 @@ Abstract:
         .equ  .LMlasConvSymDepthwiseKernelSize9_backup_d10_d11,    96
         .equ  .LMlasConvSymDepthwiseKernelSize9_backup_d12_d13,    112
         .equ  .LMlasConvSymDepthwiseKernelSize9_backup_d14_d15,    128
-        .equ  .LMlasConvSymDepthwiseKernelSize9_SavedRegisters,    144
-        .equ  .LMlasConvSymDepthwiseKernelSize9_SavedRegisters_Neg, -144
+        .equ  .LMlasConvSymDepthwiseKernelSize9_multiplier,        144
+        .equ  .LMlasConvSymDepthwiseKernelSize9_postshift,         160
+        .equ  .LMlasConvSymDepthwiseKernelSize9_backup_x0_x4,      176
+        .equ  .LMlasConvSymDepthwiseKernelSize9_SavedRegisters,    192
+        .equ  .LMlasConvSymDepthwiseKernelSize9_SavedRegisters_Neg,-192
 
 
         .text
@@ -113,7 +120,7 @@ Return Value:
         ldur    x28, [x0, #-8]
 
         cbz     x4, .LMlasConvSymDepthwiseKernelSize9_Dup_Inputs
-        ldp     x10, x11, [x0], #72         // input ptrs for Output0
+        ldp     x10, x11, [x0], #72         // input ptrs for Output1
         ldp     x12, x13, [x0, #-56]
         sub     x4, x4, #1
         ldp     x14, x15, [x0, #-40]
@@ -123,7 +130,7 @@ Return Value:
 
 .LMlasConvSymDepthwiseKernelSize9_Dup_Inputs:
         mov     x9, x3                      // Output1 <-- Output0
-        mov     x10, x20
+        mov     x10, x20                    // Input1 <-- Input0
         mov     x11, x21
         mov     x12, x22
         mov     x13, x23
@@ -399,16 +406,23 @@ Return Value:
         stp     d12, d13, [sp, #.LMlasConvSymDepthwiseKernelSize9_backup_d12_d13]
         stp     d14, d15, [sp, #.LMlasConvSymDepthwiseKernelSize9_backup_d14_d15]
 
+        tst     x6, #.LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
         ldr     x9, [x5, #.LConvSymDepthwisePostProcessParams_Bias]
         ldr     x8, [x5, #.LConvSymDepthwisePostProcessParams_Scale]
+        ldr     x10, [x5, #.LConvSymPostProcessParams_PreShift]
+        ldr     x11, [x5, #.LConvSymPostProcessParams_Multiplier]
+        ldr     x12, [x5, #.LConvSymPostProcessParams_PostShift]
         add     x5, x5, #.LConvSymDepthwisePostProcessParams_ZeroPoint
+        csel    x8, x8, x10, eq
         ins     v12.d[0], x1                // Filter
         ins     v13.d[0], x9                // Bias
-        ins     v13.d[1], x8                // Scale
+        ins     v13.d[1], x8                // Scale/PreShift
+        ins     v5.d[0], x11                // Multiplier
+        ins     v5.d[1], x12                // PostShift
         ld1r    {v0.8h}, [x5]               // zero point
 
         tbnz    x6, #.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, .LMlasConvSymDepthwiseKernelSize9S8S8_SkipPerTensorScaleInit
-        ld1r    {v1.4s}, [x8]               // load scale value
+        ld1r    {v1.4s}, [x8]               // load scale/PreShift value
         mov     v2.16b, v1.16b
         mov     v3.16b, v1.16b
         mov     v4.16b, v1.16b
@@ -449,10 +463,13 @@ Return Value:
 
 .LMlasConvSymDepthwiseKernelSize9S8S8_Loaded_Input:
 
+        stp     x0, x4, [sp, #.LMlasConvSymDepthwiseKernelSize9_backup_x0_x4]
         eor     x8, x8, x8                  // Processed channels
         umov    x1, v12.D[0]                // filter
         umov    x5, v13.D[0]                // bias
-        umov    x7, v13.D[1]                // scale
+        umov    x7, v13.D[1]                // scale/PreShift
+        umov    x0, v5.D[0]
+        umov    x4, v5.D[1]
 
         cmp     x8, x2                      // Save one register by not using count down to zero here
         bhs     .LMlasConvSymDepthwiseKernelSize9S8S8_Finish_Channels16_Loop
@@ -534,7 +551,7 @@ Return Value:
         ldr     q23, [x17, x8]              // out1 vi7
 
         tbz     x6, #.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, .LDonePerChannelScaleLoad_MlasConvSymDepthwiseKernelSize9S8S8
-        ld1     {v1.4s, v2.4s, v3.4s, v4.4s}, [x7], #64     	// scales 0-15 for outs
+        ld1     {v1.4s, v2.4s, v3.4s, v4.4s}, [x7], #64     // scales/preshift 0-15 for outs
 
 .LDonePerChannelScaleLoad_MlasConvSymDepthwiseKernelSize9S8S8:
         ldr     q10, [x1]                   // vk8
@@ -584,6 +601,9 @@ Return Value:
         saddw   v8.4s, v8.4s, v27.4h
         saddw2  v9.4s, v9.4s, v27.8h
 
+        tst     x6, #.LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
+        beq     FixedPointScale
+FloatPointScale:
         scvtf   v16.4s, v16.4s              // Requantize
         scvtf   v17.4s, v17.4s
         scvtf   v18.4s, v18.4s
@@ -610,7 +630,56 @@ Return Value:
         fcvtns  v7.4s, v7.4s
         fcvtns  v8.4s, v8.4s
         fcvtns  v9.4s, v9.4s
+        b Quantize
 
+FixedPointScale:
+        tst     x6,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX
+        beq     BroadcastFixedPointValue
+        ldp     q20,q21,[x0],32          // load multiplier vector
+        ldp     q22,q23,[x0],32
+        ldp     q24,q25,[x4],32          // load postshift vector
+        ldp     q26,q27,[x4],32
+        b       ScaleWithFixedPoint
+
+BroadcastFixedPointValue:
+        ld1r    {v20.4s},[x0]           // load multiplier Value
+        mov     v21.16b, v20.16b
+        mov     v22.16b, v20.16b
+        mov     v23.16b, v20.16b
+
+        ld1r    {v24.4s},[x4]           // load postshift Value
+        mov     v25.16b, v24.16b
+        mov     v26.16b, v24.16b
+        mov     v27.16b, v24.16b
+ScaleWithFixedPoint:
+        sqshl   v6.4s, v6.4s, v1.4s          // preshift
+        sqshl   v7.4s, v7.4s, v2.4s
+        sqshl   v8.4s, v8.4s, v3.4s
+        sqshl   v9.4s, v9.4s, v4.4s
+        sqshl   v16.4s, v16.4s, v1.4s
+        sqshl   v17.4s, v17.4s, v2.4s
+        sqshl   v18.4s, v18.4s, v3.4s
+        sqshl   v19.4s, v19.4s, v4.4s
+
+        sqdmulh v6.4s, v6.4s, v20.4s         // multiply by multiplier
+        sqdmulh v7.4s, v7.4s, v21.4s
+        sqdmulh v8.4s, v8.4s, v22.4s
+        sqdmulh v9.4s, v9.4s, v23.4s
+        sqdmulh v16.4s, v16.4s, v20.4s
+        sqdmulh v17.4s, v17.4s, v21.4s
+        sqdmulh v18.4s, v18.4s, v22.4s
+        sqdmulh v19.4s, v19.4s, v23.4s
+
+        srshl   v6.4s,v6.4s, v24.4s          // post shift
+        srshl   v7.4s,v7.4s, v25.4s
+        srshl   v8.4s,v8.4s, v26.4s
+        srshl   v9.4s,v9.4s, v27.4s
+        srshl   v16.4s,v16.4s, v24.4s
+        srshl   v17.4s,v17.4s, v25.4s
+        srshl   v18.4s,v18.4s, v26.4s
+        srshl   v19.4s,v19.4s, v27.4s
+
+Quantize:
         sqxtn   v16.4h, v16.4s              // +zp, narrow and combine
         sqxtn   v18.4h, v18.4s
         sqxtn   v6.4h, v6.4s
@@ -637,6 +706,7 @@ Return Value:
         blo     .LMlasConvSymDepthwiseKernelSize9S8S8_Channels16_Loop
 
 .LMlasConvSymDepthwiseKernelSize9S8S8_Finish_Channels16_Loop:
+        ldp     x0, x4, [sp, #.LMlasConvSymDepthwiseKernelSize9_backup_x0_x4]
         add     x3, x3, x2, LSL #1
         add     x9, x9, x2, LSL #1
         cbnz    x4, .LMlasConvSymDepthwiseKernelSize9S8S8_OutputLoop
