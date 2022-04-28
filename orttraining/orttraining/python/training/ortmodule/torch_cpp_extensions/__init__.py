@@ -33,7 +33,7 @@ from glob import glob
 
 
 def is_installed(torch_cpp_extension_path):
-    torch_cpp_exts = glob(os.path.join(torch_cpp_extension_path, '*.so'))
-    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dll')))
-    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, '*.dylib')))
+    torch_cpp_exts = glob(os.path.join(torch_cpp_extension_path, "*.so"))
+    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, "*.dll")))
+    torch_cpp_exts.extend(glob(os.path.join(torch_cpp_extension_path, "*.dylib")))
     return len(torch_cpp_exts) > 0

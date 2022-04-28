@@ -26,9 +26,9 @@ def _shard_wrapped_indices_across_workers(dataset_index_list, num_shards, num_sa
 def shard_wrapped_indices_for_worker(dataset_index_list, shard_id, num_shards):
     """Shard wrapped around dataset_index_list across num_shards and return the indices for this shard_id"""
     num_samples_per_worker = (len(dataset_index_list) + num_shards - 1) // num_shards
-    sharded_indices = list(_shard_wrapped_indices_across_workers(dataset_index_list,
-                                                                 num_shards,
-                                                                 num_samples_per_worker))
+    sharded_indices = list(
+        _shard_wrapped_indices_across_workers(dataset_index_list, num_shards, num_samples_per_worker)
+    )
     return [sharded_indices[i][shard_id] for i in range(len(sharded_indices))]
 
 
@@ -122,10 +122,7 @@ class LoadBalancingDistributedSampler:
                 raise RuntimeError("Requires distributed package to be available")
             rank = dist.get_rank()
         if rank >= world_size or rank < 0:
-            raise ValueError(
-                "Invalid rank {}, rank should be in the interval"
-                " [0, {}]".format(rank, world_size - 1)
-            )
+            raise ValueError("Invalid rank {}, rank should be in the interval" " [0, {}]".format(rank, world_size - 1))
         self.dataset = dataset
         self.world_size = world_size
         self.rank = rank
@@ -152,11 +149,7 @@ class LoadBalancingDistributedSampler:
         self.ordered_sample_complexities = None
 
         if random_level < 0.0 or random_level > 1.0:
-            raise ValueError(
-                "Invalid random level {}, shoule be in the range [0.0, 1.0]".format(
-                    random_level
-                )
-            )
+            raise ValueError("Invalid random level {}, shoule be in the range [0.0, 1.0]".format(random_level))
 
         self.random_level = random_level
         self.random_number = None
@@ -178,8 +171,9 @@ class LoadBalancingDistributedSampler:
             # Sort the dataset samples inside each group of the dataset based on sample complexity.
             for group_begin_index in range(0, len(sample_complexities), group_size):
                 group_end_index = min(group_begin_index + group_size, len(sample_complexities))
-                sorted_indices = \
-                    group_begin_index + np.argsort(sample_complexities[group_begin_index:group_end_index, 1])
+                sorted_indices = group_begin_index + np.argsort(
+                    sample_complexities[group_begin_index:group_end_index, 1]
+                )
                 sample_complexities[group_begin_index:group_end_index, :] = sample_complexities[sorted_indices]
             return sample_complexities
 
@@ -224,12 +218,13 @@ class LoadBalancingDistributedSampler:
             end = 0
             sample_complexities_copy = ordered_sample_complexities.copy()
             for group_index in group_order:
-                original_list_begin_index = self.group_size*group_index
-                original_list_end_index = min(original_list_begin_index+self.group_size, len(sample_complexities))
+                original_list_begin_index = self.group_size * group_index
+                original_list_end_index = min(original_list_begin_index + self.group_size, len(sample_complexities))
                 begin = end
                 end = begin + (original_list_end_index - original_list_begin_index)
-                sample_complexities_copy[begin:end, :] = \
-                    sample_complexities[original_list_begin_index:original_list_end_index, :]
+                sample_complexities_copy[begin:end, :] = sample_complexities[
+                    original_list_begin_index:original_list_end_index, :
+                ]
             ordered_sample_complexities = sample_complexities_copy
 
         # Shard the data across the different workers.
@@ -237,7 +232,7 @@ class LoadBalancingDistributedSampler:
             _shard_wrapped_indices_across_workers(
                 [index_complexity_tuple[0] for index_complexity_tuple in ordered_sample_complexities],
                 self.world_size,
-                self.num_samples
+                self.num_samples,
             )
         )
 
@@ -252,9 +247,7 @@ class LoadBalancingDistributedSampler:
             if padding_size <= len(chunk_indices):
                 chunk_indices += chunk_indices[:padding_size]
             else:
-                chunk_indices += (
-                    chunk_indices * math.ceil(padding_size / len(chunk_indices))
-                )[:padding_size]
+                chunk_indices += (chunk_indices * math.ceil(padding_size / len(chunk_indices)))[:padding_size]
         else:
             # Remove tail of data to make it evenly divisible.
             chunk_indices = chunk_indices[: self.num_samples]
@@ -314,9 +307,7 @@ class LoadBalancingDistributedBatchSampler(Sampler):
         drop_last: bool = False,
     ) -> None:
         if not isinstance(sampler, LoadBalancingDistributedSampler):
-            raise ValueError(
-                "sampler should be of LoadBalancingDistributedSampler type."
-            )
+            raise ValueError("sampler should be of LoadBalancingDistributedSampler type.")
 
         if sampler.drop_last:
             raise ValueError("drop_last of sampler should be False")
@@ -338,20 +329,14 @@ class LoadBalancingDistributedBatchSampler(Sampler):
             sub_indices = [index_chunks[i][rank] for i in chunk_indices]
             batches.append(self.batch_fn(sub_indices))
 
-        self.total_batch = (
-            max([len(b) for b in batches])
-            if not self.drop_last
-            else min([len(b) for b in batches])
-        )
+        self.total_batch = max([len(b) for b in batches]) if not self.drop_last else min([len(b) for b in batches])
 
         # here {len(batches[self.rank]) - self.total_batch} batches dropped for
         # rank {self.rank}
         if self.total_batch < len(batches[self.rank]):
             pass
 
-        self.padded_batches = [
-            batch + batch[: self.total_batch - len(batch)] for batch in batches
-        ]
+        self.padded_batches = [batch + batch[: self.total_batch - len(batch)] for batch in batches]
 
     def __iter__(self):
         return iter(self.padded_batches[self.rank])

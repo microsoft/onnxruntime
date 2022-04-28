@@ -167,8 +167,8 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
   std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
 #ifdef ENABLE_TRAINING
-  std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;  // an uinary kernel with may_strided_input
-  std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_; // an unary kernel with may_strided_output
+  std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;   // an uinary kernel with may_strided_input
+  std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_;  // an unary kernel with may_strided_output
 #endif
 
   std::unordered_map<std::string, onnxruntime::NodeArg*> name_to_arg_;
@@ -944,7 +944,7 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
   EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
-TEST_F(PlannerTest, LocationPlanningForInitializersUsedInMainGraphAndSubgraph) {
+TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainGraphAndSubgraph) {
   // This a simple model that has one outer scope initializer, an `If` node followed
   // by a `TopK` node. The initializer is used in both nested subgraphs(`Add` consumes it
   // and requires it on GPU) and main graph(the second input of `TopK` is required on CPU).
@@ -1051,7 +1051,95 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedInMainGraphAndSubgraph) {
   EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::CPU);
 }
 
-#endif
+TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInMainGraph) {
+  // This a simple model that has two inputs and an `If` node.
+  // The first input is the condition for the `If` node and the second input
+  // is an input consumed implicitly by the `If` node to be used in its subgraphs.
+  // Note that there are no other explicit consumers of this input in the main graph.
+
+  // We want to test that the location planned for this implicit input is the default device
+  // of the EP that the `If` node is partitioned to (which will be CUDA)
+  // and that it doesn't default to CPU.
+
+  // Types
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("dim_param");
+
+  TypeProto bool_scalar;
+  bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto create_model = [&float_tensor, &bool_scalar]() -> Model {
+    auto create_if_subgraph = [&float_tensor](bool is_then) -> GraphProto {
+      Model model("if_branch_subgraph", true, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
+
+      auto& outer_scope_0 = graph.GetOrCreateNodeArg("image_data_in", &float_tensor);
+      graph.AddOuterScopeNodeArg("image_data_in");
+
+      auto& if_out = graph.GetOrCreateNodeArg(is_then ? "if_then_out" : "if_else_out", &float_tensor);
+      graph.AddNode("if_out", "Relu", "relu", {&outer_scope_0}, {&if_out});
+
+      auto status = graph.Resolve();
+      EXPECT_EQ(status, Status::OK());
+
+      return graph.ToGraphProto();
+    };
+
+    onnxruntime::Model model("main_graph", false, ModelMetaData(),
+                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                             {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+    auto& main_graph = model.MainGraph();
+    auto& image_data_in = main_graph.GetOrCreateNodeArg("image_data_in", &float_tensor);
+
+    // If
+    auto& if_in = main_graph.GetOrCreateNodeArg("if_in", &bool_scalar);
+    auto& if_out = main_graph.GetOrCreateNodeArg("if_out", &float_tensor);
+    auto& node = main_graph.AddNode("if_out", "If", "If", {&if_in}, {&if_out});
+    node.AddAttribute("then_branch", create_if_subgraph(true));
+    node.AddAttribute("else_branch", create_if_subgraph(false));
+
+    // Main graph's inputs/outputs
+    main_graph.SetInputs({&image_data_in, &if_in});
+    main_graph.SetOutputs({&if_out});
+
+    auto status = main_graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return model;
+  };
+
+  // Create and load session
+  SessionOptions so;
+  InferenceSession sess{so, GetEnvironment()};
+
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  std::string s1;
+  const bool rc = create_model().ToProto().SerializeToString(&s1);
+  EXPECT_EQ(rc, true);
+  std::stringstream sstr(s1);
+
+  status = sess.Load(sstr);
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // Check planned locations for the implicit input
+  const auto& main_graph_session_state = sess.GetSessionState();
+  const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
+  const auto* main_graph_plan = main_graph_session_state.GetExecutionPlan();
+
+  OrtValueIndex input_data_index;
+  ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("image_data_in", input_data_index));
+
+  EXPECT_EQ(main_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
+}
+
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime
