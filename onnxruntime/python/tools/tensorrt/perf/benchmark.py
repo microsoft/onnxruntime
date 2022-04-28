@@ -346,9 +346,9 @@ def inference_ort(
                     args.io_binding,
                     io_binding,
                 )
-            if args.input_data == "fix": 
+            if args.input_data == "fix":
                 runtime = runtime[1:]  # remove warmup
-            runtimes += runtime  
+            runtimes += runtime
 
         except Exception as e:
             logger.error(e)

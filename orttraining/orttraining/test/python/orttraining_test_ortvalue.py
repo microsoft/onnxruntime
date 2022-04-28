@@ -272,7 +272,7 @@ class TestOrtValue(unittest.TestCase):
             vect.push_back(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
-        if new_impl == 'list':
+        if new_impl == "list":
             raise AssertionError("Conversion from list to torch is not supported anymore.")
         elif new_impl:
             tensors = _utils._ortvalues_to_torch_tensor(vect, device)
