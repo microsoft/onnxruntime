@@ -20,13 +20,12 @@ jobs:
       displayName: 'Unzip dll files'
       workingDirectory: '$(Build.SourcesDirectory)/Artifact'
 
-
-    # - template: templates/win-esrp-dll.yml
-    #   parameters:
-    #     DisplayName: 'ESRP - sign NuGet package'
-    #     FolderPath: '$(Build.SourcesDirectory)/Artifact'
-    #     DoEsrp: 'true'
-    #     Pattern: 'onnxruntime*.dll'
+    - template: templates/win-esrp-dll.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.SourcesDirectory)/Artifact'
+        DoEsrp: 'true'
+        Pattern: 'onnxruntime*.dll'
     
     - task: PublishBuildArtifacts@1
       inputs:
