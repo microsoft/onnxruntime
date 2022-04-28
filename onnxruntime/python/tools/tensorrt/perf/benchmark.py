@@ -14,12 +14,12 @@ from datetime import datetime
 import coloredlogs
 import numpy
 import numpy as np
-import pandas as pd
-from float16 import *
 from perf_utils import *
 
 import onnxruntime  # isort:skip
 from onnx import numpy_helper  # isort:skip
+from float16 import *  # isort:skip
+import pandas as pd  # isort:skip
 
 debug = False
 sys.path.append(".")

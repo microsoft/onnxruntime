@@ -220,7 +220,7 @@ def main():
                         get_status(table, model_group), ignore_index=True
                     )
                 elif metrics_name in csv:
-                    table_results[metrics_name] = tabel_results[metrics_name].append(
+                    table_results[metrics_name] = table_results[metrics_name].append(
                         get_op_metrics(table, model_group), ignore_index=True
                     )
 
