@@ -21,13 +21,15 @@ def run_postprocess(model):
     model = fix_expand_shape_pt_1_5(model)
     return model
 
+
 def find_input_node(model, arg):
     result = []
     for node in model.graph.node:
         for output in node.output:
             if output == arg:
                 result.append(node)
-    return result[0] if len(result)== 1 else None
+    return result[0] if len(result) == 1 else None
+
 
 def find_output_node(model, arg):
     result = []
@@ -37,22 +39,25 @@ def find_output_node(model, arg):
                 result.append(node)
     return result[0] if len(result) == 1 else result
 
+
 def add_name(model):
     i = 0
     for node in model.graph.node:
-       node.name = '%s_%d' %(node.op_type, i)
-       i += 1
+        node.name = "%s_%d" % (node.op_type, i)
+        i += 1
     return model
+
 
 # Expand Shape PostProcess
 
+
 def fix_expand_shape(model):
-    expand_nodes = [n for n in model.graph.node if n.op_type == 'Expand']
+    expand_nodes = [n for n in model.graph.node if n.op_type == "Expand"]
     model_inputs_names = [i.name for i in model.graph.input]
 
     for expand_node in expand_nodes:
         shape = find_input_node(model, expand_node.input[1])
-        if shape.op_type == 'Shape':
+        if shape.op_type == "Shape":
             # an expand subgraph
             # Input    Input2
             # |        |
@@ -72,6 +77,7 @@ def fix_expand_shape(model):
                 expand_out.name = expand_node.output[0]
                 expand_out.type.CopyFrom(model.graph.input[index].type)
     return model
+
 
 def fix_expand_shape_pt_1_5(model):
     # expand subgraph
@@ -120,47 +126,47 @@ def fix_expand_shape_pt_1_5(model):
     #           output
     #
     # This pass will copy Input's shape to the output of Expand.
-    expand_nodes = [n for n in model.graph.node if n.op_type == 'Expand']
+    expand_nodes = [n for n in model.graph.node if n.op_type == "Expand"]
     model_inputs_names = [i.name for i in model.graph.input]
 
     for expand_node in expand_nodes:
         n_where = find_input_node(model, expand_node.input[1])
-        if n_where.op_type != 'Where':
+        if n_where.op_type != "Where":
             continue
 
         n_equal = find_input_node(model, n_where.input[0])
         n_cos = find_input_node(model, n_where.input[1])
         n_reshape = find_input_node(model, n_where.input[2])
 
-        if n_equal.op_type != 'Equal' or n_cos.op_type != 'ConstantOfShape' or n_reshape.op_type != 'Reshape':
+        if n_equal.op_type != "Equal" or n_cos.op_type != "ConstantOfShape" or n_reshape.op_type != "Reshape":
             continue
 
         n_reshape_e = find_input_node(model, n_equal.input[0])
         n_mul = find_input_node(model, n_equal.input[1])
-        if n_reshape_e != n_reshape or n_mul.op_type != 'Mul':
+        if n_reshape_e != n_reshape or n_mul.op_type != "Mul":
             continue
 
         n_cos_m = find_input_node(model, n_mul.input[0])
         n_constant = find_input_node(model, n_mul.input[1])
-        if n_cos_m != n_cos or n_constant.op_type != 'Constant':
+        if n_cos_m != n_cos or n_constant.op_type != "Constant":
             continue
 
         n_concat = find_input_node(model, n_reshape.input[0])
         n_constant_r = find_input_node(model, n_reshape.input[1])
-        if n_concat.op_type != 'Concat' or n_constant_r.op_type != 'Constant':
+        if n_concat.op_type != "Concat" or n_constant_r.op_type != "Constant":
             continue
 
         n_input_candidates = []
         for concat_in in n_concat.input:
             n_unsqueeze = find_input_node(model, concat_in)
-            if n_unsqueeze.op_type != 'Unsqueeze':
+            if n_unsqueeze.op_type != "Unsqueeze":
                 break
             n_gather = find_input_node(model, n_unsqueeze.input[0])
-            if n_gather.op_type != 'Gather':
+            if n_gather.op_type != "Gather":
                 break
             n_shape = find_input_node(model, n_gather.input[0])
             n_constant_g = find_input_node(model, n_gather.input[1])
-            if n_shape.op_type != 'Shape' or n_constant_g.op_type != 'Constant':
+            if n_shape.op_type != "Shape" or n_constant_g.op_type != "Constant":
                 break
             n_input = n_shape.input[0]
             if not n_input in model_inputs_names:
@@ -176,7 +182,9 @@ def fix_expand_shape_pt_1_5(model):
         expand_out.type.CopyFrom(model.graph.input[index].type)
     return model
 
+
 # LayerNorm PostProcess
+
 
 def find_nodes(graph, op_type):
     nodes = []
@@ -185,18 +193,20 @@ def find_nodes(graph, op_type):
             nodes.append(node)
     return nodes
 
+
 def is_type(node, op_type):
     if node is None or isinstance(node, list):
         return False
     return node.op_type == op_type
 
-def add_const(model, name, output, t_value = None, f_value = None):
+
+def add_const(model, name, output, t_value=None, f_value=None):
     const_node = model.graph.node.add()
-    const_node.op_type = 'Constant'
+    const_node.op_type = "Constant"
     const_node.name = name
     const_node.output.extend([output])
     attr = const_node.attribute.add()
-    attr.name = 'value'
+    attr.name = "value"
     if t_value is not None:
         attr.type = 4
         attr.t.CopyFrom(t_value)
@@ -204,6 +214,7 @@ def add_const(model, name, output, t_value = None, f_value = None):
         attr.type = 1
         attr.f = f_value
     return const_node
+
 
 def layer_norm_transform(model):
     # DEPRECATED: This pass is no longer needed as the transform is handled at the backend.
@@ -302,7 +313,7 @@ def layer_norm_transform(model):
         optional_mul = find_output_node(model, div.output[0])
         if not is_type(optional_mul, "Mul"):
             optional_mul = None
-            continue # default bias and weight not supported
+            continue  # default bias and weight not supported
 
         # check if mul output is Add
         if optional_mul is not None:
@@ -311,8 +322,7 @@ def layer_norm_transform(model):
             optional_add = find_output_node(model, div.output[0])
         if not is_type(optional_add, "Add"):
             optional_add = None
-            continue # default bias and weight not supported
-
+            continue  # default bias and weight not supported
 
         # add nodes to remove_nodes
         remove_nodes.extend([reduce_mean, sub, div, pow, reduce_mean2, add, sqrt])
@@ -340,20 +350,22 @@ def layer_norm_transform(model):
         else:
             layer_norm_output.append(div.output[0])
 
-        layer_norm_output.append('saved_mean_' + str(id))
-        layer_norm_output.append('saved_inv_std_var_' + str(id))
+        layer_norm_output.append("saved_mean_" + str(id))
+        layer_norm_output.append("saved_inv_std_var_" + str(id))
 
         epsilon_node = find_input_node(model, add.input[1])
         epsilon = epsilon_node.attribute[0].t.raw_data
-        epsilon = struct.unpack('f', epsilon)[0]
+        epsilon = struct.unpack("f", epsilon)[0]
 
-        layer_norm = helper.make_node("LayerNormalization",
-                                      layer_norm_input,
-                                      layer_norm_output,
-                                      "LayerNormalization_" + str(id),
-                                      None,
-                                      axis = reduce_mean.attribute[0].ints[0],
-                                      epsilon = epsilon)
+        layer_norm = helper.make_node(
+            "LayerNormalization",
+            layer_norm_input,
+            layer_norm_output,
+            "LayerNormalization_" + str(id),
+            None,
+            axis=reduce_mean.attribute[0].ints[0],
+            epsilon=epsilon,
+        )
         layer_norm_nodes.append(layer_norm)
         id += 1
 
@@ -380,7 +392,9 @@ def layer_norm_transform(model):
     graph.node.extend(all_nodes)
     return model
 
+
 # Fuse SoftmaxCrossEntropy
+
 
 def fuse_softmaxNLL_to_softmaxCE(onnx_model):
     # Converting below subgraph
@@ -448,9 +462,18 @@ def fuse_softmaxNLL_to_softmaxCE(onnx_model):
 
         probability_output_name = softmax_node.output[0]
         node = onnx_model.graph.node.add()
-        inputs = [softmax_node.input[0], label_input_name, weight_input_name] if weight_input_name else [softmax_node.input[0], label_input_name]
-        node.CopyFrom(onnx.helper.make_node("SparseSoftmaxCrossEntropy", inputs,
-                                            [nll_loss_node.output[0], probability_output_name],
-                                            "nll_loss_node_" + str(nll_count)))
+        inputs = (
+            [softmax_node.input[0], label_input_name, weight_input_name]
+            if weight_input_name
+            else [softmax_node.input[0], label_input_name]
+        )
+        node.CopyFrom(
+            onnx.helper.make_node(
+                "SparseSoftmaxCrossEntropy",
+                inputs,
+                [nll_loss_node.output[0], probability_output_name],
+                "nll_loss_node_" + str(nll_count),
+            )
+        )
 
     return onnx_model
