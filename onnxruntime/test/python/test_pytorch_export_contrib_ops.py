@@ -132,7 +132,9 @@ class ONNXExporterTest(unittest.TestCase):
     @parameterized.parameterized.expand([("default_approximate", "none"), ("tanh_approximate", "tanh")])
     @unittest.skipIf(_torch_version_lower_than("1.12"), "Gelu's approximate parameter unsupported in PyTorch < 1.12")
     def test_gelu_supports_approximate_param(self, _, approximate: str):
-        model = torch.nn.GELU(approximate=approximate)  # type: ignore
+        # The approximate param was introduced in PyTorch 1.12.
+        # So we need to ignore the type checking when calling nn.Gelu
+        model = torch.nn.GELU(approximate=approximate)  # type: ignore[call-arg]
         x = torch.randn(3, 3)
         self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
