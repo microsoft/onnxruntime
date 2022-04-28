@@ -59,7 +59,7 @@ class QLinearPool(QuantOperatorBase):
             ],
             [qlinear_output_name],
             qlinear_node_name,
-            **kwargs
+            **kwargs,
         )
 
         # add all newly created nodes

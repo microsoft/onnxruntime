@@ -165,7 +165,7 @@ def main():
             full_image_name,
             "--file",
             args.dockerfile,
-            args.context
+            args.context,
         )
 
         if use_container_registry:
