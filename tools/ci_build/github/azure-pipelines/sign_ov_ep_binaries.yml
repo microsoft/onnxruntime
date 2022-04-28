@@ -6,12 +6,10 @@ jobs:
   pool: 'onnxruntime-gpu-winbuild'
   
   steps:
-    # Download a secure file to the agent machine
     - task: DownloadSecureFile@1
       name: onnxruntimeDlls # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
       inputs:
-        secureFile: $(secureFile) # The file name or GUID of the secure file
-        #retryCount: 5 # Optional
+        secureFile: '$(secureFile)'
 
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp $(onnxruntimeDlls.secureFilePath) $(Build.SourcesDirectory)/Artifact'
       displayName: 'Copy dlls to sources directory'
