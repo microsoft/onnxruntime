@@ -477,7 +477,7 @@ static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int ax
   std::vector<MLFloat16> vecGamma = ToFloat16(random.Uniform<float>(beta_shape, -1.0f, 1.0f));
   std::vector<MLFloat16> vecBeta(cols);
   if (has_beta) {
-    vecBeta = ToFloat16(random.Uniform<float>(beta_shape, -1.0f / 2.0f, 1.0f / 2.0f));
+    vecBeta = ToFloat16(random.Uniform<float>(beta_shape, -1.0f / 16.0f, -1.0f / 16.0f));
   }
   if (has_residual_and_bias) {
     // shape is same as beta_shape
@@ -628,7 +628,7 @@ TEST(QOrderedTest, LayerNorm_OrderCol32_Beta_3x11x96) {
 }
 
 TEST(QOrderedTest, LayerNorm_OrderCol32_Beta_BiasAndResidual_3x11x96) {
-  RunQOrdered_LayerNorm_Test({3, 11, 96}, -1, true, false, ORDER_COL32);
+  RunQOrdered_LayerNorm_Test({3, 11, 96}, -1, true, true, ORDER_COL32);
 }
 
 static void RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float scale_Y, OrderCublasLt order) {
