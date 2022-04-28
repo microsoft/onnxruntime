@@ -1,5 +1,5 @@
 jobs:
-- job: 'Sign OV Files'
+- job: 'Sign_OV_Files'
   workspace:
     clean: all
   timeoutInMinutes: 3000
