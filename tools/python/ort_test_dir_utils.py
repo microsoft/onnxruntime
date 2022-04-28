@@ -1,19 +1,20 @@
 import glob
-import numpy as np
-import onnx
-import onnx_test_data_utils
-import onnxruntime as ort
 import os
 import shutil
 
+import numpy as np
+import onnx
+import onnx_test_data_utils
 from onnx import numpy_helper
+
+import onnxruntime as ort
 
 
 def _get_numpy_type(model_info, name):
     for i in model_info:
         if i.name == name:
-            type_name = i.type.WhichOneof('value')
-            if type_name == 'tensor_type':
+            type_name = i.type.WhichOneof("value")
+            if type_name == "tensor_type":
                 return onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[i.type.tensor_type.elem_type]
             else:
                 raise ValueError("Type is not handled: {}".format(type_name))
@@ -36,17 +37,17 @@ def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values
         # models whose ir_version < 4 can have input same as initializer; no need to create input data
         if input.name in initializer_set:
             continue
-        input_type = input.type.WhichOneof('value')
-        if input_type != 'tensor_type':
-            raise ValueError('Unsupported model. Need to handle input type of {}'.format(input_type))
+        input_type = input.type.WhichOneof("value")
+        if input_type != "tensor_type":
+            raise ValueError("Unsupported model. Need to handle input type of {}".format(input_type))
 
         shape = input.type.tensor_type.shape
         dims = []
         for dim in shape.dim:
-            dim_type = dim.WhichOneof('value')
-            if dim_type == 'dim_value':
+            dim_type = dim.WhichOneof("value")
+            if dim_type == "dim_value":
                 dims.append(dim.dim_value)
-            elif dim_type == 'dim_param':
+            elif dim_type == "dim_param":
                 if dim.dim_param not in symbolic_dim_values_map:
                     raise ValueError("Value for symbolic dim {} was not provided.".format(dim.dim_param))
 
@@ -63,9 +64,9 @@ def _create_missing_input_data(model_inputs, name_input_map, symbolic_dim_values
         name_input_map[input.name] = data
 
 
-def create_test_dir(model_path, root_path, test_name,
-                    name_input_map=None, symbolic_dim_values_map=None,
-                    name_output_map=None):
+def create_test_dir(
+    model_path, root_path, test_name, name_input_map=None, symbolic_dim_values_map=None, name_output_map=None
+):
     """
     Create a test directory that can be used with onnx_test_runner or onnxruntime_perf_test.
     Generates random input data for any missing inputs.
@@ -119,7 +120,7 @@ def create_test_dir(model_path, root_path, test_name,
                 np_type = _get_numpy_type(model_info, name)
                 tensor = numpy_helper.from_array(data.astype(np_type), name)
                 filename = os.path.join(test_data_dir, "{}_{}.pb".format(prefix, idx))
-                with open(filename, 'wb') as f:
+                with open(filename, "wb") as f:
                     f.write(tensor.SerializeToString())
 
             idx += 1
@@ -159,8 +160,8 @@ def read_test_dir(dir_name):
 
     inputs = {}
     outputs = {}
-    input_files = glob.glob(os.path.join(dir_name, 'input_*.pb'))
-    output_files = glob.glob(os.path.join(dir_name, 'output_*.pb'))
+    input_files = glob.glob(os.path.join(dir_name, "input_*.pb"))
+    output_files = glob.glob(os.path.join(dir_name, "output_*.pb"))
 
     for i in input_files:
         name, data = onnx_test_data_utils.read_tensorproto_pb_file(i)
@@ -186,12 +187,14 @@ def run_test_dir(model_or_dir):
     if os.path.isdir(model_or_dir):
         model_dir = os.path.abspath(model_or_dir)
         # check there's only one onnx file
-        onnx_models = glob.glob(os.path.join(model_dir, '*.onnx'))
-        ort_models = glob.glob(os.path.join(model_dir, '*.ort'))
+        onnx_models = glob.glob(os.path.join(model_dir, "*.onnx"))
+        ort_models = glob.glob(os.path.join(model_dir, "*.ort"))
         models = onnx_models + ort_models
         if len(models) > 1:
-            raise ValueError("'Multiple .onnx and/or .ort files found in {}. '"
-                             "'Please provide specific .onnx or .ort file as input.".format(model_dir))
+            raise ValueError(
+                "'Multiple .onnx and/or .ort files found in {}. '"
+                "'Please provide specific .onnx or .ort file as input.".format(model_dir)
+            )
         elif len(models) == 0:
             raise ValueError("'No .onnx or .ort files found in {}.".format(model_dir))
 
@@ -200,9 +203,9 @@ def run_test_dir(model_or_dir):
         model_path = os.path.abspath(model_or_dir)
         model_dir = os.path.dirname(model_path)
 
-    print('Running tests in {} for {}'.format(model_dir, model_path))
+    print("Running tests in {} for {}".format(model_dir, model_path))
 
-    test_dirs = [d for d in glob.glob(os.path.join(model_dir, 'test*')) if os.path.isdir(d)]
+    test_dirs = [d for d in glob.glob(os.path.join(model_dir, "test*")) if os.path.isdir(d)]
     if not test_dirs:
         raise ValueError("No directories with name starting with 'test' were found in {}.".format(model_dir))
 
@@ -216,11 +219,11 @@ def run_test_dir(model_or_dir):
             output_names = list(expected_outputs.keys())
             # handle case where there's a single expected output file but no name in it (empty string for name)
             # e.g. ONNX test models 20190729\opset8\tf_mobilenet_v2_1.4_224
-            if len(output_names) == 1 and output_names[0] == '':
+            if len(output_names) == 1 and output_names[0] == "":
                 output_names = [o.name for o in sess.get_outputs()]
-                assert len(output_names) == 1, 'There should be single output_name.'
-                expected_outputs[output_names[0]] = expected_outputs['']
-                expected_outputs.pop('')
+                assert len(output_names) == 1, "There should be single output_name."
+                expected_outputs[output_names[0]] = expected_outputs[""]
+                expected_outputs.pop("")
 
         else:
             output_names = [o.name for o in sess.get_outputs()]
@@ -232,15 +235,15 @@ def run_test_dir(model_or_dir):
                 expected = expected_outputs[output_names[idx]]
                 actual = run_outputs[idx]
 
-                if expected.dtype.char in np.typecodes['AllFloat']:
-                    if not np.isclose(expected, actual, rtol=1.e-3, atol=1.e-3).all():
-                        print('Mismatch for {}:\nExpected:{}\nGot:{}'.format(output_names[idx], expected, actual))
+                if expected.dtype.char in np.typecodes["AllFloat"]:
+                    if not np.isclose(expected, actual, rtol=1.0e-3, atol=1.0e-3).all():
+                        print("Mismatch for {}:\nExpected:{}\nGot:{}".format(output_names[idx], expected, actual))
                         failed = True
                 else:
                     if not np.equal(expected, actual).all():
-                        print('Mismatch for {}:\nExpected:{}\nGot:{}'.format(output_names[idx], expected, actual))
+                        print("Mismatch for {}:\nExpected:{}\nGot:{}".format(output_names[idx], expected, actual))
                         failed = True
         if failed:
-            raise ValueError('FAILED due to output mismatch.')
+            raise ValueError("FAILED due to output mismatch.")
         else:
-            print('PASS')
+            print("PASS")

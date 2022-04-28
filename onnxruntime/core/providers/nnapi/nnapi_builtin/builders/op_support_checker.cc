@@ -214,9 +214,11 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
 
   ORT_ENFORCE(quant_op_type != QuantizedOpType::Unknown, "[", op_type, "] is not a quantized op");
 
-  bool is_input = io_kind == IOKind::Input;
-  bool is_quant_conv = IsQuantizedConv(quant_op_type);
-  bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
+  const bool is_input = io_kind == IOKind::Input;
+  const bool is_quant_conv = IsQuantizedConv(quant_op_type);
+  const bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul) || (quant_op_type == QuantizedOpType::QDQMatMul);
+  const bool is_quant_gemm = (quant_op_type == QuantizedOpType::QDQGemm);
+  const bool is_quant_matmul_or_gemm = is_quant_matmul || is_quant_gemm;
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
 
   for (const auto idx : indices) {
@@ -231,7 +233,7 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
     ORT_ENFORCE(io_def.quant_param.has_value(), "Input index,  ", idx, " has no quant_param");
 
     // If this op is Qlinear[Conv/MatMul], we want to check u8s8 support for weight tensor (or B tensor for QlinearMatMul)
-    bool is_conv_matmul_weight = is_input && (is_quant_conv || is_quant_matmul) && idx == 1;
+    const bool is_conv_matmul_weight = is_input && (is_quant_conv || is_quant_matmul_or_gemm) && idx == 1;
     bool is_conv_matmul_u8s8_weight = false;
 
     if (is_conv_matmul_weight) {
@@ -1260,15 +1262,24 @@ class GemmOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
       const OpSupportCheckParams& /* params */) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
+
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool GemmOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return IsQuantizedGemm(GetQuantizedOpType(node_unit));
+}
 
 bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
-  if (node_unit.OpType() != "QLinearMatMul")
+  if (!IsQuantizedOp(node_unit)) {
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
 
-  // QLinearMatMul
+  // QLinearMatMul/QDQGemm/QDQMatMul
   if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
 
@@ -1339,7 +1350,9 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
-  bool is_qlinear_matmul = op_type == "QLinearMatMul";
+  const bool is_qlinear_matmul = op_type == "QLinearMatMul";
+  const auto quant_type = GetQuantizedOpType(node_unit);
+  const bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
 
   Shape a_shape;
   {
@@ -1414,6 +1427,13 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
   } else {
     LOGS_DEFAULT(VERBOSE) << "GemmOpSupportChecker, unknown op: " << op_type;
+  }
+
+  if (is_quant_gemm) {
+    if (inputs.size() > 2 && !Contains(initializers, inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Bias of QDQ Gemm must be known";
+      return false;
+    }
   }
 
   return true;

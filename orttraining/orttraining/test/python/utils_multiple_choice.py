@@ -61,6 +61,7 @@ class Split(Enum):
     dev = "dev"
     test = "test"
 
+
 class DataProcessor:
     """Base class for data converters for multiple choice data sets."""
 
@@ -79,6 +80,7 @@ class DataProcessor:
     def get_labels(self):
         """Gets the list of labels for this data set."""
         raise NotImplementedError()
+
 
 class MultipleChoiceDataset(Dataset):
     """
@@ -102,7 +104,12 @@ class MultipleChoiceDataset(Dataset):
 
         cached_features_file = os.path.join(
             data_dir,
-            "cached_{}_{}_{}_{}".format(mode.value, tokenizer.__class__.__name__, str(max_seq_length), task,),
+            "cached_{}_{}_{}_{}".format(
+                mode.value,
+                tokenizer.__class__.__name__,
+                str(max_seq_length),
+                task,
+            ),
         )
 
         # Make sure only the first process in distributed training processes the dataset,
@@ -141,6 +148,7 @@ class MultipleChoiceDataset(Dataset):
 
     def __getitem__(self, i) -> InputFeatures:
         return self.features[i]
+
 
 class SwagProcessor(DataProcessor):
     """Processor for the SWAG data set."""
@@ -191,6 +199,7 @@ class SwagProcessor(DataProcessor):
         ]
 
         return examples
+
 
 def convert_examples_to_features(
     examples: List[InputExample],

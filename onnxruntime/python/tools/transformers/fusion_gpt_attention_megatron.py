@@ -1,14 +1,15 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
-import numpy as np
+# --------------------------------------------------------------------------
 from logging import getLogger
-from onnx import helper, numpy_helper, TensorProto
-from onnx_model import OnnxModel
+
+import numpy as np
 from fusion_base import Fusion
-from fusion_utils import FusionUtils
 from fusion_gpt_attention import FusionGptAttentionPastBase
+from fusion_utils import FusionUtils
+from onnx import TensorProto, helper, numpy_helper
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
@@ -21,24 +22,43 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
     """
     Fuse GPT-2 Attention with past state subgraph from Megatron into one Attention node.
     """
+
     def __init__(self, model: OnnxModel, num_heads: int):
         super().__init__(model, num_heads)
 
-    def fuse_attention_node(self, matmul_before_split, add_before_split, past, present, input, reshape_qkv, mask):
-        attention_node_name = self.model.create_node_name('GptAttention')
+    def fuse_attention_node(
+        self,
+        matmul_before_split,
+        add_before_split,
+        past,
+        present,
+        input,
+        reshape_qkv,
+        mask,
+    ):
+        attention_node_name = self.model.create_node_name("GptAttention")
         int32_mask = self.cast_attention_mask(mask)
         output = reshape_qkv.output[0]
         i = 1 if (add_before_split.input[0] == matmul_before_split.output[0]) else 0
         attention_node = helper.make_node(
-            'Attention',
-            inputs=[input, matmul_before_split.input[1], add_before_split.input[i], int32_mask, past],
+            "Attention",
+            inputs=[
+                input,
+                matmul_before_split.input[1],
+                add_before_split.input[i],
+                int32_mask,
+                past,
+            ],
             outputs=[output, present],
-            name=attention_node_name)
+            name=attention_node_name,
+        )
         attention_node.domain = "com.microsoft"
-        attention_node.attribute.extend([
-            helper.make_attribute("num_heads", self.num_heads),
-            helper.make_attribute("unidirectional", 0)  # unidirectional shall not be ON for 4D attention mask
-        ])
+        attention_node.attribute.extend(
+            [
+                helper.make_attribute("num_heads", self.num_heads),
+                helper.make_attribute("unidirectional", 0),  # unidirectional shall not be ON for 4D attention mask
+            ]
+        )
 
         nodes_to_add = [attention_node]
         self.nodes_to_add.extend(nodes_to_add)
@@ -53,9 +73,8 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
 
     def match_mask(self, sub_qk, mul_qk, matmul_qk, layernorm_before_attention):
         mask_nodes = self.model.match_parent_path(
-            sub_qk,
-            ['Mul', 'Sub', 'Slice', 'Slice'],
-            [1,      0,       1,       0])  # yapf: disable
+            sub_qk, ["Mul", "Sub", "Slice", "Slice"], [1, 0, 1, 0]
+        )  # yapf: disable
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match unidirectional mask path")
             return None
@@ -97,27 +116,34 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             logger.debug("fuse_attention failed: slice_mask input 4 (steps) is not constant [1]")
             return None
 
-        last_slice_path = self.model.match_parent_path(last_slice_mask, ['Unsqueeze', 'Gather', 'Shape', 'MatMul'],
-                                                       [2, 0, 0, 0])
+        last_slice_path = self.model.match_parent_path(
+            last_slice_mask, ["Unsqueeze", "Gather", "Shape", "MatMul"], [2, 0, 0, 0]
+        )
         if last_slice_path is None or last_slice_path[-1] != matmul_qk:
             logger.debug("fuse_attention: failed to match last slice path")
             return None
 
-        first_slice_path = self.model.match_parent_path(slice_mask, ['Unsqueeze', 'Gather', 'Shape', 'MatMul'],
-                                                        [2, 0, 0, 0])
+        first_slice_path = self.model.match_parent_path(
+            slice_mask, ["Unsqueeze", "Gather", "Shape", "MatMul"], [2, 0, 0, 0]
+        )
         if first_slice_path is None or first_slice_path[-1] != matmul_qk:
             logger.debug("fuse_attention: failed to match first slice path")
             return None
 
-        first_slice_sub = self.model.match_parent_path(slice_mask, ['Unsqueeze', 'Sub', 'Gather', 'Shape', 'MatMul'],
-                                                       [1, 0, 0, 0, 0])
+        first_slice_sub = self.model.match_parent_path(
+            slice_mask,
+            ["Unsqueeze", "Sub", "Gather", "Shape", "MatMul"],
+            [1, 0, 0, 0, 0],
+        )
         if first_slice_sub is None or first_slice_sub[-1] != matmul_qk:
             logger.debug("fuse_attention: failed to match last slice sub path")
             return None
 
-        first_slice_sub_1 = self.model.match_parent_path(slice_mask,
-                                                         ['Unsqueeze', 'Sub', 'Gather', 'Shape', 'LayerNormalization'],
-                                                         [1, 0, 1, 0, 0])
+        first_slice_sub_1 = self.model.match_parent_path(
+            slice_mask,
+            ["Unsqueeze", "Sub", "Gather", "Shape", "LayerNormalization"],
+            [1, 0, 1, 0, 0],
+        )
         if first_slice_sub_1 is None or first_slice_sub_1[-1] != layernorm_before_attention:
             logger.debug("fuse_attention: failed to match last slice sub path 1")
             return None
@@ -130,30 +156,53 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
 
         qkv_nodes = self.model.match_parent_path(
             normalize_node,
-            ['Add', 'Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
-            [  0,      1,     None,          0,         0,           0],
+            ["Add", "Add", "MatMul", "Reshape", "Transpose", "MatMul"],
+            [0, 1, None, 0, 0, 0],
             output_name_to_node=output_name_to_node,
-            ) # yapf: disable
+        )  # yapf: disable
         if qkv_nodes is None:
             return
-        (add_skip, add_after_attention, matmul_after_attention, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
+        (
+            add_skip,
+            add_after_attention,
+            matmul_after_attention,
+            reshape_qkv,
+            transpose_qkv,
+            matmul_qkv,
+        ) = qkv_nodes
 
         skip_input = add_skip.input[0]
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
-            ['Concat', 'Transpose', 'Reshape', 'Split', 'Add', 'MatMul', 'LayerNormalization'],
-            [1,        1,            0,         0,       0,         None,      0]) # yapf: disable
+            [
+                "Concat",
+                "Transpose",
+                "Reshape",
+                "Split",
+                "Add",
+                "MatMul",
+                "LayerNormalization",
+            ],
+            [1, 1, 0, 0, 0, None, 0],
+        )  # yapf: disable
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
-        (concat_v, transpose_v, reshape_v, split_v, add_before_split, matmul_before_split,
-         layernorm_before_attention) = v_nodes
+        (
+            concat_v,
+            transpose_v,
+            reshape_v,
+            split_v,
+            add_before_split,
+            matmul_before_split,
+            layernorm_before_attention,
+        ) = v_nodes
         if skip_input != layernorm_before_attention.input[0]:
             logger.debug("fuse_attention: skip_input != layernorm_before_attention.input[0]")
             return
 
-        qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Sub', 'Mul', 'MatMul'], [0, 0, 0, 0])
+        qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Sub", "Mul", "MatMul"], [0, 0, 0, 0])
         if qk_nodes is None:
             logger.debug("fuse_attention: failed to match qk path")
             return None
@@ -164,7 +213,7 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
 
         attention_mask = self.match_mask(sub_qk, mul_qk, matmul_qk, layernorm_before_attention)
 
-        q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Split'], [0, 0, 0, 0])
+        q_nodes = self.model.match_parent_path(matmul_qk, ["Div", "Transpose", "Reshape", "Split"], [0, 0, 0, 0])
         if q_nodes is None:
             logger.debug("fuse_attention: failed to match q path")
             return
@@ -173,9 +222,11 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             logger.debug("fuse_attention: skip since split_v != split_q")
             return
 
-        k_nodes = self.model.match_parent_path(matmul_qk,
-                                               ['Div', 'Transpose', 'Concat', 'Transpose', 'Reshape', 'Split'],
-                                               [1, 0, 0, 1, 0, 0])
+        k_nodes = self.model.match_parent_path(
+            matmul_qk,
+            ["Div", "Transpose", "Concat", "Transpose", "Reshape", "Split"],
+            [1, 0, 0, 1, 0, 0],
+        )
         if k_nodes is None:
             logger.debug("fuse_attention: failed to match k path")
             return
@@ -185,8 +236,14 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             return
 
         i, value = self.model.get_constant_input(reshape_k)
-        if not (isinstance(value, np.ndarray) and list(value.shape) == [4] and value[0] == 0 and value[1] == 0
-                and value[2] > 0 and value[3] > 0):
+        if not (
+            isinstance(value, np.ndarray)
+            and list(value.shape) == [4]
+            and value[0] == 0
+            and value[1] == 0
+            and value[2] > 0
+            and value[3] > 0
+        ):
             logger.debug("fuse_attention: reshape constant input is not [0, 0, N, H]")
             return
 
@@ -224,5 +281,12 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             logger.info("fuse_attention: expect present to be graph output")
             return
 
-        self.fuse_attention_node(matmul_before_split, add_before_split, past, present,
-                                 layernorm_before_attention.output[0], reshape_qkv, attention_mask)
+        self.fuse_attention_node(
+            matmul_before_split,
+            add_before_split,
+            past,
+            present,
+            layernorm_before_attention.output[0],
+            reshape_qkv,
+            attention_mask,
+        )
