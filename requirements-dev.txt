@@ -9,6 +9,7 @@ onnx
 onnxmltools
 packaging
 pandas
+parameterized>=0.8.1
 protobuf
 pydocstyle[toml]
 pytest

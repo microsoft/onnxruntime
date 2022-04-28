@@ -168,7 +168,7 @@ void RunTestWrapper<std::string>() {
   test4.AddAttribute<int64_t>("axis", 1LL);
   test4.AddInput<std::string>("data", {2, 2}, {"a", "b", "c", "d"});
   test4.AddInput<int32_t>("indices", {2, 2}, {0, 0, -3, -3});
-  test4.AddOutput<std::string>("output", {2, 2}, {"a", "a", "d", "d"});
+  test4.AddOutput<std::string>("output", {2, 2}, {"a", "a", "c", "c"});
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
   test4.Run(OpTester::ExpectResult::kExpectFailure,
@@ -243,7 +243,7 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   test.AddAttribute<int64_t>("axis", 1LL);
   test.AddInput<float>("data", {2, 2}, {1, 2, 3, 4});
   test.AddInput<int64_t>("indices", {2, 2}, {0, 0, 2, 2});
-  test.AddOutput<float>("output", {2, 2}, {1, 1, 4, 4});
+  test.AddOutput<float>("output", {2, 2}, {1, 1, 3, 3});
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
