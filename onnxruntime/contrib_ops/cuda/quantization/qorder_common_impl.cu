@@ -435,50 +435,36 @@ QOrderAddBiasResidualLayerNormCol32Kernel(const int8_t* __restrict__ src, const 
   const unsigned STRIDES_PER_WARP_ROUND = rows << 7;  // * 32 * 4
   unsigned c = threadIdx.x << 2;
   const size_t batch_row_index = (size_t)blockIdx.y * (rows * cols) + ((c & 0xffffffe0) * rows + (r << 5) + (c & 31));
-
   src += batch_row_index;
   dst += batch_row_index;
-
-  const __half2 src_scale2 = __float2half2_rn(src_scale);
-
   for (unsigned index = 0; c < cols; c += 128, index += STRIDES_PER_WARP_ROUND) {
     char4 ch4 = *((const char4*)(src + index));
-
     sum += ((short)ch4.x + (short)ch4.y + (short)ch4.z + (short)ch4.w);
     square_sum = __dp4a(ch4, ch4, square_sum);
   }
 
   sum = WarpReduceSum<int32_t>(sum);
-
   square_sum = WarpReduceSum<int32_t>(square_sum);
 
   const float mean = (src_scale * sum / cols);
-
   const float rvar = rsqrtf(src_scale * src_scale * ((float)square_sum - ((float)sum * sum / cols)) / cols + epsilon);
-
   const __half2 mean2 = __float2half2_rn(mean);
   const __half2 var2 = __float2half2_rn(rvar);
-
+  const __half2 src_scale2 = __float2half2_rn(src_scale);
   const __half2 dst_rscale2 = __float2half2_rn(1.0f / dst_scale);
   const __half4 zero4 = {__float2half2_rn(0.0f), __float2half2_rn(0.0f)};
 
-  for (unsigned index = 0, c = threadIdx.x << 2; c < cols; c += 128, index += STRIDES_PER_WARP_ROUND) {
+  for (unsigned index = 0, c = threadIdx.x * 4; c < cols; c += 128, index += STRIDES_PER_WARP_ROUND) {
     char4 ch4 = __ldg((const char4*)(src + index));
     __half4 dqval4 = deqantize_char4_half4(ch4, src_scale2);
-
     const __half4 g4 = *((const __half4*)(gamma + c));
     const __half4 b4 = (beta == nullptr) ? zero4 : *((const __half4*)(beta + c));
     dqval4.xy = __hfma2(__hmul2(__hsub2(dqval4.xy, mean2), var2), g4.xy, b4.xy);
     dqval4.zw = __hfma2(__hmul2(__hsub2(dqval4.zw, mean2), var2), g4.zw, b4.zw);
-     *(char4*)(dst + index) = quantize_half4_char4(dqval4, dst_rscale2);
-    /*
-    *(char4*)(dst + index) = {static_cast<int8_t>(__half2short_rn(dqval4.xy.x)),
-                              static_cast<int8_t>(__half2short_rn(dqval4.xy.y)),
-                              static_cast<int8_t>(__half2short_rn(dqval4.zw.x)),
-                              static_cast<int8_t>(__half2short_rn(dqval4.zw.y))};
-    */
+    *(char4*)(dst + index) = quantize_half4_char4(dqval4, dst_rscale2);
   }
 }
+
 
 // block_size = (32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1)
 // grid_size = ((rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, batch, 1)
@@ -518,7 +504,7 @@ QOrderAddBiasResidualLayerNormRowKernel(const int8_t* __restrict__ src, const fl
     char4 ch4 = __ldg((const char4*)(src + c));
     __half4 dqval4 = deqantize_char4_half4(ch4, src_scale2);
     const __half4 g4 = *((const __half4*)(gamma + c));
-    const __half4 b4 = (beta == nullptr) ? zero4 : zero4;
+    const __half4 b4 = (beta == nullptr) ? zero4 : *((const __half4*)(beta + c));
     dqval4.xy = __hfma2(__hmul2(__hsub2(dqval4.xy, mean2), var2), g4.xy, b4.xy);
     dqval4.zw = __hfma2(__hmul2(__hsub2(dqval4.zw, mean2), var2), g4.zw, b4.zw);
     *(char4*)(dst + c) = quantize_half4_char4(dqval4, dst_rscale2);
