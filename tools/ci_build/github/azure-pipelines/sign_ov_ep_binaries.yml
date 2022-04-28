@@ -11,7 +11,7 @@ jobs:
       inputs:
         secureFile: '$(secureFile)'
 
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp $(onnxruntimeDlls.secureFilePath) $(Build.SourcesDirectory)/Artifact'
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && copy $(onnxruntimeDlls.secureFilePath) $(Build.SourcesDirectory)/Artifact'
       displayName: 'Copy dlls to sources directory'
 
     - script: 'unzip $(secureFile)'
