@@ -326,10 +326,11 @@ packages = [
     'onnxruntime.transformers.models.t5',
 ]
 
-package_data = {}
-data_files = []
+package_data = {
+    "onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]
+}
 
-package_data["onnxruntime.tools.mobile_helpers"] = ["*.md", "*.config"]
+data_files = []
 
 requirements_file = "requirements.txt"
 
