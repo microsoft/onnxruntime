@@ -5,6 +5,7 @@
 #include "core/framework/parallel_execution_plan.h"
 #include "core/framework/session_state.h"
 #include "core/framework/execution_frame.h"
+#include "core/graph/constants.h"
 #include <vector>
 
 namespace onnxruntime {
@@ -22,7 +23,7 @@ struct Barrier {
 };
 
 //todo: make it general across EPs
-struct Notification {
+struct CPUNotification {
   void notify() { ready_.store(true); };
   void wait() {
     while (!ready_.load()) {
@@ -37,46 +38,185 @@ using kernel_invoke_fn = std::function<void(NodeIndex)>;
 using notification_wait_fn = std::function<void(NotificationIndex)>;
 using notification_notify_fn = std::function<void(NotificationIndex)>;
 
+using NotificationHandle = void*;
+using StreamHandle = void*;
+
+struct Stream {
+  StreamHandle handle;
+  const IExecutionProvider* provider;
+
+  Stream::Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
+};
+
+struct Notification {
+  NotificationHandle handle;
+  const IExecutionProvider* provider;
+};
+
+using WaitNotificationFn = void (*)(Notification& notification);
+using NotifyNotificationFn = void (*)(Notification& notification);
+using CreateNotificationFn = void*(*)(const Stream&);
+using ReleaseNotificationFn = void(*)(void*);
+using KernelLaunchFn = void(*)(const OpKernel*, OpKernelContext*);
+
+class StreamCommandHandleRegistry {
+public:
+  CreateNotificationFn GetCreateNotificationFn(Stream* stream) {
+   auto it = create_notification_map_.find(stream->provider->Type());
+   return it == create_notification_map_.end() ? nullptr : it->second;
+  }
+
+  ReleaseNotificationFn GetReleaseNotificationFn(Stream* stream) {
+    auto it = release_notification_map_.find(stream->provider->Type());
+    return it == release_notification_map_.end() ? nullptr : it->second;
+  }
+
+  KernelLaunchFn GetKernelLaunchFn(Stream* stream) {
+    auto it = kernel_launch_map_.find(stream->provider->Type());
+    return it == kernel_launch_map_.end() ? nullptr : it->second;
+  }
+
+  WaitNotificationFn GetWaitHandle(Stream* notification_owner_stream, const std::string& executor_ep_type) {
+    auto it = notification_wait_map_.find(GetWaitKey(notification_owner_stream->provider->Type(), executor_ep_type));
+    return it == notification_wait_map_.end() ? nullptr : it->second;
+  }
+
+  NotifyNotificationFn GetNotifyHandle(Stream* notification_owner_stream) {
+    auto it = notification_notify_map_.find(notification_owner_stream->provider->Type());
+    return it == notification_notify_map_.end() ? nullptr : it->second;
+  }
+
+  static StreamCommandHandleRegistry& GetInstance() {
+    static StreamCommandHandleRegistry instance_;
+    return instance_;
+  }
+
+  void RegisterCreateNotificationFn(const std::string& ep_type, CreateNotificationFn fn) {
+    create_notification_map_.insert({ep_type, fn});
+  }
+  void RegisterReleaseNotificationFn(const std::string& ep_type, ReleaseNotificationFn fn) {
+    release_notification_map_.insert({ep_type, fn});
+  }
+
+  void RegisterLaunchKenrelFn(const std::string& ep_type, KernelLaunchFn fn) {
+    kernel_launch_map_.insert({ep_type, fn});
+  }
+  void RegisterWaitFn(const std::string& notification_ep_type, const std::string& ep_type, WaitNotificationFn fn) {
+    notification_wait_map_.insert({GetWaitKey(notification_ep_type, ep_type), fn});
+  }
+  void RegisterNotifyFn(const std::string& notification_ep_type, NotifyNotificationFn fn) {
+    notification_notify_map_.insert({notification_ep_type, fn});
+  }
+
+
+ private:
+  StreamCommandHandleRegistry() = default;
+
+  inline std::string GetWaitKey(const std::string& notificaiton_ep_type, const std::string& executor_ep_type) {
+    return std::string(notificaiton_ep_type) + ":" + executor_ep_type;
+  }
+
+  std::unordered_map<std::string, CreateNotificationFn> create_notification_map_;
+  std::unordered_map<std::string, ReleaseNotificationFn> release_notification_map_;
+  std::unordered_map<std::string, KernelLaunchFn> kernel_launch_map_;
+  std::unordered_map<std::string, WaitNotificationFn> notification_wait_map_;
+  std::unordered_map<std::string, NotifyNotificationFn> notification_notify_map_;
+};
+
+// CPU Stream command handles
+void LaunchCPUKernel(const OpKernel* kernel, OpKernelContext* ctx) {
+  ORT_ENFORCE(kernel->Compute(ctx).IsOK(), MakeString("kernel fail!"));
+}
+
+void WaitCPUNotification(Notification& notification) {
+  ORT_ENFORCE(notification.provider->Type() == kCpuExecutionProvider);
+  static_cast<CPUNotification*>(notification.handle)->wait();
+}
+
+void NotifyCPUNotification(Notification& notification) {
+  ORT_ENFORCE(notification.provider->Type() == kCpuExecutionProvider);
+  static_cast<CPUNotification*>(notification.handle)->notify();
+}
+
+void* CreateCPUNotification(const Stream&) {
+  return static_cast<void*>(new CPUNotification());
+}
+
+void ReleaseCPUNotification(void* handle) {
+  delete static_cast<CPUNotification*>(handle);
+}
+
+void RegisterStreamCommandHanler() {
+  StreamCommandHandleRegistry::GetInstance().RegisterLaunchKenrelFn(kCpuExecutionProvider, LaunchCPUKernel);
+  StreamCommandHandleRegistry::GetInstance().RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
+  StreamCommandHandleRegistry::GetInstance().RegisterNotifyFn(kCpuExecutionProvider, NotifyCPUNotification);
+  StreamCommandHandleRegistry::GetInstance().RegisterCreateNotificationFn(kCpuExecutionProvider, CreateCPUNotification);
+  StreamCommandHandleRegistry::GetInstance().RegisterReleaseNotificationFn(kCpuExecutionProvider, ReleaseCPUNotification);
+}
+
+struct ExecutionContext {
+  const SessionState* session_state;
+  ExecutionFrame* frame;
+  const logging::Logger* logger;
+  std::unique_ptr<Notification[]> notifications;
+
+  ExecutionContext(const SessionState& sess_state,
+      ExecutionFrame* execution_frame,
+      std::vector<Stream*> notification_owners,
+      const logging::Logger& sess_logger) : session_state(&sess_state), 
+                                            frame(execution_frame), 
+                                            logger(&sess_logger),
+                                            notifications(new Notification[notification_owners.size()]){
+    for (auto i = 0; i < notification_owners.size(); ++i) {
+      auto create_notification_fn = StreamCommandHandleRegistry::GetInstance().GetCreateNotificationFn(notification_owners[i]);
+      notifications[i].handle = create_notification_fn(*notification_owners[i]);
+      notifications[i].provider = notification_owners[i]->provider;
+    }
+  }
+};
+
+struct Command {
+  enum CommandType : int {
+    LaunchKernel,
+    WaitNotification,
+    Notify,
+  };
+
+  CommandType type;
+  // if commend type is launch kernel, arg is the node index
+  // if command type is wait/notify, arg is the notification id
+  // if command type is release memory, arg is the tensor index
+  size_t arg;
+  void (*handle)();
+};
+
 struct LogicStream {
  
-  std::vector<NodeIndex> nodes_;
-  std::unordered_map<NodeIndex, NotificationIndex> downstream_notifications_;
-  std::unordered_map<NodeIndex, std::vector<NotificationIndex>> upstream_notifications_;
-
-  //void Reset() { // must be call before Run all all LogicStreams in ParallelExecutionPlanImpl
-  //  for (auto& iter : downstream_notifications_) {
-  //    iter.second->Reset(); // reset all notifications for current thread
-  //  }
-  //}
-
-  void Run(const kernel_invoke_fn& invoke_fn, const notification_wait_fn& wait_fn, const notification_notify_fn& notify_fn) {
-    for (auto node : nodes_) { //FIFO
-      auto upstream_iter = upstream_notifications_.find(node); //todo: measure the impact of .find(...)
-      if (upstream_iter != upstream_notifications_.end()) {
-        for (auto notification : upstream_iter->second) {
-          //std::cout << node << " wait for " << notification << std::endl;
-          wait_fn(notification);
+  std::vector<std::unique_ptr<Stream>> device_streams_;
+  std::vector<Command> commands_;
+  
+  void Run(ExecutionContext& ctx) {
+    for (auto& command : commands_) {
+      switch (command.type) {
+        case Command::LaunchKernel: {
+          auto* intra_tp = ctx.session_state->GetThreadPool();
+          auto* kernel = ctx.session_state->GetKernel(command.arg);
+          OpKernelContext kernel_ctx(ctx.frame, kernel, intra_tp, *ctx.logger);
+          reinterpret_cast<KernelLaunchFn>(command.handle)(kernel, &kernel_ctx);
+          break;
+        }
+        case Command::WaitNotification: {
+          reinterpret_cast<WaitNotificationFn>(command.handle)(ctx.notifications[command.arg]);
+          break;
+        }
+        case Command::Notify: {
+          reinterpret_cast<NotifyNotificationFn>(command.handle)(ctx.notifications[command.arg]);
+          break;
         }
       }
-      invoke_fn(node);
-      //std::cout << node << " run" << std::endl;
-      auto downstream_iter = downstream_notifications_.find(node);
-      if (downstream_iter != downstream_notifications_.end()) {
-        notify_fn(downstream_iter->second);
-        //std::cout << node << " send" << downstream_iter->second << std::endl;
-      }
     }
   }
 
-  NotificationIndex AddNotificationOn(NodeIndex node, NotificationIndex notification) {
-    //auto node_iter = std::find(nodes_.begin(), nodes_.end(), node);
-    //todo: deal with iter == nodes.end()
-    auto notification_iter = downstream_notifications_.find(node);
-    if (notification_iter == downstream_notifications_.end()) {
-      downstream_notifications_[node] = notification;
-    }
-    return downstream_notifications_[node];
-  }
 };
 
 struct LogicStream;
@@ -94,7 +234,8 @@ struct ParallelExecutionPlanImpl {
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
   const SessionState& session_state_;
   int num_logic_streams_{};
-  size_t num_notifications_{};
+  //size_t num_notifications_{};
+  std::vector<Stream*> notification_owners_;
 };
 
 //todo: remove dependency on session_state
@@ -105,49 +246,110 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     logic_streams_.push_back(std::make_unique<LogicStream>());
     streams_stdout.push_back(std::vector<std::string>{});
   }
-  int stream_iter = 0;
+  
   const auto& graph_viewer = session_state_.GetGraphViewer();
-  const auto& value_map = session_state_.GetOrtValueNameIdxMap();
-  std::unordered_map<NodeIndex, int> node_to_stream;
-  std::unordered_map<int, NodeIndex> output_to_node;
+  
+  //1. partition the nodes into streams
+  std::unique_ptr<std::vector<NodeIndex>[]> nodes_in_stream { new std::vector<NodeIndex>[num_logic_streams_] };
+  std::unique_ptr<size_t[]> node_stream_map{new size_t[graph_viewer.MaxNodeIndex()]};
+  // todo: devise a better allocation algo, with benchmarks
+  int stream_iter = 0;
   for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
-    const auto* node = graph_viewer.GetNode(node_index);
-    //auto& stream = logic_streams_[stream_iter % num_logic_streams_];
-    std::vector<NotificationIndex> upstream_notifications;
-    for (auto input : node->InputDefs()) {
-      int idx = -1;
-      ORT_THROW_IF_ERROR(value_map.GetIdx(input->Name(), idx));
-      NodeIndex upstream_node = output_to_node[idx];
-      int upstream_node_stream = node_to_stream[upstream_node];
-      // todo: devise a better allocation algo, with benchmarks
-      if (stream_iter != upstream_node_stream) {
-        auto downstream_notification = logic_streams_[upstream_node_stream]->AddNotificationOn(upstream_node, num_notifications_);
-        if (downstream_notification == num_notifications_) {
-          num_notifications_++;
-        }
-        upstream_notifications.push_back(downstream_notification);
-        auto upstream_node_name = graph_viewer.GetNode(upstream_node)->OpType();
-        for (auto iter = streams_stdout[upstream_node_stream].begin(); iter < streams_stdout[upstream_node_stream].end(); ++iter) {
-          if (*iter == upstream_node_name) {
-            if ((next(iter) == streams_stdout[upstream_node_stream].end() ||
-                 *next(iter) != upstream_node_name + "_send_notification")) {
-              streams_stdout[upstream_node_stream].insert(iter + 1, upstream_node_name + "_send_notification");
-              streams_stdout[stream_iter].push_back("wait_for_" + upstream_node_name);
-            }
-            break;
-          }
+    nodes_in_stream[stream_iter].push_back(node_index);
+    streams_stdout[stream_iter].push_back(graph_viewer.GetNode(node_index)->OpType());
+    node_stream_map[node_index] = stream_iter;
+    stream_iter = (stream_iter + 1) % num_logic_streams_;
+  }
+  //2. for each node, if any of its consumer partitioned to another stream, generate a notification
+  size_t num_notifications=0;
+  std::unordered_map<NodeIndex, NotificationIndex> node_to_notification;
+  for (auto i = 0; i < num_logic_streams_; ++i) {
+    for (auto node_index : nodes_in_stream[i]) {
+      auto* node = graph_viewer.GetNode(node_index);
+      for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+        if (std::find(nodes_in_stream[i].begin(), nodes_in_stream[i].end(), it->Index()) == nodes_in_stream[i].end()) {
+          node_to_notification[node_index] = num_notifications++;
+          break;
         }
       }
     }
-    logic_streams_[stream_iter]->nodes_.push_back(node_index);
-    logic_streams_[stream_iter]->upstream_notifications_[node_index] = std::move(upstream_notifications);
-    streams_stdout[stream_iter].push_back(node->OpType());
-    node_to_stream[node_index] = stream_iter;
-    stream_iter = (stream_iter + 1) % num_logic_streams_;
-    for (auto output : node->OutputDefs()) {
-      int idx = -1;
-      ORT_THROW_IF_ERROR(value_map.GetIdx(output->Name(), idx));
-      output_to_node[idx] = node_index;
+  }
+  //3. Check the nodes in each logical stream, bind it to device streams
+  for (auto i = 0; i < num_logic_streams_; ++i) {
+    std::set<const IExecutionProvider*> providers;
+    for (auto node_index : nodes_in_stream[i]) {
+      auto* node = graph_viewer.GetNode(node_index);
+      auto* ep = session_state.GetKernel(node_index)->Info().GetExecutionProvider();
+      if (providers.find(ep) == providers.end()) {
+        //TODO: invoke the stream creation method for different EP.
+        //For prototype, hardcode to CPU
+        ORT_ENFORCE(node->GetExecutionProviderType() == kCpuExecutionProvider);
+        logic_streams_[i]->device_streams_.emplace_back(std::make_unique<Stream>(nullptr, ep));
+        providers.insert(ep);
+      }
+    }
+  }
+  //4. set notification owners
+  notification_owners_.resize(num_notifications);
+  for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+    auto it = node_to_notification.find(node_index);
+    if (it != node_to_notification.end()) {
+      // notification owned by the node who produced it.
+      // use the producer's EP instance poitner as owner id
+      auto* ep = session_state.GetKernel(node_index)->Info().GetExecutionProvider();
+      auto& streams = logic_streams_[node_stream_map[node_index]]->device_streams_;
+      auto stream_it = std::find_if(streams.begin(),
+                                    streams.end(),
+                                    [&](std::unique_ptr<Stream>& stream) { return stream->provider == ep; });
+      ORT_ENFORCE(stream_it != streams.end());
+      notification_owners_[it->second] = stream_it->get();
+    }
+  }
+  //5. add commands to logic queue
+  for (auto i = 0; i < num_logic_streams_; ++i) {
+    for (auto node_index : nodes_in_stream[i]) {
+      // check if any producer is not in current stream, if yes, create a wait
+      auto* node = graph_viewer.GetNode(node_index);
+      for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+        if (std::find(nodes_in_stream[i].begin(), nodes_in_stream[i].end(), it->Index()) == nodes_in_stream[i].end()) {
+          // find the notificaiton id
+          auto notfication_it = node_to_notification.find(it->Index());
+          ORT_ENFORCE(notfication_it != node_to_notification.end());
+          // push a wait command
+          //TODO: find a better way to bind function pointer
+          auto wait_handle = StreamCommandHandleRegistry::GetInstance().GetWaitHandle(notification_owners_[notfication_it->second], node->GetExecutionProviderType());
+          logic_streams_[i]->commands_.push_back({
+            Command::WaitNotification,
+                notfication_it->second,
+                reinterpret_cast<void (*)()>(wait_handle),
+              });
+        }
+      }
+      // push launch kernel command
+      auto& streams = logic_streams_[i]->device_streams_;
+      auto* ep = session_state.GetKernel(node_index)->Info().GetExecutionProvider();
+      auto stream_it = std::find_if(streams.begin(),
+                                    streams.end(),
+                                    [&](std::unique_ptr<Stream>& stream) { return stream->provider == ep; });
+      ORT_ENFORCE(stream_it != streams.end());
+      auto kernel_launch_handle = StreamCommandHandleRegistry::GetInstance().GetKernelLaunchFn(stream_it->get());
+      //TODO: find a better way to bind function pointer
+      logic_streams_[i]->commands_.push_back({
+          Command::LaunchKernel,
+          node_index,
+          reinterpret_cast<void (*)()>(kernel_launch_handle),
+      });
+      // check if any notification generated by this node, if yes, push a notify
+      auto notification_it = node_to_notification.find(node_index);
+      if (notification_it != node_to_notification.end()) {
+        auto notify_handle = StreamCommandHandleRegistry::GetInstance().GetNotifyHandle(stream_it->get());
+        //TODO: find a better way to bind function pointer
+        logic_streams_[i]->commands_.push_back({
+            Command::LaunchKernel,
+            node_index,
+            reinterpret_cast<void (*)()>(notify_handle),
+        });
+      }
     }
   }
 
@@ -190,37 +392,22 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                                                   const logging::Logger& logger) {
   ExecutionFrame frame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state);
   auto* tp = session_state.GetInterOpThreadPool();
-  auto* intra_tp = session_state.GetThreadPool();
+  // prepare the execution context, notifications got initialized.
+  ExecutionContext execution_context(session_state, &frame, notification_owners_, logger);
   std::unique_ptr<Barrier[]> barriers{new Barrier[num_logic_streams_-1]}; //todo: handle case when num_logic_streams_ == 0
-
-  std::function<void(NodeIndex)> run_fn = [&] (NodeIndex node_index) {
-    auto* kernel = session_state.GetKernel(node_index);
-    OpKernelContext ctx(&frame, kernel, intra_tp, logger);
-    ORT_ENFORCE(kernel->Compute(&ctx).IsOK(), MakeString("kernel fail!"));
-  };
-
-  std::unique_ptr<Notification[]> notifications{new Notification[num_notifications_]}; 
-
-  std::function<void(NotificationIndex)> wait_fn = [&](NotificationIndex notification) {
-    notifications[notification].wait();
-  };
-
-  std::function<void(NotificationIndex)> notify_fn = [&](NotificationIndex notification) {
-    notifications[notification].notify();
-  };
 
   for (int i = 0; i < num_logic_streams_-1; ++i) {
     LogicStream* stream = logic_streams_[i].get();
     Barrier* barrier = &barriers.get()[i];
     concurrency::ThreadPool::Schedule(tp, [&]() {
-      stream->Run(run_fn, wait_fn, notify_fn);
+      stream->Run(execution_context);
       barrier->set();
     });
   }//for
 
   // run last stream in main thread
   LogicStream* stream = logic_streams_[num_logic_streams_-1].get();
-  stream->Run(run_fn, wait_fn, notify_fn);
+  stream->Run(execution_context);
 
   for (int i = 0; i < num_logic_streams_-1; ++i) {
     barriers[i].wait();
