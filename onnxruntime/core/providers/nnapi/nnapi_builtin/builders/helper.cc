@@ -345,10 +345,12 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
 
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   const auto& op_support_checkers = GetOpSupportCheckers();
-  if (!Contains(op_support_checkers, node_unit.OpType()))
+  const auto op_support_checker_it = op_support_checkers.find(node_unit.OpType());
+  if (op_support_checker_it == op_support_checkers.end()) {
     return false;
+  }
 
-  const auto* op_support_checker = op_support_checkers.at(node_unit.OpType());
+  const auto* op_support_checker = op_support_checker_it->second;
   return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 
