@@ -3,13 +3,10 @@
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
  
 Copyright 2019 NVIDIA Corporation
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -82,6 +79,83 @@ __global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int
   }
 }
 
+template <unsigned TPB>
+__global__ void FastGeluKernel4Bias(const half2 a, const half2 b, const half2 c, int input_length, int bias_length, const half* input, const half* bias, half* output) {
+  const int idx = blockIdx.x * TPB + threadIdx.x;
+
+  const float2* input_cast = reinterpret_cast<const float2*>(input);
+  const float2* bias_cast = reinterpret_cast<const float2*>(bias);
+  float2* output_cast = reinterpret_cast<float2*>(output);
+
+  const half2 two2 = __floats2half2_rn(two, two);
+  const half2 one2 = __floats2half2_rn(one, one);
+  
+  if (idx < input_length) {
+
+    float2 vals_vec = input_cast[idx];
+    float2 bias_vec = bias_cast[idx % bias_length];
+    float2 output_vec = output_cast[idx];
+
+    half2* vals_half = reinterpret_cast<half2*>(&vals_vec);
+    half2* bias_half = reinterpret_cast<half2*>(&bias_vec);
+    half2* output_half = reinterpret_cast<half2*>(&output_vec);
+
+    half2 lo_data = vals_half[0];
+    half2 hi_data = vals_half[1];
+    half2 lo_bias = bias_half[0];
+    half2 hi_bias = bias_half[1];
+
+    lo_data += lo_bias;
+    hi_data += hi_bias;
+
+    const half2 lo_u = two2 * lo_data * (c * lo_data * lo_data + b);
+    const half2 hi_u = two2 * hi_data * (c * hi_data * hi_data + b);
+    const half2 lo_emu = h2exp(-lo_u);
+    const half2 hi_emu = h2exp(-hi_u);
+    const half2 lo_cdf = a + a * (two2/(one2 + lo_emu) - one2);
+    const half2 hi_cdf = a + a * (two2/(one2 + hi_emu) - one2);
+
+    output_half[0] = lo_data * lo_cdf;
+    output_half[1] = hi_data * hi_cdf;
+
+    output_cast[idx] = output_vec;
+  }
+}
+
+template <unsigned TPB>
+__global__ void FastGeluKernel4(const half2 a, const half2 b, const half2 c, int input_length, const half* input, half* output) {
+  const int idx = blockIdx.x * TPB + threadIdx.x;
+
+  const float2* input_cast = reinterpret_cast<const float2*>(input);
+  float2* output_cast = reinterpret_cast<float2*>(output);
+
+  const half2 two2 = __floats2half2_rn(two, two);
+  const half2 one2 = __floats2half2_rn(one, one);
+
+  if (idx < input_length) {
+    float2 vals_vec = input_cast[idx];
+    float2 output_vec = output_cast[idx];
+
+    half2* vals_half = reinterpret_cast<half2*>(&vals_vec);
+    half2* output_half = reinterpret_cast<half2*>(&output_vec);
+
+    half2 lo_data = vals_half[0];
+    half2 hi_data = vals_half[1];
+
+    const half2 lo_u = two2 * lo_data * (c * lo_data * lo_data + b);
+    const half2 hi_u = two2 * hi_data * (c * hi_data * hi_data + b);
+    const half2 lo_emu = h2exp(-lo_u);
+    const half2 hi_emu = h2exp(-hi_u);
+    const half2 lo_cdf = a + a * (two2/(one2 + lo_emu) - one2);
+    const half2 hi_cdf = a + a * (two2/(one2 + hi_emu) - one2);
+
+    output_half[0] = lo_data * lo_cdf;
+    output_half[1] = hi_data * hi_cdf;
+
+    output_cast[idx] = output_vec;
+  }
+}
+
 template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output, bool /*use_half2*/) {
   constexpr int blockSize = 256;
@@ -95,7 +169,18 @@ template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output, bool use_half2) {
   constexpr int blockSize = 256;
 
-  if (use_half2 && 0 == (bias_length & 1) && prop.major >= 7) {
+  if (use_half2 && 0 == (bias_length % 4) && prop.major >= 7) {
+    const int n = input_length / 4;
+    const int gridSize = (n - 1) / blockSize + 1;
+    const half2 A2 = __floats2half2_rn(A, A);
+    const half2 B2 = __floats2half2_rn(B, B);
+    const half2 C2 = __floats2half2_rn(C, C);
+    if (bias == nullptr) {
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel4<blockSize>), dim3(gridSize), dim3(blockSize), 0, stream, A2, B2, C2, n, input, output);
+    } else {
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel4Bias<blockSize>), dim3(gridSize), dim3(blockSize), 0, stream, A2, B2, C2, n, bias_length / 4, input, bias, output);
+    }
+  } else if (use_half2 && 0 == (bias_length & 1) && prop.major >= 7) {
     const int n = input_length / 2;
     const int gridSize = (n + blockSize - 1) / blockSize;
     const half2 A2 = __floats2half2_rn(A, A);
@@ -105,6 +190,7 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
     const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
     hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel2<blockSize>), dim3(gridSize), dim3(blockSize), 0, stream, A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+
   } else {
     const int gridSize = (input_length + blockSize - 1) / blockSize;
     hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize), dim3(blockSize), 0, stream, A, B, C, input_length, bias_length, input, bias, output);
