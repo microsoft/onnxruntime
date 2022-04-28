@@ -94,6 +94,8 @@ enum class QuantizedOpType : uint8_t {
   QDQReshape,
   QDQSoftmax,
   QDQConcat,
+  QDQGemm,
+  QDQMatMul,
   // TODO, add other QDQ NodeUnit types
 };
 
@@ -119,6 +121,9 @@ bool IsQuantizedConv(QuantizedOpType quant_op_type);
 
 // If this is a quantized Pool (QLinearAveragePool or QDQAveragePool)
 bool IsQuantizedPool(QuantizedOpType quant_op_type);
+
+// If this is a quantized Gemm (QLinearMatMul or QDQMatMul/QDQGemm)
+bool IsQuantizedGemm(QuantizedOpType quant_op_type);
 
 // This quantized op is an operator or qdq node unit takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...

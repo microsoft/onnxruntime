@@ -12,11 +12,22 @@
 
 namespace onnxruntime {
 
+namespace {
+using DefaultDataTypes = element_type_lists::All;
+}  // namespace
+
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
-    element_type_lists::All);
+    DefaultDataTypes);
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+// enable all types for layout transformation
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
+    DefaultDataTypes);
+#endif
 }  // namespace op_kernel_type_control
 
 namespace {
@@ -41,15 +52,15 @@ struct MultiIndex {
   std::vector<int64_t> stride;
 
   /* There is one MultiIndex instance per axis in the tensor.
-  * The array keeps track of the position of a pointer walking through the data.
-  * Any function using it creates an array of MultiIndex
-  * then calls function IncrementIndexAndComputeOffsetSetup
-  * to initialize the array. This constructor does not initialize
-  * anything because it would be overwritten by function
-  * IncrementIndexAndComputeOffsetSetup. This one calls method Init.
-  * Function IncrementIndexAndComputeOffset is called to increment
-  * the array of MultiIndex to move to the next data in the tensor.
-  */
+   * The array keeps track of the position of a pointer walking through the data.
+   * Any function using it creates an array of MultiIndex
+   * then calls function IncrementIndexAndComputeOffsetSetup
+   * to initialize the array. This constructor does not initialize
+   * anything because it would be overwritten by function
+   * IncrementIndexAndComputeOffsetSetup. This one calls method Init.
+   * Function IncrementIndexAndComputeOffset is called to increment
+   * the array of MultiIndex to move to the next data in the tensor.
+   */
   MultiIndex() : index(), upper_bound(), stride() { n_axes = 0; }
 
   void Init(size_t num_axes) {
@@ -67,10 +78,10 @@ struct MultiIndex {
 };
 
 /* This function initializes an array of MultiIndex of size num_axes (one instance per axis).
-* target_dims is the shape of the transposed tensor, stride is linked to the tensor to
-* be transposed, if source_dims is the shape, stride[i] = source_dims[i+1] * source_dims[i+2] * ... * 1.
-* element_size is the size of the tensor element (sizeof(float), sizeof(double)).
-*/
+ * target_dims is the shape of the transposed tensor, stride is linked to the tensor to
+ * be transposed, if source_dims is the shape, stride[i] = source_dims[i+1] * source_dims[i+2] * ... * 1.
+ * element_size is the size of the tensor element (sizeof(float), sizeof(double)).
+ */
 static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_axes, gsl::span<const int64_t> target_dims,
                                                 const gsl::span<const size_t>& stride, size_t element_size) {
   mindex.Init(num_axes);
@@ -86,13 +97,13 @@ static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_a
 }
 
 /* This function increments an array of MultiIndex initialized by function IncrementIndexAndComputeOffsetSetup.
-* It increments the last dimension, checks if it stays within boundary. If it stays in, it returns,
-* otherwise, it reset the dimension to zero and increments the previous one.
-* While doing that, every modification brought to the array of indices is applied on the
-* pointer local_source. It avoids computing again local_source from the source tensor.
-* At every time, the following condition is verified:
-* local_source = source + (sum_i mindex[i].index * mindex[i].stride
-*/
+ * It increments the last dimension, checks if it stays within boundary. If it stays in, it returns,
+ * otherwise, it reset the dimension to zero and increments the previous one.
+ * While doing that, every modification brought to the array of indices is applied on the
+ * pointer local_source. It avoids computing again local_source from the source tensor.
+ * At every time, the following condition is verified:
+ * local_source = source + (sum_i mindex[i].index * mindex[i].stride
+ */
 template <typename T>
 static inline void IncrementIndexAndComputeOffset(MultiIndex& mindex, const T*& local_source) {
   // Increment the last dimension.

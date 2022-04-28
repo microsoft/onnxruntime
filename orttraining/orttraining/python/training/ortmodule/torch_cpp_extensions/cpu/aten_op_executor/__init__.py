@@ -10,6 +10,7 @@ def run_once_aten_op_executor(f):
     :param f: function to be run only once during execution time despite the number of calls
     :return: The original function with the params passed to it if it hasn't already been run before
     """
+
     @wraps(f)
     def aten_op_executor_wrapper(*args, **kwargs):
         if not aten_op_executor_wrapper.has_run:
@@ -26,5 +27,7 @@ def run_once_aten_op_executor(f):
 @run_once_aten_op_executor
 def load_aten_op_executor_cpp_extension():
     from onnxruntime.training.ortmodule.torch_cpp_extensions import aten_op_executor
-    C.register_aten_op_executor(str(aten_op_executor.is_tensor_argument_address()),
-                                str(aten_op_executor.execute_aten_operator_address()))
+
+    C.register_aten_op_executor(
+        str(aten_op_executor.is_tensor_argument_address()), str(aten_op_executor.execute_aten_operator_address())
+    )
