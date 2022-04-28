@@ -1,30 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/framework/transpose_helper.h"
 #include "core/mlas/inc/mlas.h"
-/*
-This file contains optimizations for moving a single axis either inwards or outwards.
-
-If moving outwards we can use a single reader and multiple writers. The number of writers is equal to the value of
-the axis being moved.
-
-  e.g. if the input is NHWC with shape {N, 300, 300, 3}, we can transpose to NCHW by reading once and having
-       one writer for each of the 3 channels at a different offset in the output, updating the offset for each item
-       in the batch of N.
-
-Similarly if one axis is moving inwards we can use a single writer and multiple readers. The number of readers is equal
-to the value of the axis being moved.
-
-  e.g. if the input is NCHW with shape {N, 3, 300, 300}, we can transpose to NHWC by writing once using one reader for
-       each of the 3 channels at a different offset in the input, updating the read offset for each item in the batch
-       of N.
-
-This can be generalized for any input where only one axis is being moved, with the block size for each read/write
-being dependent on which axis is moving, what direction it's moving in, and where it's moving to.
-
-We use simple pointer arithmetic if the size of each read/write is a power of 2 and between 8 and 64 bits.
-We use memcpy if the block size is larger.
-
-We fall back to the default implementation in all other cases, and if the input is std::string.
-*/
 
 namespace onnxruntime {
 
@@ -77,7 +55,7 @@ typename std::enable_if<has_mlas_transpose<T>::value, void>::type SimpleTranspos
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-void TransposeSingleAxisOutwards(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
+void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output,
                                  size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
@@ -184,7 +162,7 @@ typename std::enable_if<has_mlas_transpose<T>::value, void>::type SimpleTranspos
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-void TransposeSingleAxisInwards(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
+void TransposeSingleAxisInwards(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output,
                                 size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
@@ -254,7 +232,7 @@ void TransposeSingleAxisInwards(const gsl::span<const size_t>& permutations, con
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-void SingleAxisTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output, size_t from,
+void SingleAxisTranspose(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output, size_t from,
                          size_t to, const TensorShape* input_shape_override) {
   if (from > to) {
     TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override);
@@ -263,7 +241,7 @@ void SingleAxisTranspose(const gsl::span<const size_t>& permutations, const Tens
   }
 }
 
-bool IsMovingSingleAxis(const gsl::span<const size_t>& permutations, size_t& from, size_t& to) {
+bool IsTransposeMovingSingleAxis(gsl::span<const size_t> permutations, size_t& from, size_t& to) {
   // if a single axis moved to an outer dimension, the values should be one lower than the index until the slot the
   // axis was moved from, and equal to the index after that.
   // e.g. axis 3 moves out to 1 would be: 0, 3, 1, 2, 4

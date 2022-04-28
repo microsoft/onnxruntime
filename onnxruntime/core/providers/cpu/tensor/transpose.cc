@@ -360,7 +360,7 @@ Status TransposeBase::DoTranspose(const gsl::span<const size_t>& permutations, c
     }
 
     size_t from = 0, to = 0;
-    bool moving_single_axis = IsMovingSingleAxis(permutations, from, to);
+    bool moving_single_axis = IsTransposeMovingSingleAxis(permutations, from, to);
 
     if (moving_single_axis && !input.IsDataTypeString()) {
       SingleAxisTranspose(permutations, input, output, from, to, input_shape_override);
@@ -402,7 +402,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   }
 
   size_t from = 0, to = 0;
-  bool moving_single_axis = IsMovingSingleAxis(*p_perm, from, to);
+  bool moving_single_axis = IsTransposeMovingSingleAxis(*p_perm, from, to);
 
   if (moving_single_axis && !X.IsDataTypeString()) {
     SingleAxisTranspose(*p_perm, X, Y, from, to);
