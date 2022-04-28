@@ -16,7 +16,6 @@ import numpy
 import numpy as np
 import pandas as pd
 from float16 import *
-
 from perf_utils import *
 
 import onnxruntime  # isort:skip
