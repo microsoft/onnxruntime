@@ -14,16 +14,25 @@ jobs:
       displayName: 'unzip zip file'
       workingDirectory: '$(Build.ArtifactStagingDirectory)/'
       
-    - template: templates/esrp_nuget.yml
+    - script: 'curl -fsSL "https://github.com/intel/onnxruntime/releases/download/v4.0/gpu_binaries_uep_v4.0.zip" -O'
+      displayName: 'get gpu zip file'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+    
+    - script: 'unzip gpu_binaries_uep_v4.0.zip'
+      displayName: 'unzip gpu zip file'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/'
+
+    - template: templates/win-esrp-dll.yml
       parameters:
         DisplayName: 'ESRP - sign NuGet package'
         FolderPath: '$(Build.ArtifactStagingDirectory)/'
         DoEsrp: 'true'
+        Pattern: 'onnxruntime*.dll'
         
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'cpu binaries'
+        artifactName: 'gpu and cpu binaries'
         
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
