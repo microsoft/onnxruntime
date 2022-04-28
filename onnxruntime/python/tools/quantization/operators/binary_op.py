@@ -55,7 +55,7 @@ class QLinearBinaryOp(QuantOperatorBase):
             qlinear_binary_math_inputs,
             [qlinear_binary_math_output],
             qlinear_binary_math_name,
-            **kwargs
+            **kwargs,
         )
         nodes.append(qlinear_binary_math_node)
 

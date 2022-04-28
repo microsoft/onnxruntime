@@ -79,7 +79,7 @@ class QLinearActivation(QuantOperatorBase):
             qlinear_activation_inputs,
             [qlinear_activation_output],
             qlinear_activation_name,
-            **kwargs
+            **kwargs,
         )
 
         # Create an entry for this quantized value
