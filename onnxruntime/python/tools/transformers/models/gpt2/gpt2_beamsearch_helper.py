@@ -5,19 +5,19 @@
 # --------------------------------------------------------------------------
 # This script helps onnx conversion and validation for GPT2 model with past state.
 import logging
-import torch
+import os
 import random
-import numpy
+import sys
 import time
 from pathlib import Path
-from typing import List, Dict, Union
-from transformers import GPT2LMHeadModel, GPT2Config
-from gpt2_helper import Gpt2Helper, Gpt2Inputs, MyGPT2Model, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding
+from typing import Dict, List, Union
 
-import sys
-import os
+import numpy
+import torch
+from gpt2_helper import Gpt2Helper, Gpt2Inputs, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding, MyGPT2Model
+from transformers import GPT2Config, GPT2LMHeadModel
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from io_binding_helper import TypeHelper
 from torch_onnx_export_helper import torch_onnx_export
 
@@ -27,7 +27,6 @@ BIG_NEG = -1e4
 
 
 class Gpt2HelperFactory:
-
     @staticmethod
     def create_helper(helper_type="default"):
         helpers = {
@@ -72,11 +71,13 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
         logits_flat, present_flat = MyGPT2Model.post_process(result, self.config.n_layer)
         next_token_logits = logits_flat[:, -1].view(self.config.batch_size, -1, logits_flat.size(-1))
         next_token_log_probs = torch.log_softmax(next_token_logits, dim=-1)
-        next_token_log_probs, next_token_ids = torch.topk(next_token_log_probs,
-                                                          self.config.beam_size,
-                                                          dim=-1,
-                                                          largest=True,
-                                                          sorted=True)
+        next_token_log_probs, next_token_ids = torch.topk(
+            next_token_log_probs,
+            self.config.beam_size,
+            dim=-1,
+            largest=True,
+            sorted=True,
+        )
 
         # finished sentences is always with EOS, and all but the first one has -inf, so that they will be automatically dropped in the round of beam search.
         finished_sents = ~input_unfinished_sents
@@ -87,34 +88,35 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
 
         # select N sequences from beams of each input, sorted by sequence probability
         output_log_probs = output_log_probs.view(self.config.batch_size, -1)  # shape=(batch, beam_size^2)
-        output_log_probs, selected_index_flat = output_log_probs.topk(self.config.beam_size,
-                                                                      dim=-1,
-                                                                      largest=True,
-                                                                      sorted=True)  # output shape=(batch, beam_size)
+        output_log_probs, selected_index_flat = output_log_probs.topk(
+            self.config.beam_size, dim=-1, largest=True, sorted=True
+        )  # output shape=(batch, beam_size)
 
         # select the correspondent sentences/next tokens
-        selected_input_seq = torch.div(selected_index_flat, self.config.beam_size,
-                                       rounding_mode='trunc')  # selected_index_flat // self.config.beam_size
+        selected_input_seq = torch.div(
+            selected_index_flat, self.config.beam_size, rounding_mode="trunc"
+        )  # selected_index_flat // self.config.beam_size
 
         next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
 
         prev_step_results = prev_step_results.view(self.config.batch_size, -1, prev_step_results.size(-1))
         prev_step_results = prev_step_results.gather(
-            1,
-            selected_input_seq.unsqueeze(-1).repeat(1, 1, prev_step_results.size(-1)))
+            1, selected_input_seq.unsqueeze(-1).repeat(1, 1, prev_step_results.size(-1))
+        )
 
         output_unfinished_sents = input_unfinished_sents.gather(1, selected_input_seq)
         # Add ones_like to walkaround error like Shape mismatch attempting to re-use buffer. {1,1} != {1,4}
-        output_unfinished_sents = (output_unfinished_sents & next_token_ids.ne(
-            torch.ones_like(next_token_ids, dtype=torch.int) * self.config.eos_token_id))
+        output_unfinished_sents = output_unfinished_sents & next_token_ids.ne(
+            torch.ones_like(next_token_ids, dtype=torch.int) * self.config.eos_token_id
+        )
 
         # get the next full input_ids
         current_step_results = torch.cat([prev_step_results, next_token_ids.unsqueeze(-1)], dim=-1).contiguous()
 
         prev_step_scores = prev_step_scores.view(self.config.batch_size, -1, prev_step_scores.size(-1))
         prev_step_scores = prev_step_scores.gather(
-            1,
-            selected_input_seq.unsqueeze(-1).repeat(1, 1, prev_step_scores.size(-1)))
+            1, selected_input_seq.unsqueeze(-1).repeat(1, 1, prev_step_scores.size(-1))
+        )
         current_step_scores = torch.cat([prev_step_scores, output_log_probs.unsqueeze(-1)], dim=-1).contiguous()
 
         return (
@@ -132,18 +134,20 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one
     step beam search with configuration support."""
 
-    def __init__(self,
-                 config,
-                 batch_size,
-                 beam_size,
-                 ignore_eos=False,
-                 temperature=1.0,
-                 repetition_penalty=1.0,
-                 excluded_token_ids=None,
-                 length_penalty=1.0,
-                 do_sample=False,
-                 do_sample_top_p=1,
-                 do_sample_top_k=0):
+    def __init__(
+        self,
+        config,
+        batch_size,
+        beam_size,
+        ignore_eos=False,
+        temperature=1.0,
+        repetition_penalty=1.0,
+        excluded_token_ids=None,
+        length_penalty=1.0,
+        do_sample=False,
+        do_sample_top_p=1,
+        do_sample_top_k=0,
+    ):
         super().__init__(config)
         self.config.batch_size = batch_size
         self.config.beam_size = beam_size
@@ -162,16 +166,25 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
 
     @staticmethod
     def top_k_top_p_filtering(log_probs, top_p=1.0, top_k=0):
-        '''Set tail event (out of top_p) to a big negative number'''
+        """Set tail event (out of top_p) to a big negative number"""
         sorted_log_probs, sorted_indices = torch.sort(log_probs, descending=True)
         cumulative_probs = torch.cumsum(sorted_log_probs.exp(), dim=-1)
         sorted_indices_to_remove = cumulative_probs >= top_p
         sorted_indices_to_remove = torch.cat(
-            [torch.zeros_like(sorted_indices_to_remove[..., :1]), sorted_indices_to_remove[..., :-1]], dim=-1)
+            [
+                torch.zeros_like(sorted_indices_to_remove[..., :1]),
+                sorted_indices_to_remove[..., :-1],
+            ],
+            dim=-1,
+        )
         if top_k > 0:
             sorted_indices_to_remove = torch.cat(
-                [sorted_indices_to_remove[..., :top_k],
-                 torch.ones_like(sorted_indices_to_remove[..., top_k:])], dim=-1)
+                [
+                    sorted_indices_to_remove[..., :top_k],
+                    torch.ones_like(sorted_indices_to_remove[..., top_k:]),
+                ],
+                dim=-1,
+            )
         sorted_log_probs.masked_fill_(sorted_indices_to_remove, BIG_NEG)
         return log_probs.scatter(-1, sorted_indices, sorted_log_probs)
 
@@ -188,8 +201,8 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
         input_num_seq_per_sample = input_ids.size(1)
 
         input_ids_unfinished_flat = self.collapse_first_two_dims(input_ids).index_select(
-            0,
-            input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1))
+            0, input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
+        )
 
         if self.config.ignore_eos:
             attention_mask = (input_ids_unfinished_flat != self.config.eos_token_id).float()
@@ -203,8 +216,9 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
             input_ids_unfinished_flat = input_ids_unfinished_flat[:, last_seq_len:]
             position_ids = position_ids[:, last_seq_len:]
 
-            unfinished_index_relative_to_last_unfinished = beam_select_idx.view(-1)[input_unfinished_sents.view(
-                -1).nonzero(as_tuple=False).view(-1)]
+            unfinished_index_relative_to_last_unfinished = beam_select_idx.view(-1)[
+                input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
+            ]
 
             past = tuple([p.index_select(1, unfinished_index_relative_to_last_unfinished) for p in past])
 
@@ -218,23 +232,37 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
         logits_flat, present_flat = MyGPT2Model.post_process(result, self.config.n_layer)
 
         # insert finished sequence back to form a square shape of (batch_size, beam_size)
-        next_token_logits = logits_flat.new_zeros(input_ids.size()[:2] + (logits_flat.size(-1), ))
-        next_token_logits.index_fill_(2, torch.LongTensor([self.config.eos_token_id]).to(input_ids.device), -BIG_NEG)
+        next_token_logits = logits_flat.new_zeros(input_ids.size()[:2] + (logits_flat.size(-1),))
+        next_token_logits.index_fill_(
+            2,
+            torch.LongTensor([self.config.eos_token_id]).to(input_ids.device),
+            -BIG_NEG,
+        )
 
         next_token_logits.masked_scatter_(
-            input_unfinished_sents.unsqueeze(-1).expand_as(next_token_logits), logits_flat[:, -1])
+            input_unfinished_sents.unsqueeze(-1).expand_as(next_token_logits),
+            logits_flat[:, -1],
+        )
 
         # repetition penalty from CTRL paper (https://arxiv.org/abs/1909.05858)
         if self.config.repetition_penalty != 1.0:
             _pen = next_token_logits.gather(2, input_ids)
-            _pen = torch.where(_pen > 0, _pen / self.config.repetition_penalty, _pen * self.config.repetition_penalty)
+            _pen = torch.where(
+                _pen > 0,
+                _pen / self.config.repetition_penalty,
+                _pen * self.config.repetition_penalty,
+            )
             next_token_logits.scatter_(2, input_ids, _pen)
 
         # similar way to encourage short sentence
         if self.config.length_penalty != 1.0:
             _pen = next_token_logits[..., self.config.eos_token_id]
             # if eos > 0, increase it, else, decrease it.
-            _pen = torch.where(_pen > 0, _pen * self.config.length_penalty, _pen / self.config.length_penalty)
+            _pen = torch.where(
+                _pen > 0,
+                _pen * self.config.length_penalty,
+                _pen / self.config.length_penalty,
+            )
             next_token_logits[..., self.config.eos_token_id] = _pen
 
         if self.config.temperature != 1.0:
@@ -242,62 +270,76 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
 
         # exclude excluded_token_ids
         if self.config.excluded_token_ids is not None:
-            next_token_logits.index_fill_(2, self.config.excluded_token_ids.to(next_token_logits.device),
-                                          BIG_NEG)  # batch x beams/sequences x vocab_size
+            next_token_logits.index_fill_(
+                2, self.config.excluded_token_ids.to(next_token_logits.device), BIG_NEG
+            )  # batch x beams/sequences x vocab_size
 
         next_token_log_probs = torch.log_softmax(next_token_logits, dim=-1)
 
         if self.config.do_sample:
             vocab_size = next_token_log_probs.size(-1)
-            _next_token_log_probs = self.top_k_top_p_filtering(next_token_log_probs.view(-1, vocab_size),
-                                                               top_k=self.config.do_sample_top_k,
-                                                               top_p=self.config.do_sample_top_p)
-            next_token_ids = torch.multinomial(_next_token_log_probs.exp(),
-                                               num_samples=self.config.beam_size,
-                                               replacement=False)
+            _next_token_log_probs = self.top_k_top_p_filtering(
+                next_token_log_probs.view(-1, vocab_size),
+                top_k=self.config.do_sample_top_k,
+                top_p=self.config.do_sample_top_p,
+            )
+            next_token_ids = torch.multinomial(
+                _next_token_log_probs.exp(),
+                num_samples=self.config.beam_size,
+                replacement=False,
+            )
             next_token_ids = next_token_ids.view(self.config.batch_size, input_num_seq_per_sample, -1)
             next_token_log_probs = next_token_log_probs.gather(-1, next_token_ids)
         else:
-            next_token_log_probs, next_token_ids = torch.topk(next_token_log_probs,
-                                                              self.config.beam_size,
-                                                              dim=-1,
-                                                              largest=True,
-                                                              sorted=True)
+            next_token_log_probs, next_token_ids = torch.topk(
+                next_token_log_probs,
+                self.config.beam_size,
+                dim=-1,
+                largest=True,
+                sorted=True,
+            )
 
         output_log_probs = input_log_probs.unsqueeze(-1) + next_token_log_probs
 
         # select N sequences from beams of each input, sorted by sequence probability
         output_log_probs = output_log_probs.view(self.config.batch_size, -1)  # shape=(batch, beam_size^2)
-        output_log_probs, selected_index_flat = output_log_probs.topk(self.config.beam_size,
-                                                                      dim=-1,
-                                                                      largest=True,
-                                                                      sorted=True)  # output shape=(batch, beam_size)
+        output_log_probs, selected_index_flat = output_log_probs.topk(
+            self.config.beam_size, dim=-1, largest=True, sorted=True
+        )  # output shape=(batch, beam_size)
 
         # select the correspondent sentences/next tokens
-        selected_input_seq = torch.div(selected_index_flat, self.config.beam_size,
-                                       rounding_mode='trunc')  # selected_index_flat // self.config.beam_size
+        selected_input_seq = torch.div(
+            selected_index_flat, self.config.beam_size, rounding_mode="trunc"
+        )  # selected_index_flat // self.config.beam_size
 
         next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
 
         prev_step_results = input_ids.view(self.config.batch_size, -1, input_ids.size(-1)).contiguous()
         prev_step_results = prev_step_results.gather(
             1,
-            selected_input_seq.unsqueeze(-1).expand(selected_input_seq.shape + (prev_step_results.size(-1), )))
+            selected_input_seq.unsqueeze(-1).expand(selected_input_seq.shape + (prev_step_results.size(-1),)),
+        )
 
         output_unfinished_sents = input_unfinished_sents.gather(1, selected_input_seq)
-        output_unfinished_sents = (output_unfinished_sents & next_token_ids.ne(self.config.eos_token_id))
+        output_unfinished_sents = output_unfinished_sents & next_token_ids.ne(self.config.eos_token_id)
 
         current_step_results = torch.cat([prev_step_results, next_token_ids.unsqueeze(-1)], dim=-1).contiguous()
 
         prev_step_scores = prev_step_scores.view(self.config.batch_size, -1, prev_step_scores.size(-1))
         prev_step_scores = prev_step_scores.gather(
             1,
-            selected_input_seq.unsqueeze(-1).expand(selected_input_seq.shape + (prev_step_scores.size(-1), )))
+            selected_input_seq.unsqueeze(-1).expand(selected_input_seq.shape + (prev_step_scores.size(-1),)),
+        )
         current_step_scores = torch.cat([prev_step_scores, output_log_probs.unsqueeze(-1)], dim=-1).contiguous()
 
         # For next past state
-        index_relative_to_last_unfinished = (input_unfinished_sents.view(-1).float().cumsum(-1) - 1).clamp(
-            min=0).long().reshape_as(input_unfinished_sents).gather(1, selected_input_seq)
+        index_relative_to_last_unfinished = (
+            (input_unfinished_sents.view(-1).float().cumsum(-1) - 1)
+            .clamp(min=0)
+            .long()
+            .reshape_as(input_unfinished_sents)
+            .gather(1, selected_input_seq)
+        )
 
         return (
             current_step_results.view(self.config.batch_size * self.config.beam_size, -1),
@@ -311,16 +353,23 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
 
 # Maps model class name to a tuple of model class, name of first output and use padding or not
 MODEL_CLASSES = {
-    'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
-    'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
-    'GPT2Model': (MyGPT2Model, 'last_state', True),
-    "GPT2LMHeadModel_BeamSearchStep": (GPT2LMHeadModel_BeamSearchStep, "last_state", True),
-    "GPT2LMHeadModel_ConfigurableOneStepSearch": (GPT2LMHeadModel_ConfigurableOneStepSearch, "last_state", False),
+    "GPT2LMHeadModel": (MyGPT2LMHeadModel, "logits", True),
+    "GPT2LMHeadModel_NoPadding": (MyGPT2LMHeadModel_NoPadding, "logits", False),
+    "GPT2Model": (MyGPT2Model, "last_state", True),
+    "GPT2LMHeadModel_BeamSearchStep": (
+        GPT2LMHeadModel_BeamSearchStep,
+        "last_state",
+        True,
+    ),
+    "GPT2LMHeadModel_ConfigurableOneStepSearch": (
+        GPT2LMHeadModel_ConfigurableOneStepSearch,
+        "last_state",
+        False,
+    ),
 }
 
 
 class Gpt2BeamSearchInputs(Gpt2Inputs):
-
     def __init__(
         self,
         input_ids,
@@ -345,10 +394,18 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
 
     def to_list(self) -> List:
         input_list = [
-            v for v in [
-                self.input_ids, self.position_ids, self.attention_mask, self.beam_select_idx, self.input_log_probs,
-                self.input_unfinished_sents, self.prev_step_results, self.prev_step_scores
-            ] if v is not None
+            v
+            for v in [
+                self.input_ids,
+                self.position_ids,
+                self.attention_mask,
+                self.beam_select_idx,
+                self.input_log_probs,
+                self.input_unfinished_sents,
+                self.prev_step_results,
+                self.prev_step_scores,
+            ]
+            if v is not None
         ]
         if self.past:
             input_list.extend(self.past)
@@ -356,8 +413,9 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
 
     def to_fp32(self):
         past = [p.to(dtype=torch.float32) for p in self.past]
-        attention_mask = self.attention_mask.to(
-            dtype=torch.float32) if self.attention_mask is not None else self.attention_mask
+        attention_mask = (
+            self.attention_mask.to(dtype=torch.float32) if self.attention_mask is not None else self.attention_mask
+        )
         return Gpt2BeamSearchInputs(
             self.input_ids,
             past,
@@ -375,36 +433,39 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
     """A helper class for Gpt2 model conversion, inference and verification."""
 
     @staticmethod
-    def get_dummy_inputs(batch_size: int,
-                         past_sequence_length: int,
-                         sequence_length: int,
-                         num_attention_heads: int,
-                         hidden_size: int,
-                         num_layer: int,
-                         vocab_size: int,
-                         device: torch.device,
-                         float16: bool = False,
-                         has_position_ids: bool = True,
-                         has_attention_mask: bool = True,
-                         input_ids_dtype: torch.dtype = torch.int64,
-                         position_ids_dtype: torch.dtype = torch.int64,
-                         attention_mask_dtype: torch.dtype = torch.int64) -> Gpt2BeamSearchInputs:
-        """Create random inputs for GPT2 beam search.
-        """
-        gpt2_dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
-                                                        past_sequence_length,
-                                                        sequence_length,
-                                                        num_attention_heads,
-                                                        hidden_size,
-                                                        num_layer,
-                                                        vocab_size,
-                                                        device,
-                                                        float16,
-                                                        has_position_ids,
-                                                        has_attention_mask,
-                                                        input_ids_dtype=input_ids_dtype,
-                                                        position_ids_dtype=position_ids_dtype,
-                                                        attention_mask_dtype=attention_mask_dtype)
+    def get_dummy_inputs(
+        batch_size: int,
+        past_sequence_length: int,
+        sequence_length: int,
+        num_attention_heads: int,
+        hidden_size: int,
+        num_layer: int,
+        vocab_size: int,
+        device: torch.device,
+        float16: bool = False,
+        has_position_ids: bool = True,
+        has_attention_mask: bool = True,
+        input_ids_dtype: torch.dtype = torch.int64,
+        position_ids_dtype: torch.dtype = torch.int64,
+        attention_mask_dtype: torch.dtype = torch.int64,
+    ) -> Gpt2BeamSearchInputs:
+        """Create random inputs for GPT2 beam search."""
+        gpt2_dummy_inputs = Gpt2Helper.get_dummy_inputs(
+            batch_size,
+            past_sequence_length,
+            sequence_length,
+            num_attention_heads,
+            hidden_size,
+            num_layer,
+            vocab_size,
+            device,
+            float16,
+            has_position_ids,
+            has_attention_mask,
+            input_ids_dtype=input_ids_dtype,
+            position_ids_dtype=position_ids_dtype,
+            attention_mask_dtype=attention_mask_dtype,
+        )
         float_type = torch.float16 if float16 else torch.float32
 
         beam_select_idx = torch.zeros([1, batch_size], device=device).long()
@@ -436,15 +497,17 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         )
 
     @staticmethod
-    def get_output_shapes(batch_size: int,
-                          context_len: int,
-                          past_sequence_length: int,
-                          sequence_length: int,
-                          beam_size: int,
-                          step: int,
-                          config: GPT2Config,
-                          model_class: str = "GPT2LMHeadModel_BeamSearchStep",
-                          num_seq: int = 0) -> Dict[str, List[int]]:
+    def get_output_shapes(
+        batch_size: int,
+        context_len: int,
+        past_sequence_length: int,
+        sequence_length: int,
+        beam_size: int,
+        step: int,
+        config: GPT2Config,
+        model_class: str = "GPT2LMHeadModel_BeamSearchStep",
+        num_seq: int = 0,
+    ) -> Dict[str, List[int]]:
         """Returns a dictionary with output name as key, and shape as value."""
         num_attention_heads = config.num_attention_heads
         hidden_size = config.hidden_size
@@ -456,7 +519,10 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         if model_class == "GPT2LMHeadModel_BeamSearchStep":
             last_state_shape = [batch_size, beam_size]
         else:
-            last_state_shape = [batch_size * beam_size, past_sequence_length - context_len + sequence_length + 1]
+            last_state_shape = [
+                batch_size * beam_size,
+                past_sequence_length - context_len + sequence_length + 1,
+            ]
 
         if model_class == "GPT2LMHeadModel_BeamSearchStep":
             if step == 0:
@@ -497,9 +563,13 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         output_shapes["output_unfinished_sents"] = [batch_size, beam_size]
         if model_class == "GPT2LMHeadModel_BeamSearchStep":
             output_shapes["current_step_results"] = [
-                batch_size * beam_size, past_sequence_length - context_len + sequence_length + 1
+                batch_size * beam_size,
+                past_sequence_length - context_len + sequence_length + 1,
             ]
-        output_shapes["current_step_scores"] = [batch_size * beam_size, past_sequence_length - context_len + 2]
+        output_shapes["current_step_scores"] = [
+            batch_size * beam_size,
+            past_sequence_length - context_len + 2,
+        ]
         print("output_shapes", output_shapes)
         return output_shapes
 
@@ -510,7 +580,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
         output_buffers = {}
         for name, shape in output_shapes.items():
-            if (name == "output_selected_indices" or name == "current_step_results" or name == "last_state"):
+            if name == "output_selected_indices" or name == "current_step_results" or name == "last_state":
                 output_buffers[name] = torch.empty(numpy.prod(shape), dtype=torch.long, device=device)
             elif name == "output_unfinished_sents":
                 output_buffers[name] = torch.empty(numpy.prod(shape), dtype=torch.bool, device=device)
@@ -519,11 +589,13 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         return output_buffers
 
     @staticmethod
-    def compare_outputs(torch_outputs,
-                        ort_outputs,
-                        model_class="GPT2LMHeadModel_BeamSearchStep",
-                        rtol=1e-03,
-                        atol=1e-03):
+    def compare_outputs(
+        torch_outputs,
+        ort_outputs,
+        model_class="GPT2LMHeadModel_BeamSearchStep",
+        rtol=1e-03,
+        atol=1e-03,
+    ):
         """Returns True if torch and ORT outputs are close for given thresholds, and False otherwise."""
         if model_class == "GPT2LMHeadModel_BeamSearchStep":
             results_id = -4
@@ -532,10 +604,12 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             results_id = 0
             num_layers = len(ort_outputs) - 5
 
-        is_close = numpy.allclose(ort_outputs[results_id],
-                                  torch_outputs[results_id].cpu().numpy(),
-                                  rtol=rtol,
-                                  atol=atol)
+        is_close = numpy.allclose(
+            ort_outputs[results_id],
+            torch_outputs[results_id].cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+        )
         logger.debug(f"PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}")
 
         is_all_close = is_close
@@ -556,29 +630,36 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         return is_all_close
 
     @staticmethod
-    def export_onnx(model,
-                    device,
-                    onnx_model_path: str,
-                    verbose: bool = False,
-                    use_external_data_format: bool = False,
-                    has_position_ids: bool = True,
-                    has_attention_mask: bool = True):
+    def export_onnx(
+        model,
+        device,
+        onnx_model_path: str,
+        verbose: bool = False,
+        use_external_data_format: bool = False,
+        has_position_ids: bool = True,
+        has_attention_mask: bool = True,
+    ):
         """Export GPT-2 model with past state to ONNX model."""
-        assert isinstance(model, (GPT2LMHeadModel_BeamSearchStep, GPT2LMHeadModel_ConfigurableOneStepSearch))
+        assert isinstance(
+            model,
+            (GPT2LMHeadModel_BeamSearchStep, GPT2LMHeadModel_ConfigurableOneStepSearch),
+        )
 
         config: GPT2Config = model.config
         num_layer = config.n_layer
-        dummy_inputs = Gpt2BeamSearchHelper.get_dummy_inputs(batch_size=1,
-                                                             past_sequence_length=1,
-                                                             sequence_length=2,
-                                                             num_attention_heads=config.num_attention_heads,
-                                                             hidden_size=config.hidden_size,
-                                                             num_layer=num_layer,
-                                                             vocab_size=config.vocab_size,
-                                                             device=device,
-                                                             float16=False,
-                                                             has_position_ids=has_position_ids,
-                                                             has_attention_mask=has_attention_mask)
+        dummy_inputs = Gpt2BeamSearchHelper.get_dummy_inputs(
+            batch_size=1,
+            past_sequence_length=1,
+            sequence_length=2,
+            num_attention_heads=config.num_attention_heads,
+            hidden_size=config.hidden_size,
+            num_layer=num_layer,
+            vocab_size=config.vocab_size,
+            device=device,
+            float16=False,
+            has_position_ids=has_position_ids,
+            has_attention_mask=has_attention_mask,
+        )
         input_list = dummy_inputs.to_list()
 
         with torch.no_grad():
@@ -606,14 +687,8 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             ]
 
         dynamic_axes = {
-            "input_ids": {
-                0: "batch_size",
-                1: "seq_len"
-            },
-            output_names[0]: {
-                0: "batch_size",
-                1: "seq_len"
-            },
+            "input_ids": {0: "batch_size", 1: "seq_len"},
+            output_names[0]: {0: "batch_size", 1: "seq_len"},
         }
         for name in past_names:
             dynamic_axes[name] = {1: "batch_size", 3: "past_seq_len"}
@@ -641,12 +716,15 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         input_names.extend(past_names)
 
         # add dynamic output axes
-        present_axes = {1: 'batch_size', 3: 'cur_seq_len'}
+        present_axes = {1: "batch_size", 3: "cur_seq_len"}
 
         if isinstance(model, GPT2LMHeadModel_BeamSearchStep):
             dynamic_axes["last_state"] = {0: "batch_size", 1: "beam_size"}
         else:
-            dynamic_axes["last_state"] = {0: "batch_size * beam_size", 1: "total_seq_len"}
+            dynamic_axes["last_state"] = {
+                0: "batch_size * beam_size",
+                1: "total_seq_len",
+            }
 
         for i in range(num_layer):
             dynamic_axes["present_" + str(i)] = present_axes
@@ -656,7 +734,10 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         dynamic_axes["output_unfinished_sents"] = {0: "batch_size", 1: "beam_size"}
 
         if "current_step_results" in output_names:
-            dynamic_axes["current_step_results"] = {0: "batch_size * beam_size", 1: "total_seq_len"}
+            dynamic_axes["current_step_results"] = {
+                0: "batch_size * beam_size",
+                1: "total_seq_len",
+            }
 
         dynamic_axes["current_step_scores"] = {0: "batch_size * beam_size"}
 
@@ -720,28 +801,32 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         return ort_outputs, average_latency
 
     @staticmethod
-    def prepare_io_binding(ort_session,
-                           input_ids,
-                           position_ids,
-                           attention_mask,
-                           past,
-                           output_buffers,
-                           output_shapes,
-                           beam_select_idx=None,
-                           input_log_probs=None,
-                           input_unfinished_sents=None,
-                           prev_step_results=None,
-                           prev_step_scores=None):
+    def prepare_io_binding(
+        ort_session,
+        input_ids,
+        position_ids,
+        attention_mask,
+        past,
+        output_buffers,
+        output_shapes,
+        beam_select_idx=None,
+        input_log_probs=None,
+        input_unfinished_sents=None,
+        prev_step_results=None,
+        prev_step_scores=None,
+    ):
         """Returnas IO binding object for a session."""
 
         # Bind (input_ids, position_ids, attention_mask and past_*) and all outputs
-        io_binding = Gpt2Helper.prepare_io_binding(ort_session,
-                                                   input_ids,
-                                                   position_ids,
-                                                   attention_mask,
-                                                   past=past,
-                                                   output_buffers=output_buffers,
-                                                   output_shapes=output_shapes)
+        io_binding = Gpt2Helper.prepare_io_binding(
+            ort_session,
+            input_ids,
+            position_ids,
+            attention_mask,
+            past=past,
+            output_buffers=output_buffers,
+            output_shapes=output_shapes,
+        )
 
         # Bind the remaining inputs
         other_inputs = {
@@ -767,15 +852,16 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         return io_binding
 
     @staticmethod
-    def onnxruntime_inference_with_binded_io(ort_session,
-                                             inputs: Gpt2BeamSearchInputs,
-                                             output_buffers: Dict[str, torch.Tensor],
-                                             output_shapes: Dict[str, List[int]],
-                                             total_runs: int = 0,
-                                             return_numpy: bool = True,
-                                             include_copy_output_latency: bool = False):
-        """Inference with IO binding. Returns outputs, and optional latency when total_runs > 0.
-        """
+    def onnxruntime_inference_with_binded_io(
+        ort_session,
+        inputs: Gpt2BeamSearchInputs,
+        output_buffers: Dict[str, torch.Tensor],
+        output_shapes: Dict[str, List[int]],
+        total_runs: int = 0,
+        return_numpy: bool = True,
+        include_copy_output_latency: bool = False,
+    ):
+        """Inference with IO binding. Returns outputs, and optional latency when total_runs > 0."""
         logger.debug(f"start onnxruntime_inference_with_binded_io")
 
         # Bind inputs and outputs to onnxruntime session
@@ -798,8 +884,9 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         ort_session.run_with_iobinding(io_binding)
 
         # Copy results to cpu for verification
-        ort_outputs = Gpt2BeamSearchHelper.get_outputs_from_io_binding_buffer(ort_session, output_buffers,
-                                                                              output_shapes, return_numpy)
+        ort_outputs = Gpt2BeamSearchHelper.get_outputs_from_io_binding_buffer(
+            ort_session, output_buffers, output_shapes, return_numpy
+        )
 
         if total_runs == 0:
             return ort_outputs
@@ -810,8 +897,9 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             # Run onnxruntime with io binding
             ort_session.run_with_iobinding(io_binding)
             if include_copy_output_latency:
-                _ = Gpt2BeamSearchHelper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
-                                                                            return_numpy)
+                _ = Gpt2BeamSearchHelper.get_outputs_from_io_binding_buffer(
+                    ort_session, output_buffers, output_shapes, return_numpy
+                )
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
@@ -820,17 +908,19 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         return ort_outputs, average_latency
 
     @staticmethod
-    def test_parity(ort_session,
-                    model,
-                    device,
-                    is_float16=False,
-                    rtol=5e-4,
-                    atol=5e-4,
-                    total_test_cases=100,
-                    use_io_binding=True,
-                    model_class="GPT2LMHeadModel_BeamSearchStep",
-                    has_position_ids=True,
-                    has_attention_mask=True):
+    def test_parity(
+        ort_session,
+        model,
+        device,
+        is_float16=False,
+        rtol=5e-4,
+        atol=5e-4,
+        total_test_cases=100,
+        use_io_binding=True,
+        model_class="GPT2LMHeadModel_BeamSearchStep",
+        has_position_ids=True,
+        has_attention_mask=True,
+    ):
         """Generate random inputs and compare the results of PyTorch and Onnx Runtime."""
 
         config: GPT2Config = model.config
@@ -865,11 +955,21 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             batch_size = random.randint(1, max_batch_size)
 
             logger.debug(
-                f"Running parity test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
-            dummy_inputs = Gpt2BeamSearchHelper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                                 config.num_attention_heads, config.hidden_size,
-                                                                 config.n_layer, config.vocab_size, device, is_float16,
-                                                                 has_position_ids, has_attention_mask)
+                f"Running parity test for batch_size={batch_size} past_sequence_length={past_sequence_length}..."
+            )
+            dummy_inputs = Gpt2BeamSearchHelper.get_dummy_inputs(
+                batch_size,
+                past_sequence_length,
+                sequence_length,
+                config.num_attention_heads,
+                config.hidden_size,
+                config.n_layer,
+                config.vocab_size,
+                device,
+                is_float16,
+                has_position_ids,
+                has_attention_mask,
+            )
 
             outputs = Gpt2BeamSearchHelper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
@@ -886,13 +986,12 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                     model_class,
                 )
                 ort_outputs = Gpt2BeamSearchHelper.onnxruntime_inference_with_binded_io(
-                    ort_session, dummy_inputs, output_buffers, output_shapes)
+                    ort_session, dummy_inputs, output_buffers, output_shapes
+                )
 
-            is_all_close = Gpt2BeamSearchHelper.compare_outputs(outputs,
-                                                                ort_outputs,
-                                                                model_class=model_class,
-                                                                rtol=rtol,
-                                                                atol=atol)
+            is_all_close = Gpt2BeamSearchHelper.compare_outputs(
+                outputs, ort_outputs, model_class=model_class, rtol=rtol, atol=atol
+            )
             if is_all_close:
                 passed_test_cases += 1
         logger.info(f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}")

@@ -196,7 +196,7 @@ gsl::span<const int64_t> Tensor::Strides() const {
     }
   }
 
-  return gsl::make_span(strides_.cbegin(), strides_.cend());
+  return gsl::make_span(strides_);
 }
 
 void Tensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {

@@ -22,3 +22,4 @@ exclude =
     ./orttraining,
     # ignore server code for now
     ./server,
+ignore = W503, E203
