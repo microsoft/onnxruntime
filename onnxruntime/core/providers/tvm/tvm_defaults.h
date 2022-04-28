@@ -4,11 +4,14 @@
 #ifndef TVM_DEFAULTS_H
 #define TVM_DEFAULTS_H
 
+#include <string>
+
+
 namespace onnxruntime {
 namespace tvm {
 
 namespace env_vars {
-   static const std::string kDumpSubgraphs = "ORT_TVM_DUMP_SUBGRAPHS";
+static const std::string kDumpSubgraphs = "ORT_TVM_DUMP_SUBGRAPHS";
 }  // namespace env_vars
 
 constexpr const char* default_executor_type = "vm";

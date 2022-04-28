@@ -28,7 +28,7 @@ class TvmExecutionProvider : public IExecutionProvider {
   using Runner = TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
 
-public:
+ public:
   explicit TvmExecutionProvider(const TvmEPOptions& options);
   virtual ~TvmExecutionProvider();
 
@@ -41,7 +41,7 @@ public:
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-private:
+ private:
   void printOptions();
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const GraphViewer& graph_viewer,
@@ -58,7 +58,7 @@ private:
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 
-private:
+ private:
   TvmEPOptions options_;
   Compilers compilers_;
   Runners runners_;

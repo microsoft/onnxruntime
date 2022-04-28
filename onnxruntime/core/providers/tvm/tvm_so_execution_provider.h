@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef TVM_SO_EXECUTION_PROVIDER_H
-#define TVM_SO_EXECUTION_PROVIDER_H
+#ifndef ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_SO_EXECUTION_PROVIDER_H_
+#define ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_SO_EXECUTION_PROVIDER_H_
 
 #include <string>
 #include <vector>
@@ -18,8 +18,8 @@
 
 
 namespace onnxruntime {
-  class Graph;
-  class NodeArg;
+class Graph;
+class NodeArg;
 namespace tvm {
 
 class TvmSoExecutionProvider : public IExecutionProvider {
@@ -28,7 +28,7 @@ class TvmSoExecutionProvider : public IExecutionProvider {
   using Runner = TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
 
-public:
+ public:
   explicit TvmSoExecutionProvider(const TvmEPOptions& options);
   virtual ~TvmSoExecutionProvider();
 
@@ -41,7 +41,7 @@ public:
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-private:
+ private:
   void printOptions();
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const Graph& graph,
@@ -54,7 +54,7 @@ private:
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 
-private:
+ private:
   TvmEPOptions options_;
   Compilers compilers_;
   Runners runners_;
@@ -64,4 +64,4 @@ private:
 }  // namespace tvm
 }  // namespace onnxruntime
 
-#endif  // TVM_SO_EXECUTION_PROVIDER_H
+#endif  // ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_SO_EXECUTION_PROVIDER_H_

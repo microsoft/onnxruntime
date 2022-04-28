@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <glob.h>  // glob(), globfree()
+#include <string.h>  // memset()
 #include <unordered_map>
 #include <fstream>
 #include <sstream>
-#include <glob.h> // glob(), globfree()
-#include <string.h> // memset()
 
 #include <tvm/runtime/registry.h>
 #include <tvm/runtime/device_api.h>
@@ -69,8 +69,8 @@ std::vector<std::string> glob(const std::string& pattern) {
   int return_value = glob(pattern.c_str(), GLOB_TILDE, NULL, &glob_result);
   ORT_ENFORCE(return_value == 0, "No results of glob for pattern: " + pattern);
 
-  for(size_t i = 0; i < glob_result.gl_pathc; ++i) {
-      filenames.push_back(string(glob_result.gl_pathv[i]));
+  for (size_t i = 0; i < glob_result.gl_pathc; ++i) {
+    filenames.push_back(string(glob_result.gl_pathv[i]));
   }
 
   globfree(&glob_result);
@@ -81,10 +81,10 @@ std::vector<std::string> glob(const std::string& pattern) {
 std::string filter_lib_paths(const std::vector<std::string>& lib_paths) {
   std::string lib_path;
   size_t counter = 0;
-  for(const auto& path : lib_paths) {
+  for (const auto& path : lib_paths) {
     if (path.find("libtvm_runtime.so") != std::string::npos ||
         path.find("liboctomized_model.so") != std::string::npos) {
-          ++counter;
+      ++counter;
     } else {
       lib_path = path;
     }
@@ -117,8 +117,7 @@ static std::unordered_map<std::string, uint64_t> str2dev_type = {
   {"webgpu", 15}
 };
 
-TvmModule TVMSoCompile(const TvmEPOptions& options)
-{
+TvmModule TVMSoCompile(const TvmEPOptions& options) {
   const std::string dir = options.so_folder;
   const std::string lib_path = filter_lib_paths(glob(dir + "/*.so"));
   const std::string consts_path = dir + "/consts";

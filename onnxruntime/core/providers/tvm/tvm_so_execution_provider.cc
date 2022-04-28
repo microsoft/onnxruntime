@@ -3,6 +3,8 @@
 
 #include <fstream>
 #include <map>
+#include <unordered_set>
+#include <utility>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
@@ -69,7 +71,7 @@ TvmSoExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   for (auto& node_idx : sorted_nodes) {
     graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors]
                                                (const NodeArg& node_arg, bool is_input) {
-              if(is_input && init_tensors.count(node_arg.Name())) {
+              if (is_input && init_tensors.count(node_arg.Name())) {
                   required_initializers.insert(node_arg.Name());
               } }, true);
   }
@@ -131,7 +133,7 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<Node*>& nodes,
 }
 
 std::unique_ptr<IDataTransfer> TvmSoExecutionProvider::GetDataTransfer() const {
-  //TODO(vvchernov): target or target host?
+  // TODO(vvchernov): target or target host?
   if (TvmEPOptionsHelper::checkGPUTarget(options_.target)) {
     return std::make_unique<XPUDataTransfer>();
   } else if (TvmEPOptionsHelper::checkCPUTarget(options_.target)) {
@@ -173,7 +175,7 @@ void TvmSoExecutionProvider::setInputShapesForFreezedNN(const Graph& graph,
 
   size_t indx = 0;
   for (const auto* node : all_nodes) {
-    if(!graph.IsInitializedTensor(node->Name())) {
+    if (!graph.IsInitializedTensor(node->Name())) {
       TensorShapeVector shape = getInputShape(node);
       all_input_shapes[indx++] = shape;
       input_shapes.emplace_back(shape);
@@ -190,7 +192,7 @@ void TvmSoExecutionProvider::setInputShapesForUnfreezedNN(const Graph& graph,
   for (const auto* node : all_nodes) {
     TensorShapeVector shape = getInputShape(node);
     all_input_shapes[indx++] = shape;
-    if(!graph.IsInitializedTensor(node->Name())) {
+    if (!graph.IsInitializedTensor(node->Name())) {
       input_shapes.emplace_back(shape);
     }
   }
@@ -199,7 +201,7 @@ void TvmSoExecutionProvider::setInputShapesForUnfreezedNN(const Graph& graph,
 TensorShapeVector TvmSoExecutionProvider::getInputShape(const NodeArg* node) {
     TensorShapeVector shape;
     const auto& node_name = node->Name();
-    if(!options_.input_shapes.empty() &&
+    if (!options_.input_shapes.empty() &&
         options_.input_shapes.count(node_name)) {
       shape = options_.input_shapes[node_name];
     } else {

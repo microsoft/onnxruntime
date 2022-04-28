@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <map>
+#include <utility>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
