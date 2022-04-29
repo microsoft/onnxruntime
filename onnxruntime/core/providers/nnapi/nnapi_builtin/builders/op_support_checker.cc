@@ -1199,7 +1199,7 @@ bool DepthToSpaceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet&
     // For now, only DCR mode is accepted as NNAPI only supports DCR format data rearrangement
     const auto mode = helper.Get("mode", "DCR");
     if (mode != "DCR") {
-      LOGS_DEFAULT(VERBOSE) << "[DepthToSpace] ANEURALNETWORKS_DEPTH_TO_SPACE only supports DCR rearrangement mode. Current mode : " << mode;
+      LOGS_DEFAULT(VERBOSE) << "ANEURALNETWORKS_DEPTH_TO_SPACE only supports DCR rearrangement mode. Current mode:" << mode;
       return false;
     }
   }

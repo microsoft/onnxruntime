@@ -22,7 +22,7 @@
 std::unique_ptr<Ort::Env> ort_env;
 void ortenv_setup(){
   OrtThreadingOptions tpo;
-  ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_VERBOSE, "Verbose"));
+  ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
 }
 
 #define TEST_MAIN main
