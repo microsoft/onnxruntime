@@ -329,8 +329,6 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
-//typedef void* OrtOp;
-//typedef void* OrtOpAttr;
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
