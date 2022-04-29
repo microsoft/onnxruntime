@@ -2,7 +2,7 @@ jobs:
 - job: 'Sign_OV_Files'
   workspace:
     clean: all
-  timeoutInMinutes: 3000
+  timeoutInMinutes: 15
   pool: 'onnxruntime-gpu-winbuild'
   
   steps:
