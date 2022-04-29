@@ -7,7 +7,7 @@
 #include <fstream>
 #include <streambuf>
 
-#include "tvm_utils.h"
+#include "tvm_utils.h"  // NOLINT(build/include_subdir)
 
 
 namespace onnxruntime {
@@ -29,4 +29,4 @@ std::string readFromFile(const std::string& file_path) {
 }   // namespace tvm
 }   // namespace onnxruntime
 
-#endif // TVM_UTILS_H
+#endif  // TVM_UTILS_H

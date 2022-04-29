@@ -13,14 +13,14 @@
 #include "core/platform/env.h"
 #include "core/graph/model.h"
 
-#include "tvm_so_execution_provider.h"
-#include "xpu_data_transfer.h"
-#include "tvm_allocator.h"
-#include "tvm_utils.h"
-#include "tvm_api.h"
+#include "tvm_so_execution_provider.h"  // NOLINT(build/include_subdir)
+#include "xpu_data_transfer.h"  // NOLINT(build/include_subdir)
+#include "tvm_allocator.h"  // NOLINT(build/include_subdir)
+#include "tvm_utils.h"  // NOLINT(build/include_subdir)
+#include "tvm_api.h"  // NOLINT(build/include_subdir)
 
 
-using namespace ONNX_NAMESPACE;
+using ONNX_NAMESPACE::TensorShapeProto;
 
 namespace onnxruntime {
 namespace tvm {

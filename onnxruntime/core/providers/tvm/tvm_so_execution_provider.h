@@ -13,8 +13,8 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 
-#include "tvm_compiler.h"
-#include "tvm_runner.h"
+#include "tvm_compiler.h"  // NOLINT(build/include_subdir)
+#include "tvm_runner.h"  // NOLINT(build/include_subdir)
 
 
 namespace onnxruntime {
@@ -45,12 +45,12 @@ class TvmSoExecutionProvider : public IExecutionProvider {
   void printOptions();
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const Graph& graph,
-                                          InputsInfoMap& inputs_info);
-  void setInputShapesForFreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
-  void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
+                                          InputsInfoMap& inputs_info);  // NOLINT
+  void setInputShapesForFreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);  // NOLINT
+  void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);  // NOLINT
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
-  void prepareOutputTensors(std::vector<DLTensor>& output_tensors);
+  void prepareOutputTensors(std::vector<DLTensor>& output_tensors);  // NOLINT
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 

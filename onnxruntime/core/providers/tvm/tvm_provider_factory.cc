@@ -8,7 +8,7 @@
 #include "core/session/abi_session_options_impl.h"
 
 #include "tvm_execution_provider.h"
-#include "tvm_so_execution_provider.h"
+#include "tvm_so_execution_provider.h"  // NOLINT(build/include_subdir)
 
 
 namespace onnxruntime {

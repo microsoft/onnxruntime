@@ -60,8 +60,7 @@ TvmModule TVMCompile(const TvmEPOptions& options,
 }
 
 std::vector<std::string> glob(const std::string& pattern) {
-  using namespace std;
-  vector<string> filenames;
+  std::vector<std::string> filenames;
 
   glob_t glob_result;
   memset(&glob_result, 0, sizeof(glob_result));
@@ -70,7 +69,7 @@ std::vector<std::string> glob(const std::string& pattern) {
   ORT_ENFORCE(return_value == 0, "No results of glob for pattern: " + pattern);
 
   for (size_t i = 0; i < glob_result.gl_pathc; ++i) {
-    filenames.push_back(string(glob_result.gl_pathv[i]));
+    filenames.push_back(std::string(glob_result.gl_pathv[i]));
   }
 
   globfree(&glob_result);

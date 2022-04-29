@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef TVM_DEFAULTS_H
-#define TVM_DEFAULTS_H
+#ifndef ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_DEFAULTS_H_
+#define ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_DEFAULTS_H_
 
 #include <string>
 
@@ -33,4 +33,4 @@ constexpr const unsigned int default_opt_level = 3;
 }  // namespace tvm
 }  // namespace onnxruntime
 
-#endif // TVM_DEFAULTS_H
+#endif  // ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_DEFAULTS_H_
