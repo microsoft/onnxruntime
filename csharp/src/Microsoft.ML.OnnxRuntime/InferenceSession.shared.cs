@@ -8,6 +8,10 @@ using System.IO;
 using System.Linq;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Buffers;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -47,6 +51,13 @@ namespace Microsoft.ML.OnnxRuntime
         private bool _disposed = false;
         private ulong _profilingStartTimeNs = 0;
 
+        /// <summary>
+        /// settings for AzureML
+        /// </summary>
+        private string _azureEndPoint = string.Empty;
+        private string _azureEndPointKey = string.Empty;
+        private HttpClientHandler _http_handler = null;
+
         #region Public API
 
         /// <summary>
@@ -82,7 +93,22 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="options"></param>
         public InferenceSession(string modelPath, SessionOptions options)
         {
-            Init(modelPath, options);
+            _azureEndPoint = options.GetAzureEndPoint();
+            _azureEndPointKey = options.GetAzureEndPointKey();
+            _http_handler = new HttpClientHandler()
+            {
+                ClientCertificateOptions = ClientCertificateOption.Manual,
+#if NET40_OR_GREATER
+                    ServerCertificateCustomValidationCallback =
+                        (httpRequestMessage, cert, cetChain, policyErrors) => { return true; },
+#endif
+                Proxy = null,
+                UseProxy = false,
+            };
+            if (_azureEndPoint == string.Empty || _azureEndPointKey == string.Empty) //skip init when set to AML
+            {
+                Init(modelPath, options);
+            }
         }
 
 
@@ -183,6 +209,73 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return _overridableInitializerMetadata;
             }
+        }
+
+        async Task<byte[]> InvokeAML(byte[] requestData)
+        {
+            byte[] result = null;
+            if (_azureEndPoint == string.Empty)
+            {
+                throw new OnnxRuntimeException(ErrorCode.RuntimeException, "azureEndPoint not set by session option");
+            }
+            if (_azureEndPointKey == string.Empty)
+            {
+                throw new OnnxRuntimeException(ErrorCode.RuntimeException, "azureEndPoint APIKey not set by session option");
+            }
+            using (var client = new HttpClient(_http_handler))
+            {
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _azureEndPointKey);
+                client.BaseAddress = new Uri(_azureEndPoint);
+                using (var multipartContent = new MultipartFormDataContent())
+                using (var byteContent = new ByteArrayContent(requestData))
+                {
+                    byteContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+                    multipartContent.Add(byteContent, "data", "data");
+
+                    HttpResponseMessage response = await client.PostAsync("", multipartContent).ConfigureAwait(false);
+                    if (response.IsSuccessStatusCode)
+                        result = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                    else
+                    {
+                        string headers = response.Headers.ToString();
+                        string responseContent = await response.Content.ReadAsStringAsync();
+                        var errorMessage = string.Format("The web request failed with status code: {0}, headers: {1}, content: {2}",
+                            response.StatusCode, headers, responseContent);
+                        throw new OnnxRuntimeException(ErrorCode.Fail, errorMessage);
+                    }
+                }
+
+            }
+            return result;
+        }
+
+        private string SerializeInput(IReadOnlyCollection<NamedOnnxValue> inputs) 
+        {
+            JObject jobj = new JObject();
+            var input_array = new JArray();
+            foreach (var input in inputs) {
+                input_array.Add(input.ToString());
+            }
+            jobj["data"] = input_array;
+            return jobj.ToString();
+        }
+
+        private IDisposableReadOnlyCollection<DisposableNamedOnnxValue> DeserializeOutput(byte[] raw_output)
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// accept input in form of json string, and return a json string of output
+        /// </summary>
+        /// <param name="input"></param>
+        /// <returns></returns>
+        public byte[] Run(byte[] input) 
+        {
+            var task = InvokeAML(input);
+            task.Wait();
+            return task.Result;
+
         }
 
         /// <summary>
@@ -761,9 +854,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        #endregion
+#endregion
 
-        #region private methods
+#region private methods
 
         private void Init(string modelPath, SessionOptions options,
                           PrePackedWeightsContainer prepackedWeightsContainer = null)
@@ -1042,9 +1135,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        #endregion
+#endregion
 
-        #region IDisposable
+#region IDisposable
 
         /// <summary>
         /// Finalizer. to cleanup session in case it runs
@@ -1089,6 +1182,11 @@ namespace Microsoft.ML.OnnxRuntime
                     _builtInRunOptions.Dispose();
                     _builtInRunOptions = null;
                 }
+
+                if (_http_handler != null) {
+                    _http_handler.Dispose();
+                    _http_handler = null;
+                }
             }
 
             // cleanup unmanaged resources
@@ -1100,7 +1198,7 @@ namespace Microsoft.ML.OnnxRuntime
             _disposed = true;
         }
 
-        #endregion
+#endregion
     }
 
 

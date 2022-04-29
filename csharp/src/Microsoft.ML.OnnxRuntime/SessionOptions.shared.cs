@@ -40,6 +40,8 @@ namespace Microsoft.ML.OnnxRuntime
         // Delay-loaded CUDA or cuDNN DLLs. Currently, delayload is disabled. See cmake/CMakeLists.txt for more information.
         private static string[] cudaDelayLoadedLibs = { };
         private static string[] trtDelayLoadedLibs = { };
+        private string azureEndPoint = string.Empty;
+        private string azureEndPointKey = string.Empty;
 
         #region Constructor and Factory methods
 
@@ -175,9 +177,9 @@ namespace Microsoft.ML.OnnxRuntime
             options.AppendExecutionProvider_ROCM(deviceId);
             return options;
         }
-#endregion
+        #endregion
 
-#region ExecutionProviderAppends
+        #region ExecutionProviderAppends
         /// <summary>
         /// Appends CPU EP to a list of available execution providers for the session.
         /// </summary>
@@ -384,9 +386,25 @@ namespace Microsoft.ML.OnnxRuntime
             }
 #endif
         }
-#endregion //ExecutionProviderAppends
+        #endregion //ExecutionProviderAppends
 
-#region Public Methods
+        public string GetAzureEndPoint() 
+        { 
+            return azureEndPoint;
+        }
+
+        public string GetAzureEndPointKey()
+        {
+            return azureEndPointKey;
+        }
+
+        public void AppendAzureEP(string endPoint, string apikey)
+        {
+            azureEndPoint = endPoint;
+            azureEndPointKey = apikey;
+        }
+
+        #region Public Methods
         /// <summary>
         /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
