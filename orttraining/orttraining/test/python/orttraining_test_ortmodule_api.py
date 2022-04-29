@@ -1120,7 +1120,7 @@ def test_gradient_correctness_max(operator, dim, keepdim):
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
-# Before 1.10 (excluded), Torch's min/max(x,y) will asign dY to y's dX if value from x and y are equal.
+# Before 1.10 (excluded), Torch's min/max(x,y) will assign dY to y's dX if value from x and y are equal.
 # From 1.10, both x and y's dX will be dY/2. ORT follows this distribution logic, so skip below test if Torch version
 # is lower than 1.10.
 @pytest.mark.skipif(LooseVersion(torch.__version__) < LooseVersion("1.10.0"), reason="PyTorch 1.9 incompatible")
@@ -1153,6 +1153,7 @@ def test_gradient_correctness_minmax_two_tensors(operator):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+        _test_helpers.assert_values_are_close(ort_other.grad, pt_other.grad)
 
     # Simple test for case that has equal value.
     pt_input = torch.tensor([0.0, 0.0, 1.0, 1.0], device=device, requires_grad=True)
@@ -1164,6 +1165,7 @@ def test_gradient_correctness_minmax_two_tensors(operator):
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+    _test_helpers.assert_values_are_close(ort_other.grad, pt_other.grad)
 
 
 def test_gradient_correctness_argmax_unfold():
