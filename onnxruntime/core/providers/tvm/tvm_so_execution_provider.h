@@ -50,7 +50,7 @@ class TvmSoExecutionProvider : public IExecutionProvider {
   void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
-  void prepareOutputTensors(std::vector<DLTensor>& output_tensors, size_t num);
+  void prepareOutputTensors(std::vector<DLTensor>& output_tensors);
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <fstream>
+//#include <fstream>
 #include <map>
 #include <unordered_set>
 #include <utility>
@@ -118,8 +118,8 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<Node*>& nodes,
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, node_graph, all_input_shapes);
 
-    std::vector<DLTensor> output_tensors;
-    prepareOutputTensors(output_tensors, node_graph.GetOutputs().size());
+    std::vector<DLTensor> output_tensors(node_graph.GetOutputs().size());
+    prepareOutputTensors(output_tensors);
 
     runners_[func_name] = std::make_shared<Runner>(options_, mod, all_input_shapes, output_tensors);
 
@@ -226,20 +226,14 @@ TensorShapeVector TvmSoExecutionProvider::convertTensorShape(const TensorShapePr
   return shape;
 }
 
-void TvmSoExecutionProvider::prepareOutputTensors(std::vector<DLTensor>& output_tensors,
-                                                  size_t num) {
-  output_tensors.clear();
-
-  for (size_t i = 0; i < num; ++i) {
-    DLTensor t;
+void TvmSoExecutionProvider::prepareOutputTensors(std::vector<DLTensor>& output_tensors) {
+  for (DLTensor& t : output_tensors) {
     // Draft for tensor, correct data is defined during inference
     t.strides = nullptr;
     t.byte_offset = 0;
     t.data = nullptr;
     t.ndim = 0;
     t.shape = nullptr;
-
-    output_tensors.emplace_back(t);
   }
 }
 
