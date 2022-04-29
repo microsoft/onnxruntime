@@ -10,25 +10,38 @@ redirect_from: /docs/how-to/tune-performance
 
 ONNX Runtime provides high performance across a range of hardware options through its [Execution Providers interface](../execution-providers) for different execution environments.
 
-Along with this flexibility comes decisions for tuning and usage. For each model running with each execution provider, there are settings that can be tuned (e.g. thread number, wait policy, etc) to improve performance.
+Along with this flexibility comes decisions for tuning and usage. For each model running with different execution providers, there are a few settings that can be tuned (thread number, wait policy, and so on) to improve performance.
 
-This document covers basic tools and knobs that can be leveraged to find the best performance for your model and hardware.
+This document covers basic tools and troubleshooting checklists that can be leveraged to optimize your ONNX Runtime (ORT) model and hardware.
 
 ## Contents
 {: .no_toc }
 
 * TOC placeholder
 {:toc}
+### ONNX Runtime Performance Tuning
+
+Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages. Please click each topic to know more.
 
 ## Performance Tuning Tools
 
-### ONNX GO Live Tool
+### 1. ONNX Go Live (OLive) Tool
 
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
+The [ONNX Go Live (OLive) tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime (ORT).
 
-As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
+It contains two parts:
+<ol>
+<li>model conversion to ONNX with correctness checking
+</li>
+<li>auto performance tuning with ORT
+</li>
+</ol>
+Users can run these two together through a single pipeline or run them independently as needed.
 
-### Profiling and Performance Report
+As a quick start to using the Microsoft ONNX OLive tool, please refer to the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples.](https://github.com/microsoft/OLive/tree/master/cmd-example)
+
+
+### 2. onnxruntime_perf_test.exe tool
 
 The onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`.
 
@@ -43,35 +56,47 @@ sess_options.enable_profiling = True
 
 If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
 
-In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
+<h4>Performance and Profiling Report</h4>
 
-* Open chrome browser
-* Type chrome://tracing in the address bar
-* Load the generated JSON file
+In both OLive tool and the onnxruntime_perf_test.exe tool, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, and so on). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
 
-To profile CUDA kernels, please add cupti library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`, performance numbers from device will then be attached to those from host. For example:
+1. Open Chrome browser
+2. Type chrome://tracing in the address bar
+3. Load the generated JSON file
+
+<h4>Profiling CUDA Kernels</h4>
+To profile CUDA kernels, please add 'cupti' library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`. The performance numbers from device will then be attached to those from the host.
+
+**Single Kernel example:**
+
+In the following example, the "Add" operator from the host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
 
 ```json
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
 {"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
 ```
 
-Here, "Add" operator from host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
-If an operator called multiple kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
+
+**Multiple Kernels example:**
+
+If an operator called multiple kernels during execution, the performance numbers of all those kernels will be listed following the calling sequence:
 
 ```json
 {"cat":"Node", "name":<name of the node>, ...}
 {"cat":"Kernel", "name":<name of the kernel called first>, ...}
 {"cat":"Kernel", "name":<name of the kernel called next>, ...}
 ```
+### 3. Ort_perf_view tool
 
 ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
+
+The tool takes the input as a JSON file and reports the performance of the GPU and CPU in the form of a treemap in the browser.
 
 ## Using different Execution Providers
 
 To learn more about different Execution Providers, see [Reference: Execution Providers](../execution-providers).
 
-### Build the EP
+### Build the Execution Provider
 
 **Python**
 
@@ -93,12 +118,11 @@ For example:
 
 `CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_csharp --parallel`
 
-### Register the EP
+### Register the Execution Provider
+
+**C API Example:**
 
 In order to use DNNL, CUDA, or TensorRT execution provider, you need to call the C API OrtSessionOptionsAppendExecutionProvider.
-
-C API Example:
-
 ```c
   const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
   OrtEnv* env;
@@ -110,7 +134,7 @@ C API Example:
   g_ort->CreateSession(env, model_path, session_option, &session);
 ```
 
-C# API Example:
+**C# API Example:**
 
 ```c#
 SessionOptions so = new SessionOptions();
@@ -119,7 +143,7 @@ so.AppendExecutionProvider_CUDA(0);
 var session = new InferenceSession(modelPath, so);
 ```
 
-Python API Example:
+**Python API Example:**
 
 ```python
 import onnxruntime as rt
@@ -129,7 +153,7 @@ so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionProvider'])
 ```
 
-## Which Execution Provider will provide the best performance?
+## Selecting the Execution Provider for best performance
 
 Performance is dependent on the specific model you're trying to run, the session and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
 
@@ -143,13 +167,13 @@ Additionally, not all CUDA kernels are implemented, as these have been prioritiz
 
 TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same hardware, TensorRT will generally provide better performance; however, this depends on the specific model and whether the operators in the model can be supported by TensorRT. In cases where TensorRT cannot handle the subgraph(s), it will fall back to CUDA. Note that the TensorRT EP may depend on a different version of CUDA than the CUDA EP.
 
-### TensorRT/CUDA or DirectML? 
+### TensorRT/CUDA or DirectML?
 
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
 ## Tips for tuning performance
 
-Below are some suggestions for things to try for various EPs for tuning performance. 
+Below are some suggestions for things to try for various EPs for tuning performance.
 
 ### Shared arena based allocator
 
@@ -167,11 +191,13 @@ Currently, there are no special provisions to employ Mimalloc on Linux. This can
 
 ### Thread management
 
+Follow the best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to suit your ONNX Runtime environment.
+ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP.
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
 always be set using the ORT APIs.
-
+;
 ### Custom threading callbacks
 
 Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
@@ -193,7 +219,7 @@ hence ORT offers thread creation and joining callbacks by [C++ API](https://gith
   void JoinThreadCustomized(OrtCustomThreadHandle handle) {
     for (auto& t : threads) {
       if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
-        // recycling resources ... 
+        // recycling resources ...
         t.join();
       }
     }
@@ -232,7 +258,7 @@ Note that CreateThreadCustomized and JoinThreadCustomized, once being set, will 
 
 The default execution provider uses different knobs to control the thread number.
 
-For the default CPU execution provider, you can try following knobs in the Python API:
+For the default CPU execution provider, you can try the following knobs in the Python API:
 
 ```python
 import onnxruntime as rt
@@ -246,7 +272,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 * Thread Count
   * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model
-* Sequential vs Parallel Execution
+* Sequential vs. Parallel Execution
   * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
   * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 number of threads used to parallelize the execution of the graph (across nodes).
@@ -270,9 +296,12 @@ The most widely used environment variables are:
 
 ### IOBinding
 
-When working with non-CPU execution providers it's most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling Run). When the input is not copied to the target device, ORT copies it from the CPU as part of the Run() call. Similarly if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when the majority of the time is spent in these copies. To address this we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run(). IOBinding is available in all our language bindings. Following are code snippets in various languages demonstrating the usage of this feature.
+* When working with non-CPU execution providers, it is most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling Run). When the input is not copied to the target device, ORT copies it from the CPU as part of the Run() call.
+* Similarly, if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when the majority of the time is spent in these copies. To address this issue, we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run().
 
-* C++
+IOBinding is available in all the ORT language bindings. Here are the code snippets in various languages demonstrating the usage of this feature.
+
+**C++ IOBinding**
 
 ```c++
   Ort::Env env;
@@ -282,7 +311,7 @@ When working with non-CPU execution providers it's most efficient to have inputs
   io_binding.BindInput("input1", input_tensor);
   Ort::MemoryInfo output_mem_info{"Cuda", OrtDeviceAllocator, 0,
                                   OrtMemTypeDefault};
-  
+
   // Use this to bind output to a device when the shape is not known in advance. If the shape is known you can use the other overload of this function that takes an Ort::Value as input (IoBinding::BindOutput(const char* name, const Value& value)).
   // This internally calls the BindOutputToDevice C API.
 
@@ -290,15 +319,15 @@ When working with non-CPU execution providers it's most efficient to have inputs
   session.Run(run_options, io_binding);
 ```
 
-* Python
+**Python IOBinding**
 
-Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python)
+Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python). Follow the best practices on [ONNX Runtime Python binding.](https://github.com/pybind/pybind11/blob/master/docs/faq.rst#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclassmember--wattributes)
 
-* C#
+**C# IOBinding**
 
-Refer to https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
+Refer to the [C# docs](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs)
 
-### Convolution heavy models and the CUDA EP
+### Convolution heavy models and the CUDA Execution Provider
 
 ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node. This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option named `cudnn_conv_use_max_workspace` needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
@@ -405,7 +434,7 @@ Currently, there are some constraints with regards to using the CUDA Graphs feat
 
 7) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
 
-NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
+NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`.
 
 * Python
 
@@ -456,7 +485,7 @@ void operator()(void* ptr) const {
 
 const Ort::Allocator* alloc_;
 };
-  
+
 // Enable cuda graph in cuda provider option.
 OrtCUDAProviderOptionsV2* cuda_options = nullptr;
 api.CreateCUDAProviderOptions(&cuda_options);
@@ -525,7 +554,7 @@ Here is a list of things to check through when assessing performance issues.
 * Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
 * Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
 * Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
-* If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
+* If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed?
 
 ### I need help performance tuning for BERT models
 
