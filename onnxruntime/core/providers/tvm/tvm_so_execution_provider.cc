@@ -47,10 +47,7 @@ TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
   const Env& env_instance = Env::Default();
 
   const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(env_vars::kDumpSubgraphs);
-  if (!dump_subgraphs_env.empty()) {
-    LOGS(*GetLogger(), INFO) << "TVM EP processing shared lib does not save subgraphs " <<
-                                "due to it supports full model graph";
-  }
+  ORT_ENFORCE(dump_subgraphs_env.empty(), "TVM EP processing shared lib does not support subgraphs");
 }
 
 TvmSoExecutionProvider::~TvmSoExecutionProvider() {}
