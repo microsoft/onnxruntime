@@ -69,8 +69,7 @@ class ORTModule(torch.nn.Module):
 
             super(ORTModule, self).__init__()
 
-            self._torch_module = TorchModuleFactory()(
-                module, debug_options, self._fallback_manager, provider_configs)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager, provider_configs)
 
             _utils.patch_ortmodule_forward_method(self)
 
@@ -83,8 +82,7 @@ class ORTModule(torch.nn.Module):
             # Warn user if there are name collisions between user model's and ORTModule attributes
             # And if there are custom methods defined on the user's model, copy and bind them to
             # ORTModule.
-            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(
-                self, module)
+            _utils.check_for_name_collisions_and_bind_methods_to_ortmodule(self, module)
 
         except ORTModuleFallbackException as e:
             # Although backend is switched to PyTorch here,
@@ -92,8 +90,7 @@ class ORTModule(torch.nn.Module):
             _utils.switch_backend_to_pytorch(self, module)
 
             # Exceptions subject to fallback are handled here
-            self._fallback_manager.handle_exception(
-                exception=e, log_level=debug_options.logging.log_level)
+            self._fallback_manager.handle_exception(exception=e, log_level=debug_options.logging.log_level)
         except Exception as e:
             # Although backend is switched to PyTorch here,
             # it is up to _FallbackManager to actually terminate execution or fallback
@@ -306,16 +303,14 @@ class ORTModule(torch.nn.Module):
             # Re-export will be avoided if _skip_check is enabled.
             if isinstance(self._torch_module, TorchModuleORT):
                 for training_mode in [False, True]:
-                    self._torch_module._execution_manager(
-                        training_mode).signal_model_changed()
+                    self._torch_module._execution_manager(training_mode).signal_model_changed()
 
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined
             self.__dict__[name] = value
 
     def __getstate__(self):
-        state = _utils.get_state_after_deletion_of_non_ortmodule_methods(
-            self, self.module)
+        state = _utils.get_state_after_deletion_of_non_ortmodule_methods(self, self.module)
         return state
 
     def __setstate__(self, state):
