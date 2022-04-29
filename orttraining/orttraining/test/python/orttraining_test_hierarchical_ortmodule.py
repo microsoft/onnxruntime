@@ -30,11 +30,12 @@ class B(nn.Module):
         self.a = A()
 
     def forward(self, x):
-
         def custom():
             def custom_forward(x_):
                 return self.a(x_)
+
             return custom_forward
+
         z = self.l1(checkpoint(custom(), x))
         return z
 
@@ -88,7 +89,7 @@ class MainWithNonTensorInput(nn.Module):
         self.d = D()
 
     def forward(self, x, case):
-        if case == 'reverse':
+        if case == "reverse":
             z = self.alpha * self.a(self.b(self.c(self.d(x))))
         else:
             z = self.alpha * self.d(self.c(self.b(self.a(x))))
@@ -192,13 +193,10 @@ def test_hierarchical_ortmodule():
     for _ in range(num_trials):
         trial(Main(), [torch.rand(2).requires_grad_()], 6)
         trial(MainWithModuleList(), [torch.rand(2).requires_grad_()], 12)
-        trial(MainWithMultiModuleOutputs(), [
-              torch.rand(2).requires_grad_()], 10)
-        trial(MainWithNonTensorInput(), [
-              torch.rand(2).requires_grad_(), 'reverse'], 6)
-        trial(MainWithNonTensorInput(), [
-              torch.rand(2).requires_grad_(), 'normal'], 6)
+        trial(MainWithMultiModuleOutputs(), [torch.rand(2).requires_grad_()], 10)
+        trial(MainWithNonTensorInput(), [torch.rand(2).requires_grad_(), "reverse"], 6)
+        trial(MainWithNonTensorInput(), [torch.rand(2).requires_grad_(), "normal"], 6)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_hierarchical_ortmodule()

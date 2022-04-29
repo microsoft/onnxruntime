@@ -1075,6 +1075,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+      target_sources(onnxruntime_shared_lib_test PRIVATE
+        "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc"
+        "${TEST_SRC_DIR}/platform/android/cxa_demangle_test.cc"
+      )
+      target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+    endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
       add_custom_command(
         TARGET onnxruntime_shared_lib_test POST_BUILD
@@ -1263,8 +1270,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   )
 
   onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx absl::raw_hash_set)
-  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared absl::raw_hash_set)
+  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx ${ABSEIL_LIBS})
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS})
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
