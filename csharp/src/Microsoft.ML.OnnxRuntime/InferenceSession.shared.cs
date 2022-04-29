@@ -11,7 +11,6 @@ using System.Buffers;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -234,7 +233,9 @@ namespace Microsoft.ML.OnnxRuntime
 
                     HttpResponseMessage response = await client.PostAsync("", multipartContent).ConfigureAwait(false);
                     if (response.IsSuccessStatusCode)
+                    {
                         result = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                    }
                     else
                     {
                         string headers = response.Headers.ToString();
@@ -249,24 +250,8 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
-        private string SerializeInput(IReadOnlyCollection<NamedOnnxValue> inputs) 
-        {
-            JObject jobj = new JObject();
-            var input_array = new JArray();
-            foreach (var input in inputs) {
-                input_array.Add(input.ToString());
-            }
-            jobj["data"] = input_array;
-            return jobj.ToString();
-        }
-
-        private IDisposableReadOnlyCollection<DisposableNamedOnnxValue> DeserializeOutput(byte[] raw_output)
-        {
-            return null;
-        }
-
         /// <summary>
-        /// accept input in form of json string, and return a json string of output
+        /// forward bytes to AML endpoint
         /// </summary>
         /// <param name="input"></param>
         /// <returns></returns>
