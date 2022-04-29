@@ -55,7 +55,7 @@ char* __cxa_demangle(const char* mangled_name, char* buf, size_t* n, int* status
     strncpy(buf, mangled_name, buf_size);
     // Blindly guard the output buffer, this might cause a truncated mangled name being returned without error status,
     // but this should be fine for debugging purpose. As we are returning the mangle name directly, if the caller is
-    // doing crazy stuff with the name, it should both fail with the return mangled name and a truncated mangled name.
+    // doing complex stuff with it, it should both fail with the return mangled name and a truncated mangled name.
     buf[buf_size - 1] = '\0';
   }
 
