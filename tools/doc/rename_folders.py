@@ -15,11 +15,11 @@ def rename_folder(root):
     found = []
     for r, dirs, files in os.walk(root):
         for name in dirs:
-            if name.startswith('_'):
+            if name.startswith("_"):
                 found.append((r, name))
     renamed = []
     for r, name in found:
-        into = name.lstrip('_')
+        into = name.lstrip("_")
         renamed.append((r, name, into))
         full_src = os.path.join(r, name)
         full_into = os.path.join(r, into)
@@ -33,13 +33,11 @@ def rename_folder(root):
 
 def replace_files(root, renamed):
     subs = {r[1]: r[2] for r in renamed}
-    reg = re.compile(
-        "(\\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}"
-        "([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\\")")
+    reg = re.compile('(\\"[a-zA-Z0-9\\.\\/\\?\\:@\\-_=#]+\\.([a-zA-Z]){2,6}' '([a-zA-Z0-9\\.\\&\\/\\?\\:@\\-_=#])*\\")')
 
     for r, dirs, files in os.walk(root):
         for name in files:
-            if os.path.splitext(name)[-1] != '.html':
+            if os.path.splitext(name)[-1] != ".html":
                 continue
             full = os.path.join(r, name)
             with open(full, "r", encoding="utf-8") as f:
@@ -54,8 +52,8 @@ def replace_files(root, renamed):
                         raise ValueError("%r == %r" % (k, v))
                     if ('"%s' % k) in f[0]:
                         repl.append((f[0], f[0].replace('"%s' % k, '"%s' % v)))
-                    if ('/%s' % k) in f[0]:
-                        repl.append((f[0], f[0].replace('/%s' % k, '/%s' % v)))
+                    if ("/%s" % k) in f[0]:
+                        repl.append((f[0], f[0].replace("/%s" % k, "/%s" % v)))
             if len(repl) == 0:
                 continue
             print("update %r" % full)
@@ -67,17 +65,20 @@ def replace_files(root, renamed):
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) > 1:
         root = sys.argv[-1]
     else:
         root = "../../build/docs/html"
-    print('look into %r' % root)
+    print("look into %r" % root)
     ren = rename_folder(root)
     if len(ren) == 0:
-        ren = [('', '_static', 'static'),
-               ('', '_images', 'images'),
-               ('', '_downloads', 'downloads'),
-               ('', '_sources', 'sources'),
-               ('', '_modules', 'modules')]
+        ren = [
+            ("", "_static", "static"),
+            ("", "_images", "images"),
+            ("", "_downloads", "downloads"),
+            ("", "_sources", "sources"),
+            ("", "_modules", "modules"),
+        ]
     replace_files(root, ren)
-    print('done.')
+    print("done.")

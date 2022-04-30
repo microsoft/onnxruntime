@@ -1,10 +1,9 @@
 import argparse
 import onnx
 
-parser = argparse.ArgumentParser(description='ONNX file analyzer for performance investigation.')
-parser.add_argument('onnx_file', type=str, help='ONNX file to analyze')
+parser = argparse.ArgumentParser(description="ONNX file analyzer for performance investigation.")
+parser.add_argument("onnx_file", type=str, help="ONNX file to analyze")
 args = parser.parse_args()
-
 
 
 def process_file(onnx_file):
@@ -41,38 +40,42 @@ def process_file(onnx_file):
         if node.op_type == "Dropout" and len(node.input) == 1:
             prev = output_to_node[node.input[0]]
             if prev.op_type == "Add":
-                msgs.append(f"Examine whether {node.name} should be fused with the leading {prev.name} op into BiasDropout node.")
+                msgs.append(
+                    f"Examine whether {node.name} should be fused with the leading {prev.name} op into BiasDropout node."
+                )
 
         # Look for stand-alone Softmax node in *_execution_model_<mode>.onnx graph.
         # Examine whether it should be fused with the leading Add ops into BiasSoftmax node.
         if node.op_type == "Softmax" and len(node.input) == 1:
             prev = output_to_node[node.input[0]]
             if prev.op_type == "Add":
-                msgs.append(f"Examine whether {node.name} should be fused with the leading {prev.name} op into BiasSoftmax node.")
+                msgs.append(
+                    f"Examine whether {node.name} should be fused with the leading {prev.name} op into BiasSoftmax node."
+                )
 
     if aten_ops:
         print("ATen op found:")
         for line in aten_ops:
             print(line)
-        print(10 * '-')
+        print(10 * "-")
 
     if python_ops:
         print("PythonOp found:")
         for line in python_ops:
             print(line)
-        print(10 * '-')
+        print(10 * "-")
 
     if memcpu_ops:
         print("Memcpu ops found:")
         for line in memcpu_ops:
             print(line)
-        print(10 * '-')
+        print(10 * "-")
 
     if cast_ops:
         print("Cast ops found:")
         for line in cast_ops:
             print(line)
-        print(10 * '-')
+        print(10 * "-")
 
     for line in msgs:
         print(line)
@@ -80,6 +83,7 @@ def process_file(onnx_file):
 
 def main():
     process_file(args.onnx_file)
+
 
 if __name__ == "__main__":
     main()

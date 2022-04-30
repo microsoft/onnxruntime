@@ -50,7 +50,7 @@ static void RunAttentionTest(
     std::vector<int64_t> bias_dims = {3 * hidden_size};
     std::vector<int64_t> input_cache_dims = {batch_size, num_heads, input_cache_sen_len, head_size};
 
-    std::vector<int64_t> output_dims = {sequence_length, batch_size, hidden_size};
+    const std::vector<int64_t> output_dims = {sequence_length, batch_size, hidden_size};
 
     tester.AddInput<float>("query", query_dims, query_data);
     tester.AddInput<float>("key", key_dims, key_data);

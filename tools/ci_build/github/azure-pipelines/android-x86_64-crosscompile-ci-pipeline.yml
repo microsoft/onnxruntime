@@ -103,6 +103,11 @@ jobs:
     clean: all
   condition: succeeded()
   steps:
+    - script: |
+        set -ex
+        system_profiler SPSoftwareDataType SPHardwareDataType
+      displayName: 'Mac Agent Info'
+
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
@@ -234,6 +239,11 @@ jobs:
   dependsOn: Build_NNAPI_EP
   condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   steps:
+    - script: |
+        set -ex
+        system_profiler SPSoftwareDataType SPHardwareDataType
+      displayName: 'Mac Agent Info'
+
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
@@ -312,6 +322,11 @@ jobs:
     clean: all
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   steps:
+    - script: |
+        set -ex
+        system_profiler SPSoftwareDataType SPHardwareDataType
+      displayName: 'Mac Agent Info'
+
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
       inputs:
