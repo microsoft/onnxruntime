@@ -60,11 +60,11 @@ struct Notification {
 // EP can register the handle to the executor.
 // in the POC, just use primitive function pointer
 // TODO: use a better way to dispatch handles.
-using WaitNotificationFn = void (*)(Notification& notification);
-using NotifyNotificationFn = void (*)(Notification& notification);
-using CreateNotificationFn = void*(*)(const Stream&);
-using ReleaseNotificationFn = void(*)(void*);
-using KernelLaunchFn = void(*)(const OpKernel*, OpKernelContext*);
+using WaitNotificationFn = std::function<void(Notification&)>;
+using NotifyNotificationFn = std::function<void(Notification&)>;
+using CreateNotificationFn = std::function<void*(const Stream&)>;
+using ReleaseNotificationFn = std::function<void(void*)>;
+using KernelLaunchFn = std::function<void(const OpKernel*, OpKernelContext*)>;
 
 // a simple registry which hold the handles EP registered.
 class StreamCommandHandleRegistry {
@@ -172,6 +172,7 @@ struct ExecutionContext {
   ExecutionFrame* frame;
   const logging::Logger* logger;
   std::unique_ptr<Notification[]> notifications;
+  std::vector<ReleaseNotificationFn> notification_release_fns;
 
   ExecutionContext(const SessionState& sess_state,
       ExecutionFrame* execution_frame,
@@ -184,28 +185,20 @@ struct ExecutionContext {
       auto create_notification_fn = StreamCommandHandleRegistry::GetInstance().GetCreateNotificationFn(notification_owners[i]);
       notifications[i].handle = create_notification_fn(*notification_owners[i]);
       notifications[i].provider = notification_owners[i]->provider;
+      notification_release_fns.push_back(
+        StreamCommandHandleRegistry::GetInstance().GetReleaseNotificationFn(notification_owners[i])
+      );
+    }
+  }
+
+  ~ExecutionContext() {
+    for (auto i = 0; i < notification_release_fns.size(); ++i) {
+      notification_release_fns[i](notifications[i].handle);
     }
   }
 };
 
-// Command in the logic stream
-struct Command {
-  enum CommandType : int {
-    LaunchKernel,
-    WaitNotification,
-    Notify,
-  };
-
-  CommandType type;
-  // if commend type is launch kernel, arg is the node index
-  // if command type is wait/notify, arg is the notification id
-  // if command type is release memory, arg is the tensor index
-  size_t arg;
-  // the handle for this command. 
-  // since every node already been placed on a given EP. 
-  // the handle for current command can be statically determined.
-  void (*handle)();
-};
+using CommandFn = std::function<void(ExecutionContext&)>;
 
 // a logic stream to execute command.
 // each command in the logic stream will be executed in FIFO
@@ -214,27 +207,11 @@ struct Command {
 struct LogicStream {
  
   std::vector<std::unique_ptr<Stream>> device_streams_;
-  std::vector<Command> commands_;
+  std::vector<CommandFn> commands_;
   
   void Run(ExecutionContext& ctx) {
     for (auto& command : commands_) {
-      switch (command.type) {
-        case Command::LaunchKernel: {
-          auto* intra_tp = ctx.session_state->GetThreadPool();
-          auto* kernel = ctx.session_state->GetKernel(command.arg);
-          OpKernelContext kernel_ctx(ctx.frame, kernel, intra_tp, *ctx.logger);
-          reinterpret_cast<KernelLaunchFn>(command.handle)(kernel, &kernel_ctx);
-          break;
-        }
-        case Command::WaitNotification: {
-          reinterpret_cast<WaitNotificationFn>(command.handle)(ctx.notifications[command.arg]);
-          break;
-        }
-        case Command::Notify: {
-          reinterpret_cast<NotifyNotificationFn>(command.handle)(ctx.notifications[command.arg]);
-          break;
-        }
-      }
+      command(ctx);
     }
   }
 
@@ -342,13 +319,11 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           auto notfication_it = node_to_notification.find(it->Index());
           ORT_ENFORCE(notfication_it != node_to_notification.end());
           // push a wait command
-          //TODO: find a better way to bind function pointer
           auto wait_handle = StreamCommandHandleRegistry::GetInstance().GetWaitHandle(notification_owners_[notfication_it->second], node->GetExecutionProviderType());
-          logic_streams_[i]->commands_.push_back({
-            Command::WaitNotification,
-                notfication_it->second,
-                reinterpret_cast<void (*)()>(wait_handle),
-              });
+          NotificationIndex notification_index = notfication_it->second;
+          logic_streams_[i]->commands_.push_back([wait_handle, notification_index](ExecutionContext& ctx) {
+            wait_handle(ctx.notifications[notification_index]);
+          });
         }
       }
       // push launch kernel command
@@ -359,21 +334,19 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
                                     [&](std::unique_ptr<Stream>& stream) { return stream->provider == ep; });
       ORT_ENFORCE(stream_it != streams.end());
       auto kernel_launch_handle = StreamCommandHandleRegistry::GetInstance().GetKernelLaunchFn(stream_it->get());
-      //TODO: find a better way to bind function pointer
-      logic_streams_[i]->commands_.push_back({
-          Command::LaunchKernel,
-          node_index,
-          reinterpret_cast<void (*)()>(kernel_launch_handle),
+      logic_streams_[i]->commands_.push_back([kernel_launch_handle, node_index](ExecutionContext& ctx) {
+        auto* p_kernel = ctx.session_state->GetKernel(node_index);
+        auto* intra_tp = ctx.session_state->GetThreadPool();
+        OpKernelContext kernel_ctx(ctx.frame, p_kernel, intra_tp, *ctx.logger);
+        kernel_launch_handle(p_kernel, &kernel_ctx);
       });
       // check if any notification generated by this node, if yes, push a notify
       auto notification_it = node_to_notification.find(node_index);
       if (notification_it != node_to_notification.end()) {
         auto notify_handle = StreamCommandHandleRegistry::GetInstance().GetNotifyHandle(stream_it->get());
-        //TODO: find a better way to bind function pointer
-        logic_streams_[i]->commands_.push_back({
-            Command::Notify,
-            notification_it->second,
-            reinterpret_cast<void (*)()>(notify_handle),
+        NotificationIndex notification_index = notification_it->second;
+        logic_streams_[i]->commands_.push_back([notify_handle, notification_index](ExecutionContext& ctx) {
+          notify_handle(ctx.notifications[notification_index]);
         });
       }
     }
