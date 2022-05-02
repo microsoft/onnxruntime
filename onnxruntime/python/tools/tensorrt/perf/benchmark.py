@@ -16,10 +16,10 @@ import numpy
 import numpy as np
 import pandas as pd
 from float16 import *
-from onnx import numpy_helper
 from perf_utils import *
 
-import onnxruntime
+import onnxruntime  # isort:skip
+from onnx import numpy_helper  # isort:skip
 
 debug = False
 sys.path.append(".")
@@ -346,9 +346,9 @@ def inference_ort(
                     args.io_binding,
                     io_binding,
                 )
-            if args.input_data == "fix": 
-                runtime = runtime[1:] # remove warmup
-            runtimes += runtime  
+            if args.input_data == "fix":
+                runtime = runtime[1:]  # remove warmup
+            runtimes += runtime
 
         except Exception as e:
             logger.error(e)

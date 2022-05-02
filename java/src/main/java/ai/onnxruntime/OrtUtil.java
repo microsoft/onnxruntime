@@ -461,4 +461,15 @@ public final class OrtUtil {
         return null;
     }
   }
+
+  /**
+   * Returns expected JDK map capacity for a given size, this factors in the default JDK load factor
+   *
+   * @param size The expected map size
+   * @return The capacity for a map that guarantees no resizing
+   */
+  static int capacityFromSize(int size) {
+    // 0.75 is the default JDK load factor
+    return (int) (size / 0.75 + 1);
+  }
 }
