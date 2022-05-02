@@ -29,10 +29,10 @@ Here are the best practices, design considerations, and tools for tuning your ON
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" >Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
@@ -116,10 +116,10 @@ The tool takes the input as a JSON file and reports the performance of the GPU a
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" >Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
@@ -212,10 +212,10 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" >Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
@@ -616,10 +616,10 @@ Here is a list of things to check through when assessing performance issues.
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" >Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
