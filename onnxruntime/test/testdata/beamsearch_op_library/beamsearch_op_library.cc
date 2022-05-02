@@ -4,9 +4,20 @@
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
+#include <iostream>
+#include <fstream>
+#include <filesystem>
+
 #include <vector>
 #include <cmath>
 #include <mutex>
+#include <ctime>
+
+#ifdef _WIN32
+#include <Windows.h>
+#else
+#include <unistd.h>
+#endif
 
 static const char* c_OpDomain = "test.beamsearchop";
 
@@ -43,14 +54,65 @@ struct CustomBearmsearchKernel {
   CustomBearmsearchKernel(OrtApi api)
       : api_(api),
         ort_(api_) {
-  }
+    std::cout << "CustomBearmsearchKernel constructor is invoked" << std::endl;
+      if (&api_ == nullptr) {
+        std::cout <<"api is nullptr"<<std::endl;
+      }
+ }
 
   void Compute(OrtKernelContext* context) {
-    // Setup inputs
-    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    const float* X = ort_.GetTensorData<float>(input_X);
-    const float* Y = ort_.GetTensorData<float>(input_Y);
+   // Setup inputs
+   if (&api_ != nullptr) {
+     std::cout << "api_ exists" << std::endl;
+   }
+
+   std::cout << "compute is invoked" << std::endl;
+   const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
+   const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
+   const float* X = ort_.GetTensorData<float>(input_X);
+   const float* Y = ort_.GetTensorData<float>(input_Y);
+
+   std::cout << "Trying to create session" << std::endl;
+   OrtEnv* env;
+   api_.CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "customOp", &env);
+   std::cout << "end session creation" << std::endl;
+
+   OrtSessionOptions* sessionoptions;
+   api_.CreateSessionOptions(&sessionoptions);
+
+   OrtSession* session;
+   std::filesystem::path model_path = "D:\\ai\\onnxruntime\\onnxruntime\\bart_mlp_megatron_basic_test.onnx";
+   std::wstring model_path_wstring = model_path.wstring();
+
+   std::time_t start_time = std::time(0);
+   try {
+     api_.CreateSession(env, model_path_wstring.data(), sessionoptions, &session);
+   } catch (Ort::Exception& e) {
+     std::cout << e.what() << std::endl;
+   }
+
+   std::array<int64_t, 3> inputShape = {1, 2, 4};
+   std::array<int64_t, 3> outputShape = {1, 2, 4};
+   std::array<float, 1 * 2 * 4> input1 = {1.0f, -1.2f, 1.0f, 0.0f, -1.2f, 1.0f, 1.0f, 1.0f};
+   std::array<float, 1 * 2 * 4> output1;
+   std::array<const char*, 1> inputNames = {"input"};
+   std::array<const char*, 1> outputNames = {"output"};
+
+    OrtMemoryInfo *ortmemoryinfo;
+    // Must be freed explicitly
+    api_.CreateMemoryInfo("Cpu", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeCPU, &ortmemoryinfo);
+
+    OrtValue* inputvalue;
+    OrtValue* outputvalue;
+    api_.CreateTensorWithDataAsOrtValue(ortmemoryinfo, input1.data(), 4*input1.size(), inputShape.data(),
+        inputShape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,  &inputvalue);
+    api_.CreateTensorWithDataAsOrtValue(ortmemoryinfo, output1.data(), 4*output1.size(), outputShape.data(),
+        outputShape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &outputvalue);
+
+    api_.Run(session, nullptr, inputNames.data(), &inputvalue, 1, outputNames.data(), 1, &outputvalue);
+
+    std::time_t end_time = std::time(0);
+    std::cout<<"Time elapsed for creating a session:"<<end_time-start_time<<std::endl;
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
@@ -74,6 +136,7 @@ struct CustomBearmsearchKernel {
 
 struct CustomBeamSearchOP : Ort::CustomOpBase<CustomBeamSearchOP, CustomBearmsearchKernel> {
   void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
+
     return new CustomBearmsearchKernel(api);
   };
 
