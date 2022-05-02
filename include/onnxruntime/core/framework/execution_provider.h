@@ -31,6 +31,7 @@ class KernelRegistryManager;
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 
@@ -297,6 +298,8 @@ class IExecutionProvider {
     // EPs which prefer a different layout should override to return their preferred layout.
     return static_cast<DataLayout>(0);
   }
+
+  virtual void RegisterStreamHandlers(StreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
 
  private:
   const std::string type_;

@@ -15,6 +15,7 @@
 #endif
 
 #include "core/framework/compute_capability.h"
+#include "core/common/spin_pause.h"
 
 namespace {
 struct KernelRegistryAndStatus {
@@ -2155,4 +2156,48 @@ std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const 
 std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
 }
+
+struct CPUNotification {
+  void notify() { ready_.store(true); };
+  void wait() {
+    while (!ready_.load()) {
+      onnxruntime::concurrency::SpinPause();
+    }
+  };
+  std::atomic_bool ready_{};
+};
+
+// CPU Stream command handles
+void WaitCPUNotification(NotificationHandle& notification) {
+  static_cast<CPUNotification*>(notification)->wait();
+}
+
+void NotifyCPUNotification(NotificationHandle& notification) {
+  static_cast<CPUNotification*>(notification)->notify();
+}
+
+void* CreateCPUNotification(const StreamHandle&) {
+  return static_cast<void*>(new CPUNotification());
+}
+
+void ReleaseCPUNotification(void* handle) {
+  delete static_cast<CPUNotification*>(handle);
+}
+
+StreamHandle CreateCPUStream() {
+  return nullptr;
+}
+
+void ReleaseCPUStram(StreamHandle) {
+}
+
+void CPUExecutionProvider::RegisterStreamHandlers(StreamCommandHandleRegistry& stream_handle_registry) const {
+  stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
+  stream_handle_registry.RegisterNotifyFn(kCpuExecutionProvider, NotifyCPUNotification);
+  stream_handle_registry.RegisterCreateNotificationFn(kCpuExecutionProvider, CreateCPUNotification);
+  stream_handle_registry.RegisterReleaseNotificationFn(kCpuExecutionProvider, ReleaseCPUNotification);
+  stream_handle_registry.RegisterCreateStreamFn(kCpuExecutionProvider, CreateCPUStream);
+  stream_handle_registry.RegisterReleaseStreamFn(kCpuExecutionProvider, ReleaseCPUStram);
+}
+
 }  // namespace onnxruntime
