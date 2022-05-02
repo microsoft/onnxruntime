@@ -9,6 +9,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/common/optional.h"
@@ -604,6 +605,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
           }
 
+        } else if (option.first == "enable_opencl_throttling") {
+          if (option.second == "True") {
+            params.use_compiled_network = true;
+          } else if (option.second == "False") {
+            params.use_compiled_network = false;
+          } else {
+            ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
+          }
         } else if (option.first == "device_id") {
           params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
@@ -1226,7 +1235,28 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // This is no different than the native APIs
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
             ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
-          });
+          })
+      .def("add_external_initializers", [](PySessionOptions* options, py::list& names, 
+                                                    const py::list& ort_values) -> void {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+          const auto init_num = ort_values.size();
+          ORT_ENFORCE(init_num == names.size(), "Expecting names and ort_values lists to have equal length");
+          InlinedVector<std::string> names_ptrs;
+          InlinedVector<OrtValue> values_ptrs;
+          names_ptrs.reserve(init_num);
+          values_ptrs.reserve(init_num);
+          for (size_t i = 0; i < init_num; ++i) {
+            names_ptrs.emplace_back(py::str(names[i]));
+            values_ptrs.emplace_back(*ort_values[i].attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<const OrtValue*>());
+          }
+          ORT_THROW_IF_ERROR(options->AddExternalInitializers(names_ptrs, values_ptrs));
+#else
+          ORT_UNUSED_PARAMETER(options);
+          ORT_UNUSED_PARAMETER(names);
+          ORT_UNUSED_PARAMETER(ort_values);
+          ORT_THROW("External initializers are not supported in this build.");
+#endif
+      });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -1517,6 +1547,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
+        // release GIL to allow multiple python threads to invoke Run() in parallel.
+        py::gil_scoped_release release;
         if (!run_options)
           status = sess->GetSessionHandle()->Run(*io_binding.Get());
         else
@@ -1530,6 +1562,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
 }
+
+// static variable used to create inference session and training session.
+static std::unique_ptr<Environment> session_env;
 
 void CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
@@ -1561,6 +1596,10 @@ void CreateInferencePybindStateModule(py::module& m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
+  auto atexit = py::module_::import("atexit");
+  atexit.attr("register")(py::cpp_function([]() {
+    session_env = nullptr;
+  }));
 }
 
 void InitArray() {
@@ -1569,9 +1608,6 @@ void InitArray() {
     import_array1();
   })();
 }
-
-// static variable used to create inference session and training session.
-static std::unique_ptr<Environment> session_env;
 
 void InitializeEnv() {
   auto initialize = [&]() {

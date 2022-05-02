@@ -15,7 +15,7 @@ namespace Dml
         : m_queue(std::make_shared<CommandQueue>(queue))
         , m_dmlRecorder(d3d12Device, dmlDevice, m_queue)
     {
-        ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_PPV_ARGS(m_d3dDevice.GetAddressOf())));        
+        ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));        
     }
 
     void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
@@ -178,7 +178,7 @@ namespace Dml
         bool waitForUnsubmittedWork = (m_currentRecorder != nullptr);
         m_queue->QueueReference(object, waitForUnsubmittedWork);
     }
-    
+
     void ExecutionContext::Close()
     {
         assert(!m_closed);

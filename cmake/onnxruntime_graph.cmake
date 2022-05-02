@@ -20,6 +20,9 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_deprecated_operators.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
   )
 
   # no Function support initially
@@ -122,4 +125,12 @@ if (WIN32)
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
   endif()  
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_graph
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

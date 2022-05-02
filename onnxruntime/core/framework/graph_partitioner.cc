@@ -445,7 +445,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
   // using graph.Nodes().
   std::vector<Node*> nodes_to_inline;
   for (auto& node : graph.Nodes()) {
-    if (node.GetExecutionProviderType().empty() && node.GetFunctionBody() != nullptr) {
+    if (node.GetExecutionProviderType().empty() && node.CanBeInlined()) {
       nodes_to_inline.push_back(&node);
     }
   }

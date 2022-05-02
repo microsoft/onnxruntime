@@ -198,6 +198,8 @@
         "^test_mvn.*",
         "^test_max_float64.*",
         "^test_min_float64.*",
+        "^test_max_one_input_cpu",
+        "^test_min_one_input_cpu",
         "^test_gather_negative_indices.*",
         "^test_sce.*",
         "^test_nllloss.*",
@@ -207,6 +209,8 @@
         "^test_reduce_sum_default_axes_keepdims*",
         "^test_reduce_sum_negative_axes_keepdims*",
         "^test_reduce_sum_empty_axes_input_noop*",
+        "^test_scatter_elements_with_negative_indices_cpu",
+        "^test_sum_one_input_cpu",
         "^test_unsqueeze_*",  // Does not support axes as input
         "^test_squeeze_*",   // Does not support axes as input
         "^test_logsoftmax_*", // Does not support opset-13 yet

@@ -663,8 +663,11 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    *session_logger_);
+                                    *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   common::Status st = Load(loader, "model_loading_uri");
@@ -763,8 +766,11 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #endif
 
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_array");
@@ -789,9 +795,12 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     // This call will create a copy of model_proto and the constructed model instance will own the copy thereafter
     return onnxruntime::Model::Load(model_proto, PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_proto");
@@ -811,8 +820,11 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     return onnxruntime::Model::Load(std::move(*p_model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_proto");
@@ -837,9 +849,13 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    ModelOptions model_opts(allow_released_opsets_only,
+                            strict_shape_type_inference);
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    *session_logger_, allow_released_opsets_only);
+                                    *session_logger_, model_opts);
   };
 
   return Load(loader, "model_loading_istream");
@@ -859,9 +875,12 @@ common::Status InferenceSession::Load() {
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
-                       HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                       HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                       ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_from_saved_proto");
@@ -1236,6 +1255,13 @@ common::Status InferenceSession::Initialize() {
 
     // re-acquire mutex
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+    if (!session_options_.external_initializers.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializedTensors(session_options_.external_initializers));
+      InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
+    }
+#endif
 
     // At this time we know all the providers that will be part of this session.
     // Read shared allocators from the environment and update them in the respective providers.

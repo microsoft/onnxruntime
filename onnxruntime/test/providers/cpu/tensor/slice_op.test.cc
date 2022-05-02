@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -22,10 +23,12 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::unordered_set<std::string>& excluded_providers_input = {}) {
   std::unordered_set<std::string> excluded_providers;
 
-  if (!v10_only)
+  if (!v10_only) {
+    // OpenVINO EP: Disabled temporarily
     excluded_providers = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-  else
+  } else {
     excluded_providers = {kTensorrtExecutionProvider};
+  }
 
   // merge with the excluded ep from input
   excluded_providers.insert(excluded_providers_input.cbegin(), excluded_providers_input.cend());
@@ -35,6 +38,16 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
     excluded_providers.insert(kNnapiExecutionProvider);
   }
 
+  // TODO: ORT behavior when step < 0 and end = INT_MAX is wrong. Fix it and
+  // remove the onnx_shape_disagreement code below.
+  // https://github.com/microsoft/onnxruntime/issues/11107
+  const bool onnx_shape_disagreement = (!steps.empty() && steps[0] < 0 && !ends.empty() &&
+                                        (ends[0] == std::numeric_limits<int64_t>::max() ||
+                                         ends[0] == std::numeric_limits<int32_t>::max()));
+  // ignore the above-mentioned disagreement.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+
   if (!v10_only) {
     OpTester testv9("Slice", 9);
     testv9.AddAttribute("starts", starts);
@@ -43,7 +56,11 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
       testv9.AddAttribute("axes", axes);
     testv9.AddInput<T>("data", input_dims, input_vals);
     testv9.AddOutput<T>("output", output_dims, output_vals);
-    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);  // OpenVINO EP: Disabled temporarily
+    if (onnx_shape_disagreement) {
+      testv9.Run(so, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    } else {
+      testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    }
   }
 
   // V10
@@ -57,7 +74,11 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
     if (steps.size() != 0)
       testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps, only_data_not_initializer);
     testv10.AddOutput<T>("output", output_dims, output_vals);
-    testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    if (onnx_shape_disagreement) {
+      testv10.Run(so, OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    } else {
+      testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    }
   };
 
   run_test(false);
