@@ -34,9 +34,9 @@ Abstract:
         .equ    .LConvSymPostProcessParams_Min,       16
         .equ    .LConvSymPostProcessParams_Max,       20
         .equ    .LConvSymPostProcessParams_ZeroPoint, 24
-        .equ    .LConvSymPostProcessParams_Multiplier,28
-        .equ    .LConvSymPostProcessParams_PreShift,  36
-        .equ    .LConvSymPostProcessParams_PostShift, 44
+        .equ    .LConvSymPostProcessParams_Multiplier,32
+        .equ    .LConvSymPostProcessParams_PreShift,  40
+        .equ    .LConvSymPostProcessParams_PostShift, 48
 
         .text
 

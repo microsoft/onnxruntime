@@ -22,9 +22,9 @@ Abstract:
         .equ  .LConvSymDepthwisePostProcessParams_Bias,            0
         .equ  .LConvSymDepthwisePostProcessParams_Scale,           8
         .equ  .LConvSymDepthwisePostProcessParams_ZeroPoint,       24
-        .equ    .LConvSymPostProcessParams_Multiplier,             28
-        .equ    .LConvSymPostProcessParams_PreShift,               36
-        .equ    .LConvSymPostProcessParams_PostShift,              44
+        .equ  .LConvSymPostProcessParams_Multiplier,               32
+        .equ  .LConvSymPostProcessParams_PreShift,                 40
+        .equ  .LConvSymPostProcessParams_PostShift,                48
 
         .equ  .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX,    1
         .equ  .LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE, 4

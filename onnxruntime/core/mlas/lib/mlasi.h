@@ -816,6 +816,7 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
     float MinimumValue;
     float MaximumValue;
     int32_t OutputZeroPoint;
+    int32_t Padding;
     const int32_t* Multiplier{nullptr};
     const int32_t* PreShift{nullptr};
     const int32_t* PostShift{nullptr};
@@ -992,7 +993,7 @@ MlasPartitionWork(
 #if defined(_MSC_VER) && !defined(__clang__)
   #pragma warning(push)
   // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
-  #pragma warning(disable:26497) 
+  #pragma warning(disable:26497)
 #endif
 
 MLAS_FORCEINLINE
