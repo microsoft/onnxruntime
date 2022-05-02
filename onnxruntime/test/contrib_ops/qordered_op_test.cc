@@ -28,6 +28,22 @@ enum OrderCublasLt {
   ORDER_COL32_2R_4R4 = 4
 };
 
+/*
+template <typename T>
+static std::vector<T> GenDataSimple(std::vector<int64_t> const& shape, float scale) {
+  int64_t n = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
+
+  scale = std::is_same<T, int8_t>::value ? 1.0f : scale;  // using scale = 1.0f to generate int8_t data,
+  std::vector<T> r(n);
+  //RandomValueGenerator random{};
+  //std::vector<int> tmp = random.Uniform<int32_t>(shape, -128, 127);
+  for (int64_t i = 0; i < n; i++) {
+    r[i] = static_cast<T>(1);
+  }
+  return r;
+}
+*/
+
 // generate random data without precision loss if quantized.
 template <typename T>
 static std::vector<T> GenData(std::vector<int64_t> const& shape, float scale) {
@@ -38,7 +54,7 @@ static std::vector<T> GenData(std::vector<int64_t> const& shape, float scale) {
   RandomValueGenerator random{};
   std::vector<int> tmp = random.Uniform<int32_t>(shape, -128, 127);
   for (int64_t i = 0; i < n; i++) {
-    r[i] = static_cast<T>(tmp[i] * scale);
+    r[i] = static_cast<T>(r[i] * scale);
   }
   return r;
 }
@@ -428,7 +444,6 @@ static void RunQOrderedAddBiasResidual_LayerNorm_WithData(std::vector<int64_t> c
   test_qorder.AddInput<float>("scale_X", {}, {scale_x});
 
   if (vecR) {
-    std::cout << "Here";
     test_qorder.AddInput<int8_t>("R", shape, *vecR);
     test_qorder.AddInput<float>("scale_R", {}, {*scale_r});
   } else {
@@ -474,7 +489,7 @@ static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int ax
 
   RandomValueGenerator random{};
 
-  std::vector<MLFloat16> vecGamma = ToFloat16(random.Uniform<float>(beta_shape, -1.0f, 1.0f));
+  std::vector<MLFloat16> vecGamma = ToFloat16(random.Uniform<float>(beta_shape, 3.0f, 3.0f));
   std::vector<MLFloat16> vecBeta(cols);
   if (has_beta) {
     vecBeta = ToFloat16(random.Uniform<float>(beta_shape, -1.0f / 16.0f, -1.0f / 16.0f));
@@ -485,9 +500,9 @@ static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int ax
   }
 
   std::vector<int8_t> vecY(N);
-  float scale_x = 2.0f;
-  float scale_r = 1.0f;
-  float scale_y = 1.0f / 64.0f;
+  float scale_x = 1.0f;
+  float scale_r = 2.0f;
+  float scale_y = 2.0f / 128.0f;
   float epsilon = 0.00001;
 
   int8_t* bdst = vecY.data();
@@ -506,7 +521,8 @@ static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int ax
         double sqrt_var = std::sqrt(dss_episilon);
         for (int c = 0; c < cols; c++) {
           double v = ((double)bsrc[c] * scale_x - u_scaled) / sqrt_var * vecGamma[c].ToFloat() + vecBeta[c].ToFloat();
-          v = u / scale_y;
+          std::cout << u_scaled << "\n";
+          v = v / scale_y;
           v = std::max(-128.0, std::min(v, 127.0));
           bdst[c] = static_cast<int8_t>((int)std::nearbyint(v));
         }
@@ -536,9 +552,11 @@ static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int ax
 
         for (int c = 0; c < cols; c++) {
           double v = ((double)bsrc[c] - u) / sqrt_var * vecGamma[c].ToFloat() + vecBeta[c].ToFloat();
-          v = u / scale_y;
+
+          v = v / scale_y;
           v = std::max(-128.0, std::min(v, 127.0));
           bdst[c] = static_cast<int8_t>((int)std::nearbyint(v));
+          //bdst[c] = static_cast<int8_t>(u);
         }
 
         bsrc += cols;
@@ -563,6 +581,10 @@ static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int ax
                                                 vecGamma,
                                                 has_beta ? &vecBeta : nullptr,
                                                 scale_y, vecY);
+}
+
+TEST(QOrderedTest, LayerNorm_OrderCol32_Beta_BiasAndResidual_3x11x512) {
+  RunQOrdered_LayerNorm_Test({3, 11, 512}, -1, true, true, ORDER_COL32);
 }
 
 TEST(QOrderedTest, LayerNorm_Data_1x32) {
@@ -602,7 +624,6 @@ TEST(QOrderedTest, LayerNorm_Data_1x32) {
                                                 nullptr, nullptr, nullptr,
                                                 vecGamma, &vecBeta, scale_y, vecY);
 }
-
 TEST(QOrderedTest, LayerNorm_OrderRow_3x7x600) {
   RunQOrdered_LayerNorm_Test({3, 9, 80}, -1, true, false, ORDER_ROW);
 }
@@ -625,10 +646,6 @@ TEST(QOrderedTest, LayerNorm_OrderCol32_NoBeta_3x11x96) {
 
 TEST(QOrderedTest, LayerNorm_OrderCol32_Beta_3x11x96) {
   RunQOrdered_LayerNorm_Test({3, 11, 96}, -1, true, false, ORDER_COL32);
-}
-
-TEST(QOrderedTest, LayerNorm_OrderCol32_Beta_BiasAndResidual_3x11x96) {
-  RunQOrdered_LayerNorm_Test({3, 11, 96}, -1, true, true, ORDER_COL32);
 }
 
 static void RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float scale_Y, OrderCublasLt order) {

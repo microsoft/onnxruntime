@@ -57,7 +57,6 @@ QORDERED_BINARY_TWO_SCALE_DECLARATION(Add);
     float output_scale,
     const fast_divmod& batch_size,
     const fast_divmod& rows_times_thirty_two,
-    const fast_divmod& thirty_two,
     size_t count);
 
 

@@ -10,9 +10,9 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-class QOrderedLayerNormalization final : public CudaKernel {
+class QOrderedAddBiasResidualLayerNorm final : public CudaKernel {
  public:
-  QOrderedLayerNormalization(const OpKernelInfo& op_kernel_info);
+  explicit QOrderedAddBiasResidualLayerNorm(const OpKernelInfo& op_kernel_info);
 
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
@@ -20,6 +20,7 @@ class QOrderedLayerNormalization final : public CudaKernel {
   int64_t axis_;
   double epsilon_;
   int order_X_;
+  int order_R_;
   int order_Y_;
 };
 

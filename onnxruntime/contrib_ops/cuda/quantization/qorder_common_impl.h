@@ -38,9 +38,12 @@ void QOrderDequantizeCol32ToRow(
     const int8_t* src, float* dst, float scale,
     unsigned batch, unsigned rows, unsigned cols);
 
-void QOrderLayerNorm(
+void QOrderAddBiasResidualLayerNorm(
     cudaStream_t stream, const cudaDeviceProp& device_prop, cublasLtOrder_t order,
-    const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
+    const int8_t* src, const float src_scale,
+    const int8_t* residual, const float residual_scale,
+    const __half* bias,
+    int8_t* dst, const float dst_scale,
     const __half* gamma, const __half* beta, const float epsilon,
     const unsigned batch, const unsigned rows, const unsigned cols);
 

@@ -100,7 +100,6 @@ __global__ void _QOrdered_Col32OrderKernel_BiasGelu(
     half2 half2_inverse_output_scale,
     const fast_divmod batch_size,
     const fast_divmod rows_times_thirty_two,
-    const fast_divmod thirty_two,
     const CUDA_LONG count) {
   CUDA_LONG id = kNumElementsPerBlock * blockIdx.x + threadIdx.x * (CUDA_LONG)sizeof(char4);
 
@@ -121,7 +120,7 @@ __global__ void _QOrdered_Col32OrderKernel_BiasGelu(
       auto bias_id = batch_size.mod(id);
       int q, r;
       rows_times_thirty_two.divmod(bias_id, q, r);
-      bias_id = q * 32 + thirty_two.mod(r);
+      bias_id = (q << 5) + (r & 31);
 
       // Process 4 quantized int8_t elements by processing them as 4 halfs (2 half2 s)
       i4 = *(const char4*)(input_data + id);
@@ -177,7 +176,6 @@ void QOrdered_Col32OrderImpl_BiasGelu(
     float output_scale,
     const fast_divmod& batch_size,
     const fast_divmod& rows_times_thirty_two,
-    const fast_divmod& thirty_two,
     size_t count) {
   if (count == 0) {
     return;
@@ -191,7 +189,7 @@ void QOrdered_Col32OrderImpl_BiasGelu(
 
   _QOrdered_Col32OrderKernel_BiasGelu<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_tensor, half2_input_scale, bias_tensor, half2_bias_scale, output_tensor,
-      half2_inverse_output_scale, batch_size, rows_times_thirty_two, thirty_two, (CUDA_LONG)count);
+      half2_inverse_output_scale, batch_size, rows_times_thirty_two, (CUDA_LONG)count);
 }
 
 }  // namespace cuda

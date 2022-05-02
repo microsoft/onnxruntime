@@ -125,8 +125,7 @@ Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input shapes don't meet the requirements");
   }
 
-  // TODO: Bit-wise op ?
-  if (bias_shape[0] % 32 != 0) {
+  if ((bias_shape[0] & 31) != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias of shape in multiples of 32 are only supported");
   }
 
@@ -148,7 +147,6 @@ Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
 
   fast_divmod batch_size(static_cast<int>(rows) * static_cast<int>(cols));
   fast_divmod rows_times_thirty_two(static_cast<int>(rows) * 32);
-  fast_divmod thirty_two(32);
 
   QOrdered_Col32OrderImpl_BiasGelu(
       Stream(),
@@ -160,7 +158,6 @@ Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
       output_scale,
       batch_size,
       rows_times_thirty_two,
-      thirty_two,
       input_shape.Size());
 
   return Status::OK();
