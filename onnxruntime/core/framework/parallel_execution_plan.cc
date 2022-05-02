@@ -282,7 +282,8 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     std::set<const IExecutionProvider*> providers;
     for (auto node_index : nodes_in_stream[i]) {
       auto* node = graph_viewer.GetNode(node_index);
-      auto* ep = session_state.GetKernel(node_index)->Info().GetExecutionProvider();
+      onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+      const IExecutionProvider* ep = session_state.GetExecutionProviders().Get(exec_provider_name);
       if (providers.find(ep) == providers.end()) {
         //TODO: invoke the stream creation method for different EP.
         //For prototype, hardcode to CPU
@@ -299,7 +300,9 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     if (it != node_to_notification.end()) {
       // notification owned by the node who produced it.
       // use the producer's EP instance poitner as owner id
-      auto* ep = session_state.GetKernel(node_index)->Info().GetExecutionProvider();
+      auto* node = graph_viewer.GetNode(node_index);
+      onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+      const IExecutionProvider* ep = session_state.GetExecutionProviders().Get(exec_provider_name);
       auto& streams = logic_streams_[node_stream_map[node_index]]->device_streams_;
       auto stream_it = std::find_if(streams.begin(),
                                     streams.end(),
@@ -328,7 +331,8 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       }
       // push launch kernel command
       auto& streams = logic_streams_[i]->device_streams_;
-      auto* ep = session_state.GetKernel(node_index)->Info().GetExecutionProvider();
+      onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+      const IExecutionProvider* ep = session_state.GetExecutionProviders().Get(exec_provider_name);
       auto stream_it = std::find_if(streams.begin(),
                                     streams.end(),
                                     [&](std::unique_ptr<Stream>& stream) { return stream->provider == ep; });

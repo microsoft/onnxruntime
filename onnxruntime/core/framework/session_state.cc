@@ -1392,6 +1392,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
 
+  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, 2);
+
   // Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
@@ -1447,9 +1449,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
-
-  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, 2);
-
 
 #ifndef ENABLE_TRAINING
   const auto disable_prepacking =
