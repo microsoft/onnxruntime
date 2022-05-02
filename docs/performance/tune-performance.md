@@ -29,10 +29,10 @@ Here are the best practices, design considerations, and tools for tuning your ON
 <thead>
 <tr>
 <th style="text-align: left">
-<p><a href="#executionproviders" >Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p><a href="#performance">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p><a href="#tips">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p><a href="#faqs">Performance Tuning FAQs</a></p></th>
+<p><a href="#executionproviders" class="btn btn-blue">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p><a href="#performance"  class="btn btn-blue">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p><a href="#tips" class="btn btn-blue">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p><a href="#faqs" class="btn btn-blue">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
