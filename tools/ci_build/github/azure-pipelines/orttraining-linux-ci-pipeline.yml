@@ -27,11 +27,14 @@ jobs:
 
   - task: CmdLine@2
     displayName: 'Get the latest ONNX for integration check'
+    condition: eq(variables['ONNX_INTEGRATION_WEEKLY_BUILD'], '1')
     inputs:
       script: |
         cd $(Build.SourcesDirectory)/cmake/external/onnx
+        git remote update
         git checkout main
         git pull
+        git log -n 1
 
   - task: CmdLine@2
     displayName: 'build'
@@ -108,6 +111,17 @@ jobs:
       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
       arguments: --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Debug --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
       workingDirectory: $(Build.BinariesDirectory)/Debug
+
+  - task: CmdLine@2
+    displayName: 'Build and install latest ONNX from source'
+    condition: eq(variables['ONNX_INTEGRATION_WEEKLY_BUILD'], '1')
+    inputs:
+      script: |
+        python3 -m pip uninstall -y onnx
+        cd $(Build.SourcesDirectory)/cmake/external/onnx
+        source workflow_scripts/protobuf/build_protobuf_unix.sh $(nproc)
+        export CMAKE_ARGS="-DONNXIFI_DUMMY_BACKEND=ON -DONNX_WERROR=ON"
+        python setup.py --quiet install
 
   - task: PythonScript@0
     displayName: 'Symbolic shape infer'
