@@ -478,7 +478,7 @@ MlasConvSym(
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(Params.InputIsSigned);
 
-    // Pick the suitable kernel for current core. Currently we only have specialized core for 
+    // Pick the suitable kernel for current core. Currently we only have specialized core for
     // s8s8 under ARM64
 #if defined(MLAS_TARGET_ARM64)
     const auto Kernel =
@@ -534,7 +534,7 @@ MlasConvSym(
 
             PostProcessParams.Bias = Params.Bias + co;
 
-            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
                 PostProcessParams.Scale = RequantParam->Scale + (PerChannelScale ? co : 0);
             } else {
                 PostProcessParams.Multiplier = RequantParam->Multiplier + (PerChannelScale ? co : 0);
@@ -588,7 +588,7 @@ MlasConvSymDepthwise(
     int32_t OutputZeroPoint;
     const MLAS_REQUANT_PARAM* RequantParam = Params.RequantParam;
     MLAS_REQUANT_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
-    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
         OutputZeroPoint = RequantParam->ZeroPoint;
         PerChannelScale = RequantParam->Size > 1;
     } else {
@@ -606,7 +606,7 @@ MlasConvSymDepthwise(
 
     if ((Params.OutputChannels & 15) == 0) {
         PostProcessParams.Bias = Params.Bias;
-        if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+        if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
             PostProcessParams.Scale = RequantParam->Scale;
         } else {
             PostProcessParams.Multiplier = RequantParam->Multiplier;
@@ -647,7 +647,7 @@ MlasConvSymDepthwise(
             const size_t ChannelCount = std::min(OutputChannels - ChannelOffset, KernelChannelCount);
 
             PostProcessParams.Bias = Params.Bias + ChannelOffset;
-            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
                 PostProcessParams.Scale = RequantParam->Scale + (PerChannelScale ? ChannelOffset : 0);
             } else {
                 PostProcessParams.Multiplier = RequantParam->Multiplier + (PerChannelScale ? ChannelOffset : 0);
