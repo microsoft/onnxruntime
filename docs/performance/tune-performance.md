@@ -21,7 +21,24 @@ This document covers basic tools and troubleshooting checklists that can be leve
 {:toc}
 ### ONNX Runtime Performance Tuning
 
-Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages. Please click each topic to know more.
+Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages. 
+
+
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left">
+<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+</tr>
+</thead>
+</table>
+
+
+<h3 id="performance"></h3>
 
 ## Performance Tuning Tools
 
@@ -36,6 +53,7 @@ It contains two parts:
 <li>auto performance tuning with ORT
 </li>
 </ol>
+
 Users can run these two together through a single pipeline or run them independently as needed.
 
 As a quick start to using the Microsoft ONNX OLive tool, please refer to the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples.](https://github.com/microsoft/OLive/tree/master/cmd-example)
@@ -73,7 +91,7 @@ In the following example, the "Add" operator from the host initiated a CUDA kern
 
 ```json
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
-{"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
+{"cat":"Kernel", "name":"ort_add_cuda_kernel", "dur":33, ...}
 ```
 
 
@@ -91,6 +109,22 @@ If an operator called multiple kernels during execution, the performance numbers
 ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
 
 The tool takes the input as a JSON file and reports the performance of the GPU and CPU in the form of a treemap in the browser.
+
+
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left">
+<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+</tr>
+</thead>
+</table>
+
+<h3 id="executionproviders"></h3>
 
 ## Using different Execution Providers
 
@@ -155,7 +189,7 @@ session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionP
 
 ## Selecting the Execution Provider for best performance
 
-Performance is dependent on the specific model you're trying to run, the session and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
+Performance is dependent on the specific model you're trying to run, the session, and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
 
 ### CUDA (Default GPU) or CPU?
 
@@ -171,9 +205,26 @@ TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same
 
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
+
+
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left">
+<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+</tr>
+</thead>
+</table>
+
+<h3 id="tips"></h3>
+
 ## Tips for tuning performance
 
-Below are some suggestions for things to try for various EPs for tuning performance.
+Here are some tips for obtaining optimal tuning performance using different Execution Providers with ONNX Runtime.
 
 ### Shared arena based allocator
 
@@ -197,7 +248,7 @@ ONNX Runtime allows different [threading implementation](https://github.com/micr
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
 always be set using the ORT APIs.
-;
+
 ### Custom threading callbacks
 
 Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
@@ -556,6 +607,22 @@ Here is a list of things to check through when assessing performance issues.
 * Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed?
 
+
+<table>
+<thead>
+<tr>
+<th style="text-align: left">
+<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+</tr>
+</thead>
+</table>
+
+<h3 id="faqs"></h3>
+
+## Performance Tuning FAQs
 ### I need help performance tuning for BERT models
 
 For BERT models, sometimes ONNX Runtime cannot apply the best optimization due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
