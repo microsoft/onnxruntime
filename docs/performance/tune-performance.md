@@ -29,10 +29,10 @@ Here are the best practices, design considerations, and tools for tuning your ON
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
@@ -116,10 +116,10 @@ The tool takes the input as a JSON file and reports the performance of the GPU a
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
@@ -212,10 +212,10 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
@@ -226,19 +226,23 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 
 Here are some tips for obtaining optimal tuning performance using different Execution Providers with ONNX Runtime.
 
-### Shared arena based allocator
 
-Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
+<details open=""> <summary> <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight">Shared arena based allocator (click to expand)
+</pre></div> </div> </summary> <p>Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
+</p> </details>
 
-### MiMalloc allocator usage
-
-Onnxruntime supports overriding memory allocations using Mimalloc allocator.
+<details open=""> <summary> <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight">MiMalloc allocator usage (click to expand)
+</pre></div> </div> </summary> <p>Onnxruntime supports overriding memory allocations using Mimalloc allocator.
 MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc).
 
 Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios.
 
 Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc.
 Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
+</p> </details>
+
+
+
 
 ### Thread management
 
@@ -612,10 +616,10 @@ Here is a list of things to check through when assessing performance issues.
 <thead>
 <tr>
 <th style="text-align: left">
-<p class="label label-blue"><a href="#executionproviders" class="btn btn-purple mr-2">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn btn-purple mr-2">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn btn-purple mr-2">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn btn-purple mr-2">Performance Tuning FAQs</a></p></th>
+<p class="label label-blue"><a href="#executionproviders" class="btn">Choosing Execution Providers</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#performance" class="btn">Performance Tuning Tools</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#tips" class="btn">Tips to Optimize Performance</a></p></th>
+<th style="text-align: left"><p class="label label-blue"><a href="#faqs" class="btn">Performance Tuning FAQs</a></p></th>
 </tr>
 </thead>
 </table>
