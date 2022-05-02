@@ -363,7 +363,7 @@ bool BuildNllLossInternalFunctionHelper(
   std::vector<FunctionBodyHelper::AttributeProtoWrapper> axis_attr = {};
   if (opset_version <= 12)
     axis_attr.push_back(MakeAttribute("axes", std::vector<int64_t>({1})));
-  auto make_input = [opset_version](const char* arg) { 
+  auto make_input = [opset_version](const char* arg) {
     return (opset_version <= 12) ? std::vector<std::string>{arg} : std::vector<std::string>{arg, "const_one_64"};
   };
   body.push_back(
@@ -995,7 +995,7 @@ void RegisterTrainingOpSchemas() {
           static_cast<int64_t>(0))
       .TypeConstraint(
           "I",
-          {"tensor(int64)"},
+          {"tensor(int32)", "tensor(int64)"},
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
