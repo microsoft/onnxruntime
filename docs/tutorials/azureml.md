@@ -14,6 +14,11 @@ In the following sections, we use the HuggingFace Bert model trained with Stanfo
 
 The question answer scenario takes a question and a piece of text called a context, and produces answer, which is a string of text taken from the context. This scenario tokenizes and encodes the question and the context, feeds the inputs into the transformer model and generates the answer by producing the most likely start and end tokens in the context, which are then mapped back into words.
 
+The model is then deployed on AzureML using an online endpoint.
+
+![Component diagram showing AzureML deployment with ONNX RUntime including environment, ONNX model and scoring code](/images/azureml-deployment.png)
+
+
 ## Contents
 {: .no_toc }
 
