@@ -358,7 +358,7 @@ InChLoopEpilogue:
 
 Requantize:
         tst     w10,#.LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
-        beq     FixedPointScale
+        bne     FixedPointScale
 FloatPointScale:
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]

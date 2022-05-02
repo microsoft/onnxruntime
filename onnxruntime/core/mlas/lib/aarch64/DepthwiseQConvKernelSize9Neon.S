@@ -602,7 +602,7 @@ Return Value:
         saddw2  v9.4s, v9.4s, v27.8h
 
         tst     x6, #.LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
-        beq     FixedPointScale
+        bne     FixedPointScale
 FloatPointScale:
         scvtf   v16.4s, v16.4s              // Requantize
         scvtf   v17.4s, v17.4s
