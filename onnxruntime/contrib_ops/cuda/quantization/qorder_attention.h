@@ -14,6 +14,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
+template <typename T>
 class QOrderedAttention final : public CudaKernel, public AttentionBase {
  public:
   QOrderedAttention(const OpKernelInfo& info);

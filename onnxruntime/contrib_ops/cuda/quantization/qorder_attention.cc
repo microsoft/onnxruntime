@@ -4,7 +4,7 @@
 #include "qorder_common.h"
 #include "qorder_common_impl.h"
 #include "qorder_attention.h"
-#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "qorder_attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include <iostream>
@@ -17,23 +17,26 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     QOrderedAttention,
     kMSDomain,
     1,
+    MLFloat16,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("S", BuildKernelDefConstraints<float>())
         .TypeConstraint("G", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
         .InputMemoryType(OrtMemTypeCPUInput, 3)
         .InputMemoryType(OrtMemTypeCPUInput, 5)
         .InputMemoryType(OrtMemTypeCPUInput, 6)
         .InputMemoryType(OrtMemTypeCPUInput, 8),
-    QOrderedAttention);
+    QOrderedAttention<MLFloat16>);
 
-QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
+template <typename T>
+QOrderedAttention<T>::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
   order_bias_ = GetCublasLtOrderAttr(info, "order_bias");
@@ -45,11 +48,12 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
   // ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
 }
 
-Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
+template <typename T>
+Status QOrderedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // inputs are column based
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
-  const Tensor* bias = context->Input<Tensor>(4);
+  const Tensor* bias = context->Input<Tensor>(4); // Support MLFloat16 in the future
   const Tensor* mask_index = context->Input<Tensor>(7);
 
   auto& device_prop = GetDeviceProp();
@@ -61,6 +65,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   // const Tensor* scale_bias = context->Input<Tensor>(5);
   const Tensor* scale_gemm = context->Input<Tensor>(6);
   const Tensor* scale_output = context->Input<Tensor>(8);
+  const Tensor* past = context->Input<Tensor>(9);
 
   const float* scale_input_data = scale_input->template Data<float>();
   const float* scale_weights_data = scale_weights->template Data<float>();
@@ -86,6 +91,10 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
+  // Past and Present will be row32 and fp16
+  int past_sequence_length = 0;
+  Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
+
   cublasLtHandle_t cublasLt = CublasLtHandle();
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
@@ -104,12 +113,12 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                       bias->Data<float>(), gemm_buffer_quantized.get(),
                       (cublasLtOrder_t)order_weight_));
 
-  using CudaT = ToCudaType<MLFloat16>::MappedType;
-  constexpr size_t element_size = sizeof(MLFloat16);
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  constexpr size_t element_size = sizeof(T);
 
   auto gemm_buffer = GetScratchBuffer<int8_t>(m * n * element_size);  // row, fp16
   QOrderDequantizeCol32ToRow(stream, GetDeviceProp(), gemm_buffer_quantized.get(), (CudaT*)gemm_buffer.get(),
-                             *(const float*)scale_gemm_data, batch_size, sequence_length, n);
+                             *(const float*)scale_gemm_data, batch_size, sequence_length, n); // Maybe support float in the future
   // // reorder to row major
   // ORT_RETURN_IF_ERROR(
   //   Reorder(cublasLt, stream, device_prop, gsl::narrow_cast<int>(1), m, n, CUDA_R_8I,
@@ -124,7 +133,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   auto output_buffer = GetScratchBuffer<int8_t>(m * n * element_size);  // row, fp16
   cublasHandle_t cublas = CublasHandle();
-  if (!LaunchAttentionKernel(
+  if (!LaunchQOrderAttentionKernel(
           device_prop,
           stream,
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
@@ -139,10 +148,10 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
           cublas,
           element_size,
           is_unidirectional_,
-          0,
+          past_sequence_length,
+          nullptr == past ? nullptr : past->template Data<T>(),
           nullptr,
-          nullptr,
-          nullptr)) {
+          nullptr == present ? nullptr : present->template MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
