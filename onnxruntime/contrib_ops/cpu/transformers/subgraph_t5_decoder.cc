@@ -18,29 +18,54 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+/* T5 Decoder Subgraph.
+
+   Inputs:
+      input_ids: int32 (batch_size, 1)
+      encoder_attention_mask: int32 (batch_size, encode_sequence_length)
+      encoder_hidden_states: (batch_size, encode_sequence_length, encoder_hidden_size)
+
+      past_key_self_0: (batch_size, num_heads, past_decode_sequence_length, head_size)
+      past_value_self_0: (batch_size, num_heads, past_decode_sequence_length, head_size)
+      ... (for each self attention layer)
+
+      past_key_cross_0: (batch_size, num_heads, encode_sequence_length, head_size)
+      past_value_cross_0: (batch_size, num_heads, encode_sequence_length, head_size)
+      ... (for each cross attention layer)
+
+    Outputs:
+      logits: (batch_size, 1, vocab_size)
+
+      present_key_self_0: (batch_size, num_heads, past_decode_sequence_length + 1, head_size)
+      present_value_self_0: (batch_size, num_heads, past_decode_sequence_length + 1, head_size)
+      ... (for each self attention layer)
+
+    Note: Data type of input or output is float or float16 if not specifed.
+*/
+
 Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
   ORT_RETURN_IF(num_subgraph_inputs < 7 || (num_subgraph_inputs - 3) % 4 != 0, "number of outputs expected to be 3 + 4 * layers, got:", num_subgraph_inputs);
   ORT_RETURN_IF(num_subgraph_outputs < 5 || (num_subgraph_outputs - 1) % 4 != 0, "number of outputs expected to be 1 + 4 * layers, got:", num_subgraph_outputs);
 
-  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids", "subgraph input 0 shall be named as input_ids, got: ",
+  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids", "decoder subgraph input 0 shall be named as input_ids, got: ",
                 subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask", "subgraph input 1 shall be named as encoder_attention_mask, got: ",
+  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask", "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
                 subgraph_inputs[1]->Name());
-  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "encoder_hidden_states", "subgraph input 2 shall be named as encoder_hidden_states, got: ",
+  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "encoder_hidden_states", "decoder subgraph input 2 shall be named as encoder_hidden_states, got: ",
                 subgraph_inputs[2]->Name());
 
   // check subgraph outputs
-  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits", "subgraph output 0 shall be named as logits, got: ",
+  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits", "decoder subgraph output 0 shall be named as logits, got: ",
                 subgraph_outputs[0]->Name());
 
   // Logits shape is like (batch_size, seq_len, 32128). Here 32128 is the vocabulary size.
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
-  ORT_RETURN_IF(logits_shape->dim_size() != 3, "subgraph logits output is expected to have 3 dimension, got ",
+  ORT_RETURN_IF(logits_shape->dim_size() != 3, "decoder subgraph logits output is expected to have 3 dimension, got ",
                 logits_shape->dim_size());
 
   ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
-                "subgraph past state dimension 2 shall have a positive value for vocabulary size");
+                "decoder subgraph past state dimension 2 shall have a positive value for vocabulary size");
 
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[2]->Shape();
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
@@ -50,16 +75,23 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   num_layers = (static_cast<int>(subgraph_outputs.size()) - 1) / 4;
 
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-                "subgraph input 0 (input_ids) shall have int32 type");
+                "decoder subgraph input 0 (input_ids) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-                "subgraph input 1 (encoder_attention_mask) shall have int32 type");
-  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
-                    subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
-                "subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
+                "decoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
 
-  auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
-  ORT_RETURN_IF(output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
-                "subgraph output 0 (logits) shall be float or float16 data type");
+  auto float_type = subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type();
+  ORT_RETURN_IF(float_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && float_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
+                "decoder subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
+
+  for (int i = 3; i < num_subgraph_inputs; i++) {
+    ORT_RETURN_IF(subgraph_inputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
+                  "decoder subgraph past inputs shall have same data type as that of encoder_hidden_states");
+  }
+
+  for (int i = 0; i < num_subgraph_outputs; i++) {
+    ORT_RETURN_IF(subgraph_outputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
+                  "decoder subgraph output shall have same data type as that of encoder_hidden_states");
+  }
 
   is_output_float16_ = (output_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
 
