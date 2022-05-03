@@ -1194,8 +1194,8 @@ bool DepthToSpaceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet&
     return false;
   }
 
-  if (params.use_nchw && params.android_feature_level < 3) {
-    LOGS_DEFAULT(VERBOSE) << "NCHW layout is not supported for android feature level less than 3.";
+  if (params.use_nchw && params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    LOGS_DEFAULT(VERBOSE) << "NCHW layout is not supported for android feature level: " << params.android_feature_level;
     return false;
   }
 
