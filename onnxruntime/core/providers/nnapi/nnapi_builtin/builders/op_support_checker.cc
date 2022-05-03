@@ -1180,7 +1180,7 @@ class DepthToSpaceOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool DepthToSpaceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-                                                     const OpSupportCheckParams& /* params */) const {
+                                                     const OpSupportCheckParams& params) const {
   NodeAttrHelper helper(node_unit);
 
   Shape input_shape;
@@ -1191,6 +1191,11 @@ bool DepthToSpaceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet&
   if (input_size != 4) {
     LOGS_DEFAULT(VERBOSE) << "DepthToSpace only supports 4d shape, input is "
                           << input_size << "d shape";
+    return false;
+  }
+
+  if (params.use_nchw && params.android_feature_level < 3) {
+    LOGS_DEFAULT(VERBOSE) << "NCHW layout is not supported for android feature level less than 3.";
     return false;
   }
 
