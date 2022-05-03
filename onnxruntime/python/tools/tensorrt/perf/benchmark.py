@@ -16,10 +16,10 @@ import numpy
 import numpy as np
 import pandas as pd
 from float16 import *
-from onnx import numpy_helper
 from perf_utils import *
 
-import onnxruntime
+import onnxruntime  # isort:skip
+from onnx import numpy_helper  # isort:skip
 
 debug = False
 sys.path.append(".")
