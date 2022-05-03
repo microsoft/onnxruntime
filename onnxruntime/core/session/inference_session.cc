@@ -234,7 +234,6 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
-
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
@@ -277,8 +276,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       const bool allow_intra_op_spinning =
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
 
-      const bool enable_spin_stop = 
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableSpinStop, "0") == "1";
+      const bool enable_spin_stop =
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableSpinStop, "0") == "1";
 
       std::function<bool()> spinning_switch;
       if (allow_intra_op_spinning && enable_spin_stop) {
@@ -344,7 +343,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
       }
       inter_op_thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+          concurrency::CreateThreadPool(&Env::Default(), to, is_session_run_in_progress, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
         LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
         session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
@@ -1884,16 +1883,28 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
       struct InvocationCounterGuard {
+        concurrency::ThreadPool* intra_tp_;
+        concurrency::ThreadPool* inter_tp_;
         std::atomic_int32_t& counter_ref_;
-        explicit InvocationCounterGuard(std::atomic_int32_t& ref) noexcept : counter_ref_(ref) {
+        InvocationCounterGuard(concurrency::ThreadPool* intra_tp,
+                               concurrency::ThreadPool* inter_tp,
+                               std::atomic_int32_t& ref) noexcept
+            : intra_tp_(intra_tp), inter_tp_(inter_tp), counter_ref_(ref) {
           counter_ref_.fetch_add(1, std::memory_order_relaxed);
+          if (intra_tp_) intra_tp_->StartBusyLoop();
+          if (inter_tp_) inter_tp_->StartBusyLoop();
         }
         ~InvocationCounterGuard() {
-          counter_ref_.fetch_sub(1, std::memory_order_relaxed);
+          if (1 == counter_ref_.fetch_sub(1, std::memory_order_acq_rel)) {
+            if (intra_tp_) intra_tp_->StopBusyLoop();
+            if (inter_tp_) inter_tp_->StopBusyLoop();
+          }
         }
       };
 
-      InvocationCounterGuard counter_guard(invocation_refcounter_);
+      concurrency::ThreadPool* intra_tp_ = (use_per_session_threads_) ? thread_pool_.get() : intra_op_thread_pool_from_env_;
+      concurrency::ThreadPool* inter_tp = (use_per_session_threads_) ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
+      InvocationCounterGuard counter_guard(intra_tp_, inter_tp, invocation_refcounter_);
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                    session_options_.execution_mode, run_options.terminate, run_logger,
                                                    run_options.only_execute_path_to_fetches));

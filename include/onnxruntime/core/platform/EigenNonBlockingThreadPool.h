@@ -84,7 +84,7 @@
 //     The tasks themselves are defined in threadpool.cc, and are
 //     submitted to the run queues via RunInParallel->SummonWorkers.
 //     Each task will loop internally, picking off iterations from the
-//     user's code via atoic-fetch-and-add, until the loop is
+//     user's code via atomic-fetch-and-add, until the loop is
 //     complete.
 //
 //     This two-layer approach lets us separate out the
@@ -172,7 +172,7 @@ enum class PushResult {
 // sharing with later fields.  Note that:
 //
 // - The __x86_64__ value is twice the line size (64 bytes).  This
-//   accounts for 2-line prefetch behavior on some cores.
+//   accounts for 2-line pre-fetch behavior on some cores.
 //
 // - Ideally, ORT_ALIGN_TO_AVOID_FALSE_SHARING is used.  However, the
 //   definition of ThreadPoolParallelSection uses naive padding
@@ -308,7 +308,7 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
 
   // Special case alternative to RunInParallelSection for use without
   // an existing parallel section.  Ideally we would use a single
-  // iplemenation and a stack-allocated ThreadPoolParallelSection.
+  // implementation and a stack-allocated ThreadPoolParallelSection.
   //
   // However, on the BM_ThreadPoolParallelFor microbenchmark I saw
   // ~20% overhead on the resulting single-loop parallel sections.
@@ -730,8 +730,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
-        done_(false),
-        should_spin_fn_(thread_options.is_session_run_in_progress_fn) {
+        done_(false) {
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
     // and NonEmptyQueueIndex. Iteration is based on the fact that if we take
@@ -1278,6 +1277,20 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     return -1;
   }
 
+  void StartBusyLoop() {
+    BusyLoopState expected = BusyLoopState::Idle;
+    // Otherwise, it is already active
+    if (busy_loop_state_.compare_exchange_strong(expected, BusyLoopState::Active)) {
+      for (auto& td : worker_data_) {
+        td.EnsureAwake();
+      }
+    }
+  }
+
+  void StopBusyLoop() {
+    busy_loop_state_.store(BusyLoopState::Idle, std::memory_order_release);
+  }
+
  private:
   void ComputeCoprimes(int N, Eigen::MaxSizeVector<unsigned>* coprimes) {
     for (int i = 1; i <= N; i++) {
@@ -1366,9 +1379,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     }
 
     // State transitions, called from other threads
-
+    // XXX. With continuous spinning during Run() calls
+    // this is only called to unblock threads between the runs
     void EnsureAwake() {
-      ThreadStatus seen = status;
+      ThreadStatus seen = status.load(std::memory_order_relaxed);
       if (seen == ThreadStatus::Blocking ||
           seen == ThreadStatus::Blocked) {
         std::unique_lock<OrtMutex> lk(mutex);
@@ -1376,10 +1390,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         // while holding the lock.  We may observe it at the start of this
         // function, but after acquiring the lock then the target thread
         // will either be blocked or not.
-        seen = status;
+        seen = status.load(std::memory_order_relaxed);
         assert(seen != ThreadStatus::Blocking);
         if (seen == ThreadStatus::Blocked) {
-          status = ThreadStatus::Waking;
+          status.store(ThreadStatus::Waking, std::memory_order_relaxed);
+          // Unlock before notify so the awaking thread does not struggle
+          // obtaining the mutex
           lk.unlock();
           cv.notify_one();
         }
@@ -1387,30 +1403,33 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     }
 
     // State transitions, called only from the thread itself
-
     void SetActive() {
-      std::unique_lock<OrtMutex> lk(mutex);
-      status = ThreadStatus::Active;
+      status.store(ThreadStatus::Active, std::memory_order_relaxed);
     }
 
     void SetSpinning() {
-      std::unique_lock<OrtMutex> lk(mutex);
-      status = ThreadStatus::Spinning;
+      status.store(ThreadStatus::Spinning, std::memory_order_relaxed);
     }
 
     void SetBlocked(std::function<bool()> should_block,
                     std::function<void()> post_block) {
       std::unique_lock<OrtMutex> lk(mutex);
-      assert(status == ThreadStatus::Spinning);
-      status = ThreadStatus::Blocking;
-      if (should_block()) {
-        status = ThreadStatus::Blocked;
-        while (status == ThreadStatus::Blocked) {
-          cv.wait(lk);
+      // EnsureAwake() can come and set status to Waking
+      // In this case, we should not go to sleep.
+      auto seen = status.load(std::memory_order_relaxed);
+      if (seen == ThreadStatus::Spinning) {
+        status.store(ThreadStatus::Blocking, std::memory_order_relaxed);
+        if (should_block()) {
+          status.store(ThreadStatus::Blocked, std::memory_order_relaxed);
+          while (status.load(std::memory_order_relaxed) == ThreadStatus::Blocked) {
+            cv.wait(lk);
+          }
+          post_block();
         }
-        post_block();
+      } else {
+        assert(seen == ThreadStatus::Waking);
       }
-      status = ThreadStatus::Spinning;
+      status.store(ThreadStatus::Spinning, std::memory_order_relaxed);
     }
 
    private:
@@ -1419,15 +1438,27 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     OrtCondVar cv;
   };
 
+  // This enum is atomically set to indicate
+  // state of the busy loop.
+  // Typically, the TP should be actively spinning
+  // and executing requests when at least one of the
+  // Run() calls is in progress. And it should be idle
+  // while there is not a call in progress
+  enum class BusyLoopState : uint8_t {
+    Idle,   // We are idling as there is not a Run() call in progress
+    Active  // We are spinning and processing requests
+  };
+
   Environment& env_;
   const unsigned num_threads_;
   const bool allow_spinning_;
   const bool set_denormal_as_zero_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
+  // Start with spinning, otherwise can not submit it.
+  std::atomic<BusyLoopState> busy_loop_state_{BusyLoopState::Active};
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
-  std::function<bool()> should_spin_fn_;
 
   // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
   // a clean exit, each thread will observe (1) done_ set, indicating that the
@@ -1451,39 +1482,31 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    constexpr int log2_spin = 20;
-    int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
-    const int steal_count = spin_count / 100;
+    // constexpr int log2_spin = 20;  // 1,048,576
+    //int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
+    // const int steal_count = (1ull << log2_spin) / 1000;
+    const auto allow_spinning = allow_spinning_;
 
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
     while (!should_exit) {
-      Task t = q.PopFront();
-      if (!t) {
-        // Spin waiting for work.
-        if (should_spin_fn_) {
-          for (int i = 0; i < spin_count && !t && should_spin_fn_() && !done_; i++) {
-            if (((i + 1) % steal_count == 0)) {
-              t = Steal(StealAttemptKind::TRY_ONE);
-            } else {
-              t = q.PopFront();
-            }
-            onnxruntime::concurrency::SpinPause();
-          }
-        } else {
-          for (int i = 0; i < spin_count && !t && !done_; i++) {
-            if (((i + 1) % steal_count == 0)) {
-              t = Steal(StealAttemptKind::TRY_ONE);
-            } else {
-              t = q.PopFront();
-            }
-            onnxruntime::concurrency::SpinPause();
-          }
+      // Spin waiting for work.
+      do {
+        Task t = q.PopFront();
+        if (!t) t = Steal(StealAttemptKind::TRY_ONE);
+        if (t) {
+          td.SetActive();
+          do {
+            t();
+            profiler_.LogRun(thread_id);
+            t = q.PopFront();
+          } while (t || (t = Steal(StealAttemptKind::TRY_ONE)));
+          td.SetSpinning();
         }
 
-        // Attempt to block
-        if (!t) {
+        if (!allow_spinning || busy_loop_state_ == BusyLoopState::Idle || done_.load(std::memory_order_relaxed)) {
+          // Attempt to block
           td.SetBlocked(  // Pre-block test
               [&]() -> bool {
                 bool should_block = true;
@@ -1507,14 +1530,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
                 if (t) {
                   should_block = false;
                 }
-
                 // No work pushed to us, continue attempting to block.  The remaining
                 // test  is to synchronize with termination requests.  If we are
                 // shutting down and all worker threads blocked without work, that's
                 // we are done.
                 if (should_block) {
-                  blocked_++;
-                  if (done_ && blocked_ == num_threads_) {
+                  auto prev_blocked = blocked_.fetch_add(1, std::memory_order_acq_rel);
+                  if (done_.load(std::memory_order_relaxed) && (prev_blocked + 1) == num_threads_) {
                     should_block = false;
                     // Almost done, but need to re-check queues.
                     // Consider that all queues are empty and all worker threads are preempted
@@ -1528,7 +1550,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
                       // Now other worker threads can start exiting, which is bad if the
                       // work item submits other work. So we just check emptiness here,
                       // which ensures that all worker threads exit at the same time.
-                      blocked_--;
+                      blocked_.fetch_sub(1, std::memory_order_acq_rel);
                     } else {
                       should_exit = true;
                     }
@@ -1538,22 +1560,23 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
               },
               // Post-block update (executed only if we blocked)
               [&]() {
-                blocked_--;
+                blocked_.fetch_sub(1, std::memory_order_acq_rel);
               });
-          // Thread just unblocked.  Unless we picked up work while
-          // blocking, or are exiting, then either work was pushed to
-          // us, or it was pushed to an overloaded queue
+
+          // We can unblock after sleep or there are other active threads
+          // that either push work to this one, or need help.
           if (!t) t = q.PopFront();
           if (!t) t = Steal(StealAttemptKind::TRY_ALL);
-        }
-      }
-      if (t) {
-        td.SetActive();
-        t();
-        profiler_.LogRun(thread_id);
-        td.SetSpinning();
-      }
-    }
+          if (t) {
+            td.SetActive();
+            t();
+            profiler_.LogRun(thread_id);
+            td.SetSpinning();
+          }
+        }  // End of exit check
+        onnxruntime::concurrency::SpinPause();
+      } while (!should_exit);  // End spinning loop
+    }                          // end while(!should_exit)
 
     // Whichever thread(s) observe the termination conditions are responsible for waking
     // any other threads that have remained blocked.

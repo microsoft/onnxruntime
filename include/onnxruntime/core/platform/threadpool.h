@@ -366,6 +366,9 @@ class ThreadPool {
   static void StartProfiling(concurrency::ThreadPool* tp);
   static std::string StopProfiling(concurrency::ThreadPool* tp);
 
+  void StartBusyLoop();
+  void StopBusyLoop();
+
  private:
   friend class LoopCounter;
 

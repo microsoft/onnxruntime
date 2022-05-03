@@ -261,7 +261,7 @@ struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
 };
 
 static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
- 
+
 class alignas(CACHE_LINE_BYTES) LoopCounter {
  public:
   LoopCounter(uint64_t num_iterations,
@@ -445,7 +445,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
         }
       }
     };
-    // Distribute task among all threads in the pool, reduce number of work items if 
+    // Distribute task among all threads in the pool, reduce number of work items if
     // num_of_blocks is smaller than number of threads.
     RunInParallel(run_work, std::min(NumThreads() + 1, num_of_blocks), base_block_size);
   }
@@ -479,6 +479,14 @@ std::string ThreadPool::StopProfiling() {
   } else {
     return {};
   }
+}
+
+void ThreadPool::StartBusyLoop() {
+  extended_eigen_threadpool_->StartBusyLoop();
+}
+
+void ThreadPool::StopBusyLoop() {
+  extended_eigen_threadpool_->StopBusyLoop();
 }
 
 thread_local ThreadPool::ParallelSection* ThreadPool::ParallelSection::current_parallel_section{nullptr};
