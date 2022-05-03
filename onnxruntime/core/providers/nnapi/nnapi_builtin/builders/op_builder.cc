@@ -1731,7 +1731,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                         "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
-        bias_dimen.push_back(dim);
+        bias_dimen.push_back(SafeInt<uint32_t>(dim));
       std::vector<uint8_t> unpacked_tensor;
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
