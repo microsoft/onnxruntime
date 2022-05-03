@@ -120,7 +120,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
 
   BeamSearchCpuState cpu_state;
-  cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
+  cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, parameters_->sequence_length, IsCuda());
 
   // buffer in GPU for input_ids, position_ids and attention_mask
   // size_t buffer_bytes = SafeInt<size_t>(sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t)) * parameters_->batch_size * parameters_->num_beams * parameters_->sequence_length;
@@ -137,11 +137,6 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
                   parameters_->sequence_length,
                   parameters_->max_length,
                   parameters_->output_scores);
-
-  cpu_state.sequences.Init(cpu_state.sequences_space,
-                           parameters_->BatchBeamSize(),
-                           parameters_->sequence_length,
-                           parameters_->max_length);
 
   gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
   init_beam_state_func_(&beam_state,

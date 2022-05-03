@@ -20,23 +20,25 @@ namespace transformers {
 /* T5 Encoder Subgraph (It also contains decoder initialization where decoder_input_ids are filled with start token ID).
 
    Inputs:
-      encoder_input_ids: int32 (batch_size, encode_sequence_length)
-      encoder_attention_mask: int32 (batch_size, encode_sequence_length)
-      decoder_input_ids: int32 (batch_size, 1)
+      encoder_input_ids: int64 (B, encode_sequence_length)
+      encoder_attention_mask: int64 (B, encode_sequence_length)
+      decoder_input_ids: int64 (B, 1)
 
     Outputs:
-      logits: (batch_size, 1, vocab_size)
-      encoder_hidden_states: (batch_size, encode_sequence_length, encoder_hidden_size)
+      logits: (B, 1, vocab_size)
+      encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
 
-      present_key_self_0: (batch_size, num_heads, 1, head_size)
-      present_value_self_0: (batch_size, num_heads, 1, head_size)
+      present_key_self_0: (B, num_heads, 1, head_size)
+      present_value_self_0: (B, num_heads, 1, head_size)
       ... (for each self attention layer)
 
-      present_key_cross_0: (batch_size, num_heads, encode_sequence_length, head_size)
-      present_value_cross_0: (batch_size, num_heads, encode_sequence_length, head_size)
+      present_key_cross_0: (B, num_heads, encode_sequence_length, head_size)
+      present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
       ... (for each cross attention layer)
 
-    Note: Data type of input or output is float or float16 if not specifed.
+    Note:
+      Here, B = batch_size * num_beams since we expand the inputs. (Ideally, we could use B=batch_size and expand the outputs with a factor of num_beams).
+      Data type of input or output is float or float16 if not specifed.
 */
 
 Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
@@ -72,14 +74,14 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   num_layers = (static_cast<int>(subgraph_outputs.size()) - 2) / 4;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-                "encoder subgraph input 0 (input_ids) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+                "encoder subgraph input 0 (input_ids) shall have int64 type");
 
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-                "encoder subgraph input 1 (position_ids) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+                "encoder subgraph input 1 (position_ids) shall have int64 type");
 
-  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-                "encoder subgraph input 2 (position_ids) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+                "encoder subgraph input 2 (position_ids) shall have int64 type");
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
@@ -115,11 +117,11 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   // Allocate subgraph inputs to be same device as encoder_input_ids
   AllocatorPtr cpu_alloactor = session_state_->GetAllocator(encoder_input_ids.Location());
 
+  // TODO: expand the outputs instead of inputs to save computation.
   OrtValue expanded_encoder_input_ids;
   OrtValue expanded_encoder_attention_mask;
   OrtValue expanded_decoder_input_ids;  // filled with start token ID
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids, num_beams, pad_token_id, start_token_id, sequence_lengths, cpu_alloactor, expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids));
-
   const IExecutionProvider* provider = GetProvider();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(provider, expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids, feeds, buffer));
 

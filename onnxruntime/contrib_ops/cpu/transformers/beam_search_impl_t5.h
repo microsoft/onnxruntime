@@ -88,36 +88,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                 const FeedsFetchesManager& decoder_feeds_fetches_manager) {
   auto status = Status::OK();
 
-  std::vector<OrtValue> encoder_feeds;
-  std::vector<OrtValue> encoder_fetches;
-
-  const OrtValue* encoder_input_ids_value = context_.GetInputOrtValue(0);
-  const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
-
-  BeamSearchCpuState cpu_state;
-  cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
-  cpu_state.sequences.Init(cpu_state.sequences_space,
-                           parameters_->BatchBeamSize(),
-                           parameters_->sequence_length,
-                           parameters_->max_length);
-
-  IAllocatorUniquePtr<char> buffer;
-  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(
-      encoder_input_ids,
-      implicit_inputs_,
-      parameters_->num_beams,
-      parameters_->pad_token_id,
-      parameters_->decoder_start_token_id,
-      cpu_state.sequence_lengths,
-      encoder_feeds,
-      create_encoder_inputs_func_,
-      add_to_feeds_func_,
-      buffer));
-
-  status = utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, encoder_feeds, encoder_fetches, {},
-                                  ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
-  ORT_RETURN_IF_ERROR(status);
-
+  // Allocate output tensors.
   int64_t sequences_dims[] = {parameters_->batch_size, parameters_->num_return_sequences, parameters_->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
   Tensor* output_sequences = context_.Output(0, sequences_shape);
@@ -135,11 +106,39 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Update the flag to indicate whether scores exists in output
   parameters_->output_scores = (output_scores != nullptr);
 
-  std::vector<OrtValue> decoder_feeds;
-  // TODO: allocate fetches. use ping-pong buffers for past state.
-  std::vector<OrtValue> decoder_fetches;
 
+  // ------------------------------------
+  // Call encoder subgraph.
+  // ------------------------------------
+  std::vector<OrtValue> encoder_feeds;
+  std::vector<OrtValue> encoder_fetches;
+
+  const OrtValue* encoder_input_ids_value = context_.GetInputOrtValue(0);
+  const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
+
+  BeamSearchCpuState cpu_state;
+  cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, parameters_->sequence_length, IsCuda());
+
+  IAllocatorUniquePtr<char> buffer;
+  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(
+      encoder_input_ids,
+      implicit_inputs_,
+      parameters_->num_beams,
+      parameters_->pad_token_id,
+      parameters_->decoder_start_token_id,
+      cpu_state.sequence_lengths,
+      encoder_feeds,
+      create_encoder_inputs_func_,
+      add_to_feeds_func_,
+      buffer));
+
+  ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, encoder_feeds, encoder_fetches, {},
+                                             ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger()));
+
+
+  // ------------------------------------
   // Initialize resources
+  // ------------------------------------
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(cpu_allocator_);
   beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters_->batch_size),
@@ -154,17 +153,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                     beam_hyps_allocator);
   beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
 
-  ORT_RETURN_IF_ERROR(
-      decoder_subgraph_.CreateInitialFeeds(
-          encoder_input_ids,
-          implicit_inputs_,
-          parameters_->num_beams,
-          parameters_->decoder_start_token_id,
-          decoder_feeds,
-          encoder_feeds,
-          encoder_fetches,
-          buffer));
-
   BeamSearchState<T> beam_state;
   beam_state.Init(temp_space_allocator_,
                   parameters_->batch_size,
@@ -174,8 +162,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                   parameters_->max_length,
                   parameters_->output_scores);
 
-  OrtValue expanded_decoder_input_ids_in_cpu = decoder_feeds[0];
-  gsl::span<const int32_t> decoder_input_ids = expanded_decoder_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
+  // TODO: decoder input IDs is int64.
+  gsl::span<const int64_t> decoder_input_ids = decoder_feeds[0].Get<Tensor>().DataAsSpan<int64_t>();
   init_beam_state_func_(&beam_state,
                         &cpu_state,
                         cpu_state.sequence_lengths,
@@ -186,9 +174,25 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                         parameters_->sequence_length,
                         parameters_->max_length,
                         cuda_stream_);
+  cpu_state.SetSequence(static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, parameters_->sequence_length)
+
+  gsl::span<int32_t> beam_next_tokens;
+  gsl::span<int32_t> beam_indices;
+  int iteration_counter = 1;
+  ORT_RETURN_IF_ERROR(GenerateNextToken(encoder_fetches[0], beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
+
+  std::vector<OrtValue> decoder_feeds;
+  ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(beam_next_tokens.as_span<const int32_t>(),
+                                                           implicit_inputs_,
+                                                           encoder_feeds,
+                                                           encoder_fetches,
+                                                           decoder_feeds));
+
+
+  // TODO: allocate fetches. use ping-pong buffers for past state.
+  std::vector<OrtValue> decoder_fetches;
 
   int current_length = parameters_->sequence_length;
-  int iteration_counter = 0;
   while (current_length < parameters_->max_length) {
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
@@ -202,8 +206,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     ORT_RETURN_IF_ERROR(status);
 
     const OrtValue& logits = decoder_fetches[0];
-    gsl::span<int32_t> beam_next_tokens;
-    gsl::span<int32_t> beam_indices;
     ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.

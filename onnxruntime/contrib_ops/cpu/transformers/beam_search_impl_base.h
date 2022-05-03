@@ -71,7 +71,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
 struct BeamSearchCpuState : public IBeamSearchCpuState {
   Sequences sequences;
 
-  void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, bool is_cuda) {
+  void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, int sequence_length, bool is_cuda) {
     this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
     this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_beam_size * max_length);
 
@@ -81,6 +81,29 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
       this->topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size);
       this->topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size);
       this->final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size);
+    }
+
+    sequences.Init(this->sequences_space, batch_beam_size, sequence_length, max_length);
+
+    memset(sequences_space.data(), 0, sequences_space.size_bytes());
+  }
+
+// Copy input_ids to sequences[0]
+void SetSequence(gsl::span<const int32_t> input_ids_in_cpu, size_t batch_beam_size, int max_length, int sequence_length) {
+    gsl::span<int32_t> sequences_0 = sequences_space;
+    for (size_t i = 0; i < batch_beam_size; i++) {
+      for (int j = 0; j < sequence_length; j++) {
+        sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+      }
+    }
+  }
+
+  void SetSequence(gsl::span<const int64_t> input_ids_in_cpu, size_t batch_beam_size, int max_length, int sequence_length) {
+    gsl::span<int32_t> sequences_0 = sequences_space;
+    for (size_t i = 0; i < batch_beam_size; i++) {
+      for (int j = 0; j < sequence_length; j++) {
+        sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+      }
     }
   }
 

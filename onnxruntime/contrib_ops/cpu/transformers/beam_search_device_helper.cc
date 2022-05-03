@@ -25,6 +25,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
                          input->DataType(), " is not supported yet");
 }
 
+template <typename T>
 OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator) {
   // Input shape (batch_size, sequence_length), required int32 data type.
   // Output shape (batch_size * num_beams, sequence_length)
@@ -40,16 +41,16 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
 
   OrtValue expanded;
   MLDataType element_type = input.Get<Tensor>().DataType();
-  ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "ExpandInputs requires tensor of int32 data type");
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>(), "ExpandInputs requires tensor of int32 data type");
 
   Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
 
-  const int32_t* input_data = input.Get<Tensor>().Data<int32_t>();
-  int32_t* expanded_data = expanded.GetMutable<Tensor>()->MutableData<int32_t>();
-  int32_t* target = expanded_data;
+  const T* input_data = input.Get<Tensor>().Data<T>();
+  T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
+  T* target = expanded_data;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * sequence_length, sizeof(int32_t) * sequence_length);
+      memcpy(target, input_data + i * sequence_length, sizeof(T) * sequence_length);
       target += sequence_length;
     }
   }
@@ -117,9 +118,9 @@ Status CreateGptInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length) for input_ids, position_ids and attention_mask
   // TODO: Try expand outputs after first subgraph call instead. That may get better performance, but more complex to implement.
-  expanded_input_ids = ExpandInputs(input_ids, num_beams, alloactor);
-  expanded_position_ids = ExpandInputs(position_ids, num_beams, alloactor);
-  expanded_attention_mask = ExpandInputs(attention_mask, num_beams, alloactor);
+  expanded_input_ids = ExpandInputs<int32_t>(input_ids, num_beams, alloactor);
+  expanded_position_ids = ExpandInputs<int32_t>(position_ids, num_beams, alloactor);
+  expanded_attention_mask = ExpandInputs<int32_t>(attention_mask, num_beams, alloactor);
 
   return Status::OK();
 }
@@ -459,30 +460,32 @@ Status CreateEncoderInputs(
   const int64_t& batch_size = input_ids_shape[0];
   const int64_t& sequence_length = input_ids_shape[1];
 
-  // Allocate position_ids and attention_mask based on shape of input_ids
-  auto element_type = DataTypeImpl::GetType<int32_t>();
+  // Allocate attention_mask based on shape of input_ids
+  auto element_type = DataTypeImpl::GetType<int64_t>();
 
   const OrtMemoryInfo& location = alloactor->Info();
 
-  // Use original input_ids. This requires the input_ids for subgraph is also int32.
+  // Encoder subgraph requires the input_ids is int64, but input_ids from BeamSearch operator input is int32.
+  // Create a new tensor and convert data type from int64 to int32.
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
-  // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
   OrtValue encoder_input_ids;
-  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(original_encoder_input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
+  Tensor::InitOrtValue(element_type, input_ids_shape, allocator, encoder_input_ids);
 
   OrtValue encoder_attention_mask;
-  auto mask_type = DataTypeImpl::GetType<int32_t>();
+  auto mask_type = DataTypeImpl::GetType<int64_t>();
   Tensor::InitOrtValue(mask_type, input_ids_shape, alloactor, encoder_attention_mask);
 
   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
   // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
-  int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+  int64_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int64_t>();
   const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
-  int32_t* mask = mask_data;
+  int64_t* encoder_input_ids_data = encoder_input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+  int64_t* mask = mask_data;
   for (int i = 0; i < batch_size; i++) {
     int32_t abs_position = 0;
-    for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
+    for (int j = 0; j < sequence_length; j++, word_id++, encoder_input_ids_data++, mask++) {
+      *encoder_input_ids_data = static_cast<int64_t>(*word_id);
       if (*word_id == pad_token_id) {
         *mask = 0;
       } else {
@@ -498,14 +501,14 @@ Status CreateEncoderInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length) for encoder_input_ids and encoder_attention_mask
   // TODO: Try expand outputs after first subgraph call instead. That may get better performance, but more complex to implement.
-  expanded_encoder_input_ids = ExpandInputs(encoder_input_ids, num_beams, alloactor);
-  expanded_encoder_attention_mask = ExpandInputs(encoder_attention_mask, num_beams, alloactor);
+  expanded_encoder_input_ids = ExpandInputs<int64_t>(encoder_input_ids, num_beams, alloactor);
+  expanded_encoder_attention_mask = ExpandInputs<int64_t>(encoder_attention_mask, num_beams, alloactor);
 
   // Expanded decoder_input_ids has shape (batch_size * num_beams, 1), and filled with start token ID
   int64_t dims[] = {batch_size * num_beams, 1};
   TensorShape decoder_input_ids_shape(&dims[0], 2);
   Tensor::InitOrtValue(element_type, decoder_input_ids_shape, alloactor, expanded_decoder_input_ids);
-  int32_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  int64_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
   for (int i = 0; i < batch_size * num_beams; i++, data++) {
     *data = start_token_id;
   }
@@ -636,6 +639,10 @@ template Status UpdateDecoderFeeds<float>(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper);
+
+template OrtValue ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator);
+
+template OrtValue ExpandInputs<int64_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib
