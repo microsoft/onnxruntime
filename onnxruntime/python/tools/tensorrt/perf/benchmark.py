@@ -6,13 +6,13 @@ import logging
 import os
 import pprint
 import re
+import subprocess
 import sys
 import time
 import timeit
 from datetime import datetime
 
 import coloredlogs
-import numpy
 import numpy as np
 
 from perf_utils import (acl, acl_ep, avg_ending, basic, cpu, cpu_ep, cuda,
@@ -26,8 +26,8 @@ from perf_utils import (acl, acl_ep, avg_ending, basic, cpu, cpu_ep, cuda,
                         trt_fp16)
 
 import onnxruntime  # isort:skip
+import onnx  # isort:skip
 from onnx import numpy_helper  # isort:skip
-from float16 import *  # isort:skip
 import pandas as pd  # isort:skip
 
 debug = False
@@ -173,15 +173,15 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
 
 def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
-    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
+    latency_variance = np.var(runtimes, dtype=np.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
 
     result = {
         "test_times": len(runtimes),
         "latency_variance": "{:.2f}".format(latency_variance),
-        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
+        "latency_90_percentile": "{:.2f}".format(np.percentile(runtimes, 90) * 1000.0),
+        "latency_95_percentile": "{:.2f}".format(np.percentile(runtimes, 95) * 1000.0),
+        "latency_99_percentile": "{:.2f}".format(np.percentile(runtimes, 99) * 1000.0),
         "average_latency_ms": "{:.2f}".format(latency_ms),
         "QPS": "{:.2f}".format(throughput),
     }
@@ -456,7 +456,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
             tensor = onnx.TensorProto()
             with open(data, "rb") as f:
                 tensor.ParseFromString(f.read())
-                tensor_to_array = numpy_helper.to_array(tensor)
+                tensor_to_array = onnx.numpy_helper.to_array(tensor)
                 if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
                 tensor_to_array.tofile(str(i) + ".bin")
@@ -479,7 +479,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                 with open(data, "rb") as f:
                     tensor.ParseFromString(f.read())
 
-                    tensor_to_array = numpy_helper.to_array(tensor)
+                    tensor_to_array = onnx.numpy_helper.to_array(tensor)
 
                     if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                         tensor_to_array = tensor_to_array.astype(np.float16)
