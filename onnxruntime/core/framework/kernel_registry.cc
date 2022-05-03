@@ -10,7 +10,6 @@
 #include "core/framework/session_state.h"
 
 namespace onnxruntime {
-
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
 // Traverses the node's formal parameters and calls TraverseFn with the formal
@@ -32,9 +31,9 @@ bool TraverseFormalParametersWithTypeProto(const Node& node,
                                            TraverseFn traverse_fn) {
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
 
-  // was the param name matched in either inputs, outputs or type constraints. 
+  // was the param name matched in either inputs, outputs or type constraints.
   // this validates the name was valid and that the type involved will be returned if available.
-  // if the name is invalid we do not return a type, and any applicable type constraint can not be applied 
+  // if the name is invalid we do not return a type, and any applicable type constraint can not be applied
   // in VerifyKernelDef.
   bool matched = false;
 
@@ -164,10 +163,135 @@ class TypeBindingResolver {
   const Node& node_;
   std::unique_ptr<TypeBindingMap> type_binding_map_;
 };
+
+bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX_NAMESPACE::TypeProto& actual_type,
+                           std::string& mismatch_reason) {
+  const bool is_type_compatible = std::any_of(
+      enabled_types.begin(), enabled_types.end(),
+      [&actual_type](const DataTypeImpl* expected_type) {
+        bool rc = expected_type->IsCompatible(actual_type);  // for easier debugging
+        return rc;
+      });
+
+  if (!is_type_compatible) {
+    std::ostringstream ostr;
+    ostr << "This op has been implemented only for the following types (";
+    for (const auto& enabled_type : enabled_types) {
+      ostr << DataTypeImpl::ToString(enabled_type) << ",";
+    }
+    ostr << "),";
+    const char* actual_type_str = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(actual_type));
+    ostr << " but the node in the model has the following type (" << actual_type_str << ")";
+    mismatch_reason = ostr.str();
+    return false;
+  }
+
+  return true;
+}
+
+class OpSchemaKernelTypeMatcher final : public IKernelTypeMatcher {
+ public:
+  bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const override {
+    // check if type matches
+    const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
+
+    // Note: The number of formal input/output parameters is N and the number of
+    // type constraints is M. We select between an O(N*M) and an O(N+M) approach.
+    // The O(N*M) approach has lower initial overhead.
+    // kTypeBindingResolverComplexityThreshold is the value of N*M above which we
+    // will use the O(N+M) approach.
+    constexpr int kTypeBindingResolverComplexityThreshold = 50 * 50;
+    const bool use_lookup_map = (kernel_type_constraints.size() * (node.Op()->inputs().size() + node.Op()->outputs().size()) >
+                                 kTypeBindingResolverComplexityThreshold);
+    TypeBindingResolver type_binding_resolver{node, use_lookup_map};
+
+    for (auto& constraint : kernel_type_constraints) {
+      const std::string& name = constraint.first;
+      const std::vector<MLDataType>& allowed_types = constraint.second;
+      const ONNX_NAMESPACE::TypeProto* actual_type = type_binding_resolver.Resolve(name);
+
+      // If actual_type is null, this represents a type-constraint on a
+      // missing optional parameter, which can be skipped.
+      // TODO: We should check that names specified in kernel_type_constraints are
+      // valid names (of types or parameters) at the time that kernels are registered.
+      if (nullptr != actual_type) {
+        if (!IsTypeProtoCompatible(allowed_types, *actual_type, mismatch_reason)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+};
+
+class ConstraintIndexMapKernelTypeMatcher final : public IKernelTypeMatcher {
+ public:
+  ConstraintIndexMapKernelTypeMatcher() {
+    // TODO init constraint_index_map_
+  }
+
+  bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const override {
+    // TODO:
+    // for each type constraint
+    //   map type constraint to arg
+    //   check arg type against type constraint enabled types
+    const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
+    for (const auto& [type_str, enabled_types] : kernel_type_constraints) {
+      const auto& constraint_index_map = container_utils::MutableAt(op_constraint_index_map_,
+                                                                    {node.Domain(), node.OpType(), node.SinceVersion()});
+
+      const auto& constraint_args = container_utils::MutableAt(constraint_index_map, type_str);
+
+      for (const auto [arg_is_input, formal_arg_idx] : constraint_args) {
+        const NodeArg* arg;
+        if (arg_is_input) {
+          const auto& input_arg_counts = node.InputArgCount();
+          const size_t first_arg_idx = static_cast<size_t>(std::accumulate(input_arg_counts.begin(),
+                                                                           input_arg_counts.begin() + formal_arg_idx,
+                                                                           int{0}));
+          arg = node.InputDefs()[first_arg_idx];
+        } else {
+          arg = node.OutputDefs()[formal_arg_idx];
+        }
+
+        if (arg->Exists()) {
+          const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
+          ORT_ENFORCE(type_proto != nullptr);
+
+          if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
+            return false;
+          }
+
+          // found a match, don't need to check other args with this constraint
+          break;
+        }
+      }
+    }
+
+    return true;
+  }
+
+ private:
+  // DomainAndOpType -> {
+  //   SinceVersion -> {
+  //     ConstraintOrArgName -> [ArgTypeAndIndex, ...]
+  //   }
+  // }
+  // TODO could flatten map and include type_str in key
+  using DomainOpTypeAndOpSetVersion = std::tuple<std::string, std::string, ONNX_NAMESPACE::OperatorSetVersion>;
+  using ArgTypeAndIndex = std::pair<bool, size_t>;
+  using OpConstraintIndexMap =
+      InlinedHashMap<DomainOpTypeAndOpSetVersion,
+                     InlinedHashMap<std::string,
+                                    InlinedVector<ArgTypeAndIndex>>>;
+  OpConstraintIndexMap op_constraint_index_map_;
+};
+
 };  // namespace
 
 bool KernelRegistry::VerifyKernelDef(const Node& node,
                                      const KernelDef& kernel_def,
+                                     const IKernelTypeMatcher& kernel_type_matcher,
                                      std::string& error_str) {
   // check if version matches
   int kernel_start_version;
@@ -200,55 +324,20 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
     return false;
   }
 
-  // check if type matches
-  auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
-
-  // Note: The number of formal input/output parameters is N and the number of
-  // type constraints is M. We select between an O(N*M) and an O(N+M) approach.
-  // The O(N*M) approach has lower initial overhead.
-  // kTypeBindingResolverComplexityThreshold is the value of N*M above which we
-  // will use the O(N+M) approach.
-  constexpr int kTypeBindingResolverComplexityThreshold = 50 * 50;
-  const bool use_lookup_map = (kernel_type_constraints.size() * (node.Op()->inputs().size() + node.Op()->outputs().size()) >
-                               kTypeBindingResolverComplexityThreshold);
-  TypeBindingResolver type_binding_resolver{node, use_lookup_map};
-
-  for (auto& constraint : kernel_type_constraints) {
-    const std::string& name = constraint.first;
-    const std::vector<MLDataType>& allowed_types = constraint.second;
-    const ONNX_NAMESPACE::TypeProto* actual_type = type_binding_resolver.Resolve(name);
-
-    // If actual_type is null, this represents a type-constraint on a
-    // missing optional parameter, which can be skipped.
-    // TODO: We should check that names specified in kernel_type_constraints are
-    // valid names (of types or parameters) at the time that kernels are registered.
-    if (nullptr != actual_type) {
-      bool is_type_compatible = std::any_of(allowed_types.begin(), allowed_types.end(),
-                                            [actual_type](const DataTypeImpl* expected_type) {
-                                              bool rc = expected_type->IsCompatible(*actual_type);  // for easier debugging
-                                              return rc;
-                                            });
-      if (!is_type_compatible) {
-        std::ostringstream ostr;
-        ostr << "Found kernel for Op with name (" << node.Name() << ")"
-             << " and type (" << node.OpType() << ")"
-             << " in the supported version range"
-             << " (node_version: " << node_since_version
-             << " kernel start version: " << kernel_start_version
-             << " kernel_end_version: " << kernel_end_version << ")."
-             << " However the types are incompatible."
-             << " This op has been implemented only for the following types (";
-        for (const auto& allowed_type : allowed_types) {
-          ostr << DataTypeImpl::ToString(allowed_type) << ",";
-        }
-        ostr << "),";
-        const char* actual_type_str = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*actual_type));
-        ostr << " but the node in the model has the following type (" << actual_type_str << ")";
-        error_str = ostr.str();
-        return false;
-      }
-    }
+  if (std::string mismatch_reason;
+      !kernel_type_matcher.IsMatch(node, kernel_def, mismatch_reason)) {
+    std::ostringstream ostr;
+    ostr << "Found kernel for Op with name (" << node.Name() << ")"
+         << " and type (" << node.OpType() << ")"
+         << " in the supported version range"
+         << " (node_version: " << node_since_version
+         << " kernel start version: " << kernel_start_version
+         << " kernel_end_version: " << kernel_end_version << ")."
+         << " However the types are incompatible. " << mismatch_reason;
+    error_str = ostr.str();
+    return false;
   }
+
   return true;
 }
 
@@ -285,6 +374,9 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
 Status KernelRegistry::TryFindKernel(const Node& node,
                                      ProviderType exec_provider,
                                      const KernelCreateInfo** out) const {
+  // TODO make this a parameter
+  OpSchemaKernelTypeMatcher kernel_type_matcher{};
+
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
@@ -295,7 +387,7 @@ Status KernelRegistry::TryFindKernel(const Node& node,
 
   for (auto i = range.first; i != range.second; ++i) {
     std::string error_str;
-    if (VerifyKernelDef(node, *i->second.kernel_def, error_str)) {
+    if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_matcher, error_str)) {
       if (out) *out = &i->second;
       return Status::OK();
     }

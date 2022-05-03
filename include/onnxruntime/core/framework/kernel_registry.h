@@ -10,6 +10,12 @@ namespace onnxruntime {
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
 using KernelDefHashes = std::vector<std::pair<std::string, HashValue>>;
 
+class IKernelTypeMatcher {
+ public:
+  virtual ~IKernelTypeMatcher() = default;
+  virtual bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const = 0;
+};
+
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
  *
@@ -80,6 +86,7 @@ class KernelRegistry {
   // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
   static bool VerifyKernelDef(const Node& node,
                               const KernelDef& kernel_def,
+                              const IKernelTypeMatcher& kernel_type_matcher,
                               std::string& error_str);
 #endif
 
