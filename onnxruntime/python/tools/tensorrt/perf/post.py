@@ -225,6 +225,7 @@ def main():
                     )
 
             os.chdir(result_file)
+        '''
         for table in tables:
             print("writing " + table + " to database")
             db_table_name = "ep_model_" + table
@@ -235,6 +236,19 @@ def main():
                 date_time,
                 identifier,
             )
+        '''
+        # Temporary: Only write to `ep_model_metrics` table.
+        table = metrics_name
+        print("writing " + table + " to database")
+        db_table_name = "ep_model_" + table
+        write_table(
+            ingest_client,
+            table_results[table],
+            db_table_name,
+            date_time,
+            identifier,
+        )
+
 
     except BaseException as e:
         print(str(e))
