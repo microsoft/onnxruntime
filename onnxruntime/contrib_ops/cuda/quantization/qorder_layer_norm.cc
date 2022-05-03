@@ -1,5 +1,7 @@
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4244)
+#endif
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
@@ -116,4 +118,6 @@ Status QOrderedAddBiasResidualLayerNorm::ComputeInternal(OpKernelContext* ctx) c
 }  // namespace contrib
 }  // namespace onnxruntime
 
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
