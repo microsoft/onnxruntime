@@ -36,7 +36,7 @@ const tensorTypeToTypedArray = (type: Tensor.Type):|Float32ArrayConstructor|Int8
 const normalizePath = (path: string): string => {
   // remove 'file://' prefix in iOS
   if (Platform.OS === 'ios' && path.toLowerCase().startsWith('file://')) {
-    path = path.substring(7);
+    return path.substring(7);
   }
 
   return path;
