@@ -849,13 +849,16 @@ void Node::CreateSubgraph(const std::string& attr_name) {
   auto attr = attributes_.find(attr_name);
 
   if (attr != attributes_.cend() && utils::HasGraph(attr->second)) {
+    //TODO vish for custom kernels don't add subgraph since they don't have the ability to execute that
+    if (attr_name == "customsubgraph") {
+      return;
+    }
     GraphProto& mutable_graph = *attr->second.mutable_g();
     std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(*graph_, *this, mutable_graph);
     attr_to_subgraph_map_.insert({std::string(attr_name), gsl::not_null<Graph*>{subgraph.get()}});
     subgraphs_.emplace_back(std::move(subgraph));
   }
 }
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 void Node::AddAttributeProto(AttributeProto value) {

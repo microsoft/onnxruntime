@@ -72,23 +72,32 @@ struct CustomBearmsearchKernel {
    const float* X = ort_.GetTensorData<float>(input_X);
    const float* Y = ort_.GetTensorData<float>(input_Y);
 
-   std::cout << "Trying to create session" << std::endl;
-   OrtEnv* env;
-   api_.CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "customOp", &env);
-   std::cout << "end session creation" << std::endl;
+   // session_ is getting created only once. TestInference<> actaully tests every test twice, which is good
+   // for us, it verifies that it is resuing the earlier session.
+   // => For verification, the test has to fail, uncomment temp = 1
+   int temp = 0;
+   if (session_ == nullptr) {
+     std::cout << "Trying to create session" << std::endl;
+     OrtEnv* env;
+     api_.CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "customOp", &env);
+     std::cout << "end session creation" << std::endl;
 
-   OrtSessionOptions* sessionoptions;
-   api_.CreateSessionOptions(&sessionoptions);
+     OrtSessionOptions* sessionoptions;
+     api_.CreateSessionOptions(&sessionoptions);
 
-   OrtSession* session;
-   std::filesystem::path model_path = "D:\\ai\\onnxruntime\\onnxruntime\\bart_mlp_megatron_basic_test.onnx";
-   std::wstring model_path_wstring = model_path.wstring();
+     std::filesystem::path model_path = "D:\\ai\\onnxruntime\\onnxruntime\\bart_mlp_megatron_basic_test.onnx";
+     std::wstring model_path_wstring = model_path.wstring();
 
-   std::time_t start_time = std::time(0);
-   try {
-     api_.CreateSession(env, model_path_wstring.data(), sessionoptions, &session);
-   } catch (Ort::Exception& e) {
-     std::cout << e.what() << std::endl;
+     std::time_t start_time = std::time(0);
+     try {
+       api_.CreateSession(env, model_path_wstring.data(), sessionoptions, &session_);
+     } catch (Ort::Exception& e) {
+       std::cout << e.what() << std::endl;
+     }
+     std::time_t end_time = std::time(0);
+     std::cout << "Time elapsed for creating a session:" << end_time - start_time << std::endl;
+   } else {
+     //temp = 1;
    }
 
    std::array<int64_t, 3> inputShape = {1, 2, 4};
@@ -109,10 +118,7 @@ struct CustomBearmsearchKernel {
     api_.CreateTensorWithDataAsOrtValue(ortmemoryinfo, output1.data(), 4*output1.size(), outputShape.data(),
         outputShape.size(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &outputvalue);
 
-    api_.Run(session, nullptr, inputNames.data(), &inputvalue, 1, outputNames.data(), 1, &outputvalue);
-
-    std::time_t end_time = std::time(0);
-    std::cout<<"Time elapsed for creating a session:"<<end_time-start_time<<std::endl;
+    api_.Run(session_, nullptr, inputNames.data(), &inputvalue, 1, outputNames.data(), 1, &outputvalue);
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
@@ -125,13 +131,14 @@ struct CustomBearmsearchKernel {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     for (int64_t i = 0; i < size; i++) {
-      out[i] = static_cast<int>(X[i] + (*Y));
+      out[i] = static_cast<int>(X[i] + (*Y) + temp);
     }
   }
 
  private:
   OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
+  OrtSession* session_;
 };
 
 struct CustomBeamSearchOP : Ort::CustomOpBase<CustomBeamSearchOP, CustomBearmsearchKernel> {
