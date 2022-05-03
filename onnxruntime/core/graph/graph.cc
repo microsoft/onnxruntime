@@ -896,9 +896,10 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 void Node::AddAttributeProto(AttributeProto value) {
   utils::SetNodeAttribute(std::move(value), attributes_);
-
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
+  if (graph_) {
+    graph_->SetGraphResolveNeeded();
+    graph_->SetGraphProtoSyncNeeded();
+  }
 }
 
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
