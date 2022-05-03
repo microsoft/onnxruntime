@@ -42,18 +42,20 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
                 "subgraph past state dimension 2 shall have a positive value for vocabulary size");
 
-  // num_heads = static_cast<int>(past_shape->dim(2).dim_value());
-  // head_size = static_cast<int>(past_shape->dim(4).dim_value());
-  vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
-  // num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
+  const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[2]->Shape();
+  const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
+
+  // Save parameters related to the subgraph.
+  ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
+  num_layers = (static_cast<int>(subgraph_outputs.size()) - 1) / 4;
 
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                 "subgraph input 0 (input_ids) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-                "subgraph input 1 (attention_masks) shall have int32 type");
+                "subgraph input 1 (encoder_attention_mask) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
                     subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
-                "subgraph input 2 (encoder_outputs) shall have float or float16 type");
+                "subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
