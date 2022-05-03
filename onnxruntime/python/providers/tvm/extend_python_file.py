@@ -9,9 +9,10 @@ import textwrap
 
 
 def rewrite_target_file(target):
-    with open(target, 'a') as f:
-        f.write(textwrap.dedent(
-            """
+    with open(target, "a") as f:
+        f.write(
+            textwrap.dedent(
+                """
             import warnings
 
             try:
@@ -33,15 +34,21 @@ def rewrite_target_file(target):
                     f"WARNING: Failed to register python functions to work with TVM EP. More details: {e}"
                 )
             """
-        ))
+            )
+        )
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--target_file", type=str, required=True, help="Path to the file to be expanded.")
+    parser.add_argument(
+        "--target_file",
+        type=str,
+        required=True,
+        help="Path to the file to be expanded.",
+    )
     args = parser.parse_args()
     rewrite_target_file(args.target_file)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

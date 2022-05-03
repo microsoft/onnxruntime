@@ -69,7 +69,7 @@ if (onnxruntime_USE_MIMALLOC)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  target_link_libraries(onnxruntime_framework absl::raw_hash_set absl::hash absl::city)
+  target_link_libraries(onnxruntime_framework ${ABSEIL_LIBS})
 endif()
 
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")

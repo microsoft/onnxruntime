@@ -4,17 +4,26 @@
 //https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
-#include "core/platform/threadpool.h"
 #include "core/framework/op_kernel_type_control_utils.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
 
+using DefaultIndexTypes = TypeList<int32_t, int64_t>;
+
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, DefaultIndexTypes);
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+// enable all types for layout transformation
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, DefaultIndexTypes);
+#else
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
+#endif
 }  // namespace op_kernel_type_control
 
 using IndexTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
