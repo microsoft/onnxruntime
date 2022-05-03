@@ -360,9 +360,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto is_real_valued = is_real_valued_signal(X_shape);
   const auto is_complex_valued = is_complex_valued_signal(X_shape);
 
-  int64_t shape_number_of_samples = static_cast<int64_t>(X_shape[axis]);
-  int64_t number_of_samples = shape_number_of_samples;
-
+  int64_t number_of_samples = static_cast<int64_t>(X_shape[axis]);
   if (dft_length) {
     const auto& dft_length_shape = dft_length->Shape();
     ORT_RETURN_IF(!dft_length_shape.IsScalar(), "dft_length must be a scalar value.");
