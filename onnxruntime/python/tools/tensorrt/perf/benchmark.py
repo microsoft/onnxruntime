@@ -15,15 +15,40 @@ from datetime import datetime
 import coloredlogs
 import numpy as np
 
-from perf_utils import (acl, acl_ep, avg_ending, basic, cpu, cpu_ep, cuda,
-                        cuda_ep, cuda_fp16, disable, enable_all, extended,
-                        get_op_breakdown, get_output, get_profile_metrics,
-                        group_title, is_standalone, memory_ending, model_title,
-                        op_metrics_columns, ort_provider_list,
-                        percentile_ending, pretty_print, provider_list, second,
-                        second_session_ending, session_ending, standalone_trt,
-                        standalone_trt_fp16, table_headers, trt, trt_ep,
-                        trt_fp16)
+from perf_utils import (
+    acl,
+    acl_ep,
+    avg_ending,
+    basic,
+    cpu,
+    cpu_ep,
+    cuda,
+    cuda_ep,
+    cuda_fp16,
+    disable,
+    enable_all,
+    extended,
+    get_op_breakdown,
+    get_output,
+    get_profile_metrics,
+    is_standalone,
+    memory_ending,
+    model_title,
+    op_metrics_columns,
+    ort_provider_list,
+    percentile_ending,
+    pretty_print,
+    provider_list,
+    second,
+    second_session_ending,
+    session_ending,
+    standalone_trt,
+    standalone_trt_fp16,
+    table_headers,
+    trt,
+    trt_ep,
+    trt_fp16,
+)
 
 import onnxruntime  # isort:skip
 import onnx  # isort:skip
@@ -456,7 +481,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
             tensor = onnx.TensorProto()
             with open(data, "rb") as f:
                 tensor.ParseFromString(f.read())
-                tensor_to_array = onnx.numpy_helper.to_array(tensor)
+                tensor_to_array = numpy_helper.to_array(tensor)
                 if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
                 tensor_to_array.tofile(str(i) + ".bin")
@@ -479,7 +504,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                 with open(data, "rb") as f:
                     tensor.ParseFromString(f.read())
 
-                    tensor_to_array = onnx.numpy_helper.to_array(tensor)
+                    tensor_to_array = numpy_helper.to_array(tensor)
 
                     if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                         tensor_to_array = tensor_to_array.astype(np.float16)

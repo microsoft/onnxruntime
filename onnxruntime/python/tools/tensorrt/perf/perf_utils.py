@@ -201,39 +201,39 @@ def get_ep_op_metrics(ep, op_map):
     return op_metrics
 
 
-######################################################################################################
-# Parameters: op_map: A dictionary that maps EPs to a dictionary of operator durations.
-#                     EX: {'CUDAExecutionProvider': { 'op0': 200, 'op1': 100 }, 'CPUExec...': {...}}
-#
-# Return: A dictionary that maps an execution provider to a dictionary of operator metrics.
-#         EX: {'CPUExecutionProvider' : { 'num_ops': x, 'exec_time': y, 'ops': 'ops json string'},
-#              'CUDAExecutionProvider': { ... }, 'TensorrtExecutionProvider: { ... }}
-######################################################################################################
 def get_op_breakdown(op_map):
+    """
+    Returns the number of operators and the total execution time for each execution provider.
+
+    :param op_map: A dictionary that maps an execution provider to a dictionary of operator durations.
+        Ex: {"CUDAExecutionProvider": { "op0": 200, "op1": 100 }, "CPUExec...": {...}}
+
+    :return: A dictionary that maps an execution provider to a dictionary of operator metrics.
+        Ex: {"CPUExecutionProvider" : { "num_ops": x, "exec_time": y, "ops": "ops json string"},
+             "CUDAExecutionProvider": { ... }, "TensorrtExecutionProvider: { ... }}
+
+    Note that the number of TensorRT operators obtained from parsing profile data (i.e., using op_map)
+    is incorrect. The profile data does not breakdown the individual operators used in TensorRT. Thus, computing
+    the number of operators handled by TensorRT requires comparison with a "baseline" inference session
+    that uses only the CUDA and CPU execution providers.
+
+    num_trt_ops = (baseline number of cuda/cpu ops) - (number of cpu/cuda ops used in trt inference session)
+
+    Ex: ep_to_operator = {
+                           'ORT-CUDAFp32': {'CUDAExecutionProvider': { 'op0': 200, 'op1': 100 },
+                                            'CPUExecutionProvider': { 'op2': 10, 'op3': 300 }},
+                           'ORT-TRTFp32': {'CUDAExecutionProvider': { 'op1': 100 },
+                                           'CPUExecutionProvider': { 'op2' : 10 },
+                                           'TensorrtExecutionProvider': { 'subgraph0': 400 }}
+                         }
+
+    num_trt_ops = 4 - 2 = 2
+
+    See output_metrics() for the code that performs the above computations/fixups.
+    """
+
     cpu_op_metrics = get_ep_op_metrics(cpu_ep, op_map)
     cuda_op_metrics = get_ep_op_metrics(cuda_ep, op_map)
-
-    # Note that the number of TensorRT ops obtained from op_map, which is built by parsing profile data,
-    # is incorrect. The profile data does not breakdown the individual operators used in TRT, and instead
-    # provides only the total execution time of a particular TRT subgraph.
-    #
-    # In order to determine the number of operators handled by TRT, we first need to obtain profile data for an
-    # inference session that uses only the CUDA and CPU EPs. This CUDA/CPU profile data serves as a baseline.
-    # Then, the number of ops handled by TRT is calculated as follows:
-    #
-    # num_trt_ops = (baseline number of cuda/cpu ops) - (number of cpu/cuda ops used in trt inference session)
-    #
-    # EX: ep_to_operator = {
-    #                        'ORT-CUDAFp32': {'CUDAExecutionProvider': { 'op0': 200, 'op1': 100 },
-    #                                         'CPUExecutionProvider': { 'op2': 10, 'op3': 300 }},
-    #                        'ORT-TRTFp32': {'CUDAExecutionProvider': { 'op1': 100 },
-    #                                        'CPUExecutionProvider': { 'op2' : 10 },
-    #                                        'TensorrtExecutionProvider': { 'subgraph0': 400 }}
-    #                      }
-    #
-    # num_trt_ops = 4 - 2 = 2
-    #
-    # See output_metrics() for the code that performs the above computations/fixups.
     trt_op_metrics = get_ep_op_metrics(trt_ep, op_map)
 
     return {cpu_ep: cpu_op_metrics, cuda_ep: cuda_op_metrics, trt_ep: trt_op_metrics}
