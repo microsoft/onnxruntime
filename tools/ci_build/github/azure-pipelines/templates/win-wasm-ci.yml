@@ -19,7 +19,8 @@ parameters:
   type: boolean
   default: false
 
-- TimeoutInMinutes: 120
+- name: TimeoutInMinutes
+  default: 120
 
 jobs:
 - job: build_WASM
