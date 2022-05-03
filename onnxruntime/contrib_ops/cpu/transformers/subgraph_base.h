@@ -15,12 +15,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// A class for GPT-2 subgraph inputs and outputs preparation.
-struct GptSubgraph {
-  GptSubgraph(
+class Subgraph {
+ public:
+  Subgraph(
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
       const GraphViewer& subgraph_in);
+  virtual ~Subgraph() {}
 
   const onnxruntime::Node& node;  // node that contains the subgraph
   const std::string& attribute;   // attribute of th node that contains the subgraph. Not used yet.
@@ -40,22 +41,9 @@ struct GptSubgraph {
   int vocab_size;
   int num_layers;
 
-  // Setup exectuion
+  // Setup execution
   Status Setup(const SessionState& session_state,
                const SessionState& subgraph_session_state);
-
-  // Create inputs for first inference of subgraph.
-  Status CreateInitialFeeds(
-      const Tensor& input_ids,
-      const std::vector<const OrtValue*>& implicit_inputs,
-      int num_beams,
-      int pad_token_id,
-      gsl::span<int32_t>& sequence_lengths,
-      OrtValue& expanded_input_ids,
-      std::vector<OrtValue>& feeds,
-      const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
-      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-      IAllocatorUniquePtr<char>& buffer);
 
   FeedsFetchesManager* GetFeedsFetchesManager() const { return feeds_fetches_manager_.get(); }
 
@@ -63,9 +51,13 @@ struct GptSubgraph {
 
   bool IsOutputFloat16() const { return is_output_float16_; }
 
+  virtual Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
+                          const std::vector<const NodeArg*>& subgraph_outputs) = 0;
+
  protected:
-  Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
-                  const std::vector<const NodeArg*>& subgraph_outputs);
+  Status GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shape,
+                       const ONNX_NAMESPACE::TensorShapeProto* logits_shape,
+                       bool merged_past);
 
   AllocatorPtr allocator_;
   const SessionState* session_state_;

@@ -36,8 +36,8 @@ using TopkFunc = std::function<Status(
     std::unique_ptr<Tensor>& output_values,
     std::unique_ptr<Tensor>& output_indices)>;
 
-// Create subgraph inputs: input_ids, position_ids and attention_mask
-using CreateInputsFunc = std::function<Status(
+// Create subgraph inputs: input_ids, position_ids and attention_mask (for GPT-2).
+using CreateGptInputsFunc = std::function<Status(
     const Tensor* original_input_ids,
     int num_beams,
     int pad_token_id,
@@ -89,8 +89,9 @@ using DeviceCopyFunc = std::function<Status(
     void* stream,
     int copyDirection)>;
 
+// Update subgraph inputs given outputs of last iteration (for GPT-2).
 template <typename T>
-using UpdateFeedsFunc = std::function<Status(
+using UpdateGptFeedsFunc = std::function<Status(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
@@ -102,7 +103,46 @@ using UpdateFeedsFunc = std::function<Status(
     int num_beams,
     const transformers::IConsoleDumper* dumper)>;
 
+// Create encoder inputs (for encoder-decoder model like T5).
+using CreateEncoderInputsFunc = std::function<Status(
+     const Tensor* original_encoder_input_ids,
+    int num_beams,
+    int pad_token_id,
+    int start_token_id,
+    gsl::span<int32_t>& sequence_lengths,
+    AllocatorPtr alloactor,
+    OrtValue& expanded_encoder_input_ids,
+    OrtValue& expanded_encoder_attention_mask,
+    OrtValue& expanded_decoder_input_ids)>;
+
+// Set decoder inputs given encoder outputs (for encoder-decoder model like T5).
+template <typename T>
+using InitDecoderFeedsFunc = std::function<Status(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& encoder_outputs,
+    std::vector<OrtValue>& decoder_inputs,
+    int current_length,
+    OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper)>;
+
+// Update decoder inputs given decoder outputs of last iteration (for encoder-decoder model like T5).
+template <typename T>
+using UpdateDecoderFeedsFunc = std::function<Status(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int current_length,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper)>;
 }  // namespace BeamSearchDeviceHelper
+
 
 // These are CPU specific device helper implementations
 namespace BeamSearchCpuDeviceHelper {
@@ -113,16 +153,6 @@ Status TopK(
     onnxruntime::concurrency::ThreadPool* threadpool,
     std::unique_ptr<Tensor>& output_values,
     std::unique_ptr<Tensor>& output_indices);
-
-Status CreateInputs(
-    const Tensor* original_input_ids,
-    int num_beams,
-    int pad_token_id,
-    gsl::span<int32_t>& sequence_lengths,
-    AllocatorPtr alloactor,
-    OrtValue& expanded_input_ids,
-    OrtValue& expanded_position_ids,
-    OrtValue& expanded_attention_mask);
 
 Status AddToFeeds(
     const IExecutionProvider* execution_provider,
@@ -163,8 +193,22 @@ Status DeviceCopy(gsl::span<T> target,
                   void* stream,
                   int copyDirectionn);
 
+// ---------------------------------------------------------------
+// Functions for GPT model only
+// ---------------------------------------------------------------
+
+Status CreateGptInputs(
+    const Tensor* original_input_ids,
+    int num_beams,
+    int pad_token_id,
+    gsl::span<int32_t>& sequence_lengths,
+    AllocatorPtr alloactor,
+    OrtValue& expanded_input_ids,
+    OrtValue& expanded_position_ids,
+    OrtValue& expanded_attention_mask);
+
 template <typename T>
-Status UpdateFeeds(
+Status UpdateGptFeeds(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
@@ -175,6 +219,53 @@ Status UpdateFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper);
+
+
+// ---------------------------------------------------------------
+// Functions for encoder-decoder model like T5
+// ---------------------------------------------------------------
+Status CreateEncoderInputs(
+     const Tensor* original_encoder_input_ids,
+    int num_beams,
+    int pad_token_id,
+    int start_token_id,
+    gsl::span<int32_t>& sequence_lengths,
+    AllocatorPtr alloactor,
+    OrtValue& expanded_encoder_input_ids,
+    OrtValue& expanded_encoder_attention_mask,
+    OrtValue& expanded_decoder_input_ids);
+
+// Set decoder inputs given encoder outputs
+template <typename T>
+Status InitDecoderFeeds(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& encoder_outputs,
+    std::vector<OrtValue>& decoder_inputs,
+    int current_length,
+    OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper);
+
+// Update decoder inputs given decoder outputs of last iteration.
+template <typename T>
+Status UpdateDecoderFeeds(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int current_length,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper);
+
+// ---------------------------------------------------------------
+// Utility Functions
+// ---------------------------------------------------------------
+OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

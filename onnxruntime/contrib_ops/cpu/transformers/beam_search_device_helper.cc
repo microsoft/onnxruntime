@@ -26,7 +26,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
 }
 
 OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator) {
-  // Input shape (batch_size, sequence_length)
+  // Input shape (batch_size, sequence_length), required int32 data type.
   // Output shape (batch_size * num_beams, sequence_length)
   if (num_beams == 1)
     return input;
@@ -40,7 +40,7 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
 
   OrtValue expanded;
   MLDataType element_type = input.Get<Tensor>().DataType();
-  ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "input_ids, position_ids and attention_mask is required to be int32 data type");
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "ExpandInputs requires tensor of int32 data type");
 
   Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
 
@@ -57,7 +57,7 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
   return expanded;
 }
 
-Status CreateInputs(
+Status CreateGptInputs(
     const Tensor* original_input_ids,
     int num_beams,
     int pad_token_id,
@@ -337,7 +337,6 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
                    gsl::span<const int32_t>& beam_indices,
                    AllocatorPtr allocator,
                    void* /*stream*/) {
-
   for (size_t i = 1; i < last_outputs.size(); ++i) {
     const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
@@ -369,7 +368,7 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
 }
 
 template <typename T>
-Status UpdateFeeds(
+Status UpdateGptFeeds(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
@@ -442,7 +441,136 @@ Status UpdateFeeds(
   return Status::OK();
 }
 
+// ---------------------------------------------------------------
+// The following functions are for encoder-decoder model like T5
+// ---------------------------------------------------------------
+Status CreateEncoderInputs(
+    const Tensor* original_encoder_input_ids,
+    int num_beams,
+    int pad_token_id,
+    int start_token_id,
+    gsl::span<int32_t>& sequence_lengths,
+    AllocatorPtr alloactor,
+    OrtValue& expanded_encoder_input_ids,
+    OrtValue& expanded_encoder_attention_mask,
+    OrtValue& expanded_decoder_input_ids) {
+  const TensorShape& input_ids_shape = original_encoder_input_ids->Shape();
+  ORT_ENFORCE(input_ids_shape.NumDimensions() == 2);
+  const int64_t& batch_size = input_ids_shape[0];
+  const int64_t& sequence_length = input_ids_shape[1];
+
+  // Allocate position_ids and attention_mask based on shape of input_ids
+  auto element_type = DataTypeImpl::GetType<int32_t>();
+
+  const OrtMemoryInfo& location = alloactor->Info();
+
+  // Use original input_ids. This requires the input_ids for subgraph is also int32.
+  // Current shape is (batch_size, sequence_length)
+  // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
+  // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
+  OrtValue encoder_input_ids;
+  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(original_encoder_input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
+
+  OrtValue encoder_attention_mask;
+  auto mask_type = DataTypeImpl::GetType<int32_t>();
+  Tensor::InitOrtValue(mask_type, input_ids_shape, alloactor, encoder_attention_mask);
+
+  // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
+  // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
+  int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+  const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
+  int32_t* mask = mask_data;
+  for (int i = 0; i < batch_size; i++) {
+    int32_t abs_position = 0;
+    for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
+      if (*word_id == pad_token_id) {
+        *mask = 0;
+      } else {
+        *mask = 1;
+        abs_position++;
+      }
+    }
+
+    for (int k = 0; k < num_beams; k++) {
+      sequence_lengths[SafeInt<gsl::index>(i) * num_beams + k] = abs_position;
+    }
+  }
+
+  // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length) for encoder_input_ids and encoder_attention_mask
+  // TODO: Try expand outputs after first subgraph call instead. That may get better performance, but more complex to implement.
+  expanded_encoder_input_ids = ExpandInputs(encoder_input_ids, num_beams, alloactor);
+  expanded_encoder_attention_mask = ExpandInputs(encoder_attention_mask, num_beams, alloactor);
+
+  // Expanded decoder_input_ids has shape (batch_size * num_beams, 1), and filled with start token ID
+  int64_t dims[] = {batch_size * num_beams, 1};
+  TensorShape decoder_input_ids_shape(&dims[0], 2);
+  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, alloactor, expanded_decoder_input_ids);
+  int32_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  for (int i = 0; i < batch_size * num_beams; i++, data++) {
+    *data = start_token_id;
+  }
+
+  return Status::OK();
+}
+
+// Set decoder inputs given encoder outputs
+template <typename T>
+Status InitDecoderFeeds(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& encoder_outputs,
+    std::vector<OrtValue>& decoder_inputs,
+    int current_length,
+    OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper) {
+  // TODO: implement this function
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(encoder_outputs);
+  ORT_UNUSED_PARAMETER(decoder_inputs);
+  ORT_UNUSED_PARAMETER(current_length);
+  ORT_UNUSED_PARAMETER(position_ids);
+  ORT_UNUSED_PARAMETER(beam_next_tokens);
+  ORT_UNUSED_PARAMETER(beam_indices);
+  ORT_UNUSED_PARAMETER(num_beams);
+  ORT_UNUSED_PARAMETER(dumper);
+
+  return Status::OK();
+}
+
+// Update decoder inputs given decoder outputs of last iteration.
+template <typename T>
+Status UpdateDecoderFeeds(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int current_length,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper) {
+  // TODO: implement this function
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(last_outputs);
+  ORT_UNUSED_PARAMETER(next_inputs);
+  ORT_UNUSED_PARAMETER(current_length);
+  ORT_UNUSED_PARAMETER(beam_next_tokens);
+  ORT_UNUSED_PARAMETER(beam_indices);
+  ORT_UNUSED_PARAMETER(num_beams);
+  ORT_UNUSED_PARAMETER(dumper);
+
+  return Status::OK();
+}
+
+//------------------------------------------------
 // Explicit template instantiations of functions
+//------------------------------------------------
+
 template void InitBeamState<float>(
     transformers::IBeamSearchState<float>* beam_state,
     transformers::IBeamSearchCpuState* cpu_state,
@@ -474,13 +602,36 @@ template Status DeviceCopy<float>(
     void* stream,
     int copyDirectionn);
 
-template Status UpdateFeeds<float>(
+template Status UpdateGptFeeds<float>(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper);
+
+template Status InitDecoderFeeds<float>(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& encoder_outputs,
+    std::vector<OrtValue>& decoder_inputs,
+    int current_length,
+    OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper);
+
+template Status UpdateDecoderFeeds<float>(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int current_length,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
