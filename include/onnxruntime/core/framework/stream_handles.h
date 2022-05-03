@@ -32,48 +32,37 @@ struct Stream {
   Stream::Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
 };
 
-// a simple registry which hold the handles EP registered.
-class StreamCommandHandleRegistry {
+// an interface of a simple registry which hold the handles EP registered.
+// make it interface so we can pass it through shared library based execution providers
+class IStreamCommandHandleRegistry {
  public:
-  CreateNotificationFn GetCreateNotificationFn(Stream* stream);
+  virtual CreateNotificationFn GetCreateNotificationFn(Stream* stream) = 0;
 
-  ReleaseNotificationFn GetReleaseNotificationFn(Stream* stream);
+  virtual ReleaseNotificationFn GetReleaseNotificationFn(Stream* stream) = 0;
 
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(Stream* notification_owner_stream, const std::string& executor_ep_type);
+  virtual WaitNotificationFn GetWaitHandle(Stream* notification_owner_stream, const std::string& executor_ep_type) = 0;
 
-  NotifyNotificationFn GetNotifyHandle(Stream* notification_owner_stream);
+  virtual NotifyNotificationFn GetNotifyHandle(Stream* notification_owner_stream) = 0;
 
-  CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type);
+  virtual CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type) = 0;
 
-  ReleaseStreamFn GetReleaseStreamFn(const std::string& execution_provider_type);
+  virtual ReleaseStreamFn GetReleaseStreamFn(const std::string& execution_provider_type) = 0;
 
-  static StreamCommandHandleRegistry& GetInstance() {
-    static StreamCommandHandleRegistry instance_;
-    return instance_;
-  }
+  virtual void RegisterCreateNotificationFn(const std::string& ep_type, CreateNotificationFn fn) = 0;
 
-  void RegisterCreateNotificationFn(const std::string& ep_type, CreateNotificationFn fn);
+  virtual void RegisterReleaseNotificationFn(const std::string& ep_type, ReleaseNotificationFn fn) = 0;
 
-  void RegisterReleaseNotificationFn(const std::string& ep_type, ReleaseNotificationFn fn);
+  virtual void RegisterWaitFn(const std::string& notification_ep_type, const std::string& ep_type, WaitNotificationFn fn) = 0;
 
-  void RegisterWaitFn(const std::string& notification_ep_type, const std::string& ep_type, WaitNotificationFn fn);
+  virtual void RegisterNotifyFn(const std::string& notification_ep_type, NotifyNotificationFn fn) = 0;
 
-  void RegisterNotifyFn(const std::string& notification_ep_type, NotifyNotificationFn fn);
+  virtual void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f) = 0;
 
-  void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f);
-
-  void RegisterReleaseStreamFn(const std::string& ep_type, ReleaseStreamFn f);
-
- private:
-  StreamCommandHandleRegistry() = default;
-
-  std::unordered_map<std::string, CreateNotificationFn> create_notification_map_;
-  std::unordered_map<std::string, ReleaseNotificationFn> release_notification_map_;
-  std::unordered_map<std::string, WaitNotificationFn> notification_wait_map_;
-  std::unordered_map<std::string, NotifyNotificationFn> notification_notify_map_;
-  std::unordered_map<std::string, CreateStreamFn> create_stream_map_;
-  std::unordered_map<std::string, ReleaseStreamFn> release_stream_map_;
+  virtual void RegisterReleaseStreamFn(const std::string& ep_type, ReleaseStreamFn f) = 0;
 };
+
+IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance();
+
 }

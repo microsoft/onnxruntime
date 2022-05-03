@@ -2191,7 +2191,7 @@ StreamHandle CreateCPUStream() {
 void ReleaseCPUStram(StreamHandle) {
 }
 
-void CPUExecutionProvider::RegisterStreamHandlers(StreamCommandHandleRegistry& stream_handle_registry) const {
+void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
   stream_handle_registry.RegisterNotifyFn(kCpuExecutionProvider, NotifyCPUNotification);
   stream_handle_registry.RegisterCreateNotificationFn(kCpuExecutionProvider, CreateCPUNotification);

@@ -299,7 +299,7 @@ class IExecutionProvider {
     return static_cast<DataLayout>(0);
   }
 
-  virtual void RegisterStreamHandlers(StreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
 
  private:
   const std::string type_;
