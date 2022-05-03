@@ -576,9 +576,7 @@ TEST(InferenceSessionTests, ModelMetadata) {
   }
 }
 #endif
-
-// TODO: move it to a new executable file
-TEST(InferenceSessionTests, DISABLED_CheckRunLogger) {
+TEST(InferenceSessionTests, CheckRunLogger) {
   SessionOptions so;
 
   so.session_logid = "CheckRunLogger";
@@ -776,8 +774,7 @@ TEST(InferenceSessionTests, PreAllocateOutputVector) {
   RunModel(session_object, run_options, is_preallocate_output_vec);
 }
 
-//TODO: move it to a new executable file
-TEST(InferenceSessionTests, DISABLED_ConfigureVerbosityLevel) {
+TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   SessionOptions so;
 
   so.session_logid = "ConfigureVerbosityLevel";
@@ -2367,9 +2364,8 @@ class InferenceSessionTestGlobalThreadPools : public InferenceSessionWrapper {
   }
 };
 
-// TODO: move it
 // Test 1: env created WITHOUT global tp / use per session tp (default case): in this case per session tps should be in use
-TEST(InferenceSessionTests, DISABLED_CheckIfPerSessionThreadPoolsAreBeingUsed) {
+TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   SessionOptions so;
   so.use_per_session_threads = true;
 
@@ -2408,7 +2404,7 @@ TEST(InferenceSessionTests, DISABLED_CheckIfPerSessionThreadPoolsAreBeingUsed) {
 }
 
 // Test 2: env created with global tp / DONT use per session tp: in this case global tps should be in use
-TEST(InferenceSessionTests, DISABLED_CheckIfGlobalThreadPoolsAreBeingUsed) {
+TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   SessionOptions so;
   so.use_per_session_threads = false;
 
@@ -2446,7 +2442,7 @@ TEST(InferenceSessionTests, DISABLED_CheckIfGlobalThreadPoolsAreBeingUsed) {
 }
 
 // Test 3: env created with global tp / use per session tp: in this case per session tps should be in use
-TEST(InferenceSessionTests, DISABLED_CheckIfPerSessionThreadPoolsAreBeingUsed2) {
+TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   SessionOptions so;
   so.use_per_session_threads = true;
 
@@ -2493,7 +2489,7 @@ TEST(InferenceSessionTests, DISABLED_CheckIfPerSessionThreadPoolsAreBeingUsed2) 
 }
 
 // Test 4: env created WITHOUT global tp / DONT use per session tp --> this should throw an exception
-TEST(InferenceSessionTests, DISABLED_InvalidSessionEnvCombination) {
+TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
   SessionOptions so;
   so.use_per_session_threads = false;
 
@@ -2530,7 +2526,7 @@ class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
 };
 
 // Ensure sessions use the same allocator. It uses ORT created allocator.
-TEST(InferenceSessionTests, DISABLED_AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
+TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2575,7 +2571,7 @@ TEST(InferenceSessionTests, DISABLED_AllocatorSharing_EnsureSessionsUseSameOrtCr
 }
 
 // Ensure sessions don't use the same allocator. It uses ORT created allocator.
-TEST(InferenceSessionTests, DISABLED_AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
+TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2627,7 +2623,7 @@ class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
   }
 };
 
-TEST(InferenceSessionTests, DISABLED_InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
+TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
   auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
@@ -2759,7 +2755,7 @@ void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp
 }
 
 // test global thread pool with setting denormal as zero
-TEST(InferenceSessionTests, DISABLED_GlobalThreadPoolWithDenormalAsZero) {
+TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   // test if denormal-as-zero mode is supported
   if (!SetDenormalAsZero(false)) {
     return;
@@ -2807,7 +2803,7 @@ TEST(InferenceSessionTests, DISABLED_GlobalThreadPoolWithDenormalAsZero) {
 }
 
 // test inter thread pool with setting denormal as zero
-TEST(InferenceSessionTests, DISABLED_InterThreadPoolWithDenormalAsZero) {
+TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // test if denormal-as-zero mode is supported
   if (!SetDenormalAsZero(false)) {
     return;

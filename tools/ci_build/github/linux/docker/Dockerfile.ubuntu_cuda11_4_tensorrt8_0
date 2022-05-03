@@ -7,6 +7,14 @@
 ARG OS_VERSION=18.04
 FROM nvidia/cuda:11.4.0-cudnn8-devel-ubuntu${OS_VERSION}
 
+# ONNX Runtime Variables
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_BRANCH=master
+ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
+
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV LD_LIBRARY_PATH /opt/miniconda/lib:$LD_LIBRARY_PATH
+
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
 RUN unattended-upgrade
@@ -31,3 +39,14 @@ RUN v="8.0.1-1+cuda11.3" &&\
     sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} \
         libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
         python3-libnvinfer=${v}
+
+WORKDIR /code
+
+# Prepare onnxruntime repository & build onnxruntime with TensorRT
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
+    /bin/sh onnxruntime/dockerfiles/scripts/checkout_submodules.sh 8.0 &&\
+    cd onnxruntime &&\
+    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
+    cd .. 
