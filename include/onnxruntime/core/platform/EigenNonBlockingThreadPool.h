@@ -1456,7 +1456,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   // Start with spinning, otherwise can not submit it.
-  std::atomic<BusyLoopState> busy_loop_state_{BusyLoopState::Active};
+  std::atomic<BusyLoopState> busy_loop_state_{BusyLoopState::Idle};
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
 
