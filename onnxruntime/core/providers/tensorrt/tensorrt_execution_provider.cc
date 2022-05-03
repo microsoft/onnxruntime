@@ -19,7 +19,6 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <iostream> //slx
 
 #ifdef _WIN32
 #include <windows.h>
@@ -1058,28 +1057,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     trt_parser->parse(string_buf.data(), string_buf.size(), model_path_);
     trt_config->setMaxWorkspaceSize(max_workspace_size_);
 
-/*
-    //force Pow op to run in FP32
-    for (auto layer_idx = 1; layer_idx < trt_network->getNbLayers(); ++layer_idx) {//slx
-      auto layer = trt_network->getLayer(layer_idx);
-      if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
-        std::cout << "TRT compile: force Pow op to run in FP32" << std::endl;
-        layer->setPrecision(nvinfer1::DataType::kFLOAT);
-        layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
-      }
-    }
-*/
-    //force Pow + reduce op to run in FP32
-    for (auto layer_idx = 1; layer_idx < trt_network->getNbLayers() -1; ++layer_idx) {//slx
-      auto layer = trt_network->getLayer(layer_idx);
-      auto next_layer = trt_network->getLayer(layer_idx + 1);
+    //force Pow + reduce ops to run in FP32 to fix accuracy issue
+    for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
+      auto layer = trt_network->getLayer(idx);
+      auto next_layer = trt_network->getLayer(idx + 1);
       if (layer->getType() == nvinfer1::LayerType::kELEMENTWISE && next_layer->getType() == nvinfer1::LayerType::kREDUCE && (static_cast<nvinfer1::IElementWiseLayer*>(layer))->getOperation() == nvinfer1::ElementWiseOperation::kPOW) {
-        std::cout << "TRT compile: force Pow + Reduce op to run in FP32" << std::endl;
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Force Pow + Reduce ops to run in FP32 to fix FP16 accuracy issue in ViT matting model";
         layer->setPrecision(nvinfer1::DataType::kFLOAT);
         next_layer->setPrecision(nvinfer1::DataType::kFLOAT);		
         layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
         next_layer->setOutputType(0, nvinfer1::DataType::kFLOAT);
-        //trt_config->setFlag(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS )
       }
     }
 
@@ -1143,9 +1130,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       trt_node_name_with_precision += "_fp16_int8";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
     } else if (fp16_enable_) {
-      ///trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);//slx
-      trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kOBEY_PRECISION_CONSTRAINTS));
-      std::cout << "TRT compile: set fp16 and kOBEY_PRECISION_CONSTRAINTS: " << trt_config->getFlags() << std::endl;
+      trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Set kPREFER_PRECISION_CONSTRAINTS in FP16 mode";
       trt_node_name_with_precision += "_fp16";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
     } else if (int8_enable_) {
@@ -1552,9 +1538,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         if (trt_state->fp16_enable && trt_state->int8_enable) {
           trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
         } else if (trt_state->fp16_enable) {
-          ///trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);//slx
-          trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kOBEY_PRECISION_CONSTRAINTS));
-          std::cout << "TRT compute: set fp16 and kOBEY_PRECISION_CONSTRAINTS: " << trt_config->getFlags() << std::endl;
+          trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kPREFER_PRECISION_CONSTRAINTS));
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] set kPREFER_PRECISION_CONSTRAINTS in FP16 mode";
         } else if (trt_state->int8_enable) {
           trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
         }
