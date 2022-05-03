@@ -1,5 +1,7 @@
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4305)
+#endif
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
@@ -740,4 +742,6 @@ TEST(QOrderedTest, BiasGelu_3x11x64) {
 
 // #endif
 
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
