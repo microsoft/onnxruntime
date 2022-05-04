@@ -5,7 +5,9 @@ nav_order: 1
 redirect_from: /docs/how-to/tune-performance
 ---
 
+
 # ONNX Runtime Performance Tuning
+
 {: .no_toc }
 
 ONNX Runtime provides high performance across a range of hardware options through its [Execution Providers interface](../execution-providers) for different execution environments.
@@ -15,30 +17,13 @@ Along with this flexibility comes decisions for tuning and usage. For each model
 This document covers basic tools and troubleshooting checklists that can be leveraged to optimize your ONNX Runtime (ORT) model and hardware.
 
 ## Contents
+
 {: .no_toc }
 
 * TOC placeholder
 {:toc}
-### ONNX Runtime Performance Tuning
 
-Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages. 
-
-
-
-<table>
-<thead>
-<tr>
-<th style="text-align: left">
-<p><a href="#executionproviders" class="btn btn-blue">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p><a href="#performance"  class="btn btn-blue">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p><a href="#tips" class="btn btn-blue">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p><a href="#faqs" class="btn btn-blue">Performance Tuning FAQs</a></p></th>
-</tr>
-</thead>
-</table>
-
-
-<h3 id="performance"></h3>
+Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages.
 
 ## Performance Tuning Tools
 
@@ -47,12 +32,9 @@ Here are the best practices, design considerations, and tools for tuning your ON
 The [ONNX Go Live (OLive) tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime (ORT).
 
 It contains two parts:
-<ol>
-<li>model conversion to ONNX with correctness checking
-</li>
-<li>auto performance tuning with ORT
-</li>
-</ol>
+
+1. model conversion to ONNX with correctness checking
+2. auto performance tuning with ORT
 
 Users can run these two together through a single pipeline or run them independently as needed.
 
@@ -74,7 +56,7 @@ sess_options.enable_profiling = True
 
 If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
 
-<h4>Performance and Profiling Report</h4>
+**Performance and Profiling Report**
 
 In both OLive tool and the onnxruntime_perf_test.exe tool, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, and so on). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
 
@@ -82,7 +64,8 @@ In both OLive tool and the onnxruntime_perf_test.exe tool, you will get a JSON f
 2. Type chrome://tracing in the address bar
 3. Load the generated JSON file
 
-<h4>Profiling CUDA Kernels</h4>
+### Profiling CUDA Kernels
+
 To profile CUDA kernels, please add 'cupti' library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`. The performance numbers from device will then be attached to those from the host.
 
 **Single Kernel example:**
@@ -93,7 +76,6 @@ In the following example, the "Add" operator from the host initiated a CUDA kern
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
 {"cat":"Kernel", "name":"ort_add_cuda_kernel", "dur":33, ...}
 ```
-
 
 **Multiple Kernels example:**
 
@@ -110,21 +92,8 @@ ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/
 
 The tool takes the input as a JSON file and reports the performance of the GPU and CPU in the form of a treemap in the browser.
 
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
-
-<table>
-<thead>
-<tr>
-<th style="text-align: left">
-<p><a href="#executionproviders" class="btn btn-blue">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p><a href="#performance" class="btn btn-blue">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p><a href="#tips"  class="btn btn-blue">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p><a href="#faqs"  class="btn btn-blue">Performance Tuning FAQs</a></p></th>
-</tr>
-</thead>
-</table>
-
-<h3 id="executionproviders"></h3>
 
 ## Using different Execution Providers
 
@@ -206,44 +175,16 @@ TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
 
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
-
-<table>
-<thead>
-<tr>
-<th style="text-align: left">
-<p><a href="#executionproviders" class="btn btn-blue">Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p><a href="#performance"  class="btn btn-blue">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p><a href="#tips"  class="btn btn-blue">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p><a href="#faqs"  class="btn btn-blue">Performance Tuning FAQs</a></p></th>
-</tr>
-</thead>
-</table>
-
-<h3 id="tips"></h3>
 
 ## Tips for tuning performance
 
-Here are some tips for obtaining optimal tuning performance using different Execution Providers with ONNX Runtime.
+Here are some suggestions for things to try for various Execution Providers for tuning performance.
 
-
-<details open=""> <summary> <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight">Shared arena based allocator (click to expand)
-</pre></div> </div> </summary> <p>Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
-</p> </details>
-
-<details open=""> <summary> <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight">MiMalloc allocator usage (click to expand)
-</pre></div> </div> </summary> <p>Onnxruntime supports overriding memory allocations using Mimalloc allocator.
-MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc).
-
-Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios.
-
-Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc.
-Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
-</p> </details>
-
-
-
-
+Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md). Onnxruntime supports overriding memory allocations using Mimalloc allocator.
+MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc. Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
+ 
 ### Thread management
 
 Follow the best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to suit your ONNX Runtime environment.
@@ -472,8 +413,7 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 
 NOTE: Please note that this feature is currently being offered in "preview" mode.
 
-While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below.
-Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
+While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below. Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
 
 1) Models with control-flow ops (i.e.) models with `If`, `Loop`, and `Scan` ops are not supported
 
@@ -597,6 +537,7 @@ session.Run(Ort::RunOptions(), binding);
 
 Will be supported in future releases
 
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
 ## Troubleshooting performance issues
 
@@ -612,19 +553,8 @@ Here is a list of things to check through when assessing performance issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed?
 
 
-<table>
-<thead>
-<tr>
-<th style="text-align: left">
-<p><a href="#executionproviders" class="btn btn-blue" >Choosing Execution Providers</a></p></th>
-<th style="text-align: left"><p><a href="#performance" class="btn btn-blue">Performance Tuning Tools</a></p></th>
-<th style="text-align: left"><p><a href="#tips" class="btn btn-blue">Tips to Optimize Performance</a></p></th>
-<th style="text-align: left"><p><a href="#faqs" class="btn btn-blue">Performance Tuning FAQs</a></p></th>
-</tr>
-</thead>
-</table>
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
-<h3 id="faqs"></h3>
 
 ## Performance Tuning FAQs
 ### I need help performance tuning for BERT models
@@ -666,3 +596,5 @@ Whenever it is ready to run. So over a period of time, threads in the pool are l
 
 Due to the same reason, the dynamic cost model may also better the performance for cases when threads are more likely be preempted.
 Per our tests, by far the best configuration for dynamic_block_base is 4, which lowers the variance while keeping the performance as good.
+
+<p><a href="#" id="back-to-top">Back to top</a></p>
