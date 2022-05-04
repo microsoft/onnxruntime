@@ -33,7 +33,7 @@ public class ProviderOptionsTest {
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
 
   @Test
-  @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
+  @DisabledIfSystemProperty(named = "USE_CUDA", matches = "1")
   public void testCUDAOptions() throws OrtException {
     // Test standard options
     OrtCUDAProviderOptions cudaOpts = new OrtCUDAProviderOptions(0);
