@@ -32,12 +32,6 @@
 #define LIBFUNC(lib, fn) dlsym((lib), (fn))
 #endif
 
-#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
-// instantiate global unused builder object which keeps the TRT kernel library in memory
-// so that subsequent builders avoid the expensive load / unload process.
-auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
-#endif
-
 #define CUDA_RETURN_IF_ERROR(expr)               \
   ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
                           ? common::Status::OK() \
@@ -253,6 +247,12 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   static OrtMutex singleton;
   return std::unique_lock<OrtMutex>(singleton);
 }
+
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
+// instantiate global unused builder object which keeps the TRT kernel library in memory
+// so that subsequent builders avoid the expensive load / unload process.
+auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
+#endif
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
