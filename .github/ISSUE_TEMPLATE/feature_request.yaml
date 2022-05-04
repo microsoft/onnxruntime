@@ -1,6 +1,6 @@
 name: Feature request
 description: Use this template for raising a feature request.
-title: ""
+title: "[Feature request] "
 body:
   - type: markdown
     attributes:
