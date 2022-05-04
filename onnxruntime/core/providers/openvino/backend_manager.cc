@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include <inference_engine.hpp>
 #include <fstream>
+#include <iostream>
 
 #include "contexts.h"
 #include "backend_manager.h"
@@ -23,7 +24,13 @@ GlobalContext& BackendManager::GetGlobalContext() {
 }
 
 void BackendManager::ReleaseGlobalContext() {
-  g_global_context.reset();
+  std::cout << "Inside ReleaseGlobalContext" << std::endl;
+  if (g_global_context) {
+    // delete g_global_context;
+    // g_global_context = nullptr;
+    std::cout << "Inside ReleaseGlobalContext just before calling reset" << std::endl;
+    g_global_context.reset();
+  }
 }
 
 BackendManager::BackendManager(const Node* fused_node, const logging::Logger& logger) {
@@ -186,7 +193,7 @@ std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
                              std::string& device_type) {
   std::string key;
   key += device_type;
-  key += "|";  //separator
+  key += "|";  // separator
   for (auto shape : shapes) {
     for (auto dim : shape) {
       std::ostringstream o;
