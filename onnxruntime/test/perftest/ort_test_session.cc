@@ -32,6 +32,55 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                                const TestModelInfo& m)
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
+
+  if (performance_test_config.run_config.enable_cpu_mem_arena)
+    session_options.EnableCpuMemArena();
+  else
+    session_options.DisableCpuMemArena();
+  if (performance_test_config.run_config.enable_memory_pattern &&
+      performance_test_config.run_config.execution_mode == ExecutionMode::ORT_SEQUENTIAL)
+    session_options.EnableMemPattern();
+  else
+    session_options.DisableMemPattern();
+  session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
+
+  if (performance_test_config.run_config.intra_op_num_threads > 0) {
+    fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
+    session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
+  }
+
+  if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {
+    fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
+    session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
+  }
+
+  // Set optimization level.
+  session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
+  if (!performance_test_config.run_config.profile_file.empty())
+    session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
+  if (!performance_test_config.run_config.optimized_model_path.empty())
+    session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
+  if (performance_test_config.run_config.set_denormal_as_zero)
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToUTF8String(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
+      }
+    }
+  }
+  if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
+    for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
+      if (g_ort->AddFreeDimensionOverride(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToUTF8String(dim_override.first).c_str());
+      } else {
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
+      }
+    }
+  }
+
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -410,54 +459,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
-  }
-
-  if (performance_test_config.run_config.enable_cpu_mem_arena)
-    session_options.EnableCpuMemArena();
-  else
-    session_options.DisableCpuMemArena();
-  if (performance_test_config.run_config.enable_memory_pattern &&
-      performance_test_config.run_config.execution_mode == ExecutionMode::ORT_SEQUENTIAL)
-    session_options.EnableMemPattern();
-  else
-    session_options.DisableMemPattern();
-  session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
-
-  if (performance_test_config.run_config.intra_op_num_threads > 0) {
-    fprintf(stdout, "Setting intra_op_num_threads to %d\n", performance_test_config.run_config.intra_op_num_threads);
-    session_options.SetIntraOpNumThreads(performance_test_config.run_config.intra_op_num_threads);
-  }
-
-  if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {
-    fprintf(stdout, "Setting inter_op_num_threads to %d\n", performance_test_config.run_config.inter_op_num_threads);
-    session_options.SetInterOpNumThreads(performance_test_config.run_config.inter_op_num_threads);
-  }
-
-  // Set optimization level.
-  session_options.SetGraphOptimizationLevel(performance_test_config.run_config.optimization_level);
-  if (!performance_test_config.run_config.profile_file.empty())
-    session_options.EnableProfiling(performance_test_config.run_config.profile_file.c_str());
-  if (!performance_test_config.run_config.optimized_model_path.empty())
-    session_options.SetOptimizedModelFilePath(performance_test_config.run_config.optimized_model_path.c_str());
-  if (performance_test_config.run_config.set_denormal_as_zero)
-    session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
-  if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
-    for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
-      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
-        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToUTF8String(dim_override.first).c_str());
-      } else {
-        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
-      }
-    }
-  }
-  if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
-    for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
-      if (g_ort->AddFreeDimensionOverride(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
-        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToUTF8String(dim_override.first).c_str());
-      } else {
-        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
-      }
-    }
   }
 
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);

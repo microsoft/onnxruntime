@@ -153,6 +153,7 @@ namespace Dml
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
+        STDMETHOD_(bool, IsGraphFusionEnabled)() const noexcept final;
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
@@ -252,6 +253,13 @@ namespace Dml
 
         onnxruntime::common::Status OnSessionInitializationEnd() override
         { 
+            if (!m_impl->IsGraphFusionEnabled())
+            {
+                const onnxruntime::logging::Logger* logger = this->GetLogger();
+                LOGS(*logger, WARNING) << "\n"
+                                          "DirectML EP graph fusion is disabled! Execution will run noticeably slower.\n"
+                                          "Run without SessionOptions::SetOptimizedModelFilePath for better performance.\n";
+            }
             return m_impl->OnSessionInitializationEnd();
         }
 
