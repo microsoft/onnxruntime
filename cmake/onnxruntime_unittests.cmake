@@ -513,7 +513,7 @@ set(ONNXRUNTIME_TEST_LIBS
 )
 
 if (onnxruntime_ENABLE_TRAINING)
-  set(ONNXRUNTIME_TEST_LIBS onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_TEST_LIBS})
+  set(ONNXRUNTIME_TEST_LIBS onnxruntime_on_device_training onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_TEST_LIBS})
 endif()
 
 set(onnxruntime_test_providers_libs
@@ -721,6 +721,11 @@ if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  onnxruntime_add_include_to_target(onnxruntime_test_all onnxruntime_on_device_training onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
+  target_include_directories(onnxruntime_test_all PUBLIC ${PROTOBUF_LIB})
+  target_link_libraries(onnxruntime_test_all PRIVATE onnx onnx_proto onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf)
+endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()

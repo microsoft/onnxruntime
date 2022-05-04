@@ -299,7 +299,7 @@ class PlannerImpl {
     if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
       return false;
     }
-#endif  //ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
@@ -418,7 +418,7 @@ class PlannerImpl {
   }
 
   /*! \brief Given a tensor-type, return the size of an element of the tensor.
-  */
+   */
   static size_t GetElementSize(const DataType& tensor_type) {
     const TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
     MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
@@ -836,7 +836,7 @@ class PlannerImpl {
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    //copy the use counts to a vector, before computing reuse
+    // copy the use counts to a vector, before computing reuse
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     std::vector<int> ort_value_usecount;
     for (auto ort_value_info : ort_value_info_) {
@@ -943,6 +943,18 @@ class PlannerImpl {
               }
             }
           }
+#if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
+          if (pnode->OpType() == "InPlaceAccumulator") {
+            const NodeArg* input = pnode->InputDefs()[0];
+            const auto& input_name = input->Name();
+            const auto input_index = Index(input_name);
+
+            const auto& alloc_plan = AllocPlan(input_index);
+            if (alloc_plan.alloc_kind == AllocKind::kPreExisting) {
+              Reuse(input_index, current, AllocKind::kShare);
+            }
+          }
+#endif
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Re-using inputs is applicable for tensors, sequence tensors,
@@ -1152,7 +1164,7 @@ class PlannerImpl {
     plan_.to_be_freed.reserve(freelist_.size());
     bool has_prev_dealloc_point = false;
     size_t prev_dealloc_point = 0;
-    //TODO: should be size_t
+    // TODO: should be size_t
     int current = 0;  // current index into the to_be_freed vector
 
     // Copy all items from freelist to to_be_freed in reverse order
@@ -1199,7 +1211,7 @@ class PlannerImpl {
   }
 #endif
 
-  //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+  // For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
@@ -1247,7 +1259,7 @@ Status PlannerImpl::CreatePlan() {
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  //Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
+  // Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
   AdjustInplaceLifeIntervals();
 #endif
 

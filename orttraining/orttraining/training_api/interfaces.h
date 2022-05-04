@@ -15,7 +15,7 @@ namespace api_test {
 class Parameter {
  public:
   // create parameter
-  Parameter(std::string& name, const OrtValue& data) : name_(name), data_(data) {
+  Parameter(const std::string& name, const OrtValue& data) : name_(name), data_(data) {
     ORT_ENFORCE(data.IsAllocated());
   }
 
@@ -33,10 +33,12 @@ class Parameter {
   std::string gradient_name() const { return gradient_name_; }
 
   // Reset and release the gradient buffer of this Parameter
-  Status ResetGrad() {
-    return Status::OK();
-  }
+  Status ResetGrad();
   // need to set grad but not public api
+
+ protected:
+  Status AllocateGrad(const std::string& gradient_name, const SessionState& allocator);
+
  private:
   std::string name_;
   OrtValue data_;
@@ -47,6 +49,7 @@ class Parameter {
   // Whether the param is trainable. The optimizer state is
   // only created for a trainable param
   bool requires_grad_{true};
+  friend class Module;
 };
 
 class Module {
@@ -55,7 +58,7 @@ class Module {
   // training ONNX model and load parameters
   Module(const std::string& train_model_path_or_bytes,
          std::map<std::string, std::shared_ptr<Parameter>>& parameters,
-         const std::optional<std::string>& eval_model_path_or_bytes);
+         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> parameters() const {
@@ -190,44 +193,6 @@ class LinearScheduler : public LearningRateScheduler {
   float end_factor_;
   int64_t total_iters_;
 };
-
-// namespace utils {
-
-// struct CheckpointProperty {
-//   int value;
-//   // Support primitive types like int, float, string leveraging type trait.
-// };
-
-// struct CheckpointStates {
-//   CheckpointStates() {
-//     ORT_NOT_IMPLEMENTED("Not implemented.");
-//   }
-//   std::map<std::string, std::shared_ptr<Parameter>> named_parameters;
-//   OptimizerState optimizer_states;
-//   std::unordered_map<std::string, CheckpointProperty> named_properties;
-// };
-
-// // Save properties into a checkpoint property file (with postfix .prop).
-// Status Ort_Save(CheckpointStates& /*state_dicts*/, const PathString& /*checkpoint_path*/) {
-//   ORT_NOT_IMPLEMENTED("Not implemented.");
-//   return Status::OK();
-// }
-
-// // Load properties file having postfix being '.prop'.
-// Status Ort_Load(const PathString& /*checkpoint_path*/, CheckpointStates& /*state_dicts*/) {
-//   ORT_NOT_IMPLEMENTED("Not implemented.");
-//   return Status::OK();
-// }
-
-// /*
-//   module.train_sess.RegisterExecutionProvider(provider);
-//   module.eval_sess.RegisterExecutionProvider(provider);
-//   optimizer.optim_sess.RegisterExecutionProvider(provider);
-// */
-// void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/) {
-//   ORT_NOT_IMPLEMENTED("Not implemented.");
-// }
-// }  // namespace utils
 
 }  // namespace api_test
 }  // namespace training
