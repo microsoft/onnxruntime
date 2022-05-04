@@ -291,5 +291,73 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
 
 GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 
+GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape);
+
+template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
+GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
+                                      const std::vector<int64_t>& input2_shape,
+                                      bool has_bias,
+                                      const int64_t& transB) {
+  return [input1_shape, input2_shape, has_bias, transB](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+
+    typedef std::numeric_limits<Input1Type> Input1Limits;
+    typedef std::numeric_limits<Input2Type> Input2Limits;
+    typedef std::numeric_limits<OutputType> OutputTypeLimits;
+
+    std::vector<NodeArg*> input_args;
+
+    // add QDQ A
+    auto* q1_output = builder.MakeIntermediate();
+    auto* dq1_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
+                                              .039f,
+                                              (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
+                                              q1_output);
+    builder.AddDequantizeLinearNode<Input1Type>(q1_output,
+                                                .039f,
+                                                (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
+                                                dq1_output);
+
+    input_args.push_back(dq1_output);
+
+    // add QDQ B
+    auto* dq2_output = builder.MakeIntermediate();
+    auto* input_b = builder.MakeInitializer<Input2Type>(input2_shape, Input2Limits::min(), Input2Limits::max());
+    builder.AddDequantizeLinearNode<Input2Type>(input_b, 0.04f,
+                                                (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
+                                                dq2_output);
+    input_args.push_back(dq2_output);
+
+    if (has_bias) {
+      auto* dq_bias_output = builder.MakeIntermediate();
+      auto* bias = builder.MakeInitializer<BiasType>({input2_shape[0]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
+      builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156f,
+                                                0,
+                                                dq_bias_output);
+      input_args.push_back(dq_bias_output);
+    }
+
+    Node* gemm_node = nullptr;
+
+    auto* gemm_op_output = builder.MakeIntermediate();
+    gemm_node = &builder.AddNode("Gemm", input_args, {gemm_op_output});
+
+    // add QDQ output
+    auto* q3_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<OutputType>(gemm_op_output,
+                                              .039f,
+                                              (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                              q3_output);
+    builder.AddDequantizeLinearNode<OutputType>(q3_output,
+                                                .039f,
+                                                (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                                output_arg);
+
+    gemm_node->AddAttribute("transB", transB);
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime

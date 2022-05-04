@@ -202,18 +202,24 @@ void GradientOpTester::Run(
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
           if (!st.IsOK()) {
-            auto* node_func = node.GetFunctionBody();
-            if (!node_func) {
+            if (!node.CanBeInlined()) {
               valid = false;
             } else {
-              for (auto& sub_node : node_func->Body().Nodes()) {
-                if (sub_node.OpType() != "Constant") {
-                  auto sub_reg = execution_provider->GetKernelRegistry();
-                  const KernelCreateInfo* sub_kci;
-                  st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
-                  if (!st.IsOK()) {
-                    valid = false;
-                    break;
+              // TODO: hanlde the nested function case.
+              std::unique_ptr<Function> node_func;
+              st = node.GetInstantiateFunctionBody(node_func);
+              if (!st.IsOK()) {
+                valid = false;
+              } else {
+                for (auto& sub_node : node_func->Body().Nodes()) {
+                  if (sub_node.OpType() != "Constant") {
+                    auto sub_reg = execution_provider->GetKernelRegistry();
+                    const KernelCreateInfo* sub_kci;
+                    st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
+                    if (!st.IsOK()) {
+                      valid = false;
+                      break;
+                    }
                   }
                 }
               }
