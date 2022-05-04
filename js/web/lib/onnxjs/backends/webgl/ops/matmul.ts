@@ -8,6 +8,7 @@ import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {getCoordsDataType, getGlChannels} from '../utils';
+
 import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {createPackedMatmulProgramInfoLoader} from './matmul-pack';
 

@@ -4,6 +4,7 @@
 import {Attribute} from '../../../attribute';
 import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {GlslValueFunction} from '../glsl-definitions';
+
 import {glslClip, glslRelu, glslSigmoid} from './unary-op';
 
 export interface InternalActivationAttributes {
