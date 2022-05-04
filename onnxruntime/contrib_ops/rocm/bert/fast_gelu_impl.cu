@@ -62,7 +62,8 @@ __global__ void FastGeluKernel(const T a, const T b, const T c, const T oneT, co
 
 template <unsigned TPB>
 __global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, const half2 one2, const half2 two2,
-                                int input_length, int bias_length, const half2* input, const half2* bias, half2* output) {
+                                int input_length, int bias_length, const half2* input, const half2* bias,
+                                half2* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
   if (idx < input_length) {
