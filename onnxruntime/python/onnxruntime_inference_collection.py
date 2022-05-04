@@ -10,14 +10,13 @@ import warnings
 from onnxruntime.capi import _pybind_state as C
 
 
-def get_ort_device_type(device):
-    device_type = device if type(device) is str else device.type.lower()
+def get_ort_device_type(device_type, device_index):
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cpu":
         return C.OrtDevice.cpu()
     elif device_type == "ort":
-        return C.get_ort_device(device.index).device_type()
+        return C.get_ort_device(device_index).device_type()
     else:
         raise Exception("Unsupported device type: " + device_type)
 
@@ -453,7 +452,7 @@ class IOBinding:
         self._iobinding.bind_input(
             name,
             C.OrtDevice(
-                get_ort_device_type(device_type),
+                get_ort_device_type(device_type, device_id),
                 C.OrtDevice.default_memory(),
                 device_id,
             ),
@@ -500,7 +499,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -511,7 +510,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -592,7 +591,7 @@ class OrtValue:
             C.OrtValue.ortvalue_from_numpy(
                 numpy_obj,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -618,7 +617,7 @@ class OrtValue:
                 shape,
                 element_type,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -740,7 +739,7 @@ class OrtDevice:
     def make(ort_device_name, device_id):
         return OrtDevice(
             C.OrtDevice(
-                get_ort_device_type(ort_device_name),
+                get_ort_device_type(ort_device_name, device_id),
                 C.OrtDevice.default_memory(),
                 device_id,
             )

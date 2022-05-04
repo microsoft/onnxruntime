@@ -315,6 +315,35 @@ Status KernelRegistry::TryFindKernel(const Node& node,
 
   return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
 }
+
+Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
+                                     const std::unordered_map<std::string, MLDataType>& type_constraints,
+                                     ProviderType exec_provider, const KernelCreateInfo** out) const {
+  *out = nullptr;
+  auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_name, domain, exec_provider));
+  for (auto i = range.first; i != range.second; ++i) {  //loop through all kernels
+    const KernelCreateInfo& kci = i->second;
+    int start_ver{};
+    int end_ver{};
+    kci.kernel_def->SinceVersion(&start_ver, &end_ver);
+    if (start_ver <= version && end_ver >= version) {  //try match the version
+      auto& kci_constraints = kci.kernel_def->TypeConstraints();
+      bool match = true;
+      for (auto& constraint : type_constraints) {  //try match type constraints
+        auto iter = kci_constraints.find(constraint.first);
+        if (iter == kci_constraints.end() || find(iter->second.begin(), iter->second.end(), constraint.second) == iter->second.end()) {
+          match = false;
+          break;
+        }
+      }  //for
+      if (match) {
+        *out = &kci;  //found match, exit loop
+        break;
+      }
+    }  //if
+  }    //for
+  return *out == nullptr ? Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found") : Status::OK();
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 bool KernelRegistry::TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const {
