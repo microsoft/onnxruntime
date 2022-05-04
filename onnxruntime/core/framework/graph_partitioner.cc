@@ -61,7 +61,6 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .Provider(provider_type);
 }
 
-
 /// <summary>
 /// Validate all the layout sensitive nodes which were transformed for current EP are indeed taken by current EP.
 /// If not, then we have a bug. If a node with domain kMSNHWC is left in the graph at this point then
@@ -113,7 +112,7 @@ static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr, IExecutionProvider& current_ep,
-                                 GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities, 
+                                 GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities,
                                  TransformLayoutFunction transform_layout) {
   {
     GraphViewer graph_viewer(graph);
@@ -227,7 +226,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // TODO2: Nuphar is out of maintain, keep it with old API temporarily.
         // We want to deprecate Nuphar soon.
         if (fusion_style == IExecutionProvider::FusionStyle::Function ||
-            provider_type == kDmlExecutionProvider || 
+            provider_type == kDmlExecutionProvider ||
             provider_type == kNupharExecutionProvider) {
           fused_node = &graph.FuseSubGraph(capability, node_name);
         } else {
@@ -341,7 +340,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   }
 
   // NOTE: if mode_ is kAssignOnly, nodes_to_compile will be empty at this point due to logic in PlaceNode
-  // even with single node, EP might sitll want to compile it.
+  // even with single node, EP might still want to compile it.
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
   if (!nodes_to_compile.empty()) {
     std::vector<NodeComputeInfo> node_compute_funcs;
@@ -351,11 +350,13 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // We want to deprecate it soon.
       // Create a Function based node where the fused nodes have a new Graph instance.
       static std::once_flag legacy_compile_method_warning_flag;
-      std::call_once(legacy_compile_method_warning_flag, [](std::string_view ep_type) {
-        LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Funciton style Compile API, "
-                              << " which will be deprecated soon, please migrate to the new Compile API based on "
-                              << " FilteredGraphViewer. ";
-      }, type);
+      std::call_once(
+          legacy_compile_method_warning_flag, [](std::string_view ep_type) {
+            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Funciton style Compile API, "
+                                  << " which will be deprecated soon, please migrate to the new Compile API based on "
+                                  << " FilteredGraphViewer. ";
+          },
+          type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
 
       if (node_compute_funcs.size() != nodes_to_compile.size()) {
@@ -642,7 +643,7 @@ Status GraphPartitioner::PartitionOrtFormatModel(
   return Status::OK();
 }
 
-Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr, 
+Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    TransformLayoutFunction transform_layout_function, Mode mode,
                                    std::unordered_map<std::string, HashValue>* compiled_kernel_hashes) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
