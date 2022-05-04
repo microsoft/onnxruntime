@@ -14,7 +14,7 @@ This page shows the main elements of the C# API for ONNX Runtime.
 ```cs
 class OrtEnv
 ```
-Holds some methods which can be used to tune the ONNX Runtime's runime environment
+Holds some methods which can be used to tune the ONNX Runtime's runtime environment
 
 #### Constructor
 No public constructor available.
