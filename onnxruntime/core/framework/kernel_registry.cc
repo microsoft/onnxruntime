@@ -7,6 +7,7 @@
 #include <memory>
 #include <unordered_map>
 
+#include "core/common/container_utils.h"
 #include "core/framework/session_state.h"
 
 namespace onnxruntime {
@@ -224,27 +225,44 @@ class OpSchemaKernelTypeMatcher final : public IKernelTypeMatcher {
   }
 };
 
+enum class ArgType { kInput,
+                     kOutput };
+
 class ConstraintIndexMapKernelTypeMatcher final : public IKernelTypeMatcher {
  public:
-  ConstraintIndexMapKernelTypeMatcher() {
-    // TODO init constraint_index_map_
+  using ArgTypeAndIndex = std::pair<ArgType, size_t>;
+
+  Status RegisterOpConstraint(const std::string& op_type, const std::string& domain, ONNX_NAMESPACE::OperatorSetVersion since_version, std::string type_str, InlinedVector<ArgTypeAndIndex> args) {
+    auto& constraint_map = op_constraint_index_map_[{op_type, domain, since_version}];
+    const bool inserted = constraint_map.try_emplace(std::move(type_str), std::move(args)).second;
+    ORT_RETURN_IF_NOT(inserted,
+                      "Op type constraint is already registered. ",
+                      domain, ":", op_type, "(", since_version, ") - type constraint: ", type_str);
+    return Status::OK();
+  }
+
+  Status RegisterOpConstraintsFromNodeOpSchema(const Node& node) {
+    const auto* op_schema = node.Op();
+    ORT_RETURN_IF_NOT(op_schema, "Op schema is unavailable.");
+    const auto& type_constraints = op_schema->typeConstraintParams();
+    // TODO ...
+    return Status::OK();
   }
 
   bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const override {
-    // TODO:
     // for each type constraint
     //   map type constraint to arg
     //   check arg type against type constraint enabled types
     const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
     for (const auto& [type_str, enabled_types] : kernel_type_constraints) {
-      const auto& constraint_index_map = container_utils::MutableAt(op_constraint_index_map_,
-                                                                    {node.Domain(), node.OpType(), node.SinceVersion()});
+      const auto& constraint_index_map = container_utils::At(op_constraint_index_map_,
+                                                             {node.Domain(), node.OpType(), node.SinceVersion()});
 
-      const auto& constraint_args = container_utils::MutableAt(constraint_index_map, type_str);
+      const auto& constraint_args = container_utils::At(constraint_index_map, type_str);
 
-      for (const auto [arg_is_input, formal_arg_idx] : constraint_args) {
+      for (const auto [arg_type, formal_arg_idx] : constraint_args) {
         const NodeArg* arg;
-        if (arg_is_input) {
+        if (arg_type == ArgType::kInput) {
           const auto& input_arg_counts = node.InputArgCount();
           const size_t first_arg_idx = static_cast<size_t>(std::accumulate(input_arg_counts.begin(),
                                                                            input_arg_counts.begin() + formal_arg_idx,
@@ -279,7 +297,6 @@ class ConstraintIndexMapKernelTypeMatcher final : public IKernelTypeMatcher {
   // }
   // TODO could flatten map and include type_str in key
   using DomainOpTypeAndOpSetVersion = std::tuple<std::string, std::string, ONNX_NAMESPACE::OperatorSetVersion>;
-  using ArgTypeAndIndex = std::pair<bool, size_t>;
   using OpConstraintIndexMap =
       InlinedHashMap<DomainOpTypeAndOpSetVersion,
                      InlinedHashMap<std::string,
