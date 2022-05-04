@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 import {Tensor} from '../../../tensor';
-import {BroadcastUtil} from '../../../util';
-import {ShapeUtil} from '../../../util';
+import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
