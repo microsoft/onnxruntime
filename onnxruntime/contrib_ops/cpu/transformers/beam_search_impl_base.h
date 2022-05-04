@@ -73,7 +73,9 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
 
   void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, int sequence_length, bool is_cuda) {
     this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
+
     this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_beam_size * max_length);
+    memset(this->sequences_space.data(), 0, this->sequences_space.size_bytes());
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
@@ -83,9 +85,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
       this->final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size);
     }
 
-    sequences.Init(this->sequences_space, batch_beam_size, sequence_length, max_length);
-
-    memset(sequences_space.data(), 0, sequences_space.size_bytes());
+    this->sequences.Init(this->sequences_space, static_cast<int>(batch_beam_size), sequence_length, max_length);
   }
 
 // Copy input_ids to sequences[0]

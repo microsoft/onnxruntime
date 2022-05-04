@@ -102,7 +102,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs to be same as encoder subgraph
-  AllocatorPtr allocator = session_state_->GetAllocator(encoder_feeds[0].Location());
+  AllocatorPtr allocator = session_state_->GetAllocator(encoder_feeds[0].Get<Tensor>().Location());
 
   // input_ids is from beam next tokens that derived from logits of encoder output
   // Here we convert data type from int32 to int64 as required by subgraph input
@@ -111,7 +111,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   TensorShape input_ids_shape(&dims[0], 2);
   OrtValue input_ids;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), input_ids_shape, allocator, input_ids);
-  int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+  int64_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
   for (int i = 0; i < batch_beam_size; i++) {
     input_ids_data[i] = static_cast<int64_t>(beam_next_tokens[i]);
   }

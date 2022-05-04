@@ -34,13 +34,9 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
-                   transformers::IBeamSearchCpuState* cpu_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int32_t> input_ids_in_cpu,
-                   int sequence_length,
-                   int max_length,
                    void* stream);
 
 template <typename T>

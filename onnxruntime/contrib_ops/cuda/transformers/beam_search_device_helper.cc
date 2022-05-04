@@ -142,13 +142,9 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
-                   transformers::IBeamSearchCpuState* cpu_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int32_t> input_ids_in_cpu,
-                   int sequence_length,
-                   int max_length,
                    void* stream) {
   // TODO: we can use another stream to avoid blocking subgraph execution.
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
@@ -164,17 +160,6 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   // since next_positions is only needed to update feeds after subgraph execution, so it is fine to use Async here.
   // cudaMemsetAsync(beam_state->next_positions.data(), 0, beam_state->next_positions.size_bytes(), cuda_stream);
   cudaMemcpyAsync(beam_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(), cudaMemcpyHostToDevice, cuda_stream);
-
-  memset(cpu_state->sequences_space.data(), 0, cpu_state->sequences_space.size_bytes());
-
-  // Copy input_ids to sequences[0]
-  gsl::span<int32_t> sequences_0 = cpu_state->sequences_space;
-  int batch_beam_size = batch_size * num_beams;
-  for (int i = 0; i < batch_beam_size; i++) {
-    for (int j = 0; j < sequence_length; j++) {
-      sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
-    }
-  }
 }
 
 template <typename T>

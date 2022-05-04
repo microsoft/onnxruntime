@@ -138,16 +138,16 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
                   parameters_->max_length,
                   parameters_->output_scores);
 
-  gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
   init_beam_state_func_(&beam_state,
-                        &cpu_state,
                         cpu_state.sequence_lengths,
                         parameters_->batch_size,
                         parameters_->num_beams,
-                        input_ids,
-                        parameters_->sequence_length,
-                        parameters_->max_length,
+                        // parameters_->sequence_length,
+                        // parameters_->max_length,
                         cuda_stream_);
+
+  gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
+  cpu_state.SetSequence(input_ids, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, parameters_->sequence_length);
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();

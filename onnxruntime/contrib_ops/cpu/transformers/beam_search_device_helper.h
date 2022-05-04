@@ -42,7 +42,7 @@ using CreateGptInputsFunc = std::function<Status(
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
-    AllocatorPtr alloactor,
+    AllocatorPtr allocator,
     OrtValue& expanded_input_ids,
     OrtValue& expanded_position_ids,
     OrtValue& expanded_attention_mask)>;
@@ -58,13 +58,9 @@ using AddToFeedsFunc = std::function<Status(
 template <typename T>
 using InitBeamStateFunc = std::function<void(
     transformers::IBeamSearchState<T>* beam_state,
-    transformers::IBeamSearchCpuState* cpu_state,
     gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
-    gsl::span<const int32_t> input_ids_in_cpu,
-    int sequence_length,
-    int max_length,
     void* stream)>;
 
 template <typename T>
@@ -110,7 +106,7 @@ using CreateEncoderInputsFunc = std::function<Status(
     int pad_token_id,
     int start_token_id,
     gsl::span<int32_t>& sequence_lengths,
-    AllocatorPtr alloactor,
+    AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,
     OrtValue& expanded_decoder_input_ids)>;
@@ -164,13 +160,9 @@ Status AddToFeeds(
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
-                   transformers::IBeamSearchCpuState* cpu_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int32_t> input_ids_in_cpu,
-                   int sequence_length,
-                   int max_length,
                    void* stream);
 
 template <typename T>
@@ -202,7 +194,7 @@ Status CreateGptInputs(
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
-    AllocatorPtr alloactor,
+    AllocatorPtr allocator,
     OrtValue& expanded_input_ids,
     OrtValue& expanded_position_ids,
     OrtValue& expanded_attention_mask);
@@ -230,7 +222,7 @@ Status CreateEncoderInputs(
     int pad_token_id,
     int start_token_id,
     gsl::span<int32_t>& sequence_lengths,
-    AllocatorPtr alloactor,
+    AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,
     OrtValue& expanded_decoder_input_ids);
