@@ -16,17 +16,15 @@ Along with this flexibility comes decisions for tuning and usage. For each model
 
 This document covers basic tools and troubleshooting checklists that can be leveraged to optimize your ONNX Runtime (ORT) model and hardware.
 
-## Contents
 
 {: .no_toc }
 
 * TOC placeholder
 {:toc}
 
-Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages.
-
 ## Performance Tuning Tools
 
+Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages.
 ### 1. ONNX Go Live (OLive) Tool
 
 The [ONNX Go Live (OLive) tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime (ORT).
@@ -158,7 +156,7 @@ session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionP
 
 ## Selecting the Execution Provider for best performance
 
-Performance is dependent on the specific model you're trying to run, the session, and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
+Performance is dependent on the specific model you're trying to run, the session, and run options you've selected, and of course, your specific hardware target. Here is some more information that may be helpful for you to select the right Execution Provider.
 
 ### CUDA (Default GPU) or CPU?
 
@@ -182,7 +180,13 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 
 Here are some suggestions for things to try for various Execution Providers for tuning performance.
 
-Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md). Onnxruntime supports overriding memory allocations using Mimalloc allocator.
+### Shared arena based allocator
+
+Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
+
+### Mimalloc allocator
+
+Onnxruntime supports overriding memory allocations using Mimalloc allocator.
 MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc. Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
  
 ### Thread management
@@ -269,15 +273,14 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 * Thread Count
   * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model
 * Sequential vs. Parallel Execution
-  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
-  * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
-number of threads used to parallelize the execution of the graph (across nodes).
+  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually, when a model has many branches, setting this option to false will provide better performance.
+  * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the number of threads used to parallelize the execution of the graph (across nodes).
 
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](graph-optimizations.md).
 
 ### MKL_DNN/nGraph Execution Provider
 
-MKL_DNN and nGraph depend on openmp for parallelization. For those execution providers, we need to use the openmp environment variable to tune the performance.
+MKL_DNN and nGraph depend on openmp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance.
 
 The most widely used environment variables are:
 
@@ -427,7 +430,7 @@ While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://develop
 
 6) While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
 
-7) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
+7) Multi-threaded usage is not supported currently, that is, `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
 
 NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`.
 
@@ -556,7 +559,7 @@ Here is a list of things to check through when assessing performance issues.
 <p><a href="#" id="back-to-top">Back to top</a></p>
 
 
-## Performance Tuning FAQs
+### Performance Tuning FAQs
 ### I need help performance tuning for BERT models
 
 For BERT models, sometimes ONNX Runtime cannot apply the best optimization due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
