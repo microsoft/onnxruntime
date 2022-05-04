@@ -624,7 +624,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else if (op_type == "PRelu") {
     add_activation = false;  // ANEURALNETWORKS_PRELU does not have activation
     op_code = ANEURALNETWORKS_PRELU;
-    } else {
+  } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
 
@@ -1504,7 +1504,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, blocksize);
 
-  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+  if (use_nchw && android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // optional input to use nchw is available starting NNAPI feature level 3
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }

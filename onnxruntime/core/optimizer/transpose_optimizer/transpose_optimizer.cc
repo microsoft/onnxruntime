@@ -1964,7 +1964,7 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
                                                                       "AveragePool", "GlobalAveragePool", "MaxPool",
                                                                       "GlobalMaxPool", "LRN", "GridSample",
-                                                                      "DepthToSpace"};
+                                                                      "DepthToSpace", "SpaceToDepth"};
 
   return layout_sensitive_ops;
 }
