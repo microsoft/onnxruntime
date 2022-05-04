@@ -33,28 +33,6 @@ public class ProviderOptionsTest {
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
 
   @Test
-  @DisabledIfSystemProperty(named = "USE_CUDA", matches = "1")
-  public void testCUDAOptions() throws OrtException {
-    // Test standard options
-    OrtCUDAProviderOptions cudaOpts = new OrtCUDAProviderOptions(0);
-    cudaOpts.add("gpu_mem_limit", "" + (512 * 1024 * 1024));
-    OrtSession.SessionOptions sessionOpts = new OrtSession.SessionOptions();
-    sessionOpts.addCUDA(cudaOpts);
-    runProvider(OrtProvider.CUDA, sessionOpts);
-
-    // Test invalid device num throws
-    assertThrows(IllegalArgumentException.class, () -> new OrtCUDAProviderOptions(-1));
-
-    // Test invalid key name throws
-    OrtCUDAProviderOptions invalidKeyOpts = new OrtCUDAProviderOptions(0);
-    assertThrows(
-        OrtException.class, () -> invalidKeyOpts.add("not_a_real_provider_option", "not a number"));
-    // Test invalid value throws
-    OrtCUDAProviderOptions invalidValueOpts = new OrtCUDAProviderOptions(0);
-    assertThrows(OrtException.class, () -> invalidValueOpts.add("gpu_mem_limit", "not a number"));
-  }
-
-  @Test
   @EnabledIfSystemProperty(named = "USE_TENSORRT", matches = "1")
   public void testTensorRT() throws OrtException {
     // Test standard options
