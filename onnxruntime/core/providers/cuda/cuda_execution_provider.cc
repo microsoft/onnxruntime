@@ -19,6 +19,8 @@
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
 
+#include "core/providers/cuda/cuda_stream_handle.h"
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -2481,6 +2483,10 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     allocator_manager->InsertAllocator(cuda_cpu_alloc);
   }
   TryInsertAllocator(std::move(cuda_cpu_alloc));
+}
+
+void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  RegisterCudaStreamHandles(stream_handle_registry);
 }
 
 }  // namespace onnxruntime

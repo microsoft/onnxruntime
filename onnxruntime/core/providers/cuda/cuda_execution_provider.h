@@ -101,6 +101,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured() const override;
   Status ReplayGraph() override;
 #endif
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
  private:
   CUDAExecutionProviderInfo info_;
