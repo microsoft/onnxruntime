@@ -186,8 +186,9 @@ Memory consumption can be reduced between multiple sessions by configuring the s
 
 ### Mimalloc allocator
 
-Onnxruntime supports overriding memory allocations using Mimalloc allocator.
-MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc. Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
+OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
+- Depending on your model and usage mimalloc can deliver single - or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. mimalloc is a submodule in the OnnxRuntime source tree. 
+- On Windows, one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to OnnxRuntime. This would redirect OnnxRuntime allocators and all new/delete calls to mimalloc. Currently, there are no special provisions to employ mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
  
 ### Thread management
 
@@ -195,7 +196,7 @@ Follow the best practices for [thread management](https://github.com/microsoft/o
 ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP.
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
-* Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
+* Inter op num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should
 always be set using the ORT APIs.
 
 ### Custom threading callbacks
@@ -280,9 +281,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 ### MKL_DNN/nGraph Execution Provider
 
-MKL_DNN and nGraph depend on openmp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance.
-
-The most widely used environment variables are:
+MKL_DNN and nGraph depend on OpenMp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance. The most widely used environment variables are:
 
 * OMP_NUM_THREADS=n
   * Controls the thread pool size
@@ -328,7 +327,12 @@ Refer to the [C# docs](https://github.com/microsoft/onnxruntime/blob/master/csha
 
 ### Convolution heavy models and the CUDA Execution Provider
 
-ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node. This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option named `cudnn_conv_use_max_workspace` needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
+ORT leverages CuDNN (CUDA Deep Neural Networks) for convolution operations. 
+
+- The first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, and so on.) in each `Conv` node. 
+- The next step involves querying CuDNN for a "workspace" memory size and have this allocated so CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. 
+- By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option named `cudnn_conv_use_max_workspace` needs to get set (as shown in the following code snippet). 
+- Note that, using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an FP16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
 * Python
 
@@ -371,7 +375,9 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 
 ### Convolution Input Padding in the CUDA EP
 
-ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor. Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be a lot different because different convolution algorithms are selected, especially on some devices such as A100. By default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as shown below) if [N, C, 1, D] is preferred.
+ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor. 
+
+Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be a lot different because different convolution algorithms are selected, especially, on some devices such as A100. By default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as shown below) if [N, C, 1, D] is preferred.
 
 * Python
 
@@ -416,21 +422,21 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 
 NOTE: Please note that this feature is currently being offered in "preview" mode.
 
-While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below. Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
+While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below. Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed here:
 
-1) Models with control-flow ops (i.e.) models with `If`, `Loop`, and `Scan` ops are not supported
+1. Models with control-flow ops, that is, models with `If`, `Loop`, and `Scan` ops are not supported
 
-2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
+2. Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
 
-3) The input/output types of models need to be tensors
+3. The input/output types of models need to be tensors
 
-4) Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
+4. Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
 
-5) By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to(please see samples below)
+5. By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to (please refer the code samples given below)
 
-6) While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
+6. While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
 
-7) Multi-threaded usage is not supported currently, that is, `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
+7. Multi-threaded usage is not supported currently, that is, `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
 
 NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`.
 
@@ -566,7 +572,7 @@ For BERT models, sometimes ONNX Runtime cannot apply the best optimization due t
 
 ### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 
-The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion and etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
+The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion, and so on. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
 
 ### Why is my model running slower on GPU than CPU?
 
@@ -580,16 +586,17 @@ Most TensorFlow operations used by a CNN support both NHWC and NCHW data format.
 
 ### Mitigate high latency variance
 
-On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime uses to parallelize tasks in the thread pool.
+On some platforms, OnnxRuntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that OnnxRuntime uses to parallelize tasks in the thread pool. 
+
 For each task, the constant cost model will calculate a granularity for parallelization among threads, which stays constant to the end of the task execution. This approach can bring imbalanced load sometimes, causing high latency variance.
-To mitigate this, onnxruntime provides a dynamic cost model which could be enbabled by session option:
+To mitigate this, OnnxRuntime provides a dynamic cost model which could be enbabled by session option:
 
 ```python
 sess_options.add_session_config_entry('session.dynamic_block_base', '4')
 ```
 
-Whenever set with a positive value, onnxruntime thread pool will parallelize internal tasks with a decreasing granularity.
-Specifically, assume there is a function expected to run N number of times by the thread pool, with the dynamic cost model enabled, each thread in the pool will claim
+Whenever set with a positive value, OnnxRuntime thread pool will parallelize internal tasks with a decreasing granularity.
+Assuming there is a function expected to run N number of times by the thread pool, with the dynamic cost model enabled, each thread in the pool will claim.
 
 ```python
 residual_of_N / (dynamic_block_base * num_of_threads)
