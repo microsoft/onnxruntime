@@ -4014,6 +4014,11 @@ Status Graph::InlineFunction(Node& node) {
   auto uniq_identifier = ss.str();
 
   const auto& model_path = ModelPath();
+  for (auto& init : subgraph.name_to_initial_tensor_) {
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+    *tensor = *init.second;
+    name_to_initial_tensor_[tensor->name() + uniq_identifier] = tensor;
+  }
   for (const auto& subgraph_node : subgraph.Nodes()) {
     if (subgraph_node.OpType() == kConstant) {
       // Copy constant nodes _value to name_to_initial_tensor_
