@@ -1,18 +1,18 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 from logging import getLogger
 from typing import Tuple
-from onnx import helper, numpy_helper, TensorProto
-from numpy import ndarray, array_equal
+
+from numpy import array_equal, ndarray
+from onnx import TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
 
 class FusionUtils:
-
     def __init__(self, model: OnnxModel):
         self.model: OnnxModel = model
 
@@ -27,17 +27,17 @@ class FusionUtils:
         return False, input_name
 
     def cast_input_to_int32(self, input_name: str):
-        cast_output = input_name + '_int32'
+        cast_output = input_name + "_int32"
 
         # Avoid consequent Cast nodes.
         inputs = [input_name]
         output_name_to_node = self.model.output_name_to_node()
         if input_name in output_name_to_node:
             parent_node = output_name_to_node[input_name]
-            if parent_node and parent_node.op_type == 'Cast':
+            if parent_node and parent_node.op_type == "Cast":
                 inputs = [parent_node.input[0]]
 
-        cast_node = helper.make_node('Cast', inputs=inputs, outputs=[cast_output])
+        cast_node = helper.make_node("Cast", inputs=inputs, outputs=[cast_output])
         cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.INT32))])
         self.model.add_node(cast_node)
 
@@ -50,7 +50,7 @@ class FusionUtils:
             if node.op_type == "Cast":
                 is_int32 = False
                 for att in node.attribute:
-                    if att.name == 'to' and att.i == int(TensorProto.INT32):
+                    if att.name == "to" and att.i == int(TensorProto.INT32):
                         is_int32 = True
                         break
                 if is_int32:
@@ -78,7 +78,8 @@ class FusionUtils:
 
         if isinstance(expected_value, list):
             return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False)
+                expected_value, value, equal_nan=False
+            )
         else:
             return value == expected_value
 
@@ -99,7 +100,8 @@ class FusionUtils:
 
         if isinstance(expected_value, list):
             return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value, equal_nan=False)
+                expected_value, value, equal_nan=False
+            )
         else:
             return value == expected_value
 
@@ -119,16 +121,16 @@ class FusionUtils:
 
         if shape_infer_helper:
             tensor_proto = shape_infer_helper.known_vi_[input_or_output_name]
-            if tensor_proto.type.tensor_type.HasField('elem_type'):
+            if tensor_proto.type.tensor_type.HasField("elem_type"):
                 return tensor_proto.type.tensor_type.elem_type
 
         return None
 
     def remove_cascaded_cast_nodes(self):
         """Remove Cast node that are overrided by another Cast node like  --> Cast --> Cast -->
-           Note that this shall be used carefully since it might introduce semantic change.
-           For example, float -> int -> float could get different value than the original float value.
-           So, it is recommended to used only in post-processing of mixed precision conversion.
+        Note that this shall be used carefully since it might introduce semantic change.
+        For example, float -> int -> float could get different value than the original float value.
+        So, it is recommended to used only in post-processing of mixed precision conversion.
         """
         removed_count = 0
         for node in self.model.nodes():
@@ -143,15 +145,14 @@ class FusionUtils:
             self.model.prune_graph()
 
     def remove_useless_cast_nodes(self):
-        """Remove cast nodes that are not needed: input and output has same data type.
-        """
+        """Remove cast nodes that are not needed: input and output has same data type."""
         shape_infer = self.model.infer_runtime_shape(update=True)
         if shape_infer is None:
             return
 
         nodes_to_remove = []
         for node in self.model.nodes():
-            if node.op_type == 'Cast':
+            if node.op_type == "Cast":
                 input_dtype = self.get_dtype(shape_infer, node.input[0])
                 output_dtype = self.get_dtype(shape_infer, node.output[0])
                 if input_dtype and input_dtype == output_dtype:
@@ -172,20 +173,20 @@ class FusionUtils:
         logger.info(f"Removed {len(nodes_to_remove)} Cast nodes with output type same as input")
 
     def remove_useless_reshape_nodes(self):
-        """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape
-        """
+        """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape"""
         shape_infer = self.model.infer_runtime_shape(update=True)
         if shape_infer is None:
             return
 
         nodes_to_remove = []
         for node in self.model.nodes():
-            if node.op_type == 'Reshape':
+            if node.op_type == "Reshape":
                 input_shape = shape_infer.get_edge_shape(node.input[0])
                 output_shape = shape_infer.get_edge_shape(node.output[0])
                 if input_shape and output_shape and input_shape == output_shape:
                     logger.info(
-                        f"Remove reshape node {node.name} since its input shape is same as output: {input_shape}")
+                        f"Remove reshape node {node.name} since its input shape is same as output: {input_shape}"
+                    )
                     nodes_to_remove.append(node)
 
         if nodes_to_remove:
@@ -203,13 +204,16 @@ class FusionUtils:
 
 
 class NumpyHelper:
-
     @staticmethod
     def to_array(tensor: TensorProto, fill_zeros: bool = False) -> ndarray:
         # When weights are in external data format but not presented, we can still test the optimizer with two changes:
         # (1) set fill_zeros = True  (2) change load_external_data=False in optimizer.py
         if fill_zeros:
             from onnx import mapping
-            return ndarray(shape=tensor.dims, dtype=mapping.TENSOR_TYPE_TO_NP_TYPE[tensor.data_type])
+
+            return ndarray(
+                shape=tensor.dims,
+                dtype=mapping.TENSOR_TYPE_TO_NP_TYPE[tensor.data_type],
+            )
 
         return numpy_helper.to_array(tensor)

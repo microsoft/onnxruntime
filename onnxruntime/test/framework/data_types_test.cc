@@ -7,6 +7,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/float16.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
@@ -666,7 +667,9 @@ TEST_F(DataTypeTest, DataUtilsTest) {
   }
 }
 
-template<typename T>
+#ifndef  DISABLE_ABSEIL
+
+template <typename T>
 using Calc = CalculateInlinedVectorDefaultInlinedElements<T>;
 
 template <typename... Types>
@@ -682,11 +685,36 @@ struct TypeMinimunInlinedElements {
 };
 
 TEST(InlinedVectorTests, TestDefaultInlinedCapacity) {
-
   // We want to test all the type here
   TypeMinimunInlinedElements<int8_t, int16_t, int32_t, int64_t, std::string> sizes;
   sizes.print(std::cout);
-
 }
+
+#endif  // ! DISABLE_ABSEIL
+
+TEST(TypeLiterals, Tests) {
+  {
+    // uint16_t test
+    MLFloat16 mlfloat{static_cast<uint16_t>(16)};
+    auto mlfloat_literal = 16_f16;
+    ASSERT_EQ(mlfloat, mlfloat_literal);
+
+    BFloat16 bfloat{static_cast<uint16_t>(16), BFloat16::FromBits()};
+    auto bfloat_literal = 16_b16;
+    ASSERT_EQ(bfloat, bfloat_literal);
+  }
+
+  {
+    // float
+    MLFloat16 mlfloat{17.0f};
+    auto mlfloat_literal = 17.0_fp16;
+    ASSERT_EQ(mlfloat, mlfloat_literal);
+
+    BFloat16 bfloat{17.0f};
+    auto bfloat_literal = 17.0_bfp16;
+    ASSERT_EQ(bfloat, bfloat_literal);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

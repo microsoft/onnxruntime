@@ -6,17 +6,35 @@
 
 # Maps model class name to a tuple of model class
 MODEL_CLASSES = [
-    'AutoModel', 'AutoModelWithLMHead', 'AutoModelForSequenceClassification', 'AutoModelForQuestionAnswering',
-    'AutoModelForCausalLM',
+    "AutoModel",
+    "AutoModelWithLMHead",
+    "AutoModelForSequenceClassification",
+    "AutoModelForQuestionAnswering",
+    "AutoModelForCausalLM",
 ]
 
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
 # Pretrained model name to a tuple of input names, opset_version, use_external_data_format, optimization model type
 MODELS = {
     # BERT
-    "bert-base-uncased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
-    "bert-large-uncased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
-    "bert-base-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
+    "bert-base-uncased": (
+        ["input_ids", "attention_mask", "token_type_ids"],
+        12,
+        False,
+        "bert",
+    ),
+    "bert-large-uncased": (
+        ["input_ids", "attention_mask", "token_type_ids"],
+        12,
+        False,
+        "bert",
+    ),
+    "bert-base-cased": (
+        ["input_ids", "attention_mask", "token_type_ids"],
+        12,
+        False,
+        "bert",
+    ),
     # "bert-large-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
     # "bert-base-multilingual-uncased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
     # "bert-base-multilingual-cased": (["input_ids", "attention_mask", "token_type_ids"], 12, False, "bert"),
@@ -55,10 +73,14 @@ MODELS = {
     "roberta-large-mnli": (["input_ids", "attention_mask"], 12, False, "bert"),
     "deepset/roberta-base-squad2": (["input_ids", "attention_mask"], 11, False, "bert"),
     "distilroberta-base": (["input_ids", "attention_mask"], 12, False, "bert"),
-
     # DistilBERT
     "distilbert-base-uncased": (["input_ids", "attention_mask"], 11, False, "bert"),
-    "distilbert-base-uncased-distilled-squad": (["input_ids", "attention_mask"], 11, False, "bert"),
+    "distilbert-base-uncased-distilled-squad": (
+        ["input_ids", "attention_mask"],
+        11,
+        False,
+        "bert",
+    ),
     # CTRL
     "ctrl": (["input_ids"], 11, True, "bert"),
     # CamemBERT
@@ -67,44 +89,43 @@ MODELS = {
     "albert-base-v1": (["input_ids"], 12, False, "bert"),
     "albert-large-v1": (["input_ids"], 12, False, "bert"),
     "albert-xlarge-v1": (["input_ids"], 12, True, "bert"),
-    #"albert-xxlarge-v1": (["input_ids"], 12, True, "bert"),
+    # "albert-xxlarge-v1": (["input_ids"], 12, True, "bert"),
     "albert-base-v2": (["input_ids"], 12, False, "bert"),
     "albert-large-v2": (["input_ids"], 12, False, "bert"),
     "albert-xlarge-v2": (["input_ids"], 12, True, "bert"),
-    #"albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
+    # "albert-xxlarge-v2": (["input_ids"], 12, True, "bert"),
     # T5 (use benchmark_t5.py instead)
     # "t5-small": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
     # "t5-base": (["input_ids", "decoder_input_ids"], 12, False, "bert"),
     # "t5-large": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
     # "t5-3b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
     # "t5-11b": (["input_ids", "decoder_input_ids"], 12, True, "bert"),
-    #"valhalla/t5-small-qa-qg-hl": (["input_ids"], 12, True, "bert"),
+    # "valhalla/t5-small-qa-qg-hl": (["input_ids"], 12, True, "bert"),
     # XLM-RoBERTa
     "xlm-roberta-base": (["input_ids"], 11, False, "bert"),
     "xlm-roberta-large": (["input_ids"], 11, True, "bert"),
     # FlauBERT
     "flaubert/flaubert_small_cased": (["input_ids"], 11, False, "bert"),
-    #"flaubert/flaubert_base_uncased": (["input_ids"], 11, False, "bert"),
+    # "flaubert/flaubert_base_uncased": (["input_ids"], 11, False, "bert"),
     "flaubert/flaubert_base_cased": (["input_ids"], 11, False, "bert"),
-    #"flaubert/flaubert_large_cased": (["input_ids"], 11, False, "bert"),
+    # "flaubert/flaubert_large_cased": (["input_ids"], 11, False, "bert"),
     # Bart
     "facebook/bart-large": (["input_ids", "attention_mask"], 11, False, "bart"),
     "facebook/bart-base": (["input_ids", "attention_mask"], 11, False, "bart"),
     "facebook/bart-large-mnli": (["input_ids", "attention_mask"], 11, False, "bart"),
     "facebook/bart-large-cnn": (["input_ids", "attention_mask"], 11, False, "bart"),
-
     # DialoGPT
     "microsoft/DialoGPT-small": (["input_ids"], 11, False, "gpt2"),
     "microsoft/DialoGPT-medium": (["input_ids"], 11, False, "gpt2"),
-    #"microsoft/DialoGPT-large": (["input_ids"], 11, True, "gpt2"),
+    # "microsoft/DialoGPT-large": (["input_ids"], 11, True, "gpt2"),
     # Reformer
-    #"google/reformer-enwik8": (["input_ids"], 11, False, "bert"),
-    #"google/reformer-crime-and-punishment": (["input_ids"], 11, False, "bert"),
+    # "google/reformer-enwik8": (["input_ids"], 11, False, "bert"),
+    # "google/reformer-crime-and-punishment": (["input_ids"], 11, False, "bert"),
     # MarianMT
-    #"Helsinki-NLP/opus-mt-ROMANCE-en": (["input_ids"], 12, False, "bert"),
+    # "Helsinki-NLP/opus-mt-ROMANCE-en": (["input_ids"], 12, False, "bert"),
     # Longformer (use benchmark_longformer.py instead)
-    #"allenai/longformer-base-4096": (["input_ids"], 12, False, "bert"),
-    #"allenai/longformer-large-4096": (["input_ids"], 12, False, "bert"),
+    # "allenai/longformer-base-4096": (["input_ids"], 12, False, "bert"),
+    # "allenai/longformer-large-4096": (["input_ids"], 12, False, "bert"),
     # MBart
     "facebook/mbart-large-cc25": (["input_ids"], 11, True, "bert"),
     "facebook/mbart-large-en-ro": (["input_ids"], 11, True, "bert"),
@@ -129,7 +150,12 @@ MODELS = {
     "squeezebert/squeezebert-uncased": (["input_ids"], 11, False, "bert"),
     "squeezebert/squeezebert-mnli": (["input_ids"], 11, False, "bert"),
     "squeezebert/squeezebert-mnli-headless": (["input_ids"], 11, False, "bert"),
-    "unc-nlp/lxmert-base-uncased": (["input_ids", "visual_feats", "visual_pos"], 11, False, "bert"),
+    "unc-nlp/lxmert-base-uncased": (
+        ["input_ids", "visual_feats", "visual_pos"],
+        11,
+        False,
+        "bert",
+    ),
     # "google/pegasus-xsum": (["input_ids"], 11, False, "bert"),
     # "google/pegasus-large": (["input_ids"], 11, False, "bert"),
 }

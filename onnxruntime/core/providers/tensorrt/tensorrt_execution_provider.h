@@ -104,13 +104,16 @@ struct TensorrtFuncState {
   nvinfer1::IRuntime* runtime = nullptr;
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
-  void** shared_context_mem;
-  size_t* max_ctx_mem_size_ptr = nullptr;
+  bool context_memory_sharing_enable;
+  size_t* max_context_mem_size_ptr = nullptr;
+  void** context_mem = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
   int (*engine_encryption)(const char*, char*, size_t);
-  bool context_memory_sharing_enable;
+  // If sub-graph has dynamic input shape and the shape range changes, or the first time writing out engine cache, this flag is set to true and engine cache will be saved. Otherwise the flag is false.
+  // Note: For dynamic input shape, if update_engine_cache flag is true, profile cache will be saved as well.
+  bool update_engine_cache;
 };
 
 // Logical device representation.
@@ -128,7 +131,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
 
-  common::Status Compile(const std::vector<Node*>& fused_nodes,
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
@@ -167,13 +170,14 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
-  void* shared_context_mem_;
-  size_t max_ctx_mem_size_ = 0;
+  bool context_memory_sharing_enable_ = true;
+  size_t max_ctx_mem_size_ = 0;  
+  void* context_memory_ = nullptr;
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t);
-  bool context_memory_sharing_enable_ = false;
+
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
@@ -198,7 +202,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const GraphViewer& graph, bool* early_termination) const;
 
-  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
+  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
 
   /** 
   Get a unique_lock object to control the concurrency behavior. 
