@@ -559,7 +559,7 @@ Here is a checklist to troubleshoot ORT performance.
 
 1. Are you using OpenMP? - OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
 2. Have you enabled all [graph optimizations](graph-optimizations.md)? - The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
-3. Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) - Checking the issues solved earlier will help in troubleshooting. You can file a new issue if your performance questions are unique.
+3. Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) - Checking the issues solved earlier will help you in troubleshooting. You can file a new issue if your performance questions are unique.
 4. Do you have the right versions of the dependent libraries installed? - For CUDA or TensorRT, performance improves with the correct version of the dependent libraries.
 
 
@@ -582,17 +582,17 @@ You can move initializers out of graph inputs if there is no need to override th
 
 **Why is my model running slower on GPU than CPU?**
 
-Depending on the execution provider you are using, all the operators may not have full support for in your model. Fallback to CPU operators can cause hits in performance speed.
+Depending on the execution provider you are using, all the operators may not have full support for your model. Fallback to CPU operators can cause hits in the performance speed.
 
-Even though an a operator is implemented by the CUDA execution provider, it may not necessarily assign/place the operator to the CUDA EP due to performance reasons. To see the placement decided by ORT, you can turn on verbose logging and look at the console output.
+Even though an operator is implemented by the CUDA execution provider, it may not necessarily assign/place the operator to the CUDA EP due to performance reasons. To see the placement decided by ORT, you can turn on verbose logging and look at the console output.
 
 **Why is my converted Tensorflow model slow?**
 
 Number-Channel-Height-Width (NCHW) and Number-Height-Width-Channel (NHWC) are two different memory layout for 4-D tensors.
 
-Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on a GPU NCHW is faster but on a CPU NHWC is sometimes faster in Tensorflow. 
+Most TensorFlow operations used by a CNN support both the NCHW and the NHWC data format. Tensorflow team suggests that on a GPU - NCHW is faster but on a CPU - NHWC is faster. However, ONNX only supports NCHW.
 
-However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted, extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
+If the original model is in NHWC format, extra transposes may be added when the model is converted. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help, consider retraining the model using NCHW.
 
 **How do I mitigate high latency variance**
 
