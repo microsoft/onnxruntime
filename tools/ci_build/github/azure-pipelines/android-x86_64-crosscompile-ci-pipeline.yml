@@ -254,6 +254,10 @@ jobs:
         find . $(Build.SourcesDirectory)
       displayName: Check Downloads
 
+    - script: |
+        /bin/bash tools/ci_build/github/linux/android/update_path.sh ".gcno"
+      displayName: Update gcno path
+
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
       inputs:
@@ -285,6 +289,10 @@ jobs:
         echo $(Build.SourcesDirectory)
         find . $(Build.SourcesDirectory)
       displayName: Check Test Output
+
+    - script: |
+        /bin/bash tools/ci_build/github/linux/android/update_path.sh ".gcda"
+      displayName: Update gcda path
 
     - script: |
         python3 -m pip install gcovr && \
