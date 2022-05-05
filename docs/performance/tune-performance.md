@@ -196,7 +196,7 @@ ONNX Runtime allows different [threading implementation](https://github.com/micr
 
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
-* Inter op num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should
+* InterOp num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should
 always be set using the ORT APIs.
 
 ### Custom threading callbacks
@@ -549,63 +549,74 @@ Will be supported in future releases
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
 
-## Troubleshooting performance issues
+## Troubleshooting Performance Issues
 
-The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
+Troubleshooting ORT performance issues may vary depending on the model and usage scenario.
 
-### Performance Troubleshooting Checklist
+**Performance Troubleshooting Checklist**
 
-Here is a list of things to check through when assessing performance issues.
+Here is a checklist to troubleshoot ORT performance.
 
-* Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
-* Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
-* Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
-* If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed?
+1. Are you using OpenMP? - OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
+2. Have you enabled all [graph optimizations](graph-optimizations.md)? - The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
+3. Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) - Checking the issues solved earlier will help in troubleshooting. You can file a new issue if your performance questions are unique.
+4. Do you have the right versions of the dependent libraries installed? - For CUDA or TensorRT, performance improves with the correct version of the dependent libraries.
 
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
 
 
-### Performance Tuning FAQs
-### I need help performance tuning for BERT models
+**Performance Tuning FAQs**
 
-For BERT models, sometimes ONNX Runtime cannot apply the best optimization due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
+Here are some FAQs for OnnxRuntime performance tuning.
 
-### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
+**How do I optimize BERT models?**
 
-The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion, and so on. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
+For some BERT models, ONNX Runtime cannot apply the best optimization due to framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
 
-### Why is my model running slower on GPU than CPU?
+**Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?**
 
-Depending on which execution provider you're using, it may not have full support for all the operators in your model. Fallback to CPU ops can cause hits in performance speed. Moreover even if an op is implemented by the CUDA execution provider, it may not necessarily assign/place the op to the CUDA EP due to performance reasons. To see the placement decided by ORT, turn on verbose logging and look at the console output.
+The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion, and so on.
 
-### My converted Tensorflow model is slow - why?
+You can move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
 
-NCHW and NHWC are two different memory layout for 4-D tensors.
+**Why is my model running slower on GPU than CPU?**
 
-Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
+Depending on the execution provider you are using, all the operators may not have full support for in your model. Fallback to CPU operators can cause hits in performance speed.
 
-### Mitigate high latency variance
+Even though an a operator is implemented by the CUDA execution provider, it may not necessarily assign/place the operator to the CUDA EP due to performance reasons. To see the placement decided by ORT, you can turn on verbose logging and look at the console output.
 
-On some platforms, OnnxRuntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that OnnxRuntime uses to parallelize tasks in the thread pool. 
+**Why is my converted Tensorflow model slow?**
 
-For each task, the constant cost model will calculate a granularity for parallelization among threads, which stays constant to the end of the task execution. This approach can bring imbalanced load sometimes, causing high latency variance.
-To mitigate this, OnnxRuntime provides a dynamic cost model which could be enbabled by session option:
+Number-Channel-Height-Width (NCHW) and Number-Height-Width-Channel (NHWC) are two different memory layout for 4-D tensors.
+
+Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on a GPU NCHW is faster but on a CPU NHWC is sometimes faster in Tensorflow. 
+
+However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted, extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
+
+**How do I mitigate high latency variance**
+
+On some platforms, OnnxRuntime may exhibit high latency variance during inferencing. This is caused by the 'constant cost model' that OnnxRuntime uses to parallelize tasks in the thread pool.
+
+For each task, the 'constant cost model' will calculate a granularity for parallelization among threads that stays constant to the end of the task execution. This approach can bring imbalanced load causing high latency variance.
+
+To mitigate this, OnnxRuntime provides a 'dynamic cost model' which can be enabled by setting the **dynamic_block_base** in the Python code:
 
 ```python
 sess_options.add_session_config_entry('session.dynamic_block_base', '4')
 ```
 
-Whenever set with a positive value, OnnxRuntime thread pool will parallelize internal tasks with a decreasing granularity.
-Assuming there is a function expected to run N number of times by the thread pool, with the dynamic cost model enabled, each thread in the pool will claim.
+Whenever the session is set with a positive value, OnnxRuntime thread pool will parallelize internal tasks with a decreasing granularity.
+
+Let's assume there is a function expected to run N number of times by the thread pool. With the dynamic cost model enabled, each thread in the pool will claim the total number of threads whenever it is ready to run given in the **formula** in the Python code given here.
 
 ```python
 residual_of_N / (dynamic_block_base * num_of_threads)
 ```
 
-Whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load balanced, thereby lowering the latency variance.
+Over a period of time, threads in the pool are likely to be load balanced, thereby reducing the latency variance.
 
-Due to the same reason, the dynamic cost model may also better the performance for cases when threads are more likely be preempted.
-Per our tests, by far the best configuration for dynamic_block_base is 4, which lowers the variance while keeping the performance as good.
+The 'dynamic cost model' ORT setting may also be suitable for models when threads are more likely be preempted.
+As per our tests, the best configuration for dynamic_block_base is 4, which lowers the variance while maintaining optimal performance.
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
