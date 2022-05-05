@@ -95,7 +95,8 @@ void* CUDAExternalAllocator::Reserve(size_t size) {
 }
 
 FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
+  //return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
+  return nullptr;
 }
 
 void* CUDAPinnedAllocator::Alloc(size_t size) {
