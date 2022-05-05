@@ -37,9 +37,9 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
 
-  std::vector<int64_t> pads = pool_attrs.pads;
-  std::vector<int64_t> strides = pool_attrs.strides;
-  std::vector<int64_t> kernel_shape = pool_attrs.kernel_shape;
+  auto pads = pool_attrs.pads;
+  auto strides = pool_attrs.strides;
+  auto kernel_shape = pool_attrs.kernel_shape;
 
   if (pool_attrs.global_pooling) {
     const auto& input_dims = x_shape.GetDims();
@@ -47,7 +47,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
     pads.assign(kernel_shape.size(), 0);
   }
 
-  std::vector<int64_t> output_dims = pool_attrs.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto output_dims = pool_attrs.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
   ACLNEPool tpool;
@@ -145,7 +145,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
   const Tensor* X = context->Input<Tensor>(0);
 
-  std::vector<int64_t> dilations(PoolBase::pool_attrs_.dilations);
+  TensorShapeVector dilations(PoolBase::pool_attrs_.dilations);
   std::vector<int64_t> aclDilations(2);
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
@@ -191,7 +191,7 @@ template <typename T>
 Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
-  std::vector<int64_t> dilations(PoolBase::pool_attrs_.dilations);
+  TensorShapeVector dilations(PoolBase::pool_attrs_.dilations);
   std::vector<int64_t> aclDilations(2);
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
