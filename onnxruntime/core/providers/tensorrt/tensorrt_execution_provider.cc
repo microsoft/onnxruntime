@@ -37,13 +37,14 @@
                           ? common::Status::OK() \
                           : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error executing ", #expr))
 
+TensorrtLogger& GetTensorrtLogger();
+
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 // instantiate global unused builder object which keeps the TRT kernel library in memory
 // so that subsequent builders avoid the expensive load / unload process.
-TensorrtLogger& GetTensorrtLogger();
 auto const trt_builder_placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
 #endif
 // Check if cycle exists in the graph after partitioning
