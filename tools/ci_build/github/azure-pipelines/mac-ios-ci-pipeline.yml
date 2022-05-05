@@ -3,7 +3,7 @@ jobs:
   pool:
     vmImage: 'macOS-11'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
+    IOS_DEPLOY_TARGET_VERSION: 9.2
   timeoutInMinutes: 150
   steps:
     - script: |
@@ -20,7 +20,7 @@ jobs:
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
-          --apple_deploy_target 11.0 \
+          --apple_deploy_target $(IOS_DEPLOY_TARGET_VERSION) \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \
@@ -36,7 +36,7 @@ jobs:
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
-          --apple_deploy_target 11.0 \
+          --apple_deploy_target $(IOS_DEPLOY_TARGET_VERSION) \
           --use_xcode \
           --config RelWithDebInfo \
           --build_apple_framework \
