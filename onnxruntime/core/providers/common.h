@@ -5,11 +5,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <numeric>
-
-#include "gsl/gsl"
-
-#include "core/common/safeint.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
@@ -142,9 +137,10 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
   return Status::OK();
 }
 
-template<typename T>
-SafeInt<T> ShapeSize(gsl::span<const T> shape_dims) {
-  return std::accumulate(shape_dims.cbegin(), shape_dims.cend(), SafeInt<T>{1}, std::multiplies<SafeInt<T>>());
+// Note: This helper function will not have overflow protection
+template <template <typename...> class Container, typename T>
+T Product(const Container<T>& c) {
+  return accumulate(c.cbegin(), c.cend(), static_cast<T>(1), std::multiplies<T>());
 }
 
 }  // namespace onnxruntime

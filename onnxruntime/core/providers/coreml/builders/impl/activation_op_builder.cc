@@ -5,9 +5,9 @@
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -25,6 +25,8 @@ class ActivationOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                         const logging::Logger& logger) const override;
   int GetMinSupportedOpSet(const Node& node) const override;
 };
 
@@ -55,7 +57,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   } else if (op_type == "PRelu") {
     auto* prelu = layer->mutable_activation()->mutable_prelu();
     // add slope initializer as alpha weight
-    const auto& slope_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]);
+    const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
     ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*prelu->mutable_alpha(), slope_tensor));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -81,7 +83,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   // X input rank must be at least 3
   {
     std::vector<int64_t> x_shape;
-    if (!GetShape(input_defs[0], x_shape, logger)) {
+    if (!GetShape(*input_defs[0], x_shape, logger)) {
       return false;
     }
     if (x_shape.size() < 3) {
@@ -91,7 +93,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   }
 
   // slope input must be constant
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensor();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   const auto initializer_it = initializers.find(input_defs[1]->Name());
   if (initializer_it == initializers.end()) {
     LOGS(logger, VERBOSE) << "PRelu 'slope' input must be an initializer tensor";
@@ -103,13 +105,13 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   // - have 1 element
   {
     std::vector<int64_t> slope_shape;
-    if (!GetShape(input_defs[1], slope_shape, logger)) {
+    if (!GetShape(*input_defs[1], slope_shape, logger)) {
       return false;
     }
     const bool has_supported_slope_shape =
         (slope_shape.size() == 3 && std::all_of(slope_shape.begin() + 1, slope_shape.end(),
                                                 [](int64_t dim) { return dim == 1; })) ||
-        ShapeSize(slope_shape) == 1;
+        Product(slope_shape) == 1;
     if (!has_supported_slope_shape) {
       LOGS(logger, VERBOSE) << "PRelu 'slope' input must either have shape [C, 1, 1] or have a single value";
       return false;
@@ -121,7 +123,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
 }  // namespace
 
 bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                            const logging::Logger& logger) const override {
+                                            const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   if (op_type == "PRelu") {
     return IsPReluOpSupported(node, input_params, logger);
