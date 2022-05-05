@@ -3409,9 +3409,11 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   graph_proto_->clear_value_info();
   graph_proto.set_name(Name());
   graph_proto.set_doc_string(Description());
+
   for (const auto* input_arg : GetInputsIncludingInitializers()) {
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
+
   for (const auto* output_arg : GetOutputs()) {
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
@@ -3419,6 +3421,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   for (const auto* value_info : value_info_) {
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
+
   // add the NodeArg info for outer scope NodeArgs so we capture the type information
   for (const auto& name : outer_scope_node_arg_names_) {
     auto* node_arg = GetNodeArg(name);
