@@ -1,6 +1,7 @@
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/common/spin_pause.h"
+#include "core/graph/constants.h"
 
 namespace onnxruntime {
 
@@ -85,7 +86,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   // wait cuda notification on cuda ep
   stream_handle_registry.RegisterWaitFn(kCudaExecutionProvider, kCudaExecutionProvider, WaitCudaNotificationOnDevice);
   // wait cuda notification on cpu ep
-  stream_handle_registry.RegisterWaitFn(kCudaExecutionProvider, kCudaExecutionProvider, WaitCudaNotificationOnHost);
+  stream_handle_registry.RegisterWaitFn(kCudaExecutionProvider, kCpuExecutionProvider, WaitCudaNotificationOnHost);
 
   stream_handle_registry.RegisterNotifyFn(kCudaExecutionProvider, NotifyCudaNotification);
   stream_handle_registry.RegisterCreateNotificationFn(kCudaExecutionProvider, CreateCudaNotification);
