@@ -21,6 +21,7 @@ using CreateNotificationFn = std::function<NotificationHandle(const StreamHandle
 using ReleaseNotificationFn = std::function<void(NotificationHandle)>;
 using CreateStreamFn = std::function<StreamHandle()>;
 using ReleaseStreamFn = std::function<void(StreamHandle)>;
+using FlushStreamFn = std::function<void(StreamHandle)>;
 
 // a stream abstraction which hold an opaque handle, and a reference to which EP instance this stream belong to.
 // it need to be EP instance as we might have different stream on different EP with same type.
@@ -50,6 +51,8 @@ class IStreamCommandHandleRegistry {
 
   virtual ReleaseStreamFn GetReleaseStreamFn(const std::string& execution_provider_type) = 0;
 
+  virtual FlushStreamFn GetFlushStreamFn(const std::string& execution_provider_type) = 0;
+
   virtual void RegisterCreateNotificationFn(const std::string& ep_type, CreateNotificationFn fn) = 0;
 
   virtual void RegisterReleaseNotificationFn(const std::string& ep_type, ReleaseNotificationFn fn) = 0;
@@ -61,6 +64,8 @@ class IStreamCommandHandleRegistry {
   virtual void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f) = 0;
 
   virtual void RegisterReleaseStreamFn(const std::string& ep_type, ReleaseStreamFn f) = 0;
+
+  virtual void RegisterFlushStreamFn(const std::string& ep_type, FlushStreamFn f) = 0;
 };
 
 IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance();

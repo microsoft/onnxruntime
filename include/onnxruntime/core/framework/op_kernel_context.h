@@ -172,7 +172,8 @@ class OpKernelContext {
   For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
   */
   void* GetComputeStream() const {
-    return kernel_->Info().GetExecutionProvider()->GetComputeStream();
+    auto* stream = kernel_->Info().GetComputeStream();
+    return stream ? stream->handle : nullptr;
   }
 
   /**

@@ -828,6 +828,8 @@ struct OpKernelInfo final {
 
   const Node& node() const noexcept { return g_host->OpKernelInfo__node(this); }
 
+  Stream* GetComputeStream() const noexcept { return g_host->OpKernelInfo__GetComputeStream(this); }
+
   OpKernelInfo() = delete;
   OpKernelInfo(const OpKernelInfo&) = delete;
   void operator=(const OpKernelInfo&) = delete;

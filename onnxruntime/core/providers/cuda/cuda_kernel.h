@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
+#include "core/framework/stream_handles.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
 
@@ -67,7 +68,10 @@ class CudaKernel : public OpKernel {
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
-  inline cudaStream_t Stream() const { return static_cast<cudaStream_t>(provider_->GetComputeStream()); }
+  inline cudaStream_t Stream() const { 
+    auto* stream = Info().GetComputeStream();
+    return static_cast<cudaStream_t>(stream ? stream->handle : nullptr);
+  }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished

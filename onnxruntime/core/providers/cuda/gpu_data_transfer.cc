@@ -66,8 +66,10 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, GetStream(exec_queue_id)));
     } else {
       // copying from GPU to CPU memory, this is blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, GetStream(kCudaStreamDefault)));
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(kCudaStreamDefault)));
+      /*CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, GetStream(kCudaStreamDefault)));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(kCudaStreamDefault)));*/
+      //TODO: enable the async copy when flush the stream design in cuda ep
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
     }
   } else {
     // copying between cpu memory

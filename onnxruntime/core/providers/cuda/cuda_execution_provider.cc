@@ -224,7 +224,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     if (info.external_allocator_info.UseExternalAllocator()) {
       stream_ = nullptr;
     } else {
-      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+      //CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+      stream_ = nullptr;
     }
   }
 
@@ -401,8 +402,10 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
     }
   }
   // record deferred release event on default stream, and release per_thread_context
-  auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
+  // TODO: clean the DeferredReleaseEvent related codes
+  /*auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
+  */
   if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
   }
@@ -413,8 +416,8 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   if (!IsGraphCaptureEnabled()) {
     ReleasePerThreadContext();
   }
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
+  /*std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+  deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;*/
 
   return Status::OK();
 }

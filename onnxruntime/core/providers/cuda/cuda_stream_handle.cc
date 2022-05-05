@@ -66,12 +66,19 @@ void ReleaseCUdaNotification(void* handle) {
 
 StreamHandle CreateCudaStream() {
   cudaStream_t stream = nullptr;
+  //Todo: should we use cudaStreamNonBlocking flag
   CUDA_CALL_THROW(cudaStreamCreate(&stream));
   return stream;
 }
 
-void ReleaseCPUStram(StreamHandle handle) {
-  CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
+void ReleaseCudaStram(StreamHandle handle) {
+  if (handle)
+    CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
+}
+
+void FlushCudaStream(StreamHandle handle) {
+  if (handle)
+    CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(handle)));
 }
 
 void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry) {
@@ -84,7 +91,8 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
   stream_handle_registry.RegisterCreateNotificationFn(kCudaExecutionProvider, CreateCudaNotification);
   stream_handle_registry.RegisterReleaseNotificationFn(kCudaExecutionProvider, ReleaseCUdaNotification);
   stream_handle_registry.RegisterCreateStreamFn(kCudaExecutionProvider, CreateCudaStream);
-  stream_handle_registry.RegisterReleaseStreamFn(kCudaExecutionProvider, ReleaseCPUStram);
+  stream_handle_registry.RegisterReleaseStreamFn(kCudaExecutionProvider, ReleaseCudaStram);
+  stream_handle_registry.RegisterFlushStreamFn(kCudaExecutionProvider, FlushCudaStream);
 }
 
 }

@@ -87,6 +87,11 @@ struct LogicStream {
     for (auto& command : commands_) {
       command(ctx);
     }
+    // flush
+    for (auto& device_stream : device_streams_) {
+      auto flush_stream_fn = GetStreamHandleRegistryInstance().GetFlushStreamFn(device_stream->provider->Type());
+      flush_stream_fn(device_stream->handle);
+    }
   }
 
   ~LogicStream() {
@@ -110,11 +115,18 @@ struct ParallelExecutionPlanImpl {
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger);
+
+  Stream* GetComputeStreamForNode(NodeIndex index) const {
+    auto it = node_to_stream_map_.find(index);
+    return it == node_to_stream_map_.end() ? nullptr : it->second;
+  }
+
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
   const SessionState& session_state_;
   int num_logic_streams_{};
   // the stream where the notificaiton got created.
   std::vector<Stream*> notification_owners_;
+  std::unordered_map<NodeIndex, Stream*> node_to_stream_map_;
 };
 
 std::once_flag populate_command_handle_flag;
@@ -172,6 +184,13 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         logic_streams_[i]->device_streams_.emplace_back(std::make_unique<Stream>(create_stream_fn(), ep));
         providers.insert(ep);
       }
+      // setup node to stream map
+      auto& streams = logic_streams_[node_stream_map[node_index]]->device_streams_;
+      auto stream_it = std::find_if(streams.begin(),
+                                    streams.end(),
+                                    [&](std::unique_ptr<Stream>& stream) { return stream->provider == ep; });
+      ORT_ENFORCE(stream_it != streams.end());
+      node_to_stream_map_[node_index] = stream_it->get();
     }
   }
   //4. set notification owners
@@ -315,6 +334,11 @@ common::Status ParallelExecutionPlan::Execute(const SessionState& session_state,
                                               const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                               const logging::Logger& logger) {
   return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);
+}
+
+
+Stream* ParallelExecutionPlan::GetComputeStreamForNode(NodeIndex index) const {
+  return impl_->GetComputeStreamForNode(index);
 }
 
 }  // namespace onnxruntime

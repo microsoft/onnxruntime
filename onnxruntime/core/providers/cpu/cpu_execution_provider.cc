@@ -2188,7 +2188,10 @@ StreamHandle CreateCPUStream() {
   return nullptr;
 }
 
-void ReleaseCPUStram(StreamHandle) {
+void ReleaseCPUStream(StreamHandle) {
+}
+
+void FlushCPUStream(StreamHandle) {
 }
 
 void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
@@ -2197,7 +2200,8 @@ void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& 
   stream_handle_registry.RegisterCreateNotificationFn(kCpuExecutionProvider, CreateCPUNotification);
   stream_handle_registry.RegisterReleaseNotificationFn(kCpuExecutionProvider, ReleaseCPUNotification);
   stream_handle_registry.RegisterCreateStreamFn(kCpuExecutionProvider, CreateCPUStream);
-  stream_handle_registry.RegisterReleaseStreamFn(kCpuExecutionProvider, ReleaseCPUStram);
+  stream_handle_registry.RegisterReleaseStreamFn(kCpuExecutionProvider, ReleaseCPUStream);
+  stream_handle_registry.RegisterFlushStreamFn(kCpuExecutionProvider, FlushCPUStream);
 }
 
 }  // namespace onnxruntime

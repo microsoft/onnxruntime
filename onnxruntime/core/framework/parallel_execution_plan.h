@@ -3,6 +3,8 @@
 #pragma once
 #include <memory>
 #include "core/framework/iexecutor.h"
+#include "core/framework/stream_handles.h"
+#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 
@@ -17,6 +19,9 @@ struct ParallelExecutionPlan : public IExecutor {
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
+
+  Stream* GetComputeStreamForNode(NodeIndex index) const;
+
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;
   //ParallelExecutionPlanImpl* impl_;
 };

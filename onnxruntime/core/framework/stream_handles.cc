@@ -41,6 +41,11 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
     return it == release_stream_map_.end() ? nullptr : it->second;
   }
 
+  FlushStreamFn GetFlushStreamFn(const std::string& execution_provider_type) override {
+    auto it = flush_stream_map_.find(execution_provider_type);
+    return it == flush_stream_map_.end() ? nullptr : it->second;
+  }
+
   void RegisterCreateNotificationFn(const std::string& ep_type, CreateNotificationFn fn) override {
     create_notification_map_.insert({ep_type, fn});
   }
@@ -65,6 +70,10 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
     release_stream_map_.insert({ep_type, f});
   }
 
+  void RegisterFlushStreamFn(const std::string& ep_type, FlushStreamFn f) override {
+    flush_stream_map_.insert({ep_type, f});
+  }
+
   static StreamCommandHandleRegistryImpl& GetInstance() {
     static StreamCommandHandleRegistryImpl instance;
     return instance;
@@ -79,6 +88,7 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
   std::unordered_map<std::string, NotifyNotificationFn> notification_notify_map_;
   std::unordered_map<std::string, CreateStreamFn> create_stream_map_;
   std::unordered_map<std::string, ReleaseStreamFn> release_stream_map_;
+  std::unordered_map<std::string, FlushStreamFn> flush_stream_map_;
 };
 
 IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() {

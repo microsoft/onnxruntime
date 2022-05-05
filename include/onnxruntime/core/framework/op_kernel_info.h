@@ -7,6 +7,7 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
+#include "core/framework/stream_handles.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/gsl"
 
@@ -26,7 +27,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const DataTransferManager& data_transfer_mgr);
+                        const DataTransferManager& data_transfer_mgr,
+                        Stream* stream);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -44,6 +46,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
+  Stream* GetComputeStream() const noexcept; 
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -57,6 +61,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
+  // which stream this kernel will be placed
+  Stream* stream_;
 };
 
 }  // namespace onnxruntime

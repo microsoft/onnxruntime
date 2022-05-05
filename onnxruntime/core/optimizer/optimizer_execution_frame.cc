@@ -111,6 +111,8 @@ std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(cons
   FuncManager func;
   auto status = kernel_registry->TryCreateKernel(*node, execution_provider_, initializers_,
                                                  ort_value_name_idx_map_, func, data_transfer_mgr_,
+                                                 // constant folding running on CPU EP, doesn't need device stream
+                                                 nullptr,
                                                  op_kernel);
 
   // Kernel found in the CPU kernel registry

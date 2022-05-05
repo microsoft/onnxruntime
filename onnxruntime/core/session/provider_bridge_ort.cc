@@ -815,6 +815,7 @@ struct ProviderHostImpl : ProviderHost {
   uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) override { return p->GetInputCount(); }
   uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) override { return p->GetOutputCount(); }
   const Node& OpKernelInfo__node(const OpKernelInfo* p) override { return p->node(); }
+  Stream* OpKernelInfo__GetComputeStream(const OpKernelInfo* p) override { return p->GetComputeStream(); }
 
   // SessionState (wrapped)
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
