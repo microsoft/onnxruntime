@@ -233,10 +233,10 @@ jobs:
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
-  - bash: |
-      ORIGIN_REPO=$(Build.SourcesDirectory)
-      echo "##vso[task.setvariable variable=origin_repo;isOutput=true;]$ORIGIN_REPO"
-      echo "variable value is $(origin_repo)"
+  - powershell: echo "##vso[task.setvariable variable=myOutputVar;isOutput=true]$(Build.SourcesDirectory)"
+    name: setvarStep
+  - script: echo $(setvarStep.myOutputVar)
+    name: echovar
 
   - task: PublishBuildArtifacts@1
     inputs:
@@ -254,8 +254,10 @@ jobs:
   dependsOn: Build_NNAPI_EP
   condition: succeeded()
   variables:
-    origin_repo: $[ dependencies.Build_NNAPI_EP.outputs['setVariable.origin_repo'] ]
+    origin_repo: $[ dependencies.Build_NNAPI_EP.outputs['setvarStep.myOutputVar'] ]
   steps:
+    - script: echo $(origin_repo)
+      name: echovar
     - script: |
         set -ex
         system_profiler SPSoftwareDataType SPHardwareDataType
