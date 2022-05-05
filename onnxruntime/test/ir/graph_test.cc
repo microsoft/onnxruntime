@@ -698,7 +698,8 @@ TEST_F(GraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
   graph.AddNode("node_1", "OpNotExist", "node 1", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ(0u, status.ErrorMessage().find_first_of("This is an invalid model. No Schema registered for OpNotExist"));
+  size_t pos = status.ErrorMessage().find("Error No Op registered for OpNotExist with domain_version of");
+  EXPECT_NE(std::string::npos, pos);
 }
 
 TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
@@ -1817,6 +1818,8 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
 
   const TensorProto* with_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, with_data));
+  // Suppress VC++ warning C6011
+  assert(with_data != nullptr);
   // No longer has external data
   ASSERT_FALSE(utils::HasExternalData(*with_data));
 

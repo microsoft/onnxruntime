@@ -64,6 +64,22 @@ file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
 )
 
+if(onnxruntime_USE_XNNPACK)
+  set(onnxruntime_XNNPACK_SRC_DIR ${ONNXRUNTIME_ROOT}/core/xnnpack)
+  onnxruntime_add_static_library(onnxruntime_xnnpack 
+                                 ${onnxruntime_XNNPACK_SRC_DIR}/conv.h ${onnxruntime_XNNPACK_SRC_DIR}/conv.cc
+								 ${onnxruntime_XNNPACK_SRC_DIR}/xnnpack_kernels.cc ${onnxruntime_XNNPACK_SRC_DIR}/op.h
+								 ${onnxruntime_XNNPACK_SRC_DIR}/shape_helper.h
+                                 ${onnxruntime_XNNPACK_SRC_DIR}/max_pooling_2d.h
+								 ${onnxruntime_XNNPACK_SRC_DIR}/max_pooling_2d.cc)
+  target_include_directories(onnxruntime_xnnpack PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
+  set_target_properties(onnxruntime_xnnpack PROPERTIES FOLDER "ONNXRuntime")
+  onnxruntime_add_include_to_target(onnxruntime_xnnpack onnxruntime_common onnxruntime_framework onnx onnx_proto
+                                    ${PROTOBUF_LIB} flatbuffers XNNPACK pthreadpool)
+  add_dependencies(onnxruntime_xnnpack ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set(ONNXRUNTIME_XNNPACK_PROVIDER_LIBRARY onnxruntime_xnnpack)
+endif()
+
 if(onnxruntime_DISABLE_ML_OPS)
   list(FILTER onnxruntime_providers_srcs EXCLUDE REGEX ".*/ml/.*")
 endif()

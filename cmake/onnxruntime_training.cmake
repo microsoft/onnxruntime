@@ -119,7 +119,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       onnxruntime_session
       ${onnxruntime_libs}
       ${PROVIDERS_MKLDNN}
+      ${ONNXRUNTIME_XNNPACK_OPTIMIZER_LIBRARY}
       onnxruntime_optimizer
+      ${ONNXRUNTIME_XNNPACK_PROVIDER_LIBRARY}
       onnxruntime_providers
       onnxruntime_util
       onnxruntime_framework

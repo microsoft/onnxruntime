@@ -65,10 +65,7 @@ class ConvActivation : public NodeSelector {
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13})) {
         float min, max;
-        if (!optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), activation_node, min, max)) {
-          return false;
-        }
-        return true;
+        return optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), activation_node, min, max).IsOK();
       }
 
       return false;
@@ -160,8 +157,9 @@ class FuseConvActivation : public ReplaceWithNew {
       activation_params.push_back(graph_utils::GetNodeAttribute(*activation, "alpha")->f());
     } else if (activation_op_type == "Clip") {
       float min, max;
-      ORT_ENFORCE(optimizer_utils::GetClipConstantMinMax(state.graph, *activation, min, max),
-                  "Failed to get Clip min/max constants.");
+      Status st = optimizer_utils::GetClipConstantMinMax(state.graph, *activation, min, max);
+      if (!st.IsOK())
+        ORT_THROW("Failed to get Clip min/max constants:", st.ErrorMessage());
       activation_params.push_back(min);
       activation_params.push_back(max);
     } else if (activation_op_type == "HardSigmoid") {

@@ -177,6 +177,7 @@ class Node {
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_.get(); }
+  void SetFunctionBody(std::unique_ptr<Function> f) noexcept { func_body_ = std::move(f); }
 #endif
 
   /**
@@ -675,8 +676,8 @@ class Graph {
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   /** This function takes externally provided data for initializers with external data
-  *    and replaces graph initializers with its content.
-  */
+   *    and replaces graph initializers with its content.
+   */
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
@@ -959,7 +960,8 @@ class Graph {
   */
   bool RemoveNode(NodeIndex node_index);
 
-  /** Add an edge between two Nodes.
+  /** Add an edge between two Nodes. The edge connects two node args which can be two different pointers.
+  When they are different, the two node args must have the same type and the one at the dest will be replaced.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
   @param src_arg_index node arg index of source node.

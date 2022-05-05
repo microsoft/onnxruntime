@@ -103,9 +103,9 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 /** Get min/max values from Clip if they are constant.
-@returns false if mutable and cannot be used.
+@returns non-ok status if mutable and cannot be used.
 */
-bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
+Status GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) noexcept;
 
 /** Check whether node's output edges count is expected.
 @remarks graph output is not included in output edges, and this node shall not have graph output.

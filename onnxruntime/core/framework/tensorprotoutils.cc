@@ -878,6 +878,10 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor) {
+  int output_size = node.output_size();
+  if (output_size <= 0) {
+    return Status(common::ONNXRUNTIME, common::INVALID_GRAPH, "The Constant node doesn't have any output");
+  }
   return ConstantNodeProtoToTensorProto(node, model_path, tensor, node.output(0));
 }
 

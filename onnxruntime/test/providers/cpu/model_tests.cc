@@ -61,6 +61,9 @@ extern std::unique_ptr<Ort::Env> ort_env;
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+
+
+
 namespace test {
 // parameter is provider_name + "_" + model_path
 class ModelTest : public testing::TestWithParam<std::basic_string<ORTCHAR_T>> {};
@@ -1069,6 +1072,10 @@ TEST_P(ModelTest, Run) {
 #if !defined(_WIN32) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
+
+    if (Env::Default().FolderExists(ORT_TSTR("simple"))) {
+      paths.push_back(ORT_TSTR("simple"));
+    }
     while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();

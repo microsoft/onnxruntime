@@ -36,7 +36,9 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
-
+#ifdef USE_XNNPACK
+#include "core/framework/customregistry.h"
+#endif
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -603,7 +605,13 @@ ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* opti
 
   API_IMPL_END
 }
-
+#ifdef USE_XNNPACK
+namespace onnxruntime {
+namespace xnnpack {
+Status GetXNNPackRegistry(CustomRegistry** xnnpack_registry);
+}
+}  // namespace onnxruntime
+#endif
 namespace {
 // provider either model_path, or modal_data + model_data_length.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
@@ -640,7 +648,11 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
-
+#ifdef USE_XNNPACK
+  CustomRegistry* reg = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::xnnpack::GetXNNPackRegistry(&reg));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterCustomRegistry(std::shared_ptr<CustomRegistry>(reg)));
+#endif
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {

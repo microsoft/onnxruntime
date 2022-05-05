@@ -82,7 +82,7 @@ bool ClipQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, con
 
 Status ClipQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   float min, max;
-  if (!optimizer_utils::GetClipConstantMinMax(graph, node, min, max)) {
+  if (!optimizer_utils::GetClipConstantMinMax(graph, node, min, max).IsOK()) {
     return Status::OK();
   }
 
