@@ -40,6 +40,12 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
+#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
+// instantiate global unused builder object which keeps the TRT kernel library in memory
+// so that subsequent builders avoid the expensive load / unload process.
+TensorrtLogger& GetTensorrtLogger();
+auto const trt_builder_placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
+#endif
 // Check if cycle exists in the graph after partitioning
 bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
   if (!visited[i]) {
@@ -247,12 +253,6 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   static OrtMutex singleton;
   return std::unique_lock<OrtMutex>(singleton);
 }
-
-#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
-// instantiate global unused builder object which keeps the TRT kernel library in memory
-// so that subsequent builders avoid the expensive load / unload process.
-auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
-#endif
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
