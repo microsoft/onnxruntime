@@ -1,3 +1,4 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -7,14 +8,14 @@
 
 namespace onnxruntime {
 namespace contrib {
-//NHWC ops
+// NHWC ops
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, NhwcMaxPool);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearGlobalAveragePool);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearConv);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, NhwcConv);
 
-//Quantization ops
+// Quantization ops
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DequantizeLinear);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DynamicQuantizeLSTM);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DynamicQuantizeMatMul);
@@ -32,7 +33,7 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearSigmoid);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QuantizeLinear);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, ReduceSumInteger);
 
-//Others
+// Others
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, Attention);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, BeamSearch);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, BiasDropout);
@@ -142,5 +143,62 @@ class OpSet_Microsoft_ver1 {
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, WordConvEmbedding)>());
   }
 };
+
+template <typename F>
+void RegisterNHWCSchema(F&& f, const ::ONNX_NAMESPACE::OpSchema& schema) {
+  f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
+                  .TypeAndShapeInferenceFunction([](InferenceContext&) {
+                    // optional. add if/when required.
+                    // if we load ONNX operators we have the shape inferencing from ONNX. the conversion to the NHWC
+                    // version will update those shapes. if you needed to save the model after conversion to
+                    // kMSInternalNHWCDomain NHWC operators you could either
+                    //   - add shape inferencing here (difficult), or
+                    //   - add the type/shape info for outputs of operators in the kMSInternalNHWCDomain to
+                    //     GraphProto.value_info in Graph::ToGraphProtoInternal to save the shape info with the model.
+                  })
+                  .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
+}
+
+template <typename F>
+void RegisterNHWCConvWithActivation(F&& f, const ::ONNX_NAMESPACE::OpSchema& schema) {
+  f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
+                  .Attr("activation", "", AttributeProto::STRING, OPTIONAL_VALUE)
+                  .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
+                  .TypeAndShapeInferenceFunction([](InferenceContext&) { /* optional. see comment in RegisterNHWCSchema. */ })
+                  .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
+}
+
+#define REGISTER_NHWC_SCHEMA(Op, SinceVersion) \
+  { RegisterNHWCSchema(                        \
+      fn,                                      \
+      ::ONNX_NAMESPACE::GetOpSchema<           \
+          ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>()); }
+
+#define REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(Op, SinceVersion) \
+  { RegisterNHWCConvWithActivation(                            \
+      fn,                                                      \
+      ::ONNX_NAMESPACE::GetOpSchema<                           \
+          ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>()); }
+
+// Schemas for ops that are NHWC versions of ONNX operators. They are created by the layout transformer by converting
+// the relevant input/outputs of a node between NCHW and NHWC, and moving the node to the kMSInternalNHWCDomain domain.
+class OpSet_Internal_NHWC_ver1 {
+ public:
+  static void ForEachSchema(std::function<void(ONNX_NAMESPACE::OpSchema&&)> fn) {
+    // if the operator may be fused with an activation, use the WITH_ACTIVATION variant to add optional attributes
+    // for the activation parameters.
+    REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(Conv, 1);
+    REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(Conv, 11);
+    REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 1);
+    REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 8);
+    REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 10);
+    REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 11);
+    REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 12);
+    // TODO: Add other layout sensitive ops when needed. Those are:
+    // QLinearConv, BatchNormalization, AveragePool, GlobalAveragePool, GlobalMaxPool, LRN, GridSample
+    // DepthToSpace, SpaceToDepth
+  }
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

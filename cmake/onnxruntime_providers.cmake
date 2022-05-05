@@ -152,7 +152,9 @@ endif()
 if (onnxruntime_USE_TVM)
   set(PROVIDERS_TVM onnxruntime_providers_tvm)
 endif()
-
+if (onnxruntime_USE_XNNPACK)
+  set(PROVIDERS_XNNPACK onnxruntime_providers_xnnpack)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -1440,6 +1442,45 @@ if (onnxruntime_USE_TVM)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS onnxruntime_providers_tvm
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+endif()
+
+if (onnxruntime_USE_XNNPACK)
+  add_compile_definitions(USE_XNNPACK=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_xnnpack_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"
+    # utils for handling QDQ models
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool
+  )
+
+  # TODO: is the -L param required?
+  # target_link_libraries(onnxruntime_providers_xnnpack -L$ENV{LD_LIBRARY_PATH})
+  add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
+  # ??? is this handled already by onnxruntime_add_include_to_target processing the XNNPACK target?
+  target_include_directories(onnxruntime_providers_xnnpack PRIVATE ${ONNXRUNTIME_ROOT} ${XNNPACK_INCLUDE_DIR})
+
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/xnnpack
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
+
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_xnnpack
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

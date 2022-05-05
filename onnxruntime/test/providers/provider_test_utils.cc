@@ -1019,6 +1019,7 @@ void OpTester::Run(
         kNnapiExecutionProvider,
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
+        kXnnpackExecutionProvider,
     };
 #endif
 
@@ -1112,6 +1113,9 @@ void OpTester::Run(
           execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
+        else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
+          execution_provider = DefaultXnnpackExecutionProvider();
+
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

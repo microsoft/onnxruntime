@@ -26,7 +26,6 @@
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
 
-
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
 #endif
@@ -222,7 +221,14 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, 1);
+
+      // we have static registrations for NHWC versions of ONNX operators so this domain needs to extend to the
+      // latest ONNX version
+      auto onnx_version = domainToVersionRangeInstance.LastReleaseVersionMap()
+                              .find(ONNX_NAMESPACE::ONNX_DOMAIN)
+                              ->second;
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, onnx_version);
+
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 #ifdef USE_DML
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
@@ -233,6 +239,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifndef ORT_MINIMAL_BUILD
       RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
       RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
+      RegisterOpSetSchema<contrib::OpSet_Internal_NHWC_ver1>();
 #endif
       contrib::RegisterContribSchemas();
 #endif

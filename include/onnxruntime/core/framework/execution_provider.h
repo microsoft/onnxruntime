@@ -14,7 +14,6 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-enum class DataLayout;
 class GraphViewer;
 class Node;
 struct ComputeCapability;
@@ -50,6 +49,12 @@ struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
   ComputeFunc compute_func;
   DestroyFunctionStateFunc release_state_func;
+};
+
+enum class DataLayout {
+  NCHW,
+  NHWC,
+  NCHWC,
 };
 
 class IExecutionProvider {
@@ -268,15 +273,15 @@ class IExecutionProvider {
     return logger_;
   }
 
-  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance. 
+  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance.
    The model hash is also returned if you wish to include that in the MetaDef name to ensure uniqueness across models.
    @param graph_viewer[in] Graph viewer that GetCapability was called with. Can be for the main graph or nested graph.
-   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model. 
-                          This is created using the model path if available, 
+   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model.
+                          This is created using the model path if available,
                           or the model input names and the output names from all nodes in the main graph.
    @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
             compiled kernels, so the name must be unique and deterministic across models and sessions.
-            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
+            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
@@ -302,7 +307,7 @@ class IExecutionProvider {
   const std::string type_;
   AllocatorMap allocators_;
   MemoryInfoSet mem_info_set_;  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
-  //It will be set when this object is registered to a session
+  // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_

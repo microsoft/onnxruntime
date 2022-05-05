@@ -17,12 +17,17 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#ifdef USE_XNNPACK
+#include "core/providers/xnnpack/xnnpack_execution_provider.h"
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
 namespace onnxruntime {
-
 namespace test {
+
+using namespace onnxruntime::internal_testing_ep;
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
@@ -149,6 +154,166 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
   ASSERT_FALSE(status.IsOK()) << "Initialize should have failed when trying to save model with compiled kernels";
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
 }
+
+TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "transform/fusion/conv_relu.onnx";
+
+  SessionOptions so;
+  InferenceSessionWrapper session(so, GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{"Conv", "Add", "Relu", "MaxPool"};
+  auto ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
+                                                               std::unordered_set<std::string>{},
+                                                               DataLayout::NHWC);
+  ep->EnableStaticKernels();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+
+  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  TensorShape input_shape_x{1, 1, 7, 7};
+  TensorShape input_shape_w{1, 1, 1, 1};
+  std::vector<float> input_x(input_shape_x.Size(), 1.f);
+  std::vector<float> input_w(input_shape_w.Size(), 1.f);
+  OrtValue ml_value_x;
+  OrtValue ml_value_w;
+  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+  CreateMLValue<float>(input_shape_w.GetDims(), input_w.data(), OrtMemoryInfo(), &ml_value_w);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("W", ml_value_w));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Z");
+  std::vector<OrtValue> fetches;
+
+  auto status = session.Run(feeds, output_names, &fetches);
+  // Error message should come from the Conv implementation with the statically registered kernel
+  ASSERT_THAT(status.ErrorMessage(),
+              ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
+                                   "Status Message: TODO: add NHWC implementation here."));
+}
+
+TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "TEMP/example_model.onnx";
+
+  SessionOptions so;
+  so.optimized_model_filepath = ORT_MODEL_FOLDER "TEMP/example_model.test_output.onnx";
+  InferenceSessionWrapper session(so, GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{"Conv" /*, "Clip"*/};
+  auto ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
+                                                               std::unordered_set<std::string>{},
+                                                               DataLayout::NHWC);
+  ep->EnableStaticKernels();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+
+  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+
+  // all Conv nodes should have been converted to NHWC versions and
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      ASSERT_EQ(node.Domain(), kMSInternalNHWCDomain);
+    }
+  }
+
+  TensorShape input_shape_x{1, 128, 128, 3};
+  std::vector<float> input_x(input_shape_x.Size(), 1.f);
+  OrtValue ml_value_x;
+  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("model_input", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("sequential");
+  std::vector<OrtValue> fetches;
+
+  auto status = session.Run(feeds, output_names, &fetches);
+  ASSERT_THAT(status.ErrorMessage(),
+              ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
+                                   "Status Message: TODO: add NHWC implementation here."));
+}
+
+// TEMPORARY test using production model using via the Xnnpack EP.
+// Model has standard and depthwise Conv nodes that can additionally be fused with Clip nodes
+#ifdef USE_XNNPACK
+static void XnnpackEPTest(bool use_xnnpack, OrtValue& output) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "TEMP/example_model.onnx";
+
+  SessionOptions so;
+  so.optimized_model_filepath = use_xnnpack ? ORT_MODEL_FOLDER "TEMP/example_model.test_output.xnnpack.onnx"
+                                            : ORT_MODEL_FOLDER "TEMP/example_model.test_output.onnx";
+
+  InferenceSessionWrapper session(so, GetEnvironment());
+
+  if (use_xnnpack) {
+    auto ep = std::make_unique<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{&so});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+  }
+
+  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+
+  if (use_xnnpack) {
+    // all Conv nodes should have been converted to NHWC versions and
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Conv") {
+        ASSERT_EQ(node.Domain(), kMSInternalNHWCDomain);
+      }
+    }
+  }
+
+  TensorShape input_shape_x{1, 128, 128, 3};
+  std::vector<float> input_x(input_shape_x.Size(), 1.f);
+  OrtValue ml_value_x;
+  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("model_input", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("sequential");
+  std::vector<OrtValue> fetches;
+
+  auto status = session.Run(feeds, output_names, &fetches);
+
+  const Tensor& result = fetches[0].Get<Tensor>();
+  const float* data = result.Data<float>();
+  for (int64_t cur = 0, end = result.Shape().Size(); cur < end; ++cur) {
+    std::cout << data[cur] << " ";
+  }
+  std::cout << "\n";
+
+  output = fetches[0];
+}
+
+TEST(XnnpackEP, RunProductionModelWithCpuAndXnnpack) {
+  OrtValue cpu_output;
+  OrtValue xnnpack_output;
+  XnnpackEPTest(true, cpu_output);
+  XnnpackEPTest(false, xnnpack_output);
+
+  const auto expected = cpu_output.Get<Tensor>().DataAsSpan<float>();
+  const auto actual = xnnpack_output.Get<Tensor>().DataAsSpan<float>();
+
+  ASSERT_EQ(expected.size(), actual.size());
+  for (size_t i = 0, end = expected.size(); i < end; ++i) {
+    ASSERT_NEAR(expected[i], actual[i], 0.0001f);
+  }
+}
+
+#endif
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 

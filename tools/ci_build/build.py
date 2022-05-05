@@ -628,6 +628,8 @@ def parse_arguments():
         cupti library must be added to PATH beforehand.",
     )
 
+    parser.add_argument("--use_xnnpack", action='store_true', help="Enable xnnpack EP.")
+
     args = parser.parse_args()
     if args.android_sdk_path:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
@@ -893,6 +895,7 @@ def generate_build_tree(
         + ("ON" if args.enable_external_custom_op_schemas else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
+        "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)

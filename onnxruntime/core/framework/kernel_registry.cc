@@ -110,7 +110,7 @@ class TypeBindingResolver {
   // being used by the node. e.g. if type constraint 'T' allows float and double, any input or output for that node
   // that has constraint 'T' must use the same type, be that float or double.
   //
-  // Also can resolve an input/output name to a contraint when a type constraint name is not used.
+  // Also can resolve an input/output name to a constraint when a type constraint name is not used.
   // e.g. the 'shape' input of Reshape has a directly specified constraint of 'tensor(int64)'.
   //
   // Returns the resolved TypeProto* or nullptr if unable to resolve due to the

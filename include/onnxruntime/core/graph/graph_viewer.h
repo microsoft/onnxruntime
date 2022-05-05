@@ -19,12 +19,6 @@ struct NodeCompare {
   bool operator()(const Node* n1, const Node* n2) const;
 };
 
-enum class DataLayout {
-  NCHW,
-  NHWC,
-  NCHWC,
-};
-
 /**
 @class GraphViewer
 Class that provides a read-only view of the Graph.
@@ -87,7 +81,7 @@ class GraphViewer {
   const std::vector<const NodeArg*>& GetOutputs() const noexcept;
 
   /** Returns true if one or more of the Node outputs are Graph outputs.
-  */
+   */
   bool NodeProducesGraphOutput(const Node& node) const;
 
   /** Gets all ValueInfo NodeArg instances in the Graph.

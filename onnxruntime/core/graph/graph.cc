@@ -598,7 +598,6 @@ Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const
 
 Status Node::InstantiateFunctionBody() {
   if (nullptr != func_body_) {
-    //already instantiated.
     return Status::OK();
   }
 
@@ -2553,8 +2552,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (node.since_version_ == -1) {
         node.since_version_ = node.op_->since_version();
       }
-    } 
-   
+    }
+
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
@@ -2913,7 +2912,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
   }
   return Status::OK();
 }
-#endif // DISABLE_EXTERNAL_INITIALIZERS
+#endif  // DISABLE_EXTERNAL_INITIALIZERS
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -3848,10 +3847,16 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
   // need to create the schema.
-  auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
-  fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
-  fused_node.op_ = fused_schemas_containers_.back().get();
-  fused_node.SetSinceVersion(fused_node.op_->SinceVersion());
+  //
+  // If the fusion is going to use an existing static kernel registration the required schema should already exist.
+  fused_node.SetSinceVersion(func_meta_def->since_version);
+  if (sub_graph.UseExistingSchema()) {
+    SetOpSchemaFromRegistryForNode(fused_node);
+  } else {
+    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
+    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+    fused_node.op_ = fused_schemas_containers_.back().get();
+  }
 #endif
   return fused_node;
 }
@@ -4066,10 +4071,10 @@ Status Graph::InlineFunction(Node& node) {
       }
 
       AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
-                               inputs,
-                               outputs,
-                               &subgraph_node.GetAttributes(),
-                               subgraph_node.Domain());
+              inputs,
+              outputs,
+              &subgraph_node.GetAttributes(),
+              subgraph_node.Domain());
     }
   }
 
