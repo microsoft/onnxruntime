@@ -64,7 +64,7 @@ In both OLive tool and the onnxruntime_perf_test.exe tool, you will get a JSON f
 
 ### Profiling CUDA Kernels
 
-To profile CUDA kernels, please add 'cupti' library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`. The performance numbers from device will then be attached to those from the host.
+To profile Compute Unified Device Architecture (CUDA) kernels, please add 'cupti' library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`. The performance numbers from device will then be attached to those from the host.
 
 **Single Kernel example:**
 
@@ -186,14 +186,14 @@ Memory consumption can be reduced between multiple sessions by configuring the s
 
 ### Mimalloc allocator
 
-OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
-- Depending on your model and usage mimalloc can deliver single - or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. mimalloc is a submodule in the OnnxRuntime source tree. 
+OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
+- Depending on your model and usage mimalloc can deliver single or double digit improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. mimalloc is a submodule in the OnnxRuntime source tree. 
 - On Windows, one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to OnnxRuntime. This would redirect OnnxRuntime allocators and all new/delete calls to mimalloc. Currently, there are no special provisions to employ mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
  
 ### Thread management
 
-Follow the best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to suit your ONNX Runtime environment.
-ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP.
+ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP. There are some best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to customize your ONNX Runtime environment.
+
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should
@@ -201,8 +201,9 @@ always be set using the ORT APIs.
 
 ### Custom threading callbacks
 
-Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
-hence ORT offers thread creation and joining callbacks by [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
+ORT offers thread creation and joining callbacks using [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h). This will allow customers to use their own fine-tuned threads for multithreading. 
+
+Here is a code sample for ORT custom threading in C++.
 
 ```c++
   std::vector<std::thread> threads;
@@ -238,7 +239,7 @@ hence ORT offers thread creation and joining callbacks by [C++ API](https://gith
   }
 ```
 
-For global thread pool:
+For ORT global thread pool in C++, here is a code sample:
 
 ```c++
   int main() {
@@ -253,13 +254,13 @@ For global thread pool:
   }
 ```
 
-Note that CreateThreadCustomized and JoinThreadCustomized, once being set, will be applied to both ORT intra op and inter op thread pools uniformly.
+Note that the CreateThreadCustomized and JoinThreadCustomized settings will be applied to both the ORT IntraOp and the InterOp thread pools uniformly.
 
 ### Default CPU Execution Provider (MLAS)
 
-The default execution provider uses different knobs to control the thread number.
+Microsoft Linear Algebra Subprogram (MLAS), the default execution provider, uses different knobs to control the thread number.
 
-For the default CPU execution provider, you can try the following knobs in the Python API:
+Here is a sample Python API code for the default CPU Execution Provider (MLAS).
 
 ```python
 import onnxruntime as rt
@@ -281,7 +282,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 ### MKL_DNN/nGraph Execution Provider
 
-MKL_DNN and nGraph depend on OpenMp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance. The most widely used environment variables are:
+MKL_DNN (Math Kernel Library for Deep Neural Networks) and nGraph (C++ library for DNN) depend on OpenMp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance. The most widely used environment variables are:
 
 * OMP_NUM_THREADS=n
   * Controls the thread pool size
