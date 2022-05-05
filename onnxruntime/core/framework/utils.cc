@@ -618,10 +618,21 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       p_fetches = &device_fetches;
     }
 
-    ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
-                                        feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
-                                        feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                        logger));
+    // no device copies are needed so simple execute
+    if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+      ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
+                                          feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
+                                          feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
+                                          logger));
+    } else {
+      auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
+
+      auto ret = paral_plan->Execute(session_state,
+                                     feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
+                                     feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
+                                     logger);
+      ORT_RETURN_IF_ERROR(ret);
+    }
     
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));

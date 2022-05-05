@@ -15,7 +15,7 @@ using StreamHandle = void*;
 // EP can register the handle to the executor.
 // in the POC, just use primitive function pointer
 // TODO: use a better way to dispatch handles.
-using WaitNotificationFn = std::function<void(NotificationHandle&)>;
+using WaitNotificationFn = std::function<void(StreamHandle, NotificationHandle&)>;
 using NotifyNotificationFn = std::function<void(NotificationHandle&)>;
 using CreateNotificationFn = std::function<NotificationHandle(const StreamHandle&)>;
 using ReleaseNotificationFn = std::function<void(NotificationHandle)>;

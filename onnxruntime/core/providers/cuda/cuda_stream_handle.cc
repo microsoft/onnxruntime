@@ -7,12 +7,12 @@ namespace onnxruntime {
 struct CudaNotification {
   void notify() { 
     // record event with cudaEventBlockingSync so we can support sync on host with out busy wait.
-    CUDA_CALL_THROW(cudaEventRecordWithFlags(event_, stream_, cudaEventBlockingSync));
+    CUDA_CALL_THROW(cudaEventRecord(event_, stream_));
     //activate the notification.
     ready_.store(true); 
   };
 
-  void wait_on_device() {
+  void wait_on_device(cudaStream_t device_stream) {
     // wait for the notification to be activated
     while (!ready_.load()) {
       onnxruntime::concurrency::SpinPause();
@@ -31,7 +31,7 @@ struct CudaNotification {
   }
 
   CudaNotification::CudaNotification(cudaStream_t stream) : stream_(stream) {
-    CUDA_CALL_THROW(cudaEventCreate(&event_));
+    CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
   }
 
   ~CudaNotification() {
@@ -44,11 +44,11 @@ struct CudaNotification {
 };
 
 // CPU Stream command handles
-void WaitCudaNotificationOnDevice(NotificationHandle& notification) {
-  static_cast<CudaNotification*>(notification)->wait_on_device();
+void WaitCudaNotificationOnDevice(StreamHandle stream, NotificationHandle& notification) {
+  static_cast<CudaNotification*>(notification)->wait_on_device(static_cast<cudaStream_t>(stream));
 }
 
-void WaitCudaNotificationOnHost(NotificationHandle& notification) {
+void WaitCudaNotificationOnHost(StreamHandle /*stream*/, NotificationHandle& notification) {
   static_cast<CudaNotification*>(notification)->wait_on_host();
 }
 

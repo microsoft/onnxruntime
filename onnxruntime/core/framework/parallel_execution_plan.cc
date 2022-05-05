@@ -224,8 +224,9 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           // push a wait command
           auto wait_handle = GetStreamHandleRegistryInstance().GetWaitHandle(notification_owners_[notfication_it->second], node->GetExecutionProviderType());
           NotificationIndex notification_index = notfication_it->second;
-          logic_streams_[i]->commands_.push_back([wait_handle, notification_index](ExecutionContext& ctx) {
-            wait_handle(ctx.notifications[notification_index].handle);
+          auto* cur_stream = node_to_stream_map_[node_index];
+          logic_streams_[i]->commands_.push_back([wait_handle, cur_stream, notification_index](ExecutionContext& ctx) {
+            wait_handle(cur_stream, ctx.notifications[notification_index].handle);
           });
         }
       }

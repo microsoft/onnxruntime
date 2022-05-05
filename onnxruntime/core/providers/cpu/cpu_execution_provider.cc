@@ -2168,7 +2168,7 @@ struct CPUNotification {
 };
 
 // CPU Stream command handles
-void WaitCPUNotification(NotificationHandle& notification) {
+void WaitCPUNotification(StreamHandle, NotificationHandle& notification) {
   static_cast<CPUNotification*>(notification)->wait();
 }
 
