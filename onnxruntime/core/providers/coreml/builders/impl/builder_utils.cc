@@ -96,7 +96,7 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
-    auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
+    auto num_elements = SafeInt<size_t>(ShapeSize(tensor.dims()));
     CreateCoreMLWeight(weight, reinterpret_cast<const float*>(unpacked_tensor.data()), num_elements);
   } else {
     // TODO: support other type

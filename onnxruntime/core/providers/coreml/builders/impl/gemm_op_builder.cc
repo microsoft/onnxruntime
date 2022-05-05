@@ -145,7 +145,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       return false;
     }
 
-    if (Product(a_shape) == 0) {
+    if (ShapeSize(a_shape) == 0) {
       LOGS(logger, VERBOSE) << "A must be non-empty";
       return false;
     }
@@ -161,7 +161,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       return false;
     }
 
-    if (Product(b_shape) == 0) {
+    if (ShapeSize(b_shape) == 0) {
       LOGS(logger, VERBOSE) << "B must be non-empty";
       return false;
     }
