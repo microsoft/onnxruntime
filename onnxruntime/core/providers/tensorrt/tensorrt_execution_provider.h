@@ -106,7 +106,7 @@ struct TensorrtFuncState {
   AllocatorPtr scratch_allocator;
   bool context_memory_sharing_enable;
   size_t* max_context_mem_size_ptr = nullptr;
-  void** context_mem = nullptr;
+  void** context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
