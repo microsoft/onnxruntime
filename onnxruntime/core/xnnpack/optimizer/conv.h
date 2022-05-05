@@ -3,14 +3,18 @@
 
 #pragma once
 
-#include <unordered_map>
-#include <core/graph/graph.h>
+#include <onnx/onnx_pb.h>
+
+#include "core/xnnpack/optimizer/layout_helper.h"
 
 namespace onnxruntime {
-Status IsConvSupportedByXNNPack(const Node& nodeRef, const std::unordered_set<const NodeArg*>& graph_const_values,
-                                bool input_is_nchw);
-Status ReplaceConv(
-    const Node& nodeRef,
-    const std::unordered_set<const NodeArg*>& graph_const_values, std::unique_ptr<::ONNX_NAMESPACE::GraphProto>& output_graph);
+namespace xnnpack {
+class ConvNodeProcessor : public NodeProcessor {
+ public:
+  ConvNodeProcessor(const Node& node, const std::unordered_set<const NodeArg*>& graph_const_values)
+      : NodeProcessor(node, graph_const_values) {}
+  Status Generate(std::unique_ptr<::ONNX_NAMESPACE::GraphProto>& output_graph) override;
+};
+}  // namespace xnnpack
 
 }  // namespace onnxruntime

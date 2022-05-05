@@ -15,15 +15,27 @@
 #include "core/optimizer/utils.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/xnnpack/optimizer/common.h"
-#include "core/xnnpack/optimizer/maxpool.h"
 #include "core/xnnpack/optimizer/conv.h"
-#include "core/xnnpack/optimizer/trival_subgraph.h"
+#include "core/xnnpack/optimizer/maxpool.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 using namespace onnx_layout_transformation;
+using namespace onnxruntime::xnnpack;
+
+#define DEFINE_PROCESSOR(DOMAIN, OP_TYPE, CLASS_NAME)                                                               \
+  processors_[std::make_pair(DOMAIN, OP_TYPE)] = [](const Node& node,                                               \
+                                                    const std::unordered_set<const NodeArg*>& graph_const_values) { \
+    return new CLASS_NAME##NodeProcessor(node, graph_const_values);                                                 \
+  };
 
 namespace onnxruntime {
+
+XNNPackTransformer::XNNPackTransformer(AllocatorPtr cpu_allocator) noexcept
+    : GraphTransformer("XNNPackTransformer"), cpu_allocator_(std::move(cpu_allocator)) {
+  DEFINE_PROCESSOR(kOnnxDomain, "Conv", Conv);
+  DEFINE_PROCESSOR(kOnnxDomain, "MaxPool", MaxPool);
+};
 
 Status XNNPackTransformer::ApplyImpl(Graph& main_graph, bool& modified, int graph_level,
                                      const logging::Logger& logger) const {
@@ -65,35 +77,34 @@ Status XNNPackTransformer::ApplyImpl(Graph& main_graph, bool& modified, int grap
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
 
-  std::vector<Node*> updated_nodes;
-  // Iterate all the nodes first to figure out what can be run by XNNPack. Then we will update the selected nodes one by
-  // one. However, there could be chance that in the first pass we thought a node is supported by XNNPack, then we did
-  // some updates on the graph which break the assumption. For example, if there is a Maxpool followd by a Conv. At
-  // first, the input channel of Conv is known, then we replaced ONNX Maxpool with XNNPack Maxpool and run shape
-  // inference again. Assume the XNNPack maxpool shape inference didn't do a great job and lost of information of the
-  // output channel dim of the Maxpool, then this transformer would failed to update ONNX Conv to XNNPack Conv because
-  // the later one expects the input channel should be known. So the shape inference functions of XNNPack schemas play a
-  // key role here.
+  std::unordered_map<Node*, std::unique_ptr<::ONNX_NAMESPACE::GraphProto>> updated_nodes;
+  Status st;
   for (auto& nodeRef : gv.Nodes()) {
     auto inputs = nodeRef.InputDefs();
     auto iter_end = nodeRef.InputEdgesEnd();
     if (nodeRef.OpType() == "DequantizeLinear") {
       return Status::OK();
     }
-    std::unique_ptr<::ONNX_NAMESPACE::GraphProto> subgraph;
-    Status st = ReplaceMaxPool(nodeRef, subgraph);
-    if (!st.IsOK() || !subgraph) {
-      st = ReplaceConv(nodeRef, graph_const_values, subgraph);
+    auto iter =
+        processors_.find(std::make_pair<std::string_view, std::string_view>(nodeRef.Domain(), nodeRef.OpType()));
+    if (iter != processors_.end()) {
+      std::unique_ptr<::ONNX_NAMESPACE::GraphProto> subgraph;
+      std::unique_ptr<NodeProcessor> p(iter->second(nodeRef, graph_const_values));
+      st = p->Generate(subgraph);
+      if (st.IsOK()) {
+        if (subgraph) {
+          Node* node_p = main_graph.GetNode(nodeRef.Index());
+          if (node_p == nullptr) continue;
+          updated_nodes[node_p] = std::move(subgraph);
+        }
+      } else {
+        LOGS(logger, INFO) << "Convert node failed: " << st.ErrorMessage();
+      }
     }
-    if (st.IsOK() && subgraph.get() != nullptr) {
-      Node* node_p = main_graph.GetNode(nodeRef.Index());
-      if (node_p == nullptr) continue;
-      node_p->SetFunctionBody(std::make_unique<TrivalSubgraph>(main_graph, nodeRef, std::move(subgraph)));
-      updated_nodes.push_back(node_p);
-    }    
   }
-  for (Node* node_p : updated_nodes) {
-    ORT_RETURN_IF_ERROR(main_graph.InlineFunction(*node_p));
+  for (auto& tvp : updated_nodes) {
+    Node* node_p = tvp.first;
+    ORT_RETURN_IF_ERROR(main_graph.ReplaceNodeWithSubgraph(*node_p, std::move(tvp.second)));
   }
   modified = !updated_nodes.empty();
   if (modified) {

@@ -6,6 +6,7 @@
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
+namespace xnnpack {
 Status CreateTransposeNode(::ONNX_NAMESPACE::NodeProto& node, const std::string& node_name,
                            const std::string& input_name, const std::string& output_name,
                            const std::vector<int64_t>& perm) {
@@ -20,4 +21,5 @@ Status CreateTransposeNode(::ONNX_NAMESPACE::NodeProto& node, const std::string&
   node.add_output(output_name);
   return Status::OK();
 }
+}  // namespace xnnpack
 }  // namespace onnxruntime

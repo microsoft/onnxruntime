@@ -8,7 +8,7 @@ if (onnxruntime_USE_XNNPACK)
   onnxruntime_add_static_library(onnxruntime_xnnpack_optimizer ${XNNPACK_OPT_SRC}/xnnpack_transformer.cc
                                  ${XNNPACK_OPT_SRC}/layout_helper.cc ${XNNPACK_OPT_SRC}/maxpool.cc
                                  ${XNNPACK_OPT_SRC}/maxpool.h ${XNNPACK_OPT_SRC}/layout_helper.h
-                                 ${XNNPACK_OPT_SRC}/conv.h ${XNNPACK_OPT_SRC}/conv.cc
+                                 ${XNNPACK_OPT_SRC}/conv.h ${XNNPACK_OPT_SRC}/conv.cc ${XNNPACK_OPT_SRC}/common.h
                                  ${XNNPACK_OPT_SRC}/xnnpack_transformer.h)
   onnxruntime_add_include_to_target(onnxruntime_xnnpack_optimizer onnxruntime_xnnpack_schemas onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB})
   set(ONNXRUNTIME_XNNPACK_OPTIMIZER_LIBRARY onnxruntime_xnnpack_optimizer)

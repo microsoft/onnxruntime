@@ -4,13 +4,18 @@
 #pragma once
 
 #include <onnx/onnx_pb.h>
-#include "core/common/common.h"
+
+#include "core/xnnpack/optimizer/layout_helper.h"
 
 namespace onnxruntime {
-class Graph;
-class Node;
+namespace xnnpack {
+class MaxPoolNodeProcessor : public NodeProcessor {
+ public:
+  MaxPoolNodeProcessor(const Node& node, const std::unordered_set<const NodeArg*>& graph_const_values)
+      : NodeProcessor(node, graph_const_values) {}	
+  Status Generate(std::unique_ptr<::ONNX_NAMESPACE::GraphProto>& output_graph) override;
+};
+}  // namespace xnnpack
 
-bool IsMaxPoolSupportedByXNNPack(const Node& nodeRef, bool input_is_nchw);
-Status ReplaceMaxPool(const Node& nodeRef, std::unique_ptr<::ONNX_NAMESPACE::GraphProto>& output_graph);
 
 }  // namespace onnxruntime

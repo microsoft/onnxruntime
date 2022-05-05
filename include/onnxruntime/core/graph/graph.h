@@ -177,7 +177,6 @@ class Node {
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_.get(); }
-  void SetFunctionBody(std::unique_ptr<Function> f) noexcept { func_body_ = std::move(f); }
 #endif
 
   /**
@@ -1125,7 +1124,8 @@ class Graph {
   @returns Status indicating success or providing an error message.
   */
   Status InlineFunction(Node& node);
-
+  Status ReplaceNodeWithSubgraph(Node& node, const Graph& subgraph);
+  Status ReplaceNodeWithSubgraph(Node& node, std::unique_ptr<::ONNX_NAMESPACE::GraphProto> subgraph);
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to

@@ -4036,12 +4036,7 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
   return fused_node;
 }
 
-Status Graph::InlineFunction(Node& node) {
-  // Remove the function node, add the nodes in function's subgraph into the
-  // main graph.
-  if (!node.GetFunctionBody())
-    ORT_RETURN_IF_ERROR(node.InstantiateFunctionBody());
-  const Graph& subgraph = node.GetFunctionBody()->Body();
+Status Graph::ReplaceNodeWithSubgraph(Node& node, const Graph& subgraph) {
   auto output_edges = node.GetRelationships().output_edges;
   for (const auto& output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
@@ -4133,10 +4128,10 @@ Status Graph::InlineFunction(Node& node) {
       }
 
       AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
-                               inputs,
-                               outputs,
-                               &subgraph_node.GetAttributes(),
-                               subgraph_node.Domain());
+              inputs,
+              outputs,
+              &subgraph_node.GetAttributes(),
+              subgraph_node.Domain());
     }
   }
 
@@ -4144,6 +4139,19 @@ Status Graph::InlineFunction(Node& node) {
 
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
+}
+
+Status Graph::ReplaceNodeWithSubgraph(Node& node, std::unique_ptr<::ONNX_NAMESPACE::GraphProto> subgraph) {
+  return ReplaceNodeWithSubgraph(node, Graph(*this, node, *subgraph));
+}
+
+Status Graph::InlineFunction(Node& node) {
+  // Remove the function node, add the nodes in function's subgraph into the
+  // main graph.
+  if (!node.GetFunctionBody())
+    ORT_RETURN_IF_ERROR(node.InstantiateFunctionBody());
+  const Graph& subgraph = node.GetFunctionBody()->Body();
+  return ReplaceNodeWithSubgraph(node, subgraph);
 }
 
 void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
