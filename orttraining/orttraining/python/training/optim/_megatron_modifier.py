@@ -14,6 +14,7 @@ import warnings
 from numpy import inf
 from ._modifier import FP16OptimizerModifier, check_overflow, clip_grad_norm_fp32
 
+
 class LegacyMegatronLMModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
         super().__init__(optimizer)
@@ -21,11 +22,13 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
         self.get_horizontal_model_parallel_group = kwargs.get("get_horizontal_model_parallel_group", None)
 
     def can_be_modified(self):
-        return self.check_requirements(["_check_overflow", "clip_master_grads"],
-                                       require_apex=True, require_torch_non_finite_check=True)
+        return self.check_requirements(
+            ["_check_overflow", "clip_master_grads"], require_apex=True, require_torch_non_finite_check=True
+        )
 
     def override_function(self):
-        warnings.warn('Megatron-LM fp16_optimizer functions are overrided with faster implementation.', UserWarning)
+        warnings.warn("Megatron-LM fp16_optimizer functions are overrided with faster implementation.", UserWarning)
+
         def clip_master_grads(target, max_norm, norm_type=2):
             """
             Clips fp32 master gradients via ``torch.nn.utils.clip_grad_norm``.
@@ -44,16 +47,20 @@ class LegacyMegatronLMModifier(FP16OptimizerModifier):
             if not target.overflow:
                 fp32_params = []
                 for param_group in target.optimizer.param_groups:
-                    for param in param_group['params']:
+                    for param in param_group["params"]:
                         fp32_params.append(param)
                 #### THIS IS THE ORIGINAL IMPLEMENTATION ####
-                #return self.clip_grad_norm(fp32_params, max_norm, norm_type)
+                # return self.clip_grad_norm(fp32_params, max_norm, norm_type)
                 #### END OF THE ORIGINAL IMPLEMENTATION ####
 
                 #### THIS IS THE FASTER IMPLEMENTATION ####
-                return clip_grad_norm_fp32(fp32_params, max_norm, norm_type, 
-                                            get_horizontal_model_parallel_rank=self.get_horizontal_model_parallel_rank,
-                                            get_horizontal_model_parallel_group=self.get_horizontal_model_parallel_group)
+                return clip_grad_norm_fp32(
+                    fp32_params,
+                    max_norm,
+                    norm_type,
+                    get_horizontal_model_parallel_rank=self.get_horizontal_model_parallel_rank,
+                    get_horizontal_model_parallel_group=self.get_horizontal_model_parallel_group,
+                )
                 #### END OF THE FASTER IMPLEMENTATION ####
             else:
                 return -1

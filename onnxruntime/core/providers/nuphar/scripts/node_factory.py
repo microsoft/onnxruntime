@@ -1,19 +1,22 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import json
+import re
+
 # -*- coding: UTF-8 -*-
 from enum import Enum
-import json
+
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
-import re
+
 
 class NodeFactory:
     node_count_ = 0
     const_count_ = 0
 
-    def __init__(self, main_graph, sub_graph=None, prefix=''):
+    def __init__(self, main_graph, sub_graph=None, prefix=""):
         self.graph_ = sub_graph if sub_graph else main_graph
         self.main_graph_ = main_graph
         self.name_prefix_ = prefix
@@ -91,15 +94,17 @@ class NodeFactory:
 
         value_info.CopyFrom(helper.make_tensor_value_info(name, data_type, shape))
 
-    def make_initializer(self, ndarray, name='', in_main_graph=False):
+    def make_initializer(self, ndarray, name="", in_main_graph=False):
         new_initializer = (self.main_graph_ if in_main_graph else self.graph_).initializer.add()
         new_name = name
         if len(new_name) == 0:
             already_existed = True
             while already_existed:
-                new_name = self.name_prefix_ + '_Const_' + str(NodeFactory.const_count_)
+                new_name = self.name_prefix_ + "_Const_" + str(NodeFactory.const_count_)
                 NodeFactory.const_count_ = NodeFactory.const_count_ + 1
-                already_existed = new_name in [i.name for i in list(self.main_graph_.initializer) + list(self.graph_.initializer)]
+                already_existed = new_name in [
+                    i.name for i in list(self.main_graph_.initializer) + list(self.graph_.initializer)
+                ]
         new_initializer.CopyFrom(numpy_helper.from_array(ndarray, new_name))
         return new_initializer
 
@@ -118,12 +123,12 @@ class NodeFactory:
                 new_initializer = self.make_initializer(i)
                 input_names.append(new_initializer.name)
             else:
-                assert False # unexpected type in input
+                assert False  # unexpected type in input
 
         if not node:
             node = self.graph_.node.add()
 
-        name = self.name_prefix_ + op_type + '_' + str(NodeFactory.node_count_)
+        name = self.name_prefix_ + op_type + "_" + str(NodeFactory.node_count_)
         NodeFactory.node_count_ = NodeFactory.node_count_ + 1
 
         if not output_names:
@@ -134,9 +139,9 @@ class NodeFactory:
 
     # Squeeze/Unsqueeze/ReduceSum changed axes to input[1] in opset 13
     def make_node_with_axes(self, op_type, input, axes, onnx_opset_ver, attributes={}, output_names=None):
-        assert op_type in ['Squeeze', 'Unsqueeze', 'ReduceSum']
+        assert op_type in ["Squeeze", "Unsqueeze", "ReduceSum"]
         if onnx_opset_ver < 13:
-            attributes.update({'axes':axes})
+            attributes.update({"axes": axes})
             return self.make_node(op_type, input, attributes=attributes, output_names=output_names)
         else:
             axes = np.asarray(axes).astype(np.int64)
@@ -149,13 +154,14 @@ class NodeFactory:
     # Split changed split to input[1] in opset 13
     def make_split_node(self, input, split, onnx_opset_ver, attributes, output_names=None):
         if onnx_opset_ver < 13:
-            attributes.update({'split':split})
-            return self.make_node('Split', input, attributes=attributes, output_names=output_names)
+            attributes.update({"split": split})
+            return self.make_node("Split", input, attributes=attributes, output_names=output_names)
         else:
             split = np.asarray(split).astype(np.int64)
-            return self.make_node('Split', [input, split], attributes=attributes, output_names=output_names)
+            return self.make_node("Split", [input, split], attributes=attributes, output_names=output_names)
 
-def ensure_opset(mp, ver, domains=['onnx', '']):
+
+def ensure_opset(mp, ver, domains=["onnx", ""]):
     if type(domains) == str:
         domains = [domains]
     assert type(domains) == list

@@ -3,22 +3,25 @@
 # Licensed under the MIT License.
 
 import argparse
-import onnx
 import os
 import pathlib
+
+import onnx
 
 from .qdq_model_utils import fix_dq_nodes_with_multiple_consumers
 
 
 def optimize_qdq_model():
-    parser = argparse.ArgumentParser(os.path.basename(__file__),
-                                     description='''
+    parser = argparse.ArgumentParser(
+        os.path.basename(__file__),
+        description="""
                                      Update a QDQ format ONNX model to ensure optimal performance when executed using
                                      ONNX Runtime.
-                                     ''')
+                                     """,
+    )
 
-    parser.add_argument('input_model', type=pathlib.Path, help='Provide path to ONNX model to update.')
-    parser.add_argument('output_model', type=pathlib.Path, help='Provide path to write updated ONNX model to.')
+    parser.add_argument("input_model", type=pathlib.Path, help="Provide path to ONNX model to update.")
+    parser.add_argument("output_model", type=pathlib.Path, help="Provide path to write updated ONNX model to.")
 
     args = parser.parse_args()
 
@@ -30,5 +33,5 @@ def optimize_qdq_model():
     onnx.save(model, str(args.output_model.resolve()))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     optimize_qdq_model()

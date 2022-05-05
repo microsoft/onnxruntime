@@ -78,49 +78,62 @@ void RegisterSignalSchemas() {
             static_cast<int64_t>(0))
       .Input(0,
              "input",
-             "For real input, the following shape is expected: [batch_idx][n_fft]."
-             "For complex input, the following shape is expected: [batch_idx][n_fft][2]." 
-             "The final dimension represents the real and imaginary parts of the value."
              "For real multi-dimensional input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][1]."
              "For complex multi-dimensional input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]."
-             "The first dimension is the batch dimension.",
-             "T")
+             "The first dimension is the batch dimension."
+             "The final dimension represents the real and imaginary parts of the value.",
+             "T1")
+      .Input(1,
+             "dft_length",
+             "The length of the signal."
+             "If greater than the axis dimension, the signal will be zero-padded up to dft_length. "
+             "If less than the axis dimension, only the first dft_length values will be used as the signal. "
+             "It's an optional value. ",
+             "T2",
+             OpSchema::Optional,
+             true,
+             1,
+             OpSchema::NonDifferentiable)
       .Output(0,
               "output",
               "The Fourier Transform of the input vector."
-              "If signal_dimN = 1, and onesided is 0, [batch_idx][n_fft][2]"
-              "If signal_dimN = 1, and onesided is 1, [batch_idx][floor(n_fft/2)+1][2]" 
-              "If signal_dimN = 2, and onesided is 0 and axis = 0, [batch_idx][signal_dim1][signal_dim2][2]"
-              "If signal_dimN = 2, and onesided is 0 and axis = 1, [batch_idx][signal_dim1][signal_dim2][2]"
-              "If signal_dimN = 2, and onesided is 1 and axis = 0, [batch_idx][floor(signal_dim1/2)+1][signal_dim2][2]"
-              "If signal_dimN = 2, and onesided is 1 and axis = 1, [batch_idx][signal_dim1][floor(signal_dim2/2)+1][2]",
-              "T")
+              "The signal_dim at the specified axis is equal to the dft_length."
+              "If onesided is 0, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]."
+              "If axis=0 and onesided is 1, the following shape is expected: [batch_idx][floor(signal_dim1/2)+1][signal_dim2]...[signal_dimN][2]."
+              "If axis=1 and onesided is 1, the following shape is expected: [batch_idx][signal_dim1][floor(signal_dim2/2)+1]...[signal_dimN][2]."
+              "If axis=N-1 and onesided is 1, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[floor(signal_dimN/2)+1][2].",
+              "T1")
       .TypeConstraint(
-          "T",
+          "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int64)"},
+          "Constrain scalar length types to int64_t.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           const int64_t batch_ndim = 1;
 
           auto& input_shape = getInputShape(ctx, 0);
           auto dim_size = static_cast<int64_t>(input_shape.dim_size());
-          auto has_component_dimension = dim_size > 2; 
+          auto has_component_dimension = dim_size > 2;
 
           ONNX_NAMESPACE::TensorShapeProto result_shape_proto = input_shape;
-          
+
+          bool axis = static_cast<bool>(getAttribute(ctx, "axis", 0));
           bool is_onesided = static_cast<bool>(getAttribute(ctx, "onesided", 0));
           if (is_onesided) {
               // Since signal_ndim = 1, and multidimensional DFT is not supported,
               // only the single signal dim (1) needs to be updated
-              auto n_fft = input_shape.dim(1).dim_value();
-              result_shape_proto.mutable_dim(1)->set_dim_value((n_fft >> 1) + 1);
+              auto n_fft = input_shape.dim(1 + axis).dim_value();
+              result_shape_proto.mutable_dim(1 + axis)->set_dim_value((n_fft >> 1) + 1);
           }
-  
+
           if (has_component_dimension) {
-            result_shape_proto.mutable_dim(static_cast<int>(dim_size - 1))->set_dim_value(2);
+              result_shape_proto.mutable_dim(static_cast<int>(dim_size - 1))->set_dim_value(2);
           } else {
-            result_shape_proto.add_dim()->set_dim_value(2);  
+              result_shape_proto.add_dim()->set_dim_value(2);
           }
 
           updateOutputShape(ctx, 0, result_shape_proto);
@@ -137,42 +150,54 @@ void RegisterSignalSchemas() {
             static_cast<int64_t>(0))
       .Input(0,
              "input",
-             "For real input, the following shape is expected: [batch_idx][n_fft]."
-             "For complex input, the following shape is expected: [batch_idx][n_fft][2]." 
-             "The final dimension represents the real and imaginary parts of the value."
              "For real multi-dimensional input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][1]."
              "For complex multi-dimensional input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]."
-             "The first dimension is the batch dimension.",
-             "T")
+             "The first dimension is the batch dimension."
+             "The final dimension represents the real and imaginary parts of the value.",
+             "T1")
+      .Input(1,
+             "dft_length",
+             "The length of the signal."
+             "If greater than the axis dimension, the signal will be zero-padded up to dft_length. "
+             "If less than the axis dimension, only the first dft_length values will be used as the signal. "
+             "It's an optional value. ",
+             "T2",
+             OpSchema::Optional,
+             true,
+             1,
+             OpSchema::NonDifferentiable)
       .Output(0,
               "output",
               "The inverse discrete Fourier transform of the input. "
-              "If signal_dimN = 1, [batch_idx][n_fft][2]"
-              "If signal_dimN = 2 and axis = 0, [batch_idx][signal_dim1][signal_dim2][2]"
-              "If signal_dimN = 2 and axis = 1, [batch_idx][signal_dim1][signal_dim2][2]"
+              "The signal_dim at the specified axis is equal to the dft_length."
+              "The expected shape is [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]"
               "For all types of input, the last dimension of the output represents the components of a complex number.",
-              "T",
+              "T1",
               OpSchema::Single,
               true,
               1,
               OpSchema::NonDifferentiable)
       .TypeConstraint(
-                "T",
+                "T1",
                 {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                 "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+                "T2",
+                {"tensor(int64)"},
+                "Constrain scalar length types to int64_t.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                 propagateElemTypeFromInputToOutput(ctx, 0, 0);
                 const int64_t batch_ndim = 1;
-                
+
                 auto& input_shape = getInputShape(ctx, 0);
                 ONNX_NAMESPACE::TensorShapeProto result_shape = input_shape;
                 auto dim_size = static_cast<int64_t>(input_shape.dim_size());
-                auto has_component_dimension = dim_size > 2; 
+                auto has_component_dimension = dim_size > 2;
 
                 if (has_component_dimension) {
                   result_shape.mutable_dim(static_cast<int>(dim_size - 1))->set_dim_value(2);
                 } else {
-                  result_shape.add_dim()->set_dim_value(2);  
+                  result_shape.add_dim()->set_dim_value(2);
                 }
 
                 updateOutputShape(ctx, 0, result_shape);
