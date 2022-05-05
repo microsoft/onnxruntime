@@ -1498,7 +1498,7 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   bool use_nchw = model_builder.UseNCHW();
   ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
 
-  const auto blocksize = helper.Get("blocksize", 2);
+  const auto blocksize = node_unit.GetNode().GetAttributes().at("blocksize").i();
 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
