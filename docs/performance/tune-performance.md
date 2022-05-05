@@ -178,26 +178,25 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 
 ## Tips for tuning performance
 
-Here are some suggestions for things to try for various Execution Providers for tuning performance.
+Here are some suggestions for tuning performance of ORT using different Execution Providers.
 
-### Shared arena based allocator
+### Shared arena-based allocator
 
-Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
+Memory consumption can be reduced between multiple sessions by configuring the shared arena-based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
 ### Mimalloc allocator
 
-OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
-- Depending on your model and usage mimalloc can deliver single or double digit improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. mimalloc is a submodule in the OnnxRuntime source tree. 
+OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
+- Depending on your model and usage mimalloc can deliver single- or double-digit improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. mimalloc is a submodule in the OnnxRuntime source tree. 
 - On Windows, one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to OnnxRuntime. This would redirect OnnxRuntime allocators and all new/delete calls to mimalloc. Currently, there are no special provisions to employ mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
  
 ### Thread management
 
 ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP. There are some best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to customize your ONNX Runtime environment.
 
-* If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
-* If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
-* InterOp num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should
-always be set using the ORT APIs.
+* If ORT is built with OpenMP, use the OpenMP env variable to control the number of IntraOp num threads.
+* If ORT is not built with OpenMP, use the appropriate ORT API to control IntraOp num threads.
+* InterOp num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should always be set using the ORT APIs.
 
 ### Custom threading callbacks
 
@@ -296,7 +295,7 @@ MKL_DNN (Math Kernel Library for Deep Neural Networks) and nGraph (C++ library f
 ### IOBinding
 
 * When working with non-CPU execution providers, it is most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling Run). When the input is not copied to the target device, ORT copies it from the CPU as part of the Run() call.
-* Similarly, if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when the majority of the time is spent in these copies. To address this issue, we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run().
+* Similarly, if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when most of the time is spent in these copies. To address this issue, we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run().
 
 IOBinding is available in all the ORT language bindings. Here are the code snippets in various languages demonstrating the usage of this feature.
 
@@ -376,9 +375,11 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 
 ### Convolution Input Padding in the CUDA EP
 
-ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor. 
+ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor.
 
-Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be a lot different because different convolution algorithms are selected, especially, on some devices such as A100. By default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as shown below) if [N, C, 1, D] is preferred.
+Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. Both padding ways produce the same output.
+
+However, the performance may differ due to the convolution algorithms selected, especially, on some devices such as A100. By default, the input is padded to [N, C, D, 1]. If [N, C, 1, D] is required, a provider option named `cudnn_conv1d_pad_to_nc1d` needs to be set (as shown below).
 
 * Python
 
@@ -433,9 +434,9 @@ While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://develop
 
 4. Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
 
-5. By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to (please refer the code samples given below)
+5. By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to (please refer the code samples given below)
 
-6. While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
+6. While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is because of the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
 
 7. Multi-threaded usage is not supported currently, that is, `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
 
@@ -559,7 +560,7 @@ Here is a checklist to troubleshoot ORT performance.
 
 1. Are you using OpenMP? - OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
 2. Have you enabled all [graph optimizations](graph-optimizations.md)? - The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
-3. Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) - Checking the issues solved earlier will help you in troubleshooting. You can file a new issue if your performance questions are unique.
+3. Have you searched through prior filed [Github issues?](https://github.com/microsoft/onnxruntime/issues) - Checking the issues solved earlier will help you in troubleshooting. You can file a new issue if your performance questions are unique.
 4. Do you have the right versions of the dependent libraries installed? - For CUDA or TensorRT, performance improves with the correct version of the dependent libraries.
 
 
@@ -588,13 +589,13 @@ Even though an operator is implemented by the CUDA execution provider, it may no
 
 **Why is my converted Tensorflow model slow?**
 
-Number-Channel-Height-Width (NCHW) and Number-Height-Width-Channel (NHWC) are two different memory layout for 4-D tensors.
+Number-Channel-Height-Width (NCHW) and Number-Height-Width-Channel (NHWC) are two different memory layouts for 4-D tensors.
 
 Most TensorFlow operations used by a CNN support both the NCHW and the NHWC data format. Tensorflow team suggests that on a GPU - NCHW is faster but on a CPU - NHWC is faster. However, ONNX only supports NCHW.
 
 If the original model is in NHWC format, extra transposes may be added when the model is converted. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help, consider retraining the model using NCHW.
 
-**How do I mitigate high latency variance**
+**How do I mitigate high latency variance?**
 
 On some platforms, OnnxRuntime may exhibit high latency variance during inferencing. This is caused by the 'constant cost model' that OnnxRuntime uses to parallelize tasks in the thread pool.
 
@@ -608,15 +609,14 @@ sess_options.add_session_config_entry('session.dynamic_block_base', '4')
 
 Whenever the session is set with a positive value, OnnxRuntime thread pool will parallelize internal tasks with a decreasing granularity.
 
-Let's assume there is a function expected to run N number of times by the thread pool. With the dynamic cost model enabled, each thread in the pool will claim the total number of threads whenever it is ready to run given in the **formula** in the Python code given here.
+Let's assume that there is a function expected to run 'N' number of times by the thread pool. With the 'dynamic cost model' enabled, each thread in the pool will claim the total number of threads whenever it is ready to run.
+
+Here is the Python code for the threads.
 
 ```python
 residual_of_N / (dynamic_block_base * num_of_threads)
 ```
 
-Over a period of time, threads in the pool are likely to be load balanced, thereby reducing the latency variance.
-
-The 'dynamic cost model' ORT setting may also be suitable for models when threads are more likely be preempted.
-As per our tests, the best configuration for dynamic_block_base is 4, which lowers the variance while maintaining optimal performance.
+Over a period, threads in the pool are likely to be load balanced, thereby reducing the latency variance. The ORT 'dynamic cost model' setting may also be suitable for models when threads are more likely be preempted. As per our tests, the best configuration for 'dynamic_block_base' is 4, which lowers the variance while maintaining optimal performance.
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
