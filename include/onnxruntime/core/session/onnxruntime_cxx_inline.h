@@ -1206,6 +1206,44 @@ inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelConte
   return out;
 }
 
+inline void CustomOpApi::CreateOpAttr(_In_ const char* name,
+                                      _In_ const void* data,
+                                      _In_ int len,
+                                      _In_ OrtOpAttrType type,
+                                      _Outptr_ OrtOpAttr** op_attr) {
+  ThrowOnError(api_.CreateOpAttr(name, data, len, type, op_attr));
+}
+
+inline void CustomOpApi::ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr) {
+  api_.ReleaseOpAttr(op_attr);
+}
+
+inline void CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
+                                  _In_ const char* op_name,
+                                  _In_ const char* domain,
+                                  int version,
+                                  _In_opt_ const char** type_constraint_names,
+                                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                                  int type_constraint_count,
+                                  _In_opt_ const OrtOpAttr* const* attr_values,
+                                  int attr_count,
+                                  _Outptr_ OrtOp** ort_op) {
+  ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, attr_values, attr_count, ort_op));
+}
+
+inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
+                                  _In_ const OrtOp* ort_op,
+                                  _In_ const OrtValue* const* input_values,
+                                  _In_ int input_count,
+                                  _Inout_ OrtValue* const* output_values,
+                                  _In_ int output_count) {
+  ThrowOnError(api_.InvokeOp(context, ort_op, input_values, input_count, output_values, output_count));
+}
+
+inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
+  api_.ReleaseOp(ort_op);
+}
+
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
   ThrowOnError(GetApi().DisablePerSessionThreads(p_));
   return *this;
