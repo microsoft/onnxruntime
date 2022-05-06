@@ -103,9 +103,11 @@ To learn more about different Execution Providers, see [Reference: Execution Pro
 
 ### Build the Execution Provider
 
+ORT can be customized by building with different Execution Providers in different programming languages.
+
 **Python**
 
-Official Python packages on Pypi only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to [build from source](../build/eps.md). The recommended instructions build the wheel with debug info in parallel.
+Official Python packages on Pypi only support the default CPU Microsoft Linear Algebra Subprogram (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to [build from source](../build/eps.md). The recommended instructions build the wheel with debug info in parallel.
 
 For example:
 
@@ -124,6 +126,8 @@ For example:
 `CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_csharp --parallel`
 
 ### Register the Execution Provider
+
+Registering the ORT Execution Provider can be done in C, C#, and Python.
 
 **C API Example:**
 
@@ -182,17 +186,17 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 
 ## Tips for tuning performance
 
-Here are some suggestions for tuning performance of ORT using different Execution Providers.
+Here are some suggestions for tuning the performance of ORT in terms of reducing memory consumption, thread management, IOBinding, and CUDA Execution Provider.
 
 ### Memory Consumption Reduction
 
-Here are some tips to tune performance with ORT.
+Here are some tips to reduce memory consumption and tune performance with ORT.
 
-1. **Shared arena-based allocator**
+**1. Shared arena-based allocator**
 
 Memory consumption can be reduced between multiple sessions by configuring the shared arena-based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
-2. **Mimalloc allocator**
+**2. Mimalloc allocator**
 
 OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
 - Depending on your model and usage mimalloc can deliver single- or double-digit improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. mimalloc is a submodule in the OnnxRuntime source tree. 
@@ -206,7 +210,7 @@ ONNX Runtime allows different [threading implementation](https://github.com/micr
 * If ORT is not built with OpenMP, use the appropriate ORT API to control IntraOp num threads.
 * InterOp num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should always be set using the ORT APIs.
 
-1. **Thread Management: Custom threading callbacks**
+**1. Thread Management: Custom threading callbacks**
 
 ORT offers thread creation and joining callbacks using [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h). This will allow customers to use their own fine-tuned threads for multithreading. 
 
@@ -263,7 +267,7 @@ For ORT global thread pool in C++, here is a code sample:
 
 Note that the CreateThreadCustomized and JoinThreadCustomized settings will be applied to both the ORT IntraOp and the InterOp thread pools uniformly.
 
-2. **Thread Management: Default CPU Execution Provider (MLAS)**
+**2. Thread Management: Default CPU Execution Provider (MLAS)**
 
 Microsoft Linear Algebra Subprogram (MLAS), the default execution provider, uses different knobs to control the thread number.
 
@@ -289,7 +293,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 **3. Thread Management: MKL_DNN/nGraph Execution Provider**
 
-MKL_DNN (Math Kernel Library for Deep Neural Networks) and nGraph (C++ library for DNN) depend on OpenMp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance. The most widely used environment variables are:
+Math Kernel Library for Deep Neural Networks (MKL_DNN) and nGraph (a C++ library for DNN) depend on OpenMp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance. The most widely used environment variables are:
 
 * OMP_NUM_THREADS=n
   * Controls the thread pool size
@@ -383,7 +387,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
-2. **Convolution Input Padding in the CUDA EP**
+**2. Convolution Input Padding in the CUDA EP**
 
 ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor.
 
@@ -430,7 +434,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
-3. **Using CUDA Graphs in the CUDA EP**
+**3. Using CUDA Graphs in the CUDA EP**
 
 NOTE: Please note that this feature is currently being offered in "preview" mode.
 
@@ -579,25 +583,25 @@ Here is a checklist to troubleshoot ORT performance.
 
 **Performance Tuning FAQs**
 
-Here are some FAQs for OnnxRuntime performance tuning.
+Here are some FAQs for the OnnxRuntime performance tuning.
 
-1. **How do I optimize BERT models?**
+**1. How do I optimize BERT models?**
 
 For some BERT models, ONNX Runtime cannot apply the best optimization due to framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
 
-2. **Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?**
+**2. Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?**
 
 The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion, and so on.
 
 You can move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
 
-3. **Why is my model running slower on GPU than CPU?**
+**3. Why is my model running slower on GPU than CPU?**
 
 Depending on the execution provider you are using, all the operators may not have full support for your model. Fallback to CPU operators can cause hits in the performance speed.
 
 Even though an operator is implemented by the CUDA execution provider, it may not necessarily assign/place the operator to the CUDA EP due to performance reasons. To see the placement decided by ORT, you can turn on verbose logging and look at the console output.
 
-4. **Why is my converted Tensorflow model slow?**
+**4. Why is my converted Tensorflow model slow?**
 
 Number-Channel-Height-Width (NCHW) and Number-Height-Width-Channel (NHWC) are two different memory layouts for 4-D tensors.
 
@@ -605,7 +609,7 @@ Most TensorFlow operations used by a CNN support both the NCHW and the NHWC data
 
 If the original model is in NHWC format, extra transposes may be added when the model is converted. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help, consider retraining the model using NCHW.
 
-5. **How do I mitigate high latency variance?**
+**5. How do I mitigate high latency variance?**
 
 On some platforms, OnnxRuntime may exhibit high latency variance during inferencing. This is caused by the 'constant cost model' that OnnxRuntime uses to parallelize tasks in the thread pool.
 
