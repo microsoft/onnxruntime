@@ -200,15 +200,15 @@ struct DirectLoadSkip<half, DST> {
     pack_skip.storage = *(reinterpret_cast<const PackType<half, N>*>(skip) + offset);
     #pragma unroll
     for (int i = 0; i < N / 2; ++i) {
-      const half2 pack2 = __halves2half2(pack.elem[i], pack.elem[i + 1]);
-      const half2 pack_skip2 = __halves2half2(pack_skip.elem[i], pack_skip.elem[i + 1]);
+      const half2 pack2 = __halves2half2(pack.elem[2 * i], pack.elem[2 * i + 1]);
+      const half2 pack_skip2 = __halves2half2(pack_skip.elem[2 * i], pack_skip.elem[2 * i + 1]);
       half2 res = addhalf2(pack2, pack_skip2);
       if (bias == nullptr) {
-        dst[i] = static_cast<DST>(res.x);
-        dst[i + 1] = static_cast<DST>(res.y);
+        dst[2 * i] = static_cast<DST>(__low2half(res));
+        dst[2 * i + 1] = static_cast<DST>(__high2half(res));
       } else {
-        dst[i] = static_cast<DST>((half)res.x + bias[col]); 
-        dst[i + 1] = static_cast<DST>((half)res.y + bias[col]);
+        dst[2 * i] = static_cast<DST>(__low2half(res) + bias[col]); 
+        dst[2 * i + 1] = static_cast<DST>(__high2half(res) + bias[col]);
       }
     }
   }
