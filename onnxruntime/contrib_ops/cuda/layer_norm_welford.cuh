@@ -33,7 +33,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr int kWarpSize = 32;
+constexpr int kWarpSize = GPU_WARP_SIZE;
 constexpr int KBlockSizeWrapImpl = 128;
 
 template <typename ComputeType>
@@ -213,8 +213,8 @@ struct DirectLoadSkip<half, DST> {
         dst[i] = static_cast<DST>(res.x);
         dst[i + 1] = static_cast<DST>(res.y);
       } else {
-        dst[i] = static_cast<DST>(res.x + bias[col]); 
-        dst[i + 1] = static_cast<DST>(res.y + bias[col]);
+        dst[i] = static_cast<DST>((half)res.x + bias[col]); 
+        dst[i + 1] = static_cast<DST>((half)res.y + bias[col]);
       }
     }
   }
@@ -304,9 +304,9 @@ __inline__ __device__ void WelfordWarpReduce(ComputeType thread_mean, ComputeTyp
   *m2 = thread_m2;
   *count = thread_count;
   for (int mask = thread_group_width / 2; mask > 0; mask /= 2) {
-    ComputeType b_mean = __shfl_down_sync(0xffffffff, *mean, mask, thread_group_width);
-    ComputeType b_m2 = __shfl_down_sync(0xffffffff, *m2, mask, thread_group_width);
-    ComputeType b_count = __shfl_down_sync(0xffffffff, *count, mask, thread_group_width);
+    ComputeType b_mean = WARP_SHFL_DOWN(*mean, mask, thread_group_width);
+    ComputeType b_m2 = WARP_SHFL_DOWN(*m2, mask, thread_group_width);
+    ComputeType b_count = WARP_SHFL_DOWN(*count, mask, thread_group_width);
     WelfordCombine<ComputeType, simplified>(b_mean, b_m2, b_count, mean, m2, count);
   }
 }
@@ -315,9 +315,9 @@ template<typename ComputeType, bool simplified, int thread_group_width = kWarpSi
 __inline__ __device__ void WelfordWarpAllReduce(ComputeType thread_mean, ComputeType thread_m2, ComputeType thread_count, ComputeType* mean,
                                                 ComputeType* m2, ComputeType* count) {
   WelfordWarpReduce<ComputeType, simplified, thread_group_width>(thread_mean, thread_m2, thread_count, mean, m2, count);
-  *mean = __shfl_sync(0xffffffff, *mean, 0, thread_group_width);
-  *m2 = __shfl_sync(0xffffffff, *m2, 0, thread_group_width);
-  *count = __shfl_sync(0xffffffff, *count, 0, thread_group_width);
+  *mean = WARP_SHFL(*mean, 0, thread_group_width);
+  *m2 = WARP_SHFL(*m2, 0, thread_group_width);
+  *count = WARP_SHFL(*count, 0, thread_group_width);
 }
 
 template<typename ComputeType, bool simplified>
@@ -352,7 +352,10 @@ __inline__ __device__ void WelfordBlockAllReduce(ComputeType thread_mean, Comput
       warp_m2 = static_cast<ComputeType>(0);
       warp_count = static_cast<ComputeType>(0);
     }
-    __syncwarp();
+
+#if !defined(USE_ROCM)
+    __syncwarp(mask);
+#endif
     ComputeType block_mean = 0;
     ComputeType block_m2 = 0;
     ComputeType block_count = 0;
@@ -517,6 +520,9 @@ typename std::enable_if<pack_size == 1, cudaError_t>::type DispatchLayerNormWarp
   DEFINE_ONE_ELIF(8)
   DEFINE_ONE_ELIF(16)
   DEFINE_ONE_ELIF(32)
+#if defined(USE_ROCM)
+  DEFINE_ONE_ELIF(64)
+#endif
 #undef DEFINE_ONE_ELIF
 #define DEFINE_ONE_ELIF(col)                                                                     \
   else if (cols <= (col)*kWarpSize) {                                                            \
@@ -585,6 +591,9 @@ typename std::enable_if<pack_size == 2, cudaError_t>::type DispatchLayerNormWarp
   DEFINE_ONE_ELIF(8)
   DEFINE_ONE_ELIF(16)
   DEFINE_ONE_ELIF(32)
+#if defined(USE_ROCM)
+  DEFINE_ONE_ELIF(64)
+#endif
 #undef DEFINE_ONE_ELIF
 #define DEFINE_ONE_ELIF(col)                                                                     \
   else if (cols <= (col)*kWarpSize) {                                                            \
@@ -636,6 +645,9 @@ typename std::enable_if<pack_size == 4, cudaError_t>::type DispatchLayerNormWarp
   DEFINE_ONE_ELIF(8)
   DEFINE_ONE_ELIF(16)
   DEFINE_ONE_ELIF(32)
+#if defined(USE_ROCM)
+  DEFINE_ONE_ELIF(64)
+#endif
 #undef DEFINE_ONE_ELIF
 #define DEFINE_ONE_ELIF(col)                                                                     \
   else if (cols <= (col)*kWarpSize) {                                                            \
@@ -944,7 +956,8 @@ inline typename std::enable_if<!std::is_same<ComputeType, double>::value, cudaEr
 DispatchLayerNorm(cudaStream_t stream, LOAD load, STORE store, const int64_t rows,
                   const int64_t cols, const double epsilon, ComputeType* mean,
                   ComputeType* inv_variance) {
-  if (cols <= 1024) {
+  const int64_t use_wrap_clos = 1024;
+  if (cols <= use_wrap_clos) {
     return DispatchLayerNormWarpImpl<LOAD, STORE, ComputeType, simplified>(stream, load, store, rows, cols,
                                                                epsilon, mean, inv_variance);
   } else {

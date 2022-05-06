@@ -138,10 +138,17 @@ bool ComputeSkipLayerNorm(
     const T* gamma, const T* beta, const T* bias, const T epsilon, T* output) {
   assert(num_elements % norm_size == 0);
   const int num_instances = num_elements / norm_size;
+#if defined(USE_ROCM)
+  if (norm_size < 1024) {
+    return ComputeSkipLayerNormNaive(stream, norm_size, num_instances, input, skip, gamma,
+                                        beta, bias, epsilon, output);
+  }
+#else
   if (num_instances <= 1024 && norm_size <= 1024) {
     return ComputeSkipLayerNormNaive(stream, norm_size, num_instances, input, skip, gamma,
                                         beta, bias, epsilon, output);
   } 
+#endif
   return ComputeSkipLayerNormWelford(stream, norm_size, num_instances, input, skip, gamma,
                                         beta, bias, epsilon, output);
 }
