@@ -21,8 +21,8 @@ limitations under the License.
 // Licensed under the MIT License.
 
 #include "hip/hip_runtime.h"
-#include "layer_norm.cuh"
-#include "skip_layer_norm_impl.h"
+#include "contrib_ops/rocm/bert/layer_norm.cuh"
+#include "contrib_ops/rocm/bert/skip_layer_norm_impl.h"
 #include <hip/hip_fp16.h>
 
 namespace onnxruntime {
