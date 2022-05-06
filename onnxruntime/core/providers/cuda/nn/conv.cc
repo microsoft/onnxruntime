@@ -334,6 +334,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 template <typename T>
 Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   std::lock_guard<OrtMutex> lock(s_.mutex);
+  CUDNN_CALL_THROW(cudnnSetStream(s_.handle, Stream()));
+  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
   ORT_RETURN_IF_ERROR(UpdateState(context));
   if (s_.Y->Shape().Size() == 0) {
     return Status::OK();
@@ -341,6 +343,7 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
   IAllocatorUniquePtr<void> workspace = GetWorkSpace();
+
   CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(s_.handle,
                                                 &alpha,
                                                 s_.x_tensor,

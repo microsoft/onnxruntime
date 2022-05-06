@@ -113,9 +113,9 @@ struct BFloat16 {
 #endif
 };
 
-inline bool operator==(const BFloat16& left, const BFloat16& right) { return left.val == right.val; }
-inline bool operator!=(const BFloat16& left, const BFloat16& right) { return left.val != right.val; }
-inline bool operator<(const BFloat16& left, const BFloat16& right) { return left.val < right.val; }
+inline ORT_HOST_DEVICE bool operator==(const BFloat16& left, const BFloat16& right) { return left.val == right.val; }
+inline ORT_HOST_DEVICE bool operator!=(const BFloat16& left, const BFloat16& right) { return left.val != right.val; }
+inline ORT_HOST_DEVICE bool operator<(const BFloat16& left, const BFloat16& right) { return left.val < right.val; }
 
 
 // User defined suffixes to make it easier to declare

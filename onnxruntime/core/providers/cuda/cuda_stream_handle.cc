@@ -18,7 +18,7 @@ struct CudaNotification {
       onnxruntime::concurrency::SpinPause();
     }
     // launch a wait command to the cuda stream
-    CUDA_CALL_THROW(cudaStreamWaitEvent(stream_, event_));
+    CUDA_CALL_THROW(cudaStreamWaitEvent(device_stream, event_));
   };
 
   void wait_on_host() {

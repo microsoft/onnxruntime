@@ -226,7 +226,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           NotificationIndex notification_index = notfication_it->second;
           auto* cur_stream = node_to_stream_map_[node_index];
           logic_streams_[i]->commands_.push_back([wait_handle, cur_stream, notification_index](ExecutionContext& ctx) {
-            wait_handle(cur_stream, ctx.notifications[notification_index].handle);
+            wait_handle(cur_stream->handle, ctx.notifications[notification_index].handle);
           });
         }
       }

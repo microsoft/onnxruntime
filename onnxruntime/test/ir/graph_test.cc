@@ -472,7 +472,6 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   const auto& graph = model->MainGraph();
   for (const auto& node : graph.Nodes()) {
-    const auto schema = schema_registry->GetSchema(node.OpType(), node.SinceVersion(), node.Domain());
     auto func_ptr = node.GetFunctionBody();
     if (func_ptr == nullptr) {
       // If Op Schema has function body then func_ptr cannot be nullptr
@@ -480,12 +479,13 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
       // However in future if we move the function initialization in the graph partitioning
       // phase .i.e. Init function body only if none of EPs have a kernel matching the function op
       // then this check will not hold true and should be removed.
-      ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());
+
+      // We delay the funciton instantiate untill partition the graph
+      // this check is no longer valid anymore.
+      /*ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());*/
       continue;
     }
-    const auto& function_op_schema = func_ptr->OpSchema();
-    ASSERT_TRUE(function_op_schema.domain() == node.Domain());
-
+    
     const auto& domain_version_map = func_ptr->Body().DomainToVersionMap();
     // validate schema for each node in the function body can be found
     for (auto& n : func_ptr->Body().Nodes()) {

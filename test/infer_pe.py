@@ -6,7 +6,7 @@ input_ = np.random.rand(10, 36, 36, 528)
 onnx_path = "bug.onnx"
 
 import pdb
-pdb.set_trace()
+#pdb.set_trace()
 sess_opt = ort.SessionOptions()
 #sess_opt.inter_op_num_threads = 2
 sess_opt.execution_mode = ort.ExecutionMode.ORT_PARALLEL

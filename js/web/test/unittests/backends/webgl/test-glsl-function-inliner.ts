@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
+
 import {replaceInlines} from '../../../../lib/onnxjs/backends/webgl/glsl-function-inliner';
 import {Logger} from '../../../../lib/onnxjs/instrument';
 
