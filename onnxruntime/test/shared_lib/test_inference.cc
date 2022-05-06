@@ -405,7 +405,7 @@ TEST(CApiTest, custom_op_handler) {
 #endif
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
 TEST(CApiTest, instant_op_handler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
