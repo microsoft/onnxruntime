@@ -310,14 +310,11 @@ jobs:
       displayName: Check Test Output
 
     - script: |
-        /bin/bash tools/ci_build/github/android/update_path.sh ".gcda" $(origin_repo) $(Build.SourcesDirectory)
-      displayName: Update gcda path
-
-    - script: |
         python3 -m pip install gcovr && \
         python3 tools/ci_build/coverage.py \
           --build_dir build_nnapi \
-          --android_sdk_path $ANDROID_HOME
+          --android_sdk_path $ANDROID_HOME \
+          --compile_path $(origin_repo)
       displayName: Retrieve runtime code coverage files from the emulator and analyze
 
     - script: cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
