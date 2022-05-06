@@ -349,9 +349,9 @@ Return Value:
         saddw   v22.4s,v22.4s,v15.4h
         saddw2  v23.4s,v23.4s,v15.8h
 
-.LRequantization
+.LRequantization:
         b.ne    .LFixedPointScale
-.LFloatingPointScale
+.LFloatingPointScale:
         ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
@@ -360,7 +360,7 @@ Return Value:
         ldp     q6,q3,[x12]
         b       .LScaleWithFloatPoint
 
-.LBroadcastScaleValue
+.LBroadcastScaleValue:
         ld1r    {v4.4s},[x12]               // load scale val
         mov     v5.16b,v4.16b               // broadcast scale val if not per channel
         mov     v6.16b,v4.16b
@@ -417,7 +417,7 @@ Return Value:
         fcvtns  v23.4s,v23.4s
         b .LQuantize
 
-.LFixedPointScale
+.LFixedPointScale:
         ldr     x10,[x8,#.LConvSymDepthwisePostProcessParams_PreShift]
         ldr     x11,[x8,#.LConvSymDepthwisePostProcessParams_Multiplier]
         ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_PostShift]
@@ -708,7 +708,7 @@ Return Value:
 
 .LRequantizationC8:
         b.ne    .LFixedPointScaleC8
-.LFloatingPointScaleC8
+.LFloatingPointScaleC8:
         ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
