@@ -36,7 +36,7 @@ class TvmSoExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
-  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
@@ -44,10 +44,14 @@ class TvmSoExecutionProvider : public IExecutionProvider {
  private:
   void printOptions();
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
-                                          const Graph& graph,
-                                          InputsInfoMap& inputs_info);  // NOLINT
-  void setInputShapesForFreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);  // NOLINT
-  void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);  // NOLINT
+                                          const GraphViewer& graph_viewer,
+                                          InputsInfoMap& inputs_info);    // NOLINT
+  void setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
+                                  TVMTensorShapes& input_shapes,          // NOLINT
+                                  InputsInfoMap& all_input_shapes);       // NOLINT
+  void setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
+                                    TVMTensorShapes& input_shapes,        // NOLINT
+                                    InputsInfoMap& all_input_shapes);     // NOLINT
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
   void prepareOutputTensors(std::vector<DLTensor>& output_tensors);  // NOLINT

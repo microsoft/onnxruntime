@@ -101,21 +101,19 @@ TvmSoExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   return result;
 }
 
-common::Status TvmSoExecutionProvider::Compile(const std::vector<Node*>& nodes,
+common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
   printOptions();
-  for (auto* fused_node : nodes) {
-    auto func_body = fused_node->GetFunctionBody();
-    if (!func_body)
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-    const std::string func_name = fused_node->Name();
-    const Graph& node_graph = func_body->Body();
+  for (auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+    const std::string func_name = fused_node.Name();
 
     compilers_[func_name] = std::make_shared<TVMSoCompiler>();
     InputsInfoMap all_input_shapes;
-    auto mod = compileModel(func_name, node_graph, all_input_shapes);
+    auto mod = compileModel(func_name, graph_body_viewer, all_input_shapes);
 
-    std::vector<DLTensor> output_tensors(node_graph.GetOutputs().size());
+    std::vector<DLTensor> output_tensors(graph_body_viewer.GetOutputs().size());
     prepareOutputTensors(output_tensors);
 
     runners_[func_name] = std::make_shared<Runner>(options_, mod, all_input_shapes, output_tensors);
@@ -149,15 +147,15 @@ void TvmSoExecutionProvider::printOptions() {
 }
 
 std::shared_ptr<TvmModule> TvmSoExecutionProvider::compileModel(const std::string& func_name,
-                                                                const Graph& graph,
+                                                                const GraphViewer& graph_viewer,
                                                                 InputsInfoMap& all_input_shapes) {
   all_input_shapes.clear();
 
   TVMTensorShapes input_shapes;
   if (options_.freeze_weights) {
-    setInputShapesForFreezedNN(graph, input_shapes, all_input_shapes);
+    setInputShapesForFreezedNN(graph_viewer, input_shapes, all_input_shapes);
   } else {
-    setInputShapesForUnfreezedNN(graph, input_shapes, all_input_shapes);
+    setInputShapesForUnfreezedNN(graph_viewer, input_shapes, all_input_shapes);
   }
 
   std::shared_ptr<TvmModule> mod = compilers_[func_name]->operator()(options_, input_shapes);
@@ -165,14 +163,14 @@ std::shared_ptr<TvmModule> TvmSoExecutionProvider::compileModel(const std::strin
   return mod;
 }
 
-void TvmSoExecutionProvider::setInputShapesForFreezedNN(const Graph& graph,
+void TvmSoExecutionProvider::setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
                                                         TVMTensorShapes& input_shapes,
                                                         InputsInfoMap& all_input_shapes) {
-  const std::vector<const NodeArg*>& all_nodes = graph.GetInputsIncludingInitializers();
+  const std::vector<const NodeArg*>& all_nodes = graph_viewer.GetInputsIncludingInitializers();
 
   size_t indx = 0;
   for (const auto* node : all_nodes) {
-    if (!graph.IsInitializedTensor(node->Name())) {
+    if (!graph_viewer.IsInitializedTensor(node->Name())) {
       TensorShapeVector shape = getInputShape(node);
       all_input_shapes[indx++] = shape;
       input_shapes.emplace_back(shape);
@@ -180,16 +178,16 @@ void TvmSoExecutionProvider::setInputShapesForFreezedNN(const Graph& graph,
   }
 }
 
-void TvmSoExecutionProvider::setInputShapesForUnfreezedNN(const Graph& graph,
+void TvmSoExecutionProvider::setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
                                                           TVMTensorShapes& input_shapes,
                                                           InputsInfoMap& all_input_shapes) {
-  const std::vector<const NodeArg*>& all_nodes = graph.GetInputsIncludingInitializers();
+  const std::vector<const NodeArg*>& all_nodes = graph_viewer.GetInputsIncludingInitializers();
 
   size_t indx = 0;
   for (const auto* node : all_nodes) {
     TensorShapeVector shape = getInputShape(node);
     all_input_shapes[indx++] = shape;
-    if (!graph.IsInitializedTensor(node->Name())) {
+    if (!graph_viewer.IsInitializedTensor(node->Name())) {
       input_shapes.emplace_back(shape);
     }
   }
