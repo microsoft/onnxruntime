@@ -24,7 +24,7 @@
 #   python benchmark_longformer.py --model longformer-base-4096 --batch_sizes 1 --sequence_lengths 4096 --global_lengths 8 --onnx_dir . --memory -t 10
 #   export ORT_LONGFORMER_COMPACT_MEMORY=1
 #   python benchmark_longformer.py --model longformer-base-4096 --batch_sizes 1 --sequence_lengths 4096 --global_lengths 8 --onnx_dir . --memory -t 10
-# By default, compact memory kernel is not enabled. You need set an environment variable ORT_LONGFORMER_COMPACT_MEMORY=1 to enable it.
+# By default, compact memory kernel is enabled. You need set an environment variable ORT_LONGFORMER_COMPACT_MEMORY=0 to disable it.
 
 import argparse
 import csv
@@ -36,7 +36,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
-from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper
+from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper, LongformerInputs
 
 import onnxruntime
 
@@ -63,7 +63,7 @@ def test_torch_latency(
         for sequence_length in sequence_lengths:
             for global_length in global_lengths:
                 print(f"batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}...")
-                inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(
+                inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
                     batch_size, sequence_length, global_length, device
                 )
                 input_list = inputs.to_list()
@@ -98,7 +98,7 @@ def test_parity(device, model, ort_session, batch_size, sequence_length, global_
     print(
         f"Comparing Torch and ORT outputs for batch_size={batch_size} sequence_length={sequence_length} global_length={global_length}..."
     )
-    dummy_inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(
+    dummy_inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
         batch_size, sequence_length, global_length, device
     )
     ort_inputs = dummy_inputs.get_ort_inputs()
@@ -140,7 +140,7 @@ def test_ort_latency(
                 print(
                     f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} optimizer={optimizer}, precision={precision} io_binding={not disable_io_binding}..."
                 )
-                dummy_inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(
+                dummy_inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
                     batch_size, sequence_length, global_length, device
                 )
 
@@ -233,12 +233,12 @@ def test_ort_memory(
             num_threads=num_threads,
         )
 
-        dummy_inputs: LongforerInputs = LongformerHelper.get_dummy_inputs(
+        dummy_inputs: LongformerInputs = LongformerHelper.get_dummy_inputs(
             batch_size, sequence_length, global_length, device
         )
         ort_inputs = dummy_inputs.get_ort_inputs()
         for _ in range(test_times):
-            ort_outputs = session.run(None, ort_inputs)
+            _ = session.run(None, ort_inputs)
 
     memory_used = benchmark_helper.measure_memory(is_gpu=True, func=inference)
 
@@ -551,20 +551,12 @@ def test_all():
                             for compact_memory in ["0", "1"]:
                                 os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
                                 print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
-
-                                args = parse_arguments(
-                                    f"--disable_io_binding -e {engine_name} --onnx {onnx_path} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} -t 10 -m {model_name} --memory".split(
-                                        " "
-                                    )
-                                )
+                                arguments = f"--disable_io_binding -e {engine_name} --onnx {onnx_path} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
+                                args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
                                 memory_results = run(args)
                                 print(memory_results)
 
-                                args = parse_arguments(
-                                    f"--disable_io_binding -e {engine_name} --onnx {onnx_path} -t {test_times} -b {batch_size} -s {sequence_length} -g {global_length} -t {test_times} -m {model_name} --validate_onnx".split(
-                                        " "
-                                    )
-                                )
+                                args = parse_arguments(f"{arguments} -t {test_times} --validate_onnx".split(" "))
                                 latency_results = run(args)
                                 if len(latency_results) == 1:
                                     latency_results[0]["memory"] = memory_results["memory"]
