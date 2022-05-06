@@ -79,7 +79,7 @@ contrib_ops_excluded_files = [
     "cuda_contrib_kernels.cc",
     "cuda_contrib_kernels.h",
     "inverse.cc",
-    "fused_conv.cc"
+    "fused_conv.cc",
 ]
 
 provider_excluded_files = [
