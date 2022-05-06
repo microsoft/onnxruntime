@@ -954,7 +954,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
                                                        session_state.GetMutableFuncMgr(),
                                                        layout_transformer::TransformLayoutForCompilingEP, mode));
 
@@ -1177,7 +1177,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
+  ORT_RETURN_IF_ERROR(partitioner.Partition(graph, 
                                             session_state.GetMutableFuncMgr(),
                                             layout_transformer::TransformLayoutForCompilingEP,
                                             GraphPartitioner::Mode::kOrtFormatLoad,

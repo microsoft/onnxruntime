@@ -1,13 +1,14 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from logging import getLogger
-from onnx import helper
-from onnx_model import OnnxModel
+
 from fusion_base import Fusion
 from fusion_utils import NumpyHelper
+from onnx import helper
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
@@ -17,6 +18,7 @@ class FusionSkipLayerNormalization(Fusion):
     Fuse Add + LayerNormalization into one node: SkipLayerNormalization
     Note: This fusion does not check the input shape of Add and LayerNormalization.
     """
+
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
@@ -41,7 +43,8 @@ class FusionSkipLayerNormalization(Fusion):
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
                 logger.debug(
-                    f"skip skiplayernorm fusion since shape of inputs ({add.input[0]}, {add.input[1]}) are not same")
+                    f"skip skiplayernorm fusion since shape of inputs ({add.input[0]}, {add.input[1]}) are not same"
+                )
                 return
         else:
             # shape_infer_helper can not handle subgraphs. Current work around is to disable skiplayernorm fusion
@@ -50,31 +53,35 @@ class FusionSkipLayerNormalization(Fusion):
                 "symbolic shape infer failed. it's safe to ignore this message if there is no issue with optimized model"
             )
 
-        gather_path = self.model.match_parent_path(add, ['Gather'], [None])
+        gather_path = self.model.match_parent_path(add, ["Gather"], [None])
         if gather_path is not None and self.model.find_graph_input(gather_path[0].input[1]) is None:
-            if self.model.match_parent_path(gather_path[0], ['ConstantOfShape'], [1]) is None:
+            if self.model.match_parent_path(gather_path[0], ["ConstantOfShape"], [1]) is None:
                 return
 
-        if add is not None and add.op_type == 'Add' and self.model.is_safe_to_fuse_nodes(
-            [add, node], node.output, input_name_to_nodes, output_name_to_node):
+        if (
+            add is not None
+            and add.op_type == "Add"
+            and self.model.is_safe_to_fuse_nodes([add, node], node.output, input_name_to_nodes, output_name_to_node)
+        ):
             self.nodes_to_remove.extend([add, node])
 
             inputs = [add.input[0], add.input[1], node.input[1], node.input[2]]
-            normalize_node = helper.make_node("SkipLayerNormalization",
-                                              inputs=inputs,
-                                              outputs=[node.output[0]],
-                                              name=self.model.create_node_name("SkipLayerNormalization",
-                                                                               name_prefix="SkipLayerNorm"))
+            normalize_node = helper.make_node(
+                "SkipLayerNormalization",
+                inputs=inputs,
+                outputs=[node.output[0]],
+                name=self.model.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"),
+            )
             normalize_node.domain = "com.microsoft"
 
             # Pass attribute "epsilon" from layernorm node to SkipLayerNormalization
             for att in node.attribute:
-                if att.name == 'epsilon':
+                if att.name == "epsilon":
                     normalize_node.attribute.extend([att])
 
             # Set default epsilon if no epsilon exists from layernorm
             if len(normalize_node.attribute) == 0:
-                normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
+                normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0e-12)])
 
             self.nodes_to_add.append(normalize_node)
             self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
@@ -89,7 +96,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
             return
 
         return_indice = []
-        nodes = self.model.match_parent_path(node, ['Add', 'MatMul'], [None, None], None, return_indice)
+        nodes = self.model.match_parent_path(node, ["Add", "MatMul"], [None, None], None, return_indice)
         if nodes is None:
             return
         assert len(return_indice) == 2
@@ -116,30 +123,36 @@ class FusionBiasSkipLayerNormalization(Fusion):
             return
 
         subgraph_nodes = [node, add]
-        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, [node.output[0]], input_name_to_nodes,
-                                                output_name_to_node):
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node
+        ):
             logger.debug(f"Skip fusing SkipLayerNormalization with Bias since it is not safe")
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
         inputs = [
-            node.input[1 - add_input_index], matmul.output[0], node.input[2], node.input[3], add.input[bias_index]
+            node.input[1 - add_input_index],
+            matmul.output[0],
+            node.input[2],
+            node.input[3],
+            add.input[bias_index],
         ]
-        new_node = helper.make_node("SkipLayerNormalization",
-                                    inputs=inputs,
-                                    outputs=node.output,
-                                    name=self.model.create_node_name("SkipLayerNormalization",
-                                                                     "SkipLayerNorm_AddBias_"))
+        new_node = helper.make_node(
+            "SkipLayerNormalization",
+            inputs=inputs,
+            outputs=node.output,
+            name=self.model.create_node_name("SkipLayerNormalization", "SkipLayerNorm_AddBias_"),
+        )
         new_node.domain = "com.microsoft"
 
         # Pass attribute "epsilon" from skiplayernorm node to skiplayernorm(add bias)
         for att in node.attribute:
-            if att.name == 'epsilon':
+            if att.name == "epsilon":
                 new_node.attribute.extend([att])
 
         # Set default epsilon if no epsilon exists from skiplayernorm
         if len(new_node.attribute) == 0:
-            new_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
+            new_node.attribute.extend([helper.make_attribute("epsilon", 1.0e-12)])
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name

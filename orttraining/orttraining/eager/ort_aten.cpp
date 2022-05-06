@@ -376,31 +376,22 @@ at::Tensor empty_memory_format(
       .dtype(*dtype_opt));
 }
 
-at::Tensor empty_strided(
-  at::IntArrayRef size,
-  at::IntArrayRef stride,
-  // *
-  c10::optional<at::ScalarType> dtype_opt,
-  c10::optional<at::Layout> layout_opt,
-  c10::optional<at::Device> device_opt,
-  c10::optional<bool> pin_memory_opt) {
+at::Tensor empty_strided(at::IntArrayRef size, at::IntArrayRef stride, c10::optional<at::ScalarType> dtype_opt,
+                         c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
+                         c10::optional<bool> pin_memory_opt) {
   ORT_LOG_FN(size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
 
-  // TODO: handle stride
   // TODO: how to handle type conversion
   OrtValue ot;
   assert(device_opt.has_value());
   // TODO: how to support layout
-  //assert(!layout_opt.has_value());
+  // assert(!layout_opt.has_value());
   at::ScalarType dtype = c10::dtype_or_default(dtype_opt);
   auto& invoker = GetORTInvoker(*device_opt);
   onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(dtype), onnxruntime::TensorShape(size.vec()),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ot);
-  return aten_tensor_from_ort(
-    std::move(ot),
-    at::TensorOptions()
-      .device(*device_opt)
-      .dtype(dtype));
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ot,
+                                    stride.vec());
+  return aten_tensor_from_ort(std::move(ot), at::TensorOptions().device(*device_opt).dtype(dtype));
 }
 
 // aten::as_strided(Tensor(a) self, int[] size, int[] stride, int? storage_offset=None) -> Tensor(a)

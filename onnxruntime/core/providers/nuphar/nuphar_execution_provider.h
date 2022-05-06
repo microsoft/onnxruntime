@@ -118,6 +118,13 @@ class NupharExecutionProvider : public IExecutionProvider {
     return iter->second.get();
   }
 
+  onnxruntime::IExecutionProvider::FusionStyle GetFusionStyle() const override {
+    // existing EPs use this mode so default to it.
+    // newer EPs that can use the cheaper approach, or need to run in a minimal build, should override to return
+    // FilteredGraphViewer
+    return onnxruntime::IExecutionProvider::FusionStyle::Function;
+  }
+
  private:
   void CreateTVMTarget();
 

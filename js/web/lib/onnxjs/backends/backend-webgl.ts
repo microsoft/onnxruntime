@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {env} from 'onnxruntime-common';
+
 import {Backend, SessionHandler} from '../backend';
 import {Logger} from '../instrument';
 import {Session} from '../session';

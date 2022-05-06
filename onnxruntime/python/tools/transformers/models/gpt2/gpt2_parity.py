@@ -11,62 +11,78 @@
 # User could use this script to select the best mixed precision model according to these metrics.
 
 import argparse
-import logging
-from onnx_model import OnnxModel
-import onnx
 import csv
 import datetime
+import logging
+import os
+import sys
+
+import onnx
 import scipy.stats
 import torch
-
+from convert_to_onnx import get_latency_name, main
 from gpt2_helper import PRETRAINED_GPT2_MODELS, Gpt2Helper
-from convert_to_onnx import main, get_latency_name
+from onnx_model import OnnxModel
 
-import sys
-import os
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from benchmark_helper import setup_logger
 
-logger = logging.getLogger('')
+logger = logging.getLogger("")
 
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-m',
-                        '--model_name_or_path',
-                        required=True,
-                        type=str,
-                        help='Model path, or pretrained model name in the list: ' + ', '.join(PRETRAINED_GPT2_MODELS))
+    parser.add_argument(
+        "-m",
+        "--model_name_or_path",
+        required=True,
+        type=str,
+        help="Model path, or pretrained model name in the list: " + ", ".join(PRETRAINED_GPT2_MODELS),
+    )
 
-    parser.add_argument('--csv',
-                        required=False,
-                        type=str,
-                        default='gpt2_parity_results.csv',
-                        help='path of csv file to save the result')
+    parser.add_argument(
+        "--csv",
+        required=False,
+        type=str,
+        default="gpt2_parity_results.csv",
+        help="path of csv file to save the result",
+    )
 
-    parser.add_argument('--test_cases', required=False, type=int, default=500, help="number of test cases per run")
+    parser.add_argument(
+        "--test_cases",
+        required=False,
+        type=int,
+        default=500,
+        help="number of test cases per run",
+    )
 
-    parser.add_argument('--runs', required=False, type=int, default=40, help="number of repeated runs")
+    parser.add_argument("--runs", required=False, type=int, default=40, help="number of repeated runs")
 
-    parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU for inference")
+    parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU for inference")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('--all', required=False, action='store_true', help="run all combinations of mixed precision")
+    parser.add_argument(
+        "--all",
+        required=False,
+        action="store_true",
+        help="run all combinations of mixed precision",
+    )
     parser.set_defaults(all=False)
 
-    parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
+    parser.add_argument("-e", "--use_external_data_format", required=False, action="store_true")
     parser.set_defaults(use_external_data_format=False)
 
-    parser.add_argument('--verbose', required=False, action='store_true')
+    parser.add_argument("--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
 
-    parser.add_argument('--skip_test',
-                        required=False,
-                        action='store_true',
-                        help="do not run test, and only rank experiments based on existing csv file")
+    parser.add_argument(
+        "--skip_test",
+        required=False,
+        action="store_true",
+        help="do not run test, and only rank experiments based on existing csv file",
+    )
     parser.set_defaults(skip_test=False)
 
     args = parser.parse_args(argv)
@@ -75,7 +91,6 @@ def parse_arguments(argv=None):
 
 
 class ParityTask:
-
     def __init__(self, test_cases, total_runs, csv_path):
         self.total_runs = total_runs
         self.test_cases = test_cases
@@ -84,15 +99,17 @@ class ParityTask:
         self.run_id = 0
 
     def run(self, argv, experiment_name):
-        start_time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        start_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         run_id = f"{start_time}_{self.run_id}"
         self.run_id += 1
 
         try:
-            result = main(argv + ["-t", f"{self.test_cases}", "-r", f"{self.total_runs}"],
-                          experiment_name=experiment_name,
-                          run_id=run_id,
-                          csv_filename=self.csv_path)
+            result = main(
+                argv + ["-t", f"{self.test_cases}", "-r", f"{self.total_runs}"],
+                experiment_name=experiment_name,
+                run_id=run_id,
+                csv_filename=self.csv_path,
+            )
         except:
             logger.exception(f"Failed to run experiment {experiment_name}")
 
@@ -103,7 +120,8 @@ class ParityTask:
 def load_results_from_csv(csv_path):
     rows = []
     import csv
-    with open(csv_path, newline='') as csvfile:
+
+    with open(csv_path, newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             rows.append(row)
@@ -116,7 +134,7 @@ def score(row):
     top1_match_rate = float(row["top1_match_rate"])
     onnx_size_in_MB = float(row["onnx_size_in_MB"])
     # A simple scoring function: cost of 0.1ms latency ~ 0.1% match rate ~ 100MB size
-    return (top1_match_rate * 1000 - latency_in_ms * 10 - onnx_size_in_MB / 100)
+    return top1_match_rate * 1000 - latency_in_ms * 10 - onnx_size_in_MB / 100
 
 
 def print_wins(wins, rows, test_name):
@@ -127,7 +145,13 @@ def print_wins(wins, rows, test_name):
     for row in rows:
         row_map[row["run_id"]] = row
 
-    sorted_wins = dict(sorted(wins.items(), key=lambda item: (item[1], score(row_map[item[0]])), reverse=True))
+    sorted_wins = dict(
+        sorted(
+            wins.items(),
+            key=lambda item: (item[1], score(row_map[item[0]])),
+            reverse=True,
+        )
+    )
     logger.debug(f"{test_name} Wins:{sorted_wins}")
     logger.info(f"Based on {test_name} wins and a scoring function, the ranking:")
 
@@ -143,17 +167,24 @@ def print_wins(wins, rows, test_name):
         for row in rows:
             if row["run_id"] == key:
                 logger.info(
-                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={} {}".
-                    format(
-                        rank, value, key, float(row[get_latency_name()]), float(row["top1_match_rate"]),
-                        row["onnx_size_in_MB"], row["experiment"], " (Half2 Disabled)" if
-                        (row['ORT_CUDA_GEMM_OPTIONS'] == "4" and "Half2" not in row["experiment"]) else ""))
+                    "{:02d}: WINs={:02d}, run_id={}, latency={:5.2f} top1_match={:.4f} size={}_MB experiment={} {}".format(
+                        rank,
+                        value,
+                        key,
+                        float(row[get_latency_name()]),
+                        float(row["top1_match_rate"]),
+                        row["onnx_size_in_MB"],
+                        row["experiment"],
+                        " (Half2 Disabled)"
+                        if (row["ORT_CUDA_GEMM_OPTIONS"] == "4" and "Half2" not in row["experiment"])
+                        else "",
+                    )
+                )
                 break
 
 
 def run_significance_test(rows, output_csv_path):
-    """Run U test and T test.
-    """
+    """Run U test and T test."""
     utest_wins = {}
     ttest_wins = {}
     for row in rows:
@@ -161,10 +192,19 @@ def run_significance_test(rows, output_csv_path):
         utest_wins[run_id] = 0
         ttest_wins[run_id] = 0
 
-    with open(output_csv_path, 'w', newline='') as csvfile:
+    with open(output_csv_path, "w", newline="") as csvfile:
         column_names = [
-            'model_name', 'run_id_1', 'experiment_1', 'top1_match_rate_1', 'run_id_2', 'experiment_2',
-            'top1_match_rate_2', 'U_statistic', 'U_pvalue', "T_statistic", "T_pvalue"
+            "model_name",
+            "run_id_1",
+            "experiment_1",
+            "top1_match_rate_1",
+            "run_id_2",
+            "experiment_2",
+            "top1_match_rate_2",
+            "U_statistic",
+            "U_pvalue",
+            "T_statistic",
+            "T_pvalue",
         ]
 
         writer = csv.DictWriter(csvfile, fieldnames=column_names)
@@ -180,7 +220,7 @@ def run_significance_test(rows, output_csv_path):
 
                 all_matched = True
                 for column in required_match_columns:
-                    if (result1[column] != result2[column]):
+                    if result1[column] != result2[column]:
                         all_matched = False
                         break
                 if not all_matched:
@@ -188,6 +228,7 @@ def run_significance_test(rows, output_csv_path):
 
                 if isinstance(result1["top1_match_rate_per_run"], str):
                     import json
+
                     a = json.loads(result1["top1_match_rate_per_run"])
                     b = json.loads(result2["top1_match_rate_per_run"])
                 else:
@@ -197,8 +238,8 @@ def run_significance_test(rows, output_csv_path):
                 try:
                     utest_statistic, utest_pvalue = scipy.stats.mannwhitneyu(
                         a, b, use_continuity=True, alternative="two-sided"
-                    )  #TODO: shall we use one-sided: less or greater according to "top1_match_rate"
-                except ValueError:  #ValueError: All numbers are identical in mannwhitneyu
+                    )  # TODO: shall we use one-sided: less or greater according to "top1_match_rate"
+                except ValueError:  # ValueError: All numbers are identical in mannwhitneyu
                     utest_statistic = None
                     utest_pvalue = None
                 ttest_statistic, ttest_pvalue = scipy.stats.ttest_ind(a, b, axis=None, equal_var=True)
@@ -216,17 +257,17 @@ def run_significance_test(rows, output_csv_path):
                         ttest_wins[result2["run_id"]] += 1
 
                 row = {
-                    'model_name': result1["model_name"],
-                    'run_id_1': result1["run_id"],
-                    'experiment_1': result1["experiment"],
-                    'top1_match_rate_1': float(result1["top1_match_rate"]),
+                    "model_name": result1["model_name"],
+                    "run_id_1": result1["run_id"],
+                    "experiment_1": result1["experiment"],
+                    "top1_match_rate_1": float(result1["top1_match_rate"]),
                     "run_id_2": result2["run_id"],
                     "experiment_2": result2["experiment"],
-                    'top1_match_rate_2': float(result2["top1_match_rate"]),
-                    'U_statistic': utest_statistic,
-                    'U_pvalue': utest_pvalue,
-                    'T_statistic': ttest_statistic,
-                    'T_pvalue': ttest_pvalue
+                    "top1_match_rate_2": float(result2["top1_match_rate"]),
+                    "U_statistic": utest_statistic,
+                    "U_pvalue": utest_pvalue,
+                    "T_statistic": ttest_statistic,
+                    "T_pvalue": ttest_pvalue,
                 }
 
                 writer.writerow(row)
@@ -255,7 +296,12 @@ def get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list):
     parameters = f"-m {model} -o --use_gpu -p fp16".split()
     if args.use_external_data_format:
         parameters.append("--use_external_data_format")
-    parameters += ["--io_block_list", "logits", "--node_block_list", last_matmul_node_name]
+    parameters += [
+        "--io_block_list",
+        "logits",
+        "--node_block_list",
+        last_matmul_node_name,
+    ]
 
     if op_block_list:
         parameters.extend(["--op_block_list"] + op_block_list)
@@ -263,10 +309,15 @@ def get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list):
     return parameters
 
 
-def run_candidate(task: ParityTask, args, last_matmul_node_name, op_block_list=["FastGelu", "LayerNormalization"]):
+def run_candidate(
+    task: ParityTask,
+    args,
+    last_matmul_node_name,
+    op_block_list=["FastGelu", "LayerNormalization"],
+):
     parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
-    op_block_list_str = ','.join(sorted(op_block_list))
-    name_suffix = " (Half2 Disabled)" if os.getenv('ORT_CUDA_GEMM_OPTIONS') == "4" else ""
+    op_block_list_str = ",".join(sorted(op_block_list))
+    name_suffix = " (Half2 Disabled)" if os.getenv("ORT_CUDA_GEMM_OPTIONS") == "4" else ""
     if op_block_list:
         name = f"Mixed precision baseline + {op_block_list_str} in FP32{name_suffix}"
     else:
@@ -303,11 +354,13 @@ def run_tuning_step0(task, fp16_baseline):
     task.run(fp16_baseline + fp32_io, "Graph I/O FP32, Other FP16")
 
     op_list = get_all_operators()
-    #task.run(fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in op_list], "Everthing in FP32")
+    # task.run(fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in op_list], "Everthing in FP32")
 
     # Only weights in FP16
-    task.run(fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in op_list] + ['--force_fp16_initializers'],
-             "FP32 except weights in FP16")
+    task.run(
+        fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in op_list] + ["--force_fp16_initializers"],
+        "FP32 except weights in FP16",
+    )
 
     for op in op_list:
         op_block_list = ["--op_block_list"] + [o for o in op_list if o != op]
@@ -318,7 +371,10 @@ def run_tuning_step1(task, mixed_precision_baseline):
     """Step 1 is to figure out which operator in FP32 could benefit most"""
     for op in get_all_operators():
         op_block_list = ["--op_block_list", op]
-        task.run(mixed_precision_baseline + op_block_list, f"Mixed precision baseline + {op} in FP32")
+        task.run(
+            mixed_precision_baseline + op_block_list,
+            f"Mixed precision baseline + {op} in FP32",
+        )
 
 
 def run_tuning_step2(task, mixed_precision_baseline):
@@ -326,16 +382,21 @@ def run_tuning_step2(task, mixed_precision_baseline):
     Step 2 is to figure out a combination of two operators (one is Add from step one) to get better result
     """
     for op in get_all_operators():
-        if op not in ['Add']:
-            op_block_list = ["--op_block_list", 'Add', op]
-            task.run(mixed_precision_baseline + op_block_list, f"Mixed precision baseline + Add,{op} in FP32")
+        if op not in ["Add"]:
+            op_block_list = ["--op_block_list", "Add", op]
+            task.run(
+                mixed_precision_baseline + op_block_list,
+                f"Mixed precision baseline + Add,{op} in FP32",
+            )
 
 
 def run_parity_disable_half2(task: ParityTask, args):
-    onnx_model_paths = Gpt2Helper.get_onnx_paths('onnx_models',
-                                                 args.model_name_or_path,
-                                                 new_folder=args.use_external_data_format,
-                                                 remove_existing=[])
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(
+        "onnx_models",
+        args.model_name_or_path,
+        new_folder=args.use_external_data_format,
+        remove_existing=[],
+    )
     last_matmul_node_name = get_last_matmul_node_name(onnx_model_paths["raw"])
     run_candidate(task, args, last_matmul_node_name, op_block_list=[])
     run_candidate(task, args, last_matmul_node_name, op_block_list=["Add"])
@@ -343,10 +404,12 @@ def run_parity_disable_half2(task: ParityTask, args):
 
 
 def run_parity(task: ParityTask, args):
-    onnx_model_paths = Gpt2Helper.get_onnx_paths('onnx_models',
-                                                 args.model_name_or_path,
-                                                 new_folder=args.use_external_data_format,
-                                                 remove_existing=[])
+    onnx_model_paths = Gpt2Helper.get_onnx_paths(
+        "onnx_models",
+        args.model_name_or_path,
+        new_folder=args.use_external_data_format,
+        remove_existing=[],
+    )
 
     fp32_baseline, fp16_baseline = get_baselines(args)
 
@@ -373,17 +436,36 @@ def run_parity(task: ParityTask, args):
         run_tuning_step1(task, mixed_precision_baseline)
         run_tuning_step2(task, mixed_precision_baseline)
     else:
-        run_candidate(task, args, last_matmul_node_name, op_block_list=["LayerNormalization", "Add"])
+        run_candidate(
+            task,
+            args,
+            last_matmul_node_name,
+            op_block_list=["LayerNormalization", "Add"],
+        )
         run_candidate(task, args, last_matmul_node_name, op_block_list=["FastGelu", "Add"])
 
     # Run a few good candidates
-    run_candidate(task, args, last_matmul_node_name, op_block_list=["FastGelu", "LayerNormalization", "Add"])
-    run_candidate(task, args, last_matmul_node_name, op_block_list=["FastGelu", "LayerNormalization", "Add", "Gather"])
-    run_candidate(task, args, last_matmul_node_name, \
-                  op_block_list=["FastGelu", "LayerNormalization", "Add", "Gather", "MatMul"])
+    run_candidate(
+        task,
+        args,
+        last_matmul_node_name,
+        op_block_list=["FastGelu", "LayerNormalization", "Add"],
+    )
+    run_candidate(
+        task,
+        args,
+        last_matmul_node_name,
+        op_block_list=["FastGelu", "LayerNormalization", "Add", "Gather"],
+    )
+    run_candidate(
+        task,
+        args,
+        last_matmul_node_name,
+        op_block_list=["FastGelu", "LayerNormalization", "Add", "Gather", "MatMul"],
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_arguments()
     setup_logger(args.verbose)
 
@@ -395,9 +477,10 @@ if __name__ == '__main__':
     task = ParityTask(args.test_cases, args.runs, args.csv)
 
     if not args.skip_test:
-        if (os.getenv('ORT_CUDA_GEMM_OPTIONS') == "4" and args.use_gpu):
-            assert torch.cuda.get_device_capability(
-            )[0] >= 7, "half2 kernel is not avaiable in current GPU device. Please set environment variable ORT_CUDA_GEMM_OPTIONS=0 or use supported GPU like V100 or T4"
+        if os.getenv("ORT_CUDA_GEMM_OPTIONS") == "4" and args.use_gpu:
+            assert (
+                torch.cuda.get_device_capability()[0] >= 7
+            ), "half2 kernel is not avaiable in current GPU device. Please set environment variable ORT_CUDA_GEMM_OPTIONS=0 or use supported GPU like V100 or T4"
             run_parity_disable_half2(task, args)
         else:
             run_parity(task, args)
@@ -409,5 +492,5 @@ if __name__ == '__main__':
         rows = task.results
 
     logger.info("Start running significance tests...")
-    summary_csv = task.csv_path.replace('.csv', ".stats.csv")
+    summary_csv = task.csv_path.replace(".csv", ".stats.csv")
     run_significance_test(rows, summary_csv)

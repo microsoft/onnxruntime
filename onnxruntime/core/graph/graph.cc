@@ -26,6 +26,7 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
+#include "core/graph/function_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -556,23 +557,58 @@ const Path& Node::ModelPath() const noexcept {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-Function* Node::GetMutableFunctionBody(bool try_init_func_body) {
-  if (nullptr != func_body_) {
-    return func_body_;
-  }
-
-  // Initialize function body
-  if (try_init_func_body) {
-    graph_->InitFunctionBodyForNode(*this);
-  }
-
-  return func_body_;
+bool Node::CanBeInlined() const {
+  return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
 }
 
-void Node::SetFunctionBody(Function& func) {
-  func_body_ = &func;
-  op_ = &func.OpSchema();
+Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const {
+  // Initialize function body
+  if (func_template_) {
+    return function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, output);
+  } else if (op_ && (op_->HasFunction() || op_->HasContextDependentFunction())) {
+    // This node has a schema defined function proto. If it is a context dependent function
+    // then build it otherwise fetch the FunctionProto from schema.
+    ONNX_NAMESPACE::FunctionProto onnx_function_proto;
+    if (op_->HasContextDependentFunction()) {
+      NodeProto node_proto;
+      ToProto(node_proto);
+      std::vector<TypeProto> input_types;
+      for (size_t i = 0, n = InputDefs().size(); i < n; i++) {
+        auto p_node_arg = InputDefs().at(i);
+        if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
+          auto& type = *(p_node_arg->TypeAsProto());
+          input_types.emplace_back(type);
+        } else
+          input_types.emplace_back();
+      }
+      ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
+      if (!op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto)) {
+        // I don't know why but the existing behavior is ignore the failure here.
+        // keep the same.
+        return Status::OK();
+      }
+    } else {
+      onnx_function_proto = *(op_->GetFunction());
+    }
+    return function_utils::Instantiate(*graph_, index_, onnx_function_proto, output);
+  } else {
+    return Status::OK();
+  }
+}
+
+Status Node::InstantiateFunctionBody() {
+  if (nullptr != func_body_) {
+    //already instantiated.
+    return Status::OK();
+  }
+
+  return GetInstantiateFunctionBody(func_body_);
+}
+
+void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
+  op_ = func_template.op_schema_.get();
   since_version_ = op_->since_version();
+  func_template_ = &func_template;
 }
 
 void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
@@ -860,9 +896,10 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 void Node::AddAttributeProto(AttributeProto value) {
   utils::SetNodeAttribute(std::move(value), attributes_);
-
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
+  if (graph_) {
+    graph_->SetGraphResolveNeeded();
+    graph_->SetGraphProtoSyncNeeded();
+  }
 }
 
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
@@ -1059,15 +1096,13 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
              const logging::Logger& logger,
              bool strict_shape_type_inference)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger, strict_shape_type_inference) {}
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, strict_shape_type_inference) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
              const logging::Logger& logger,
              bool strict_shape_type_inference)
     : owning_model_(owning_model),
@@ -1088,10 +1123,6 @@ Graph::Graph(const Model& owning_model,
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
   const auto& model_path = ModelPath();
-
-  for (auto func : model_functions) {
-    model_local_functions_[function_utils::GetFunctionIdentifier(func->domain(), func->name())] = func;
-  }
 
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
@@ -1241,9 +1272,26 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, {},
+            &parent_node,
             parent_graph.logger_,
             parent_graph.strict_shape_type_inference_) {
+}
+
+Graph::Graph(const Model& owning_model, 
+    IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
+    ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+    const std::unordered_map<std::string, int>& domain_version_map,
+    const logging::Logger& logger,
+    bool strict_shape_type_inference)
+    : Graph(owning_model,
+            &subgraph_proto,
+            domain_version_map, 
+            owning_model.IrVersion(), 
+            schema_registry,
+            nullptr,
+            nullptr,
+            logger,
+            strict_shape_type_inference) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -2485,8 +2533,15 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
       SetOpSchemaFromRegistryForNode(node);
 
-      if (!node.op_ || (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction()))) {
-        InitFunctionBodyForNode(node);
+      if (!node.op_) {
+        // check whether it refer to a function.
+        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
+        const auto& model_local_func_templates = owning_model_.GetModelLocalFunctionTemplates();
+        auto iter = model_local_func_templates.find(func_identifier);
+        if (iter != model_local_func_templates.end()) {
+          // This node has a model local function proto.
+          node.SetFunctionTemplate(*(iter->second));
+        }
       }
 
       if (!node.op_) {
@@ -2498,15 +2553,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (node.since_version_ == -1) {
         node.since_version_ = node.op_->since_version();
       }
-    } else {
-      // This is only applicable for model local functions.
-      // In case of nested model local functions, graph resolve is called during resolve for parent
-      // function body graph otherwise type inference for nest function cannot happen.
-      if (options.traverse_function_body && node.GetFunctionBody() != nullptr) {
-        ORT_RETURN_IF_ERROR(node.GetMutableFunctionBody()->MutableBody().Resolve(options));
-      }
-    }
-
+    } 
+   
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
@@ -2557,68 +2605,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   }
 
   return Status::OK();
-}
-
-const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& Graph::GetModelLocalFunctions() const {
-  if (parent_graph_ == nullptr) {
-    return model_local_functions_;
-  }
-  return parent_graph_->GetModelLocalFunctions();
-}
-
-void Graph::InitFunctionBodyForNode(Node& node) {
-  ONNX_NAMESPACE::FunctionProto onnx_function_proto;
-  if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
-    // This node has a schema defined function proto. If it is a context dependent function
-    // then build it otherwise fetch the FunctionProto from schema.
-    if (node.op_->HasContextDependentFunction()) {
-      NodeProto node_proto;
-      node.ToProto(node_proto);
-      std::vector<TypeProto> input_types;
-      for (size_t i = 0, n = node.InputDefs().size(); i < n; i++) {
-        auto p_node_arg = node.InputDefs().at(i);
-        if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
-          auto& type = *(p_node_arg->TypeAsProto());
-          input_types.emplace_back(type);
-        } else
-          input_types.emplace_back();
-      }
-      ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-      if (!node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto))
-        return;
-    } else {
-      onnx_function_proto = *(node.op_->GetFunction());
-    }
-  } else {
-    std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
-    const auto& model_local_functions = GetModelLocalFunctions();
-    auto iter = model_local_functions.find(func_identifier);
-    if (iter == model_local_functions.end()) {
-      return;
-    }
-
-    // This node has a model local function proto.
-    onnx_function_proto = *(iter->second);
-  }
-
-  ORT_TRY {
-    // Explicitly pass the model local functions as t
-    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                GetModelLocalFunctions(), function_container_, logger_);
-    function_container_.emplace_back(std::move(func_ptr));
-    node.SetFunctionBody(*function_container_.back());
-  }
-  ORT_CATCH(const std::exception& e) {
-    LOGS(logger_, WARNING) << "Function body initialization failed for node '"
-                           << node.Name() << "' optype " << node.OpType()
-#ifndef ORT_NO_EXCEPTIONS
-                           << ". Error message " << e.what()
-#endif  // ORT_NO_EXCEPTIONS
-                           << ". Execution will fail if ORT does not have a specialized kernel for this op";
-    // Return without using this function op's expansion. No need to fail just yet.
-    // If ORT has a specialized kernel for this op then execution will proceed
-    return;
-  }
 }
 
 Status Graph::VerifyInputAndInitializerNames() {
@@ -3858,21 +3844,20 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
-
+#if !defined(ORT_MINIMAL_BUILD)
+  // if this is a full build create the lightweight Function implementation that provides the schema so that
+  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
+  // need to create the schema.
+  auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
+  fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+  fused_node.op_ = fused_schemas_containers_.back().get();
+  fused_node.SetSinceVersion(fused_node.op_->SinceVersion());
+#endif
   return fused_node;
 }
 
 Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
   Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // if this is a full build create the lightweight Function implementation that provides the schema so that
-  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
-  // need to create the schema.
-  auto func = std::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
-  function_container_.push_back(std::move(func));
-  node.SetFunctionBody(*function_container_.back());
-#endif
 
   return node;
 }
@@ -3886,15 +3871,15 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
     return;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Remove the function body from function container
-  const auto* fused_node_func = fused_node.GetFunctionBody();
+  // Remove the tempoary schema from schema container container
+  auto* temp_schema_ptr = fused_node.Op();
   auto it = std::find_if(
-      function_container_.begin(), function_container_.end(),
-      [fused_node_func](const std::unique_ptr<onnxruntime::Function>& func) {
-        return func.get() == fused_node_func;
+      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
+      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
+        return schema.get() == temp_schema_ptr;
       });
-  if (it != function_container_.end()) {
-    function_container_.erase(it);
+  if (it != fused_schemas_containers_.end()) {
+    fused_schemas_containers_.erase(it);
   }
 #endif
 
@@ -3977,14 +3962,13 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
                           const std::string& fused_node_name) {
   Node& fused_node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   // create Function before we remove nodes
-  function_container_.emplace_back(MakeFunction(*this, sub_graph, logger_));
-  fused_node.SetFunctionBody(*function_container_.back());
-
+  fused_node.func_body_ = std::make_unique<FunctionImpl>(*this, sub_graph);
   // remove nodes and update edges
   FinalizeFuseSubGraph(sub_graph, fused_node);
 
@@ -3994,6 +3978,8 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
   // main graph.
+  if (!node.GetFunctionBody())
+    ORT_RETURN_IF_ERROR(node.InstantiateFunctionBody());
   const Graph& subgraph = node.GetFunctionBody()->Body();
   auto output_edges = node.GetRelationships().output_edges;
   for (const auto& output_edge : output_edges) {
@@ -4027,9 +4013,13 @@ Status Graph::InlineFunction(Node& node) {
   ss << static_cast<const void*>(&node);
   auto uniq_identifier = ss.str();
 
-  RemoveNode(node.Index());
-
   const auto& model_path = ModelPath();
+  for (auto& init : subgraph.name_to_initial_tensor_) {
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+    *tensor = *init.second;
+    tensor->set_name(tensor->name() + uniq_identifier);
+    name_to_initial_tensor_[tensor->name()] = tensor;
+  }
   for (const auto& subgraph_node : subgraph.Nodes()) {
     if (subgraph_node.OpType() == kConstant) {
       // Copy constant nodes _value to name_to_initial_tensor_
@@ -4081,18 +4071,15 @@ Status Graph::InlineFunction(Node& node) {
         }
       }
 
-      auto& new_node = AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
+      AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
                                inputs,
                                outputs,
                                &subgraph_node.GetAttributes(),
                                subgraph_node.Domain());
-
-      // If this node has an initialized function body add it to the new node so that reinitialization is not required.
-      if (subgraph_node.GetFunctionBody() != nullptr) {
-        new_node.SetFunctionBody(*(const_cast<onnxruntime::Function*>(subgraph_node.GetFunctionBody())));
-      }
     }
   }
+
+  RemoveNode(node.Index());
 
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
