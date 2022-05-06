@@ -12,9 +12,9 @@ Pod::Spec.new do |spec|
   spec.license              = package["license"]
   spec.authors              = package["author"]
 
-  spec.platforms            = { :ios => "13.0" }
+  spec.platforms            = { :ios => "11.0" }
   spec.source               = { :git => "https://github.com/Microsoft/onnxruntime.git", :tag => "rel-#{spec.version}" }
-  
+
   spec.source_files         = "ios/*.{h,mm}"
 
   spec.dependency "React-Core"
