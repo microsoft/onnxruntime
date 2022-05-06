@@ -63,6 +63,8 @@ QOrderedAdd::QOrderedAdd(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 Status QOrderedAdd::ComputeInternal(OpKernelContext* context) const {
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+
   BinaryElementwisePreparation prepare;
   int64_t tmp_shape[16];
 
@@ -97,6 +99,8 @@ Status QOrderedAdd::ComputeInternal(OpKernelContext* context) const {
       prepare.fdm_C,
       prepare.output_tensor->template MutableData<int8_t>(),
       (size_t)prepare.output_tensor->Shape().Size());
+
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   return Status::OK();
 }
