@@ -12,6 +12,9 @@ import tempfile
 import warnings
 from collections import OrderedDict, namedtuple
 from distutils.version import LooseVersion
+from inspect import signature
+from time import sleep
+from unittest.mock import patch
 
 import _test_helpers
 import pytest
@@ -1117,9 +1120,12 @@ def test_gradient_correctness_max(operator, dim, keepdim):
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
-@pytest.mark.skip("temporarily disabled due to PyTorch's change of max implementation")
+# Before 1.10 (excluded), Torch's min/max(x,y) will assign dY to y's dX if value from x and y are equal.
+# From 1.10, both x and y's dX will be dY/2. ORT follows this distribution logic, so skip below test if Torch version
+# is lower than 1.10.
+@pytest.mark.skipif(LooseVersion(torch.__version__) < LooseVersion("1.10.0"), reason="PyTorch 1.9 incompatible")
 @pytest.mark.parametrize("operator", ["min", "max"])
-def test_gradient_correctness_max_two_tensors(operator):
+def test_gradient_correctness_minmax_two_tensors(operator):
     func = getattr(torch, operator)
 
     class NeuralNetMaxTwoTensors(torch.nn.Module):
@@ -1147,6 +1153,19 @@ def test_gradient_correctness_max_two_tensors(operator):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+        _test_helpers.assert_values_are_close(ort_other.grad, pt_other.grad)
+
+    # Simple test for case that has equal value.
+    pt_input = torch.tensor([0.0, 0.0, 1.0, 1.0], device=device, requires_grad=True)
+    pt_other = torch.tensor([1.0, 0.0, 1.0, 0.0], device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    ort_other = copy.deepcopy(pt_other)
+    pt_prediction = run_step(pt_model, pt_input, pt_other)
+    ort_prediction = run_step(ort_model, ort_input, ort_other)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+    _test_helpers.assert_values_are_close(ort_other.grad, pt_other.grad)
 
 
 def test_gradient_correctness_argmax_unfold():

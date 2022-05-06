@@ -3,6 +3,7 @@
 
 import {expect} from 'chai';
 import {env} from 'onnxruntime-common';
+
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
