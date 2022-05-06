@@ -350,6 +350,10 @@ Refer to the [C# docs](https://github.com/microsoft/onnxruntime/blob/master/csha
 
 <h3 id="customCUDA">CUDA Execution Providers</h3>
 
+Tips to customize the CUDA Execution Provider are given in this article for <a href="#convolutionheavy">Convolution heavy models</a>, <a href="#convolutioninput">Convolution input padding</a>, and <a href="#cudagraphs">Using CUDA graphs</a>.
+
+<p id="convolutionheavy"></p>
+
 ##### 1. Convolution heavy models and the CUDA Execution Provider
 
 ORT leverages CUDA Deep Neural Networks (CuDNN) for convolution operations.
@@ -398,7 +402,10 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
-<p><a href="#customCUDA">CUDA EP > Performance Tuning Tips</a></p>
+<p><a href="#customCUDA">CUDA EP</a> > <a href="#tips">Performance Tuning Tips</a> > <a href="#" id="back-to-top">Back to top</a></p>
+
+
+<p id="convolutioninput"></p>
 
 ##### 2. Convolution Input Padding in the CUDA EP
 
@@ -446,7 +453,10 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
-<p><a href="#customCUDA">CUDA EP > Performance Tuning Tips</a></p>
+
+<p><a href="#customCUDA">CUDA EP</a> > <a href="#tips">Performance Tuning Tips</a> > <a href="#" id="back-to-top">Back to top</a></p>
+
+<p id="cudagraphs"></p>
 
 ##### 3. Using CUDA Graphs in the CUDA EP
 
@@ -576,11 +586,8 @@ session.Run(Ort::RunOptions(), binding);
 
 Will be supported in future releases
 
-<p><a href="#customCUDA">CUDA EP > Performance Tuning Tips</a></p>
+<p><a href="#customCUDA">CUDA EP</a> > <a href="#tips">Performance Tuning Tips</a> > <a href="#" id="back-to-top">Back to top</a></p>
 
-<p><a href="#tips">Performance Tuning Tips</a></p>
-
-<p><a href="#" id="back-to-top">Back to top</a></p>
 
 
 ## Troubleshooting Performance Issues
@@ -597,7 +604,8 @@ Here is a checklist to troubleshoot ORT performance.
 4. Do you have the right versions of the dependent libraries installed? - For CUDA or TensorRT, performance improves with the correct version of the dependent libraries.
 
 
-<p><a href="#" id="back-to-top">Back to top</a></p>
+<p><a href="#customCUDA">CUDA EP</a> > <a href="#tips">Performance Tuning Tips</a> > <a href="#" id="back-to-top">Back to top</a></p>
+
 
 ##### ORT Performance Tuning FAQs
 
