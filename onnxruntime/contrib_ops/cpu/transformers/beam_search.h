@@ -61,11 +61,13 @@ class BeamSearch : public IControlFlowKernel {
   }
 
   // device helpers for GPT model
+  // void SetDeviceHelpers_Gpt(const BeamSearchDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func) {
+  //   create_gpt_inputs_func_ = create_gpt_inputs_func;
+  // }
+
   void SetDeviceHelpers_Gpt(
-      const BeamSearchDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
       const BeamSearchDeviceHelper::UpdateGptFeedsFunc<float>& update_gpt_feeds_func,
       const BeamSearchDeviceHelper::UpdateGptFeedsFunc<MLFloat16>& update_gpt_feeds_fp16_func) {
-    create_gpt_inputs_func_ = create_gpt_inputs_func;
     update_gpt_feeds_func_ = update_gpt_feeds_func;
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }

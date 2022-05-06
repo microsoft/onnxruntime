@@ -47,8 +47,7 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                    BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>
                    );
 
-  SetDeviceHelpers_Gpt(BeamSearchCpuDeviceHelper::CreateGptInputs,
-                       BeamSearchCudaDeviceHelper::UpdateFeeds<float>,
+  SetDeviceHelpers_Gpt(BeamSearchCudaDeviceHelper::UpdateFeeds<float>,
                        BeamSearchCudaDeviceHelper::UpdateFeeds<MLFloat16>);
 
   // SetDeviceHelpers_EncoderDecoder(BeamSearchCudaDeviceHelper::CreateEncoderInputs,
