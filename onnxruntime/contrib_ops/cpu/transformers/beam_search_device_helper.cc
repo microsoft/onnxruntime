@@ -27,7 +27,7 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
 
 template <typename T>
 OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator) {
-  // Input shape (batch_size, sequence_length), required int32 data type.
+  // Input shape (batch_size, sequence_length), required data type T.
   // Output shape (batch_size * num_beams, sequence_length)
   if (num_beams == 1)
     return input;
@@ -41,7 +41,7 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
 
   OrtValue expanded;
   MLDataType element_type = input.Get<Tensor>().DataType();
-  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>(), "ExpandInputs requires tensor of int32 data type");
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
 
   Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
 
@@ -447,8 +447,6 @@ Status CreateEncoderInputs(
 
   // Allocate attention_mask based on shape of input_ids
   auto element_type = DataTypeImpl::GetType<int64_t>();
-
-  //const OrtMemoryInfo& location = allocator->Info();
 
   // Encoder subgraph requires the input_ids is int64, but input_ids from BeamSearch operator input is int32.
   // Create a new tensor and convert data type from int64 to int32.

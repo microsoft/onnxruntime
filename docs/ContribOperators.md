@@ -352,10 +352,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>decoder</tt> : graph (required)</dt>
 <dd>Decoder subgraph to execute in a loop.</dd>
+<dt><tt>decoder_start_token_id</tt> : int</dt>
+<dd>The id of the token that indicates decoding starts.</dd>
 <dt><tt>early_stopping</tt> : int</dt>
 <dd>early stop or not</dd>
-<dt><tt>encoder_decoder_init</tt> : graph</dt>
-<dd>subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
+<dt><tt>encoder</tt> : graph</dt>
+<dd>The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
 <dt><tt>model_type</tt> : int</dt>

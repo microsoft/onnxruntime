@@ -63,9 +63,9 @@ class BeamSearchGpt : public BeamSearchBase<T> {
 
 template <typename T>
 Status BeamSearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths, OrtValue& expanded_input_ids, std::vector<OrtValue>& feeds, IAllocatorUniquePtr<char>& buffer) {
-  const OrtValue* input_ids_value = context_.GetInputOrtValue(0);
+  const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
-  return gpt_subgraph_.CreateInitialFeeds(input_ids, implicit_inputs_, parameters_->num_beams, parameters_->pad_token_id, sequence_lengths, expanded_input_ids, feeds, create_inputs_func_, add_to_feeds_func_, buffer);
+  return gpt_subgraph_.CreateInitialFeeds(input_ids, this->implicit_inputs_, this->parameters_->num_beams, this->parameters_->pad_token_id, sequence_lengths, expanded_input_ids, feeds, this->create_inputs_func_, this->add_to_feeds_func_, buffer);
 }
 
 template <typename T>
@@ -76,78 +76,77 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     OrtValue& position_ids,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices) {
-  return update_feeds_func_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs, current_length, position_ids,
-                            beam_next_tokens, beam_indices, parameters_->num_beams, GetConsoleDumper());
+  return update_feeds_func_(this->temp_space_allocator_, this->cuda_stream_, last_outputs, next_inputs, current_length, position_ids,
+                            beam_next_tokens, beam_indices, this->parameters_->num_beams, this->GetConsoleDumper());
 }
 
 template <typename T>
 Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manager) {
   auto status = Status::OK();
-  int64_t sequences_dims[] = {parameters_->batch_size, parameters_->num_return_sequences, parameters_->max_length};
+  const BeamSearchParameters* parameters = this->parameters_;
+  int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
-  Tensor* output_sequences = context_.Output(0, sequences_shape);
+  Tensor* output_sequences = this->context_.Output(0, sequences_shape);
 
-  int64_t sequences_scores_dims[] = {parameters_->batch_size, parameters_->num_return_sequences};
+  int64_t sequences_scores_dims[] = {parameters->batch_size, parameters->num_return_sequences};
   TensorShape sequences_scores_shape(&sequences_scores_dims[0], sizeof(sequences_scores_dims) / sizeof(sequences_scores_dims[0]));
-  Tensor* output_sequences_scores = context_.Output(1, sequences_scores_shape);
+  Tensor* output_sequences_scores = this->context_.Output(1, sequences_scores_shape);
 
   int64_t scores_dims[] = {
-      static_cast<int64_t>(parameters_->max_length) - static_cast<int64_t>(parameters_->sequence_length),
-      parameters_->batch_size, parameters_->num_beams, parameters_->vocab_size};
+      static_cast<int64_t>(parameters->max_length) - static_cast<int64_t>(parameters->sequence_length),
+      parameters->batch_size, parameters->num_beams, parameters->vocab_size};
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
-  Tensor* output_scores = context_.Output(2, scores_shape);
+  Tensor* output_scores = this->context_.Output(2, scores_shape);
 
   // Update the flag to indicate whether scores exists in output
-  parameters_->output_scores = (output_scores != nullptr);
+  this->parameters_->output_scores = (output_scores != nullptr);
 
   std::vector<OrtValue> feeds;
   // TODO: allocate fetches. use ping-pong buffers for past state.
   std::vector<OrtValue> fetches;
 
   // Initialize resources
-  onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(cpu_allocator_);
-  onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(cpu_allocator_);
-  beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters_->batch_size),
-                                                    static_cast<size_t>(parameters_->num_beams),
-                                                    static_cast<size_t>(parameters_->max_length),
-                                                    parameters_->length_penalty,
-                                                    parameters_->early_stopping,
-                                                    static_cast<size_t>(parameters_->num_return_sequences),
-                                                    parameters_->pad_token_id,
-                                                    parameters_->eos_token_id,
-                                                    hypothesis_score_allocator,
-                                                    beam_hyps_allocator);
-  beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
+  onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
+  onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
+  this->beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters->batch_size),
+                                                          static_cast<size_t>(parameters->num_beams),
+                                                          static_cast<size_t>(parameters->max_length),
+                                                          parameters->length_penalty,
+                                                          parameters->early_stopping,
+                                                          static_cast<size_t>(parameters->num_return_sequences),
+                                                          parameters->pad_token_id,
+                                                          parameters->eos_token_id,
+                                                          hypothesis_score_allocator,
+                                                          beam_hyps_allocator);
+  this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
 
   BeamSearchCpuState cpu_state;
-  cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, parameters_->sequence_length, IsCuda());
+  cpu_state.Init(this->cpu_allocator_, static_cast<size_t>(parameters->BatchBeamSize()), parameters->max_length, parameters->sequence_length, this->IsCuda());
 
   // buffer in GPU for input_ids, position_ids and attention_mask
-  // size_t buffer_bytes = SafeInt<size_t>(sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t)) * parameters_->batch_size * parameters_->num_beams * parameters_->sequence_length;
+  // size_t buffer_bytes = SafeInt<size_t>(sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t)) * parameters->batch_size * parameters->num_beams * parameters->sequence_length;
   // IAllocatorUniquePtr<char> buffer = gpt_subgraph_.GetProvider()->GetScratchBuffer<char>(buffer_bytes);
   IAllocatorUniquePtr<char> buffer;
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(cpu_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
 
   BeamSearchState<T> beam_state;
-  beam_state.Init(temp_space_allocator_,
-                  parameters_->batch_size,
-                  parameters_->num_beams,
-                  parameters_->vocab_size,
-                  parameters_->sequence_length,
-                  parameters_->max_length,
-                  parameters_->output_scores);
+  beam_state.Init(this->temp_space_allocator_,
+                  parameters->batch_size,
+                  parameters->num_beams,
+                  parameters->vocab_size,
+                  parameters->sequence_length,
+                  parameters->max_length,
+                  parameters->output_scores);
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
-                        parameters_->batch_size,
-                        parameters_->num_beams,
-                        // parameters_->sequence_length,
-                        // parameters_->max_length,
-                        cuda_stream_);
+                        parameters->batch_size,
+                        parameters->num_beams,
+                        this->cuda_stream_);
 
   gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
-  cpu_state.SetSequence(input_ids, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, parameters_->sequence_length);
+  cpu_state.SetSequence(input_ids, static_cast<size_t>(parameters->BatchBeamSize()), parameters->max_length, parameters->sequence_length);
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();
@@ -158,31 +157,31 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
 
   // position ids for all iterations except the first. It uses memory buffer owned by next_positions.
   OrtValue position_ids;
-  int64_t dims[] = {parameters_->BatchBeamSize(), 1};
+  int64_t dims[] = {parameters->BatchBeamSize(), 1};
   TensorShape shape(&dims[0], 2);
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, beam_state.next_positions.data(), temp_space_allocator_->Info(), position_ids);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, beam_state.next_positions.data(), this->temp_space_allocator_->Info(), position_ids);
 
-  int current_length = parameters_->sequence_length;
+  int current_length = parameters->sequence_length;
   int iteration_counter = 0;
-  while (current_length < parameters_->max_length) {
+  while (current_length < parameters->max_length) {
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
 #endif
 
-    status = utils::ExecuteSubgraph(decoder_session_state_, feeds_fetches_manager, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
+    status = utils::ExecuteSubgraph(this->decoder_session_state_, feeds_fetches_manager, feeds, fetches, {},
+                                    ExecutionMode::ORT_SEQUENTIAL, this->context_.GetTerminateFlag(), this->context_.Logger());
 
     ORT_RETURN_IF_ERROR(status);
 
     const OrtValue& logits = fetches[0];
     gsl::span<int32_t> beam_next_tokens;
     gsl::span<int32_t> beam_indices;
-    ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
+    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
-    if (beam_scorer_->IsDone()) {
+    if (this->beam_scorer_->IsDone()) {
       break;
     }
 
@@ -190,7 +189,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
     ++current_length;
 
     // Prepare inputs for next round of subgraph call.
-    if (current_length < parameters_->max_length) {
+    if (current_length < parameters->max_length) {
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
                                       position_ids,
                                       beam_next_tokens.as_span<const int32_t>(),
@@ -200,12 +199,12 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   }
 
   gsl::span<const float> final_beam_scores(beam_state.beam_scores.data(), beam_state.beam_scores.size());
-  if (IsCuda()) {
-    ORT_RETURN_IF_ERROR(device_copy_func_(cpu_state.final_beam_scores, final_beam_scores, nullptr, DeviceCopyDirection::deviceToHost));
+  if (this->IsCuda()) {
+    ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores, final_beam_scores, nullptr, DeviceCopyDirection::deviceToHost));
     final_beam_scores = gsl::make_span<const float>(cpu_state.final_beam_scores.data(), cpu_state.final_beam_scores.size());
   }
 
-  beam_scorer_->Finalize(&(cpu_state.sequences),
+  this->beam_scorer_->Finalize(&(cpu_state.sequences),
                          final_beam_scores,
                          output_sequences,
                          output_sequences_scores);
@@ -215,7 +214,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
     gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
     assert(target.length() == source.length());
-    ORT_RETURN_IF_ERROR(device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
+    ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
 
   return status;

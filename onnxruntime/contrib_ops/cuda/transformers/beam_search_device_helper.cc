@@ -453,13 +453,9 @@ Status UpdateFeeds(
 
 // Explicit template instantiations of functions
 template void InitBeamState<float>(transformers::IBeamSearchState<float>* beam_state,
-                                   transformers::IBeamSearchCpuState* cpu_state,
                                    gsl::span<int32_t>& sequence_lengths,
                                    int batch_size,
                                    int num_beams,
-                                   gsl::span<const int32_t> input_ids_in_cpu,
-                                   int sequence_length,
-                                   int max_length,
                                    void* stream);
 
 template Status ProcessLogits<float>(const OrtValue& logits,
@@ -495,13 +491,9 @@ template Status UpdateFeeds<float>(
 
 // Float16
 template void InitBeamState<MLFloat16>(transformers::IBeamSearchState<MLFloat16>* beam_state,
-                                       transformers::IBeamSearchCpuState* cpu_state,
                                        gsl::span<int32_t>& sequence_lengths,
                                        int batch_size,
                                        int num_beams,
-                                       gsl::span<const int32_t> input_ids_in_cpu,
-                                       int sequence_length,
-                                       int max_length,
                                        void* stream);
 
 template Status ProcessLogits<MLFloat16>(const OrtValue& logits,

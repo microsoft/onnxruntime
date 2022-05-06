@@ -37,17 +37,25 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::BeamSearch(info) {
   SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 
+
   SetDeviceHelpers(BeamSearchCudaDeviceHelper::AddToFeeds,
-                   BeamSearchCudaDeviceHelper::TopK);
-
-  SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits<float>,
-                   BeamSearchCudaDeviceHelper::InitBeamState<float>,
+                   BeamSearchCudaDeviceHelper::TopK,
                    BeamSearchCudaDeviceHelper::DeviceCopy<float>,
-                   BeamSearchCudaDeviceHelper::UpdateFeeds<float>);
+                   BeamSearchCudaDeviceHelper::ProcessLogits<float>,
+                   BeamSearchCudaDeviceHelper::ProcessLogits<MLFloat16>,
+                   BeamSearchCudaDeviceHelper::InitBeamState<float>,
+                   BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>
+                   );
 
-  SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits<MLFloat16>,
-                   BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>,
-                   BeamSearchCudaDeviceHelper::UpdateFeeds<MLFloat16>);
+  SetDeviceHelpers_Gpt(BeamSearchCpuDeviceHelper::CreateGptInputs,
+                       BeamSearchCudaDeviceHelper::UpdateFeeds<float>,
+                       BeamSearchCudaDeviceHelper::UpdateFeeds<MLFloat16>);
+
+  // SetDeviceHelpers_EncoderDecoder(BeamSearchCudaDeviceHelper::CreateEncoderInputs,
+  //                                 BeamSearchCudaDeviceHelper::InitDecoderFeeds<float>,
+  //                                 BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<float>,
+  //                                 BeamSearchCudaDeviceHelper::InitDecoderFeeds<MLFloat16>,
+  //                                 BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
 }
