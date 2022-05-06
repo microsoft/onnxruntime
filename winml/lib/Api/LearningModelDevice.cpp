@@ -127,11 +127,26 @@ LearningModelDevice::CacheThreadPool(_winml::IThreading* thread_pool) {
 }
 
 uint32_t LearningModelDevice::NumberOfIntraOpThreads() {
-  return std::thread::hardware_concurrency();
+  if (GetD3DDeviceCache())
+  {
+    // GPU sessions should not rely on intra op threads.
+    // Creating a large thread pool is unnecessary and wasteful, and can cause
+    // thread competition in the process.
+    return 1;
+  } else {
+    return std::thread::hardware_concurrency();
+  }
 }
 
 bool LearningModelDevice::AllowSpinning() {
-  return true;
+  if (GetD3DDeviceCache())
+  {
+    // GPU sessions should not run operators on cpu threads.
+    // CPU threads created should not spin, as it will drain cpu resources unnecessarily.
+    return false;
+  } else {
+    return true;
+  }
 }
 
 }  // namespace WINMLP 
