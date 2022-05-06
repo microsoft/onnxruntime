@@ -33,38 +33,37 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 template<typename T, typename U, typename V, bool do_scale, bool do_center, bool simplified>
-void LaunchLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
+bool LaunchLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
                          const double epsilon, const T* input,U* mean, U* inv_variance,
                          const V* gamma, const V* beta, V* output) {
   using ComputeType = typename contrib::cuda::DefaultComputeType<U>::type;
   DirectLoad<T, ComputeType> load(input, norm_size);
   AffineStore<ComputeType, V, do_scale, do_center, simplified> store(output, norm_size, gamma, beta);
-  DispatchLayerNorm<decltype(load), decltype(store), ComputeType, simplified>(
+  return DispatchLayerNorm<decltype(load), decltype(store), ComputeType, simplified>(
       stream, load, store, num_instances, norm_size, epsilon, mean, inv_variance);
-  return;
 }
 
 template <typename T, typename U, typename V, bool simplified>
-void ComputeLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
+bool ComputeLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
                          const double epsilon, const T* input, U* mean, U* inv_variance,
                          const V* gamma, const V* beta, V* output) {
   if (gamma != nullptr && beta != nullptr) {
-    LaunchLayerNorm<T, U, V, true, true, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
+    return LaunchLayerNorm<T, U, V, true, true, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
                                         gamma, beta, output);
   } else if (gamma != nullptr && beta == nullptr) {
-    LaunchLayerNorm<T, U, V, true, false, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
+    return LaunchLayerNorm<T, U, V, true, false, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
                                         gamma, beta, output);
   } else if (gamma == nullptr && beta != nullptr) {
-    LaunchLayerNorm<T, U, V, false, true, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
+    return LaunchLayerNorm<T, U, V, false, true, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
                                         gamma, beta, output);
   } else {
-    LaunchLayerNorm<T, U, V, false, false, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
+    return LaunchLayerNorm<T, U, V, false, false, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
                                         gamma, beta, output);
   }
 }
 
 template <typename T, typename U, typename V, bool simplified>
-void HostApplyLayerNorm(
+bool HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
     V* output,
@@ -76,11 +75,11 @@ void HostApplyLayerNorm(
     double epsilon,
     const V* gamma,
     const V* beta) {
-  ComputeLayerNorm<T, U, V, simplified>(stream, n1, n2, epsilon, input, mean, inv_std_dev, gamma, beta, output);
+  return ComputeLayerNorm<T, U, V, simplified>(stream, n1, n2, epsilon, input, mean, inv_std_dev, gamma, beta, output);
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                  \
-  template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output, \
+  template bool HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output, \
                                                         U* mean, U* inv_std_dev, const T* input, int n1, int n2,    \
                                                         double epsilon, const V* gamma, const V* beta);
 

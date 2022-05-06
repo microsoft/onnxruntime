@@ -100,7 +100,7 @@ bool ComputeSkipLayerNormNaive(
 }
 
 template<typename T, bool do_scale, bool do_center>
-void LaunchSkipLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
+bool LaunchSkipLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
                          const double epsilon, const T* input, const T* skip, const T* gamma,
                          const T* beta, const T* bias, T* output) {
   using ComputeType = typename contrib::cuda::DefaultComputeType<T>::type;
@@ -108,7 +108,7 @@ void LaunchSkipLayerNorm(cudaStream_t stream, const int64_t num_instances, const
   AffineStore<ComputeType, T, do_scale, do_center> store(output, norm_size, gamma, beta);
   ComputeType *mean = nullptr;
   ComputeType *inv_variance = nullptr;
-  DispatchLayerNorm<decltype(load), decltype(store), ComputeType>(
+  return DispatchLayerNorm<decltype(load), decltype(store), ComputeType>(
       stream, load, store, num_instances, norm_size, epsilon, mean, inv_variance);
 }
 
@@ -117,19 +117,18 @@ bool ComputeSkipLayerNormWelford(
     cudaStream_t stream, const int norm_size, const int num_instances, const T* input, const T* skip,
     const T* gamma, const T* beta, const T* bias, const T epsilon, T* output) {
   if (gamma != nullptr && beta != nullptr) {
-    LaunchSkipLayerNorm<T, true, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+    return LaunchSkipLayerNorm<T, true, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
                                        beta, bias, output);
   } else if (gamma != nullptr && beta == nullptr) {
-    LaunchSkipLayerNorm<T, true, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+    return LaunchSkipLayerNorm<T, true, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
                                         beta, bias, output);
   } else if (gamma == nullptr && beta != nullptr) {
-    LaunchSkipLayerNorm<T, false, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+    return LaunchSkipLayerNorm<T, false, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
                                         beta, bias, output);
   } else {
-    LaunchSkipLayerNorm<T, false, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+    return LaunchSkipLayerNorm<T, false, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
                                          beta, bias, output);
   }
-  return CUDA_CALL(cudaPeekAtLastError());
 }
 
 template <typename T>

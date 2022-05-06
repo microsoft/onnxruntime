@@ -30,7 +30,7 @@ namespace contrib {
 namespace cuda {
 
 template <typename T, typename U, typename V, bool simplified>
-void HostApplyLayerNorm(
+bool HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
     V* output,
