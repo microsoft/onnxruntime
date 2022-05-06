@@ -22,10 +22,6 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  FusionStyle GetFusionStyle() const override {
-    return FusionStyle::FilteredGraphViewer;
-  }
-
   DataLayout GetPreferredLayout() const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
