@@ -43,7 +43,7 @@ As a quick start to using the Microsoft ONNX OLive tool, please refer to the [no
 
 The onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`.
 
-You can enable ONNX Runtime latency profiling in code:
+You can enable ONNX Runtime latency profiling in the Python code:
 
 ```python
 import onnxruntime as rt
@@ -56,19 +56,21 @@ If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_fi
 
 **Performance and Profiling Report**
 
-In both OLive tool and the onnxruntime_perf_test.exe tool, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, and so on). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
+In both the cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, and so on). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
 
 1. Open Chrome browser
 2. Type chrome://tracing in the address bar
 3. Load the generated JSON file
 
-### Profiling CUDA Kernels
+**Profiling CUDA Kernels**
 
 To profile Compute Unified Device Architecture (CUDA) kernels, please add 'cupti' library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`. The performance numbers from device will then be attached to those from the host.
 
 **Single Kernel example:**
 
 In the following example, the "Add" operator from the host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
+
+- JSON:
 
 ```json
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
@@ -78,6 +80,8 @@ In the following example, the "Add" operator from the host initiated a CUDA kern
 **Multiple Kernels example:**
 
 If an operator called multiple kernels during execution, the performance numbers of all those kernels will be listed following the calling sequence:
+
+- JSON:
 
 ```json
 {"cat":"Node", "name":<name of the node>, ...}
@@ -180,11 +184,15 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 
 Here are some suggestions for tuning performance of ORT using different Execution Providers.
 
-### Shared arena-based allocator
+### Memory Consumption Reduction
+
+Here are some tips to tune performance with ORT.
+
+1. **Shared arena-based allocator**
 
 Memory consumption can be reduced between multiple sessions by configuring the shared arena-based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
-### Mimalloc allocator
+2. **Mimalloc allocator**
 
 OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
 - Depending on your model and usage mimalloc can deliver single- or double-digit improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios. mimalloc is a submodule in the OnnxRuntime source tree. 
@@ -192,13 +200,13 @@ OnnxRuntime supports overriding memory allocations using mimalloc allocator, whi
  
 ### Thread management
 
-ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP. There are some best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to customize your ONNX Runtime environment.
+ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP. Here are some best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to customize your ONNX Runtime environment:
 
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of IntraOp num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control IntraOp num threads.
 * InterOp num threads setting - is used only when parallel execution is enabled, is not affected by OpenMP settings, and should always be set using the ORT APIs.
 
-### Custom threading callbacks
+1. **Thread Management: Custom threading callbacks**
 
 ORT offers thread creation and joining callbacks using [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h). This will allow customers to use their own fine-tuned threads for multithreading. 
 
@@ -255,7 +263,7 @@ For ORT global thread pool in C++, here is a code sample:
 
 Note that the CreateThreadCustomized and JoinThreadCustomized settings will be applied to both the ORT IntraOp and the InterOp thread pools uniformly.
 
-### Default CPU Execution Provider (MLAS)
+2. **Thread Management: Default CPU Execution Provider (MLAS)**
 
 Microsoft Linear Algebra Subprogram (MLAS), the default execution provider, uses different knobs to control the thread number.
 
@@ -279,7 +287,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](graph-optimizations.md).
 
-### MKL_DNN/nGraph Execution Provider
+**3. Thread Management: MKL_DNN/nGraph Execution Provider**
 
 MKL_DNN (Math Kernel Library for Deep Neural Networks) and nGraph (C++ library for DNN) depend on OpenMp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance. The most widely used environment variables are:
 
@@ -325,7 +333,9 @@ Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python). Follow t
 
 Refer to the [C# docs](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs)
 
-### Convolution heavy models and the CUDA Execution Provider
+### CUDA Execution Providers 
+
+**1. Convolution heavy models and the CUDA Execution Provider**
 
 ORT leverages CuDNN (CUDA Deep Neural Networks) for convolution operations. 
 
@@ -373,7 +383,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
-### Convolution Input Padding in the CUDA EP
+2. **Convolution Input Padding in the CUDA EP**
 
 ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor.
 
@@ -420,7 +430,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
-### Using CUDA Graphs in the CUDA EP
+3. **Using CUDA Graphs in the CUDA EP**
 
 NOTE: Please note that this feature is currently being offered in "preview" mode.
 
@@ -571,23 +581,23 @@ Here is a checklist to troubleshoot ORT performance.
 
 Here are some FAQs for OnnxRuntime performance tuning.
 
-**How do I optimize BERT models?**
+1. **How do I optimize BERT models?**
 
 For some BERT models, ONNX Runtime cannot apply the best optimization due to framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
 
-**Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?**
+2. **Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?**
 
 The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion, and so on.
 
 You can move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
 
-**Why is my model running slower on GPU than CPU?**
+3. **Why is my model running slower on GPU than CPU?**
 
 Depending on the execution provider you are using, all the operators may not have full support for your model. Fallback to CPU operators can cause hits in the performance speed.
 
 Even though an operator is implemented by the CUDA execution provider, it may not necessarily assign/place the operator to the CUDA EP due to performance reasons. To see the placement decided by ORT, you can turn on verbose logging and look at the console output.
 
-**Why is my converted Tensorflow model slow?**
+4. **Why is my converted Tensorflow model slow?**
 
 Number-Channel-Height-Width (NCHW) and Number-Height-Width-Channel (NHWC) are two different memory layouts for 4-D tensors.
 
@@ -595,7 +605,7 @@ Most TensorFlow operations used by a CNN support both the NCHW and the NHWC data
 
 If the original model is in NHWC format, extra transposes may be added when the model is converted. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help, consider retraining the model using NCHW.
 
-**How do I mitigate high latency variance?**
+5. **How do I mitigate high latency variance?**
 
 On some platforms, OnnxRuntime may exhibit high latency variance during inferencing. This is caused by the 'constant cost model' that OnnxRuntime uses to parallelize tasks in the thread pool.
 
