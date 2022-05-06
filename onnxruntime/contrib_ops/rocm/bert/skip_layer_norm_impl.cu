@@ -101,45 +101,45 @@ bool ComputeSkipLayerNorm(
     constexpr int block_size = 32;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, bias, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   } else if (ld <= 128) {
     constexpr int block_size = 128;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, bias, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   } else if (ld == 384) {
     constexpr int block_size = 384;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, bias, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   } else {
     constexpr int block_size = 256;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
-                     stream, ld, input, skip, beta, gamma, bias, epsilon, output);
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size),
+                         shmem, stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   }
   return HIP_CALL(hipPeekAtLastError());

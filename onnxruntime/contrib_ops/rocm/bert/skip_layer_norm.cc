@@ -105,17 +105,16 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           bias != nullptr ? bias->template Data<T>() : nullptr,
           epsilon_,
           hidden_size,
-          static_cast<int>(element_count),  //TODO: check range
+          static_cast<int>(element_count),
           element_size)) {
-    // Get last error to reset it to hipSuccess.
-    HIP_CALL(hipGetLastError());
+    HIP_CALL(hipGetLastError()); // Get last error to reset it to hipSuccess.
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
   return Status::OK();
 }
 
-}  //namespace rocm
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
 
