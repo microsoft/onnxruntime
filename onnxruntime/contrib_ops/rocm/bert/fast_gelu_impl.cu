@@ -145,6 +145,121 @@ __global__ void FastGeluKernel4(const half2 a, const half2 b, const half2 c, con
   }
 }
 
+template <unsigned TPB>
+__global__ void FastGeluKernel8Bias(const half2 a, const half2 b, const half2 c, const half2 one2, const half2 two2,
+                                    int input_length, int bias_length, const float4* input, const float4* bias,
+                                    float4* output) {
+  const int idx = blockIdx.x * TPB + threadIdx.x;
+
+  __shared__ half2 shm[5]; // a, b, c, one2, two2
+  if(threadIdx.x== 0) {
+    shm[0] = a;
+    shm[1] = b;
+    shm[2] = c;
+    shm[3] = one2;
+    shm[4] = two2;
+  }
+  __syncthreads();
+
+  if (idx < input_length) {
+    float4 input_vec = input[idx];
+    float4 bias_vec = bias[idx % bias_length];
+    float4 output_vec = output[idx];
+
+    half2* input_half = reinterpret_cast<half2*>(&input_vec);
+    half2* bias_half = reinterpret_cast<half2*>(&bias_vec);
+    half2* output_half = reinterpret_cast<half2*>(&output_vec);
+
+    half2 data_0 = input_half[0];
+    half2 data_1 = input_half[1];
+    half2 data_2 = input_half[2];
+    half2 data_3 = input_half[3];
+
+    half2 bias_0 = bias_half[0];
+    half2 bias_1 = bias_half[1];
+    half2 bias_2 = bias_half[2];
+    half2 bias_3 = bias_half[3];
+
+    data_0 += bias_0;
+    data_1 += bias_1;
+    data_2 += bias_2;
+    data_3 += bias_3;
+
+    const half2 u_0 = shm[4] * data_0 * (shm[2] * data_0 * data_0 + shm[1]);
+    const half2 u_1 = shm[4] * data_1 * (shm[2] * data_1 * data_1 + shm[1]);
+    const half2 u_2 = shm[4] * data_2 * (shm[2] * data_2 * data_2 + shm[1]);
+    const half2 u_3 = shm[4] * data_3 * (shm[2] * data_3 * data_3 + shm[1]);
+
+    const half2 emu_0 = h2exp(-u_0);
+    const half2 emu_1 = h2exp(-u_1);
+    const half2 emu_2 = h2exp(-u_2);
+    const half2 emu_3 = h2exp(-u_3);
+
+    const half2 cdf_0 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_0) - shm[3]);
+    const half2 cdf_1 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_1) - shm[3]);
+    const half2 cdf_2 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_2) - shm[3]);
+    const half2 cdf_3 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_3) - shm[3]);
+
+    output_half[0] = data_0 * cdf_0;
+    output_half[1] = data_1 * cdf_1;
+    output_half[2] = data_2 * cdf_2;
+    output_half[3] = data_3 * cdf_3;
+
+    output[idx] = output_vec;
+  }
+}
+
+template <unsigned TPB>
+__global__ void FastGeluKernel8(const half2 a, const half2 b, const half2 c, const half2 one2, const half2 two2,
+                                    int input_length, const float4* input, float4* output) {
+  const int idx = blockIdx.x * TPB + threadIdx.x;
+
+  __shared__ half2 shm[5]; // a, b, c, one2, two2
+  if(threadIdx.x== 0) {
+    shm[0] = a;
+    shm[1] = b;
+    shm[2] = c;
+    shm[3] = one2;
+    shm[4] = two2;
+  }
+  __syncthreads();
+
+  if (idx < input_length) {
+    float4 input_vec = input[idx];
+    float4 output_vec = output[idx];
+
+    half2* input_half = reinterpret_cast<half2*>(&input_vec);
+    half2* output_half = reinterpret_cast<half2*>(&output_vec);
+
+    half2 data_0 = input_half[0];
+    half2 data_1 = input_half[1];
+    half2 data_2 = input_half[2];
+    half2 data_3 = input_half[3];
+
+    const half2 u_0 = shm[4] * data_0 * (shm[2] * data_0 * data_0 + shm[1]);
+    const half2 u_1 = shm[4] * data_1 * (shm[2] * data_1 * data_1 + shm[1]);
+    const half2 u_2 = shm[4] * data_2 * (shm[2] * data_2 * data_2 + shm[1]);
+    const half2 u_3 = shm[4] * data_3 * (shm[2] * data_3 * data_3 + shm[1]);
+
+    const half2 emu_0 = h2exp(-u_0);
+    const half2 emu_1 = h2exp(-u_1);
+    const half2 emu_2 = h2exp(-u_2);
+    const half2 emu_3 = h2exp(-u_3);
+
+    const half2 cdf_0 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_0) - shm[3]);
+    const half2 cdf_1 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_1) - shm[3]);
+    const half2 cdf_2 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_2) - shm[3]);
+    const half2 cdf_3 = shm[0] + shm[0] * (shm[4]/(shm[3] + emu_3) - shm[3]);
+
+    output_half[0] = data_0 * cdf_0;
+    output_half[1] = data_1 * cdf_1;
+    output_half[2] = data_2 * cdf_2;
+    output_half[3] = data_3 * cdf_3;
+
+    output[idx] = output_vec;
+  }
+}
+
 template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
                           const float* input, const float* bias, float* output, bool /*use_half2*/) {
@@ -160,13 +275,26 @@ template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
                           const half* input, const half* bias, half* output, bool use_half2) {
   constexpr int blockSize = 256;
-  if (use_half2 && prop.major >= 7 && (0 == (bias_length % 4) || 0 == (bias_length & 1))) {
+  if (use_half2 && prop.major >= 7 && (0 == (bias_length % 8) || 0 == (bias_length % 4) || 0 == (bias_length & 1))) {
     const half2 A2 = __float2half2_rn(A);
     const half2 B2 = __float2half2_rn(B);
     const half2 C2 = __float2half2_rn(C);
     const half2 one2 = __float2half2_rn(one);
     const half2 two2 = __float2half2_rn(two);
-    if (0 == (bias_length % 4)) {
+    if (0 == (bias_length % 8)) {
+      const int n = input_length / 8;
+      const int gridSize = (n + blockSize - 1) / blockSize;
+      const float4* input8 = reinterpret_cast<const float4*>(input);
+      const float4* bias8 = reinterpret_cast<const float4*>(bias);
+      float4* output8 = reinterpret_cast<float4*>(output);
+      unsigned int shmem = sizeof(half2) * 5;
+      if (bias == nullptr)
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel8<blockSize>), dim3(gridSize), dim3(blockSize), 0,
+                           stream, A2, B2, C2, one2, two2, n, input8, output8);
+      else
+        hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel8Bias<blockSize>), dim3(gridSize), dim3(blockSize), 0,
+                           stream, A2, B2, C2, one2, two2, n, bias_length / 8, input8, bias8, output8);
+    } else if (0 == (bias_length % 4)) {
       const int n = input_length / 4;
       const int gridSize = (n + blockSize - 1) / blockSize;
       const float2* input4 = reinterpret_cast<const float2*>(input);
