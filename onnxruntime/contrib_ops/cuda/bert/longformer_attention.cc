@@ -159,7 +159,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
   }
 
-  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, use_fast_kernel);
+  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, disable_compact_memory);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
