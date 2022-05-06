@@ -14,15 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This is fast cuda kernels for longformer attention softmax.
-// It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Launch the softmax kernel for non compact memory.
-bool launchSoftmaxFastKernel(
+// Launch the softmax kernels that does not use compact memory.
+bool LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,              // softmax space

@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
- size_t GetPinnedBufferSize(
+size_t GetPinnedBufferSize(
     int batch_size);
 
 size_t GetLongformerAttentionWorkspaceSize(
@@ -19,7 +19,7 @@ size_t GetLongformerAttentionWorkspaceSize(
     int sequence_length,
     int max_num_global,
     int window,
-    bool use_fast_kernel);
+    bool disable_compact_memory);
 
 bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
@@ -41,7 +41,7 @@ bool LaunchLongformerAttentionKernel(
     int window,                         // One sided attention window (W)
     int max_num_global,                 // Maximum number of global tokens (G)
     const size_t element_size,          // Element size of input tensor,
-    bool use_fast_kernel                // Use compact memory
+    bool disable_compact_memory         // Disable compact memory kernel
 );
 
 }  // namespace cuda

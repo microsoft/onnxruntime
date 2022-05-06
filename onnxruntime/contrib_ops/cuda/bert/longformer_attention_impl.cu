@@ -72,13 +72,13 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     int num_heads,
     int sequence_length,
     int window,
-    bool use_fast_kernel) {
-  if (!use_fast_kernel) {
-      size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
-      size_t scratch2_size = 10 * (sizeof(void*) + sizeof(size_t));
-      return scratch1_size + scratch2_size;
+    bool disable_compact_memory) {
+  if (!disable_compact_memory) {
+    size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
+    size_t scratch2_size = 10 * (sizeof(void*) + sizeof(size_t));
+    return scratch1_size + scratch2_size;
   } else {
-    // Non-compact layout when environment variable ORT_LONGFORMER_COMPACT_MEMORY=0 is set.
+    // When compact memory is disabled, layout of work space is like following:
     //    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
     return 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
   }
@@ -92,8 +92,8 @@ size_t GetLongformerAttentionWorkspaceSize(
     int sequence_length,
     int max_num_global,
     int window,
-    bool use_fast_kernel) {
-  size_t softmax_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
+    bool disable_compact_memory) {
+  size_t softmax_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, disable_compact_memory);
   size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
   size_t global_qkv_size = max_num_global > 0 ? qkv_size : 0;
   return softmax_size + qkv_size + global_qkv_size;
@@ -356,7 +356,7 @@ __launch_bounds__(blockSize)
   }
 }
 
-bool launchSoftmaxKernel(
+bool LaunchLongformerSoftmaxKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,
@@ -825,7 +825,7 @@ bool launchSoftmaxKernel(
 
 template <typename T>
 bool LongformerQkvToContext(
-  const cudaDeviceProp& device_prop, cublasHandle_t& cublas, cudaStream_t stream,
+    const cudaDeviceProp& device_prop, cublasHandle_t& cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
     const T* input, const T* attention_mask,
@@ -834,7 +834,7 @@ bool LongformerQkvToContext(
     void* pinned_buffer, T* workspace,
     T* output,
     size_t softmax_workspace_size,
-    bool use_fast_kernel) {
+    bool disable_compact_memory) {
   T* qkv = reinterpret_cast<T*>((char*)workspace + softmax_workspace_size);
 
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
@@ -871,8 +871,8 @@ bool LongformerQkvToContext(
 
   T* temp_output = qkv;  // Q will be overwritten
 
-  if (use_fast_kernel) {
-    if (!launchSoftmaxFastKernel(
+  if (disable_compact_memory) {
+    if (!LaunchLongformerSoftmaxSimpleKernel(
             stream,
             cublas,
             workspace,         // softmax space
@@ -899,7 +899,7 @@ bool LongformerQkvToContext(
     }
   } else {
     assert(max_num_global <= window);
-    if (!launchSoftmaxKernel(
+    if (!LaunchLongformerSoftmaxKernel(
             stream,
             cublas,
             workspace,         // softmax space
@@ -926,7 +926,6 @@ bool LongformerQkvToContext(
     }
   }
 
-
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, temp_output, output);
 }
@@ -951,9 +950,9 @@ bool LaunchLongformerAttentionKernel(
     int window,
     int max_num_global,
     const size_t element_size,
-    bool use_fast_kernel) {
+    bool disable_compact_memory) {
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
-  size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
+  size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, disable_compact_memory);
   if (element_size == 2) {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -968,7 +967,7 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<half*>(workspace),
                                   reinterpret_cast<half*>(output),
                                   softmax_workspace_size,
-                                  use_fast_kernel);
+                                  disable_compact_memory);
   } else {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -983,7 +982,7 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<float*>(workspace),
                                   reinterpret_cast<float*>(output),
                                   softmax_workspace_size,
-                                  use_fast_kernel);
+                                  disable_compact_memory);
   }
 }
 

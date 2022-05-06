@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This is fast cuda kernels for longformer attention softmax.
+// This is cuda kernels for longformer attention softmax that does not use compact memory.
 // It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
+// Its logic is simpler, and it has less constraints (like number of global tokens could be larger than attention windows).
 
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
@@ -41,16 +42,16 @@ namespace cuda {
 
 template <typename T, int blockSize>
 __launch_bounds__(blockSize)
-    __global__ void LongformerSoftmaxFastKernel(const int* global_attention,
-                                                const int* global_index,
-                                                const int* batch_global_num,
-                                                const T* input,
-                                                const T* attention_mask,
-                                                T* output,
-                                                float scaler,
-                                                int dim0,
-                                                int sequence_length,
-                                                int attention_window) {
+    __global__ void LongformerSoftmaxSimpleKernel(const int* global_attention,
+                                                  const int* global_index,
+                                                  const int* batch_global_num,
+                                                  const T* input,
+                                                  const T* attention_mask,
+                                                  T* output,
+                                                  float scaler,
+                                                  int dim0,
+                                                  int sequence_length,
+                                                  int attention_window) {
   typedef cub::BlockReduce<float, blockSize> BlockReduce;
   __shared__ typename BlockReduce::TempStorage block_reduce_temp;
   __shared__ float max_shared;
@@ -190,7 +191,7 @@ __launch_bounds__(blockSize)
 }
 
 // Launch the softmax kernel for non compact memory.
-bool launchSoftmaxFastKernel(
+bool LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,              // softmax space
@@ -459,7 +460,7 @@ bool launchSoftmaxFastKernel(
   const int blockSize = 64;
   const int gridSize = batch_size * num_heads * sequence_length;
   if (is_fp16) {
-    LongformerSoftmaxFastKernel<__half, blockSize><<<gridSize, blockSize, 0, stream>>>(
+    LongformerSoftmaxSimpleKernel<__half, blockSize><<<gridSize, blockSize, 0, stream>>>(
         global_attention,
         global_index,
         batch_global_num,
@@ -467,7 +468,7 @@ bool launchSoftmaxFastKernel(
         static_cast<const __half*>(attention_mask),
         static_cast<__half*>(softmax_out), scaler, dim0, dim1, attention_window);
   } else {
-    LongformerSoftmaxFastKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(
+    LongformerSoftmaxSimpleKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(
         global_attention,
         global_index,
         batch_global_num,

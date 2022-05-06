@@ -33,7 +33,7 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {
-  use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
+  use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, true);
 }
 
 template <typename T>
@@ -134,11 +134,11 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  // Force to use fast kernel in two situations:
-  // (1) global tokens > windows size. In that case, compact memory kernel cannot be used.
-  // (2) sequence_length == 2 * attention_window. Use fast kernel to walk around parity issue of compact memory kernel.
-  // In other case, we will choose according to user's environment variable setting (default is fast kernel).
-  bool use_fast_kernel = (max_num_global > window_ || sequence_length == 2 * window_ || !use_compact_memory_);
+  // Do not use compact kernel in the following situations:
+  // (1) global tokens > windows size, compact memory kernel cannot be used due to its assumptions.
+  // (2) sequence_length == 2 * attention_window, compact memory kernel has parity issue.
+  // (3) user sets environment variable ORT_LONGFORMER_COMPACT_MEMORY=0
+  bool disable_compact_memory = (max_num_global > window_ || sequence_length == 2 * window_ || !use_compact_memory_);
 
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
@@ -181,14 +181,15 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           window_,
           max_num_global,
           element_size,
-          use_fast_kernel)) {
+          disable_compact_memory)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  // Defer release of pinnned memory since cudaStreamSynchronize is not used here and launched kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
+
   return Status::OK();
 }
 
