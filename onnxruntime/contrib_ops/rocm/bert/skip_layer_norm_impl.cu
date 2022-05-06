@@ -30,7 +30,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename T, unsigned TPB>
-__global__ void SkipLayerNormKernel_rocm(
+__global__ void SkipLayerNormKernel(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
     const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
@@ -59,10 +59,8 @@ __global__ void SkipLayerNormKernel_rocm(
   LayerNormSmall<T, TPB>(val, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
-// separate -bias and -nobias
-// put input and skip into "__shared__"
 template <typename T, unsigned TPB>
-__global__ void SkipLayerNormKernelBias_rocm(
+__global__ void SkipLayerNormKernelBias(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias,
     const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
@@ -103,64 +101,47 @@ bool ComputeSkipLayerNorm(
     constexpr int block_size = 32;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      //SkipLayerNormKernel<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      //SkipLayerNormKernelBias<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   } else if (ld <= 128) {
     constexpr int block_size = 128;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      //SkipLayerNormKernel<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      //SkipLayerNormKernelBias<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   } else if (ld == 384) {
     constexpr int block_size = 384;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      //SkipLayerNormKernel<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      //SkipLayerNormKernelBias<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   } else {
     constexpr int block_size = 256;
     if (bias == nullptr) {
       unsigned int shmem = block_size * sizeof(T) * 2;
-      //SkipLayerNormKernel<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, epsilon, output);
     } else {
       unsigned int shmem = block_size * sizeof(T) * 3;
-      //SkipLayerNormKernelBias<T, block_size>
-      //  <<<grid_size, block_size, shmem, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias_rocm<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
+      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelBias<T, block_size>), dim3(grid_size), dim3(block_size), shmem,
                      stream, ld, input, skip, beta, gamma, bias, epsilon, output);
     }
   }
-  //return CUDA_CALL(cudaPeekAtLastError());
   return HIP_CALL(hipPeekAtLastError());
 }
 
