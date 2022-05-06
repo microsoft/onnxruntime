@@ -147,7 +147,7 @@ class OpSet_Microsoft_ver1 {
 template <typename F>
 void RegisterNHWCSchema(F&& f, const ::ONNX_NAMESPACE::OpSchema& schema) {
   f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
-                  .TypeAndShapeInferenceFunction([](InferenceContext&) {
+                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext&) {
                     // optional. add if/when required.
                     // if we load ONNX operators we have the shape inferencing from ONNX. the conversion to the NHWC
                     // version will update those shapes. if you needed to save the model after conversion to
@@ -162,9 +162,11 @@ void RegisterNHWCSchema(F&& f, const ::ONNX_NAMESPACE::OpSchema& schema) {
 template <typename F>
 void RegisterNHWCConvWithActivation(F&& f, const ::ONNX_NAMESPACE::OpSchema& schema) {
   f(std::move(::ONNX_NAMESPACE::OpSchema(schema)
-                  .Attr("activation", "", AttributeProto::STRING, OPTIONAL_VALUE)
-                  .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
-                  .TypeAndShapeInferenceFunction([](InferenceContext&) { /* optional. see comment in RegisterNHWCSchema. */ })
+                  .Attr("activation", "", ONNX_NAMESPACE::AttributeProto::STRING, ONNX_NAMESPACE::OPTIONAL_VALUE)
+                  .Attr("activation_params", "", ONNX_NAMESPACE::AttributeProto::FLOATS, ONNX_NAMESPACE::OPTIONAL_VALUE)
+                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext&) {
+                    /* optional. see comment in RegisterNHWCSchema. */
+                   })
                   .SetDomain(onnxruntime::kMSInternalNHWCDomain)));
 }
 

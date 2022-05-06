@@ -6,10 +6,10 @@
 #include <memory>
 
 #include "core/framework/op_kernel.h"
+#include "core/graph/indexed_sub_graph.h"
 #include "xnnpack.h"
 
 namespace onnxruntime {
-struct IndexedSubGraph::MetaDef;
 class GraphViewer;
 
 namespace xnnpack {

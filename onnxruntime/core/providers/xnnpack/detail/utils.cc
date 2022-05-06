@@ -84,7 +84,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const Node& conv, const
   def.attributes.insert({"activation", utils::MakeAttribute("activation", activation_type)});
   def.attributes.insert({"activation_params", utils::MakeAttribute("activation_params", activation_params)});
 
-  return std::move(metadef);
+  return metadef;
 }
 }  // namespace xnnpack
 }  // namespace onnxruntime
