@@ -101,8 +101,13 @@ TEST(CudaKernelTest, LayerNorm_MidSizeTensor) {
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
-TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
-  std::vector<int64_t> X_dims{16, 512, 1024};
+TEST(CudaKernelTest, LayerNorm_LargeSizeTensor_WrapImpl) {
+  std::vector<int64_t> X_dims{16, 384, 1024};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, LayerNorm_LargeSizeTensor_BlockImpl) {
+  std::vector<int64_t> X_dims{16, 384, 2048};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
@@ -130,8 +135,13 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_MidSizeTensor) {
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 
-TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
-  std::vector<int64_t> X_dims{16, 512, 1024};
+TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor_WrapImpl) {
+  std::vector<int64_t> X_dims{16, 384, 1024};
+  TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor_BlockImpl) {
+  std::vector<int64_t> X_dims{16, 384, 2048};
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
 }
 #endif
