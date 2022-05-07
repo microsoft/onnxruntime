@@ -105,6 +105,9 @@ jobs:
   steps:
     - script: |
         set -ex
+        clang --version
+        gcc --version
+        gcov --version
         system_profiler SPSoftwareDataType SPHardwareDataType
       displayName: 'Mac Agent Info'
 
