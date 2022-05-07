@@ -21,11 +21,11 @@ limitations under the License.
 // Licensed under the MIT License.
 #pragma once
 
+#include <cuda_fp16.h>
+#include <cublas_v2.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
-#include <cuda_fp16.h>
-#include <cublas_v2.h>
 
 using namespace onnxruntime::cuda;
 
@@ -84,7 +84,7 @@ struct DefaultComputeType<nv_bfloat16> {
 
 template<typename T, int N>
 struct GetPackType {
-  using type = typename std::aligned_storage<N * sizeof(T), N * sizeof(T)>::type;
+  using type = typename std::aligned_storage<N * sizeof(T), N * alignof(T)>::type;
 };
 
 template<typename T, int N>
