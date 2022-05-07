@@ -8,7 +8,7 @@
 
 namespace onnxruntime {
 namespace training {
-namespace api_test {
+namespace api {
 
 class Parameter {
  public:
@@ -253,6 +253,6 @@ class LinearScheduler : public LearningRateScheduler {
   int64_t total_iters_;
 };
 
-}  // namespace api_test
+}  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

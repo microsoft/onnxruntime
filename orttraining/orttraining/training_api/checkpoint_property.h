@@ -10,8 +10,7 @@
 namespace onnxruntime {
 namespace training {
 
-// TODO: Rename to api after all major classes implemented.
-namespace api_test {
+namespace api {
 
 template <typename T>
 struct TypedCheckpointProperty;
@@ -97,6 +96,6 @@ struct PropertyBag {
   std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties;
 };
 
-}  // namespace api_test
+}  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

@@ -11,8 +11,7 @@
 namespace onnxruntime {
 namespace training {
 
-// TODO: Rename to api after all major classes implemented.
-namespace api_test {
+namespace api {
 
 template <typename T>
 TypedCheckpointProperty<T>::TypedCheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
@@ -66,6 +65,6 @@ void PropertyBag::AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   named_properties.insert({tensor_proto.name(), CreateCheckpointPropertyFromTensorProto(tensor_proto)});
 }
 
-}  // namespace api_test
+}  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

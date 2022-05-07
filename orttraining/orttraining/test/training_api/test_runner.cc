@@ -21,7 +21,7 @@ using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
-using namespace onnxruntime::training::api_test;
+using namespace onnxruntime::training::api;
 using namespace std;
 
 #ifdef USE_CUDA
@@ -216,7 +216,7 @@ Status RunTraining(const TestRunnerParameters& params) {
                       state_dicts.module_checkpoint_states.named_parameters);
 
 #ifdef USE_CUDA
-  api_test::utils::SetExecutionProvider(module, optimizer, params.provider.get());
+  api::utils::SetExecutionProvider(module, optimizer, params.provider.get());
 #endif
 
   auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);

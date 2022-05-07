@@ -11,8 +11,7 @@
 namespace onnxruntime {
 namespace training {
 
-// TODO: Rename to api after all major classes implemented.
-namespace api_test {
+namespace api {
 
 /**
  * @brief A data class representing traing states, which include:
@@ -92,6 +91,6 @@ struct CheckpointUtils {
   static Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
 };
 
-}  // namespace api_test
+}  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

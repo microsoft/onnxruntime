@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 namespace training {
-namespace api_test {
+namespace api {
 namespace utils {
 /*
   module.train_sess.RegisterExecutionProvider(provider);
@@ -17,6 +17,6 @@ namespace utils {
 void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/);
 
 }  // namespace utils
-}  // namespace api_test
+}  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

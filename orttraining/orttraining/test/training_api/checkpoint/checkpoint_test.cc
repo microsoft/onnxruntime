@@ -29,7 +29,7 @@
 #include "orttraining/training_api/interfaces.h"
 
 using onnxruntime::test::TemporaryDirectory;
-using namespace onnxruntime::training::api_test;
+using namespace onnxruntime::training::api;
 namespace onnxruntime {
 namespace training {
 namespace test {

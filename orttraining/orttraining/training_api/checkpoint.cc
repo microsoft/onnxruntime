@@ -21,7 +21,7 @@
 
 namespace onnxruntime {
 namespace training {
-namespace api_test {
+namespace api {
 
 namespace {
 
@@ -511,6 +511,6 @@ Status CheckpointUtils::OrtLoadOptimizerStatesInternal(
   return Status::OK();
 }
 
-}  // namespace api_test
+}  // namespace api
 }  // namespace training
 }  // namespace onnxruntime
