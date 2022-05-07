@@ -168,17 +168,14 @@ jobs:
     condition: succeededOrFailed()
     displayName: Publish React Native iOS Instrumented Test Results
 
-  - script: |
-      export ORT_JS_PACK_MODE=e2e
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: Set env variable 'ORT_JS_PACK_MODE' for  Android and iOS e2e tests
-
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
       arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
       workingDirectory: '$(Build.SourcesDirectory)'
       errorActionPreference: stop
+    env:
+      ORT_JS_PACK_MODE: e2e
     displayName: Pack NPM packages
 
   - script: |
@@ -260,11 +257,6 @@ jobs:
       git restore .
     workingDirectory: '$(Build.SourcesDirectory)/js'
     displayName: Restore git changes
-
-  - script: |
-      export ORT_JS_PACK_MODE=
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: Clean up env variable 'ORT_JS_PACK_MODE' for production (default)
 
   - task: PowerShell@2
     inputs:
