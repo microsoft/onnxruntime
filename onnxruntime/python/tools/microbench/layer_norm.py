@@ -5,6 +5,7 @@
 
 import argparse
 from dataclasses import dataclass
+
 import numpy as np
 from benchmark import BenchmarkOp, add_arguments
 
@@ -27,10 +28,10 @@ class BenchmarkLayerNorm(BenchmarkOp):
         scale = np.random.rand(op_param.feature).astype(op_param.data_type)
         bias = np.random.rand(op_param.feature).astype(op_param.data_type)
         output_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.feature).astype(op_param.data_type)
-    
+
         inputs = {"INPUT": input_data, "SCALE": scale, "BIAS": bias}
         outputs = {"OUTPUT": output_data}
-     
+
         return inputs, outputs
 
     def create_cases(self):
@@ -40,8 +41,10 @@ class BenchmarkLayerNorm(BenchmarkOp):
         op_param = OpParam(1, 384, 1024, data_type)
         self.add_case(op_param, model)
 
-    def case_profile(cls, op_param, time):
-        profile = f"(batch seq_len feature) = ({op_param.batch_size} {op_param.seq_len} {op_param.feature}), {time:7.4f} ms"
+    def case_profile(self, op_param, time):
+        profile = (
+           f"(batch seq_len feature) = ({op_param.batch_size} {op_param.seq_len} {op_param.feature}), {time:7.4f} ms"
+        )
         return profile
 
 
