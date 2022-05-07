@@ -40,6 +40,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_mac_universal
+  displayName: 'Whether Mac universal package is built.'
+  type: boolean
+  default: true
+
 - name: enable_linux_arm
   displayName: 'Whether Linux ARM package is built.'
   type: boolean
@@ -751,6 +756,39 @@ stages:
         parameters:
           condition: 'succeeded'
 
+  - ${{ if eq(parameters.enable_mac_universal, true) }}:
+    - job: MacOS_py_Wheels
+      timeoutInMinutes: 90
+      workspace:
+        clean: all
+      pool:
+        vmImage: 'macOS-11'
+      variables:
+        MACOSX_DEPLOYMENT_TARGET: '10.14'
+      strategy:
+        matrix:
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+          Python310:
+            PythonVersion: '3.10'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - task: UsePythonVersion@0
+        displayName: 'Use Python'
+        inputs:
+          versionSpec: $(PythonVersion)
+
+      - script: |
+          set -ex
+          system_profiler SPSoftwareDataType SPHardwareDataType
+        displayName: 'Command Line Script'
 
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
     - job: Linux_py_Wheels
