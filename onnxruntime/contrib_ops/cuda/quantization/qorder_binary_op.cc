@@ -53,6 +53,7 @@ Status ShapeReordered32C(gsl::span<const int64_t> const& src, gsl::span<int64_t>
   return Status::OK();
 }
 
+/*
 QOrderedAdd::QOrderedAdd(const OpKernelInfo& info) : CudaKernel(info) {
   order_A_ = GetCublasLtOrderAttr(info, "order_A");
   order_B_ = GetCublasLtOrderAttr(info, "order_B");
@@ -104,6 +105,73 @@ Status QOrderedAdd::ComputeInternal(OpKernelContext* context) const {
 
   return Status::OK();
 }
+*/
+
+QOrderedAdd::QOrderedAdd(const OpKernelInfo& info) : CudaKernel(info) {
+  order_A_ = GetCublasLtOrderAttr(info, "order_A");
+  order_B_ = GetCublasLtOrderAttr(info, "order_B");
+  order_Y_ = GetCublasLtOrderAttr(info, "order_Y");
+  ORT_ENFORCE(order_A_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_A");
+  ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_B");
+  ORT_ENFORCE(order_Y_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_Y");
+}
+
+Status QOrderedAdd::ComputeInternal(OpKernelContext* context) const {
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+
+  const auto* input_tensor = context->Input<Tensor>(2);
+  const auto& input_shape = input_tensor->Shape();
+  auto input_rank = input_shape.NumDimensions();
+
+  const auto* bias_tensor = context->Input<Tensor>(0);
+  const auto& bias_shape = bias_tensor->Shape();
+  auto bias_rank = bias_shape.NumDimensions();
+  ORT_ENFORCE(bias_rank == 1);
+
+  if (bias_rank != 1 || input_rank < 1 || input_shape[input_rank - 1] != bias_shape[0]) {
+    // TODO: Make the error message more verbose
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input shapes don't meet the requirements");
+  }
+
+  if ((bias_shape[0] & 31) != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias of shape in multiples of 32 are only supported");
+  }
+
+  auto* output_tensor = context->Output(0, input_shape);
+
+  float input_scale = *(context->Input<Tensor>(3)->Data<float>());
+  float bias_scale = *(context->Input<Tensor>(1)->Data<float>());
+  float output_scale = *(context->Input<Tensor>(4)->Data<float>());
+
+  int64_t cols = input_shape[input_rank - 1];
+  int64_t rows = (input_rank > 1 ? input_shape[input_rank - 2] : 1);
+  int64_t batches = 1;
+
+  if (input_rank > 2) {
+    for (size_t i = 0; i < input_rank - 2; ++i) {
+      batches *= input_shape[i];
+    }
+  }
+
+  fast_divmod batch_size(static_cast<int>(rows) * static_cast<int>(cols));
+  fast_divmod rows_times_thirty_two(static_cast<int>(rows) * 32);
+
+  QOrdered_Col32OrderImpl_Add(
+      Stream(),
+      input_tensor->Data<int8_t>(),
+      input_scale,
+      bias_tensor->Data<int8_t>(),
+      bias_scale,
+      output_tensor->MutableData<int8_t>(),
+      output_scale,
+      batch_size,
+      rows_times_thirty_two,
+      input_shape.Size());
+
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+
+  return Status::OK();
+}
 
 QOrderedBiasGelu::QOrderedBiasGelu(const OpKernelInfo& info) : CudaKernel(info) {
   order_A_ = GetCublasLtOrderAttr(info, "order_A");
@@ -115,6 +183,8 @@ QOrderedBiasGelu::QOrderedBiasGelu(const OpKernelInfo& info) : CudaKernel(info) 
 }
 
 Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto& input_shape = input_tensor->Shape();
   auto input_rank = input_shape.NumDimensions();
@@ -163,6 +233,8 @@ Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
       batch_size,
       rows_times_thirty_two,
       input_shape.Size());
+
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   return Status::OK();
 }

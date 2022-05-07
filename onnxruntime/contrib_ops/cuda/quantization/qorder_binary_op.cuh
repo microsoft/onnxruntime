@@ -43,7 +43,7 @@ namespace cuda {
       size_t count)
 
 
-QORDERED_BINARY_TWO_SCALE_DECLARATION(Add);
+// QORDERED_BINARY_TWO_SCALE_DECLARATION(Add);
 
 // QORDERED_BINARY_THREE_SCALE_DECLARATION(BiasGelu);
 
@@ -59,7 +59,17 @@ QORDERED_BINARY_TWO_SCALE_DECLARATION(Add);
     const fast_divmod& rows_times_thirty_two,
     size_t count);
 
-
+  void QOrdered_Col32OrderImpl_Add(
+      cudaStream_t stream,
+      const int8_t* input_tensor,
+      float input_scale,
+      const int8_t* bias_tensor,
+      float bias_scale,
+      int8_t* output_tensor,
+      float output_scale,
+      const fast_divmod& batch_size,
+      const fast_divmod& rows_times_thirty_two,
+      size_t count);
 
 }  // namespace cuda
 }  // namespace contrib
