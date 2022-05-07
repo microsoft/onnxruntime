@@ -56,7 +56,7 @@ class Parameter {
 struct ModuleCheckpointStates {
  public:
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
-  const DataTransferManager* train_session_data_transfer_mgr_;
+  const DataTransferManager* train_session_data_transfer_mgr;
 };
 
 class Module {
@@ -97,7 +97,9 @@ class Module {
 
     // Pass the training session data transfer manager for data copying when saving.
     // An alternative is, we can do copy at this stage.
-    module_checkpoint_states.train_session_data_transfer_mgr_ = &(train_sess_->GetDataTransferManager());
+    ORT_RETURN_IF_NOT(train_sess_, "training session not initialized");
+    const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
+    module_checkpoint_states.train_session_data_transfer_mgr = &sess_data_transfer_manager;
     return Status::OK();
   }
 
@@ -126,7 +128,7 @@ struct GroupOptimizerState {
 struct OptimizerCheckpointStates {
  public:
   std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>> group_named_optimizer_states;
-  const DataTransferManager* optimizer_session_data_transfer_mgr_;
+  const DataTransferManager* optimizer_session_data_transfer_mgr;
 };
 
 static Status CreateOrtValueFromOrtValue(
@@ -196,7 +198,9 @@ class Optimizer {
 
     // Pass the optimizer session data transfer manager for data copying when saving.
     // An alternative is, we can do copy at this stage.
-    optimizer_checkpoint_states.optimizer_session_data_transfer_mgr_ = &(optim_sess_->GetDataTransferManager());
+    ORT_RETURN_IF_NOT(optim_sess_, "optimizer session not initialized");
+    const DataTransferManager& sess_data_transfer_manager = optim_sess_->GetDataTransferManager();
+    optimizer_checkpoint_states.optimizer_session_data_transfer_mgr = &sess_data_transfer_manager;
     return Status::OK();
   }
 

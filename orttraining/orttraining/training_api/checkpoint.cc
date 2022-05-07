@@ -89,7 +89,8 @@ Status CreateTensorProtosFromOrtValues(
 
 constexpr const char* k_tensor_proto_file_name = "tensors.pbseq";
 constexpr const char* k_tensor_proto_properties_file_name = "properties.pbseq";
-constexpr const char* k_param_root_prefix = "param";
+constexpr const char* k_trainable_param_root_prefix = "paramtrain";
+constexpr const char* k_non_trainable_param_root_prefix = "paramfrozen";
 constexpr const char* k_optimizer_root_prefix = "optim";
 constexpr const char* k_property_root_prefix = "custom";
 constexpr const char* k_name_seperator = "_";
@@ -107,6 +108,7 @@ std::string StringConcat(const std::string& s_a, const std::string& s_b, const s
 }
 
 void StringSplit(const std::string& s, std::vector<std::string>& results, const std::string& del = k_name_seperator) {
+  ORT_ENFORCE(!s.empty(), "String to split is empty");
   int start = 0;
   int end = s.find(del);
   while (end != -1) {
@@ -136,38 +138,46 @@ Status CheckpointUtils::OrtSaveInternal(
   std::shared_ptr<Model> p_model;
   ORT_RETURN_IF_ERROR(Model::Load(model_uri, p_model, nullptr, *logger_ptr));
   Graph& graph = p_model->MainGraph();
+  std::vector<ONNX_NAMESPACE::TensorProto> trainable_weight_values;
+  std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_weight_values;
+  const auto& initializer_tensors = graph.GetAllInitializedTensors();
+  for (const std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>& pair : initializer_tensors) {
+    if (std::find(trainable_param_names.begin(), trainable_param_names.end(), pair.first) != trainable_param_names.end()) {
+      trainable_weight_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+    } else {
+      non_trainable_weight_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+    }
+  }
+  ORT_RETURN_IF_NOT(trainable_weight_values.size() == trainable_param_names.size(),
+                    "Mismatch count of trainable weights and given weight names.");
 
-  std::vector<const ONNX_NAMESPACE::TensorProto*> trainable_weight_values;
-  trainable_weight_values.reserve(trainable_param_names.size());
-  for (size_t i = 0; i < trainable_param_names.size(); ++i) {
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-    ORT_ENFORCE(graph.GetInitializedTensor(trainable_param_names[i], tensor_proto),
-                "Failed to find weight values: ", trainable_param_names[i]);
-    trainable_weight_values.emplace_back(tensor_proto);
+  // Keep following saving logic aligned with OrtSaveModuleStatesInternal.
+  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
+  LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
+      << "Checkpoint directory exists - data may be overwritten.";
+  ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(checkpoint_path));
+
+  // Save TensorProto to file.
+  if (trainable_weight_values.size() > 0) {
+    ORT_RETURN_IF_ERROR(WithOpenFile(
+        GetTensorProtoFilePath(checkpoint_path, k_trainable_param_root_prefix), false,
+        [&trainable_weight_values](int fd) {
+          google::protobuf::io::FileOutputStream output{fd};
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(trainable_weight_values, output));
+          return Status::OK();
+        }));
   }
 
-  std::unordered_map<std::string, OrtValue> name_to_ort_value;
-  ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(trainable_weight_values, name_to_ort_value));
-
-  auto cpu_data_transfer = std::make_unique<CPUDataTransfer>();
-  DataTransferManager data_transfer_mgr;
-  auto st = data_transfer_mgr.RegisterDataTransfer(std::move(cpu_data_transfer));
-  if (!st.IsOK()) {
-    return st;
+  if (non_trainable_weight_values.size() > 0) {
+    ORT_RETURN_IF_ERROR(WithOpenFile(
+        GetTensorProtoFilePath(checkpoint_path, k_non_trainable_param_root_prefix), false,
+        [&non_trainable_weight_values](int fd) {
+          google::protobuf::io::FileOutputStream output{fd};
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(non_trainable_weight_values, output));
+          return Status::OK();
+        }));
   }
 
-  CheckpointStates states;
-  states.module_checkpoint_states.train_session_data_transfer_mgr_ = &data_transfer_mgr;
-  auto& named_parameters = states.module_checkpoint_states.named_parameters;
-  for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
-    auto param = std::make_shared<Parameter>(it->first, it->second);
-    bool is_trainable =
-        std::find(trainable_param_names.begin(), trainable_param_names.end(), param->Name()) != trainable_param_names.end();
-    ORT_RETURN_IF_ERROR(param->SetRequiresGrad(is_trainable));
-    named_parameters.insert({it->first, param});
-  }
-
-  ORT_RETURN_IF_ERROR(OrtSaveInternal(states, checkpoint_path));
   return Status::OK();
 }
 
@@ -208,28 +218,37 @@ Status CheckpointUtils::OrtSaveModuleStatesInternal(ModuleCheckpointStates& modu
   // Write weight tensors files.
   const auto& param_states = module_states.named_parameters;
   if (!param_states.empty()) {
-    std::unordered_map<std::string, OrtValue> model_parameter_ort_values;
-    for (auto it = param_states.begin(); it != param_states.end(); ++it) {
-      model_parameter_ort_values.insert({it->first, it->second->Data()});
-    }
-
-    ORT_ENFORCE(module_states.train_session_data_transfer_mgr_,
+    ORT_ENFORCE(module_states.train_session_data_transfer_mgr,
                 "module checkpoint state has null train_session_data_transfer_mgr.");
 
-    std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos;
-    ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
-        model_parameter_ort_values,
-        *module_states.train_session_data_transfer_mgr_,
-        saved_tensor_protos));
+    std::unordered_map<std::string, std::unordered_map<std::string, OrtValue>> parameter_ort_values;
+    parameter_ort_values[k_trainable_param_root_prefix] = {};
+    parameter_ort_values[k_non_trainable_param_root_prefix] = {};
+    for (auto it = param_states.begin(); it != param_states.end(); ++it) {
+      if (it->second->RequiresGrad()) {
+        parameter_ort_values[k_trainable_param_root_prefix].insert({it->first, it->second->Data()});
+      } else {
+        parameter_ort_values[k_non_trainable_param_root_prefix].insert({it->first, it->second->Data()});
+      }
+    }
 
-    // Save TensorProto to file.
-    ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetTensorProtoFilePath(parameter_folder_path, k_param_root_prefix), false,
-        [&saved_tensor_protos](int fd) {
-          google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(saved_tensor_protos, output));
-          return Status::OK();
-        }));
+    // Parameters saving.
+    for (auto& pair : parameter_ort_values) {
+      std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos;
+      ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
+          pair.second,
+          *module_states.train_session_data_transfer_mgr,
+          param_tensor_protos));
+
+      // Save TensorProto to file.
+      ORT_RETURN_IF_ERROR(WithOpenFile(
+          GetTensorProtoFilePath(parameter_folder_path, pair.first), false,
+          [&param_tensor_protos](int fd) {
+            google::protobuf::io::FileOutputStream output{fd};
+            ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(param_tensor_protos, output));
+            return Status::OK();
+          }));
+    }
   }
 
   return Status::OK();
@@ -240,6 +259,9 @@ Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates
   if (optimizer_states.group_named_optimizer_states.empty()) {
     return Status::OK();
   }
+
+  ORT_ENFORCE(optimizer_states.optimizer_session_data_transfer_mgr,
+              "optimizer checkpoint state has null optimizer_session_data_transfer_mgr.");
 
   // Write optimizer state tensors files.
   for (auto& group_named_optimizer_state : optimizer_states.group_named_optimizer_states) {
@@ -280,13 +302,10 @@ Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates
       const std::unordered_map<std::string, OrtValue>& param_name_to_ortvalue = pair.second;
       const std::string& cur_state_filename_prefix = StringConcat(cur_group_filename_prefix, state_name);
 
-      ORT_ENFORCE(optimizer_states.optimizer_session_data_transfer_mgr_,
-                  "optimizer checkpoint state has null optimizer_session_data_transfer_mgr.");
-
       std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos;
       ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
           param_name_to_ortvalue,
-          *optimizer_states.optimizer_session_data_transfer_mgr_,
+          *optimizer_states.optimizer_session_data_transfer_mgr,
           saved_tensor_protos));
 
       // Save TensorProto to file.
@@ -340,7 +359,7 @@ Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, Check
       });
 
   if (!file_read_status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " custom property file read failure, skip it.";
+    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " custom property file not found or read failure, skip it.";
     return Status::OK();
   }
 
@@ -355,31 +374,38 @@ Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, Check
 Status CheckpointUtils::OrtLoadModuleStatesInternal(
     const PathString& parameter_folder_path, ModuleCheckpointStates& module_states) {
   // Parameter parsing.
-  const PathString module_state_file_path = GetTensorProtoFilePath(parameter_folder_path, k_param_root_prefix);
   auto& named_parameters = module_states.named_parameters;
-  std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
-  auto file_read_status = WithOpenFile(
-      module_state_file_path, true,
-      [&param_tensor_protos](int fd) {
-        google::protobuf::io::FileInputStream input{fd};
-        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_tensor_protos, input));
-        return Status::OK();
-      });
+  std::vector<std::string> param_root_prefixes{k_trainable_param_root_prefix, k_non_trainable_param_root_prefix};
 
-  if (!file_read_status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << ToUTF8String(module_state_file_path) << " module state file read failure, skip it.";
-    return Status::OK();
-  }
+  for (auto& root_prefix : param_root_prefixes) {
+    const PathString module_state_file_path = GetTensorProtoFilePath(parameter_folder_path, root_prefix);
+    bool is_trainable = root_prefix == k_trainable_param_root_prefix;
+    std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
+    auto file_read_status = WithOpenFile(
+        module_state_file_path, true,
+        [&param_tensor_protos](int fd) {
+          google::protobuf::io::FileInputStream input{fd};
+          ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_tensor_protos, input));
+          return Status::OK();
+        });
 
-  std::vector<const ONNX_NAMESPACE::TensorProto*> param_tensor_proto_ptrs{};
-  for (ONNX_NAMESPACE::TensorProto& param_tensor_proto : param_tensor_protos) {
-    param_tensor_proto_ptrs.emplace_back(&param_tensor_proto);
-  }
+    if (!file_read_status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << ToUTF8String(module_state_file_path) << " trainable module state file not found or read failure, skip it.";
+      return Status::OK();
+    }
 
-  std::unordered_map<std::string, OrtValue> name_to_ort_values;
-  ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_proto_ptrs, name_to_ort_values));
-  for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
-    named_parameters.insert({it->first, std::make_shared<Parameter>(it->first, it->second)});
+    std::vector<const ONNX_NAMESPACE::TensorProto*> param_tensor_proto_ptrs{};
+    for (ONNX_NAMESPACE::TensorProto& param_tensor_proto : param_tensor_protos) {
+      param_tensor_proto_ptrs.emplace_back(&param_tensor_proto);
+    }
+
+    std::unordered_map<std::string, OrtValue> name_to_ort_values;
+    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_proto_ptrs, name_to_ort_values));
+    for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
+      auto param = std::make_shared<Parameter>(it->first, it->second);
+      ORT_RETURN_IF_ERROR(param->SetRequiresGrad(is_trainable));
+      named_parameters.insert({it->first, param});
+    }
   }
 
   return Status::OK();
@@ -445,7 +471,7 @@ Status CheckpointUtils::OrtLoadOptimizerStatesInternal(
         });
 
     if (!file_read_status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << ToUTF8String(tensor_file_path) << " optimizer state file read failure, skip it.";
+      LOGS_DEFAULT(WARNING) << ToUTF8String(tensor_file_path) << " optimizer state file not found or read failure, skip it.";
       return Status::OK();
     }
 
@@ -491,7 +517,7 @@ Status CheckpointUtils::OrtLoadOptimizerStatesInternal(
         });
 
     if (!file_read_status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << ToUTF8String(tensor_file_path) << " optimizer state group-wise property file read failure, skip it.";
+      LOGS_DEFAULT(WARNING) << ToUTF8String(tensor_file_path) << " optimizer state group-wise property file not found or read failure, skip it.";
       return Status::OK();
     }
 

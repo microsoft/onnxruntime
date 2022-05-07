@@ -51,7 +51,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   };
 
   // Extract a weight value baseline to compare.
-  // expected_param_name_to_ort_value is used to compare with the values after restoring from checkpoint.
+  // expected_trainable_param_name_to_ort_value is used to compare with the values after restoring from checkpoint.
   auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
   std::shared_ptr<Model> p_model;
   ORT_ENFORCE(Model::Load(model_uri, p_model, nullptr, *logger_ptr).IsOK());
@@ -66,8 +66,8 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
     trainable_param_values.emplace_back(tensor_proto);
   }
 
-  std::unordered_map<std::string, OrtValue> expected_param_name_to_ort_value;
-  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_param_name_to_ort_value).IsOK());
+  std::unordered_map<std::string, OrtValue> expected_trainable_param_name_to_ort_value;
+  ORT_ENFORCE(CreateOrtValuesFromTensorProtos(trainable_param_values, expected_trainable_param_name_to_ort_value).IsOK());
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -82,7 +82,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
 
   // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{"param_tensors.pbseq"};
+  std::set<PathString> expected_file_names{"paramfrozen_tensors.pbseq", "paramtrain_tensors.pbseq"};
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
           [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
@@ -112,16 +112,17 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   }
 
   // Check loaded parameter's values are same with original ones.
-  ASSERT_EQ(expected_param_name_to_ort_value.size(), restored_param_name_to_ort_values.size());
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), restored_trainable_param_names.size());
+  ASSERT_EQ(expected_trainable_param_name_to_ort_value.size(), 7);
+  ASSERT_EQ(restored_param_name_to_ort_values.size(), 9);
 
   std::sort(expected_trainable_param_names.begin(), expected_trainable_param_names.end());
   std::sort(restored_trainable_param_names.begin(), restored_trainable_param_names.end());
   ASSERT_EQ(expected_trainable_param_names, restored_trainable_param_names);
 
-  for (const auto& name_and_ort_value : restored_param_name_to_ort_values) {
-    const auto& name = name_and_ort_value.first;
-    const auto& restored_ort_value = name_and_ort_value.second;
-    const auto& expected_ort_value = expected_param_name_to_ort_value.at(name);
+  for (const auto& name : restored_trainable_param_names) {
+    const auto& restored_ort_value = restored_param_name_to_ort_values[name];
+    const auto& expected_ort_value = expected_trainable_param_name_to_ort_value.at(name);
 
     ASSERT_TRUE(restored_ort_value.IsTensor() && expected_ort_value.IsTensor());
     const Tensor& restored_tensor = restored_ort_value.Get<Tensor>();

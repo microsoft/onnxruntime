@@ -10,7 +10,6 @@
 
 namespace onnxruntime {
 namespace training {
-
 namespace api {
 
 /**
