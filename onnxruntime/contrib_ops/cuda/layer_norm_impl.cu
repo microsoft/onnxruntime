@@ -34,7 +34,7 @@ using namespace onnxruntime::cuda;
 
 template<typename T, typename U, typename V, bool do_scale, bool do_center, bool simplified>
 bool LaunchLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
-                         const double epsilon, const T* input,U* mean, U* inv_variance,
+                         const double epsilon, const T* input, U* mean, U* inv_variance,
                          const V* gamma, const V* beta, V* output) {
   using ComputeType = typename contrib::cuda::DefaultComputeType<U>::type;
   DirectLoad<T, ComputeType> load(input, norm_size);
@@ -48,17 +48,17 @@ bool ComputeLayerNorm(cudaStream_t stream, const int64_t num_instances, const in
                          const double epsilon, const T* input, U* mean, U* inv_variance,
                          const V* gamma, const V* beta, V* output) {
   if (gamma != nullptr && beta != nullptr) {
-    return LaunchLayerNorm<T, U, V, true, true, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
-                                        gamma, beta, output);
+    return LaunchLayerNorm<T, U, V, true, true, simplified>(
+      stream, num_instances, norm_size, epsilon, input, mean, inv_variance, gamma, beta, output);
   } else if (gamma != nullptr && beta == nullptr) {
-    return LaunchLayerNorm<T, U, V, true, false, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
-                                        gamma, beta, output);
+    return LaunchLayerNorm<T, U, V, true, false, simplified>(
+      stream, num_instances, norm_size, epsilon, input, mean, inv_variance, gamma, beta, output);
   } else if (gamma == nullptr && beta != nullptr) {
-    return LaunchLayerNorm<T, U, V, false, true, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
-                                        gamma, beta, output);
+    return LaunchLayerNorm<T, U, V, false, true, simplified>(
+      stream, num_instances, norm_size, epsilon, input, mean, inv_variance, gamma, beta, output);
   } else {
-    return LaunchLayerNorm<T, U, V, false, false, simplified>(stream, num_instances, norm_size, epsilon, input, mean, inv_variance,
-                                        gamma, beta, output);
+    return LaunchLayerNorm<T, U, V, false, false, simplified>(
+      stream, num_instances, norm_size, epsilon, input, mean, inv_variance, gamma, beta, output);
   }
 }
 

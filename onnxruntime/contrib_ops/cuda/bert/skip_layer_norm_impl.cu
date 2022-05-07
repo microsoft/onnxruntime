@@ -31,7 +31,7 @@ namespace cuda {
 
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernelSmall(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, 
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias,
     const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
@@ -53,7 +53,7 @@ __global__ void SkipLayerNormKernelSmall(
 
 template <typename T, unsigned TPB>
 __global__ void SkipLayerNormKernel(
-    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias, 
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma, const T* bias,
     const T epsilon, T* output) {
   const T reverse_ld = T(1.f / ld);
   const int offset = blockIdx.x * ld;
@@ -94,7 +94,8 @@ bool ComputeSkipLayerNormNaive(
         <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   } else {
     constexpr int block_size = 256;
-    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
+    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(
+      ld, input, skip, beta, gamma, bias, epsilon, output);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -117,17 +118,21 @@ bool ComputeSkipLayerNormWelford(
     cudaStream_t stream, const int norm_size, const int num_instances, const T* input, const T* skip,
     const T* gamma, const T* beta, const T* bias, const T epsilon, T* output) {
   if (gamma != nullptr && beta != nullptr) {
-    return LaunchSkipLayerNorm<T, true, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
-                                       beta, bias, output);
+    return LaunchSkipLayerNorm<T, true, true>(
+      stream, num_instances, norm_size, static_cast<double>(epsilon),
+      input, skip, gamma, beta, bias, output);
   } else if (gamma != nullptr && beta == nullptr) {
-    return LaunchSkipLayerNorm<T, true, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
-                                        beta, bias, output);
+    return LaunchSkipLayerNorm<T, true, false>(
+      stream, num_instances, norm_size, static_cast<double>(epsilon),
+      input, skip, gamma, beta, bias, output);
   } else if (gamma == nullptr && beta != nullptr) {
-    return LaunchSkipLayerNorm<T, false, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
-                                        beta, bias, output);
+    return LaunchSkipLayerNorm<T, false, true>(
+      stream, num_instances, norm_size, static_cast<double>(epsilon),
+      input, skip, gamma, beta, bias, output);
   } else {
-    return LaunchSkipLayerNorm<T, false, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
-                                         beta, bias, output);
+    return LaunchSkipLayerNorm<T, false, false>(
+      stream, num_instances, norm_size, static_cast<double>(epsilon),
+      input, skip, gamma, beta, bias, output);
   }
 }
 
@@ -140,16 +145,16 @@ bool ComputeSkipLayerNorm(
 #if defined(USE_ROCM)
   if (num_instances < 1024 || norm_size < 1024) {
     return ComputeSkipLayerNormNaive(stream, norm_size, num_instances, input, skip, gamma,
-                                        beta, bias, epsilon, output);
+                                     beta, bias, epsilon, output);
   }
 #else
   if (num_instances <= 1024 && norm_size <= 1024) {
     return ComputeSkipLayerNormNaive(stream, norm_size, num_instances, input, skip, gamma,
-                                        beta, bias, epsilon, output);
+                                     beta, bias, epsilon, output);
   } 
 #endif
   return ComputeSkipLayerNormWelford(stream, norm_size, num_instances, input, skip, gamma,
-                                        beta, bias, epsilon, output);
+                                     beta, bias, epsilon, output);
 }
 
 
@@ -160,7 +165,7 @@ bool LaunchSkipLayerNormKernel(
     const void* skip,
     const void* gamma,
     const void* beta,
-    const void* bias,    
+    const void* bias,
     float epsilon,
     int hidden_size,
     int element_count,

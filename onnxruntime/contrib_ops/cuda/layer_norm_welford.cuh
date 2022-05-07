@@ -151,7 +151,7 @@ struct AffineStore {
 #pragma unroll
       for (int i = 0; i < N; ++i) { gamma_pack.elem[i] = 1; }
     }
-    if (do_center && ! simplified) {
+    if (do_center && !simplified) {
       beta_pack.storage =
           *(reinterpret_cast<const PackType<DST, N>*>(beta) + gamma_offset);
     } else {
@@ -332,7 +332,7 @@ __global__ void LayerNormWarpImpl(LOAD load, STORE store, const int64_t rows, co
           warp_m2 + row_id, warp_count + row_id);
       ComputeType row_mean = warp_mean[row_id];
       ComputeType row_variance =
-          max(Div(warp_m2[row_id], warp_count[row_id]), static_cast<ComputeType>(0.0));
+          _Max(Div(warp_m2[row_id], warp_count[row_id]), static_cast<ComputeType>(0.0));
       ComputeType row_inv_var = _Rsqrt(row_variance + static_cast<ComputeType>(epsilon));
       if (lane_id == 0) {
         if (mean != nullptr) { mean[global_row_id] = row_mean; }
@@ -403,18 +403,18 @@ typename std::enable_if<pack_size == 1, bool>::type DispatchLayerNormWarpImplCol
     cudaStream_t stream, LOAD load, STORE store, const int64_t rows, const int64_t cols,
     const double epsilon, ComputeType* mean, ComputeType* inv_variance) {
   if (cols <= 0) { return cudaErrorInvalidValue; }
-#define DEFINE_ONE_ELIF(thread_group_width)                                                   \
-  else if (cols <= (thread_group_width)*pack_size) {                                          \
-    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                       \
-    if (rows % 2 == 0 && block_num > 1024) {                                                  \
+#define DEFINE_ONE_ELIF(thread_group_width)                                                               \
+  else if (cols <= (thread_group_width)*pack_size) {                                                      \
+    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                                   \
+    if (rows % 2 == 0 && block_num > 1024) {                                                              \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
-                                              thread_group_width, 2>(                         \
-          stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
-    } else {                                                                                  \
+                                              thread_group_width, 2>(                                     \
+          stream, load, store, rows, cols, epsilon, mean, inv_variance);                                  \
+    } else {                                                                                              \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
-                                              thread_group_width, 1>(                         \
-          stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
-    }                                                                                         \
+                                              thread_group_width, 1>(                                     \
+          stream, load, store, rows, cols, epsilon, mean, inv_variance);                                  \
+    }                                                                                                     \
   }
   DEFINE_ONE_ELIF(1)
   DEFINE_ONE_ELIF(2)
@@ -426,11 +426,11 @@ typename std::enable_if<pack_size == 1, bool>::type DispatchLayerNormWarpImplCol
   DEFINE_ONE_ELIF(64)
 #endif
 #undef DEFINE_ONE_ELIF
-#define DEFINE_ONE_ELIF(col)                                                                     \
-  else if (cols <= (col)*kWarpSize) {                                                            \
+#define DEFINE_ONE_ELIF(col)                                                                                 \
+  else if (cols <= (col)*kWarpSize) {                                                                        \
     return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, col, kWarpSize, \
-                                            1>(stream, load, store, rows, cols, epsilon, mean,   \
-                                               inv_variance);                                    \
+                                            1>(stream, load, store, rows, cols, epsilon, mean,               \
+                                               inv_variance);                                                \
   }
   DEFINE_ONE_ELIF(2)
   DEFINE_ONE_ELIF(3)
@@ -474,18 +474,18 @@ typename std::enable_if<pack_size == 2, bool>::type DispatchLayerNormWarpImplCol
     cudaStream_t stream, LOAD load, STORE store, const int64_t rows, const int64_t cols,
     const double epsilon, ComputeType* mean, ComputeType* inv_variance) {
   if (cols <= 0) { return cudaErrorInvalidValue; }
-#define DEFINE_ONE_ELIF(thread_group_width)                                                   \
-  else if (cols <= (thread_group_width)*pack_size) {                                          \
-    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                       \
-    if (rows % 2 == 0 && block_num > 1024) {                                                  \
+#define DEFINE_ONE_ELIF(thread_group_width)                                                               \
+  else if (cols <= (thread_group_width)*pack_size) {                                                      \
+    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                                   \
+    if (rows % 2 == 0 && block_num > 1024) {                                                              \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
-                                              thread_group_width, 2>(                         \
-          stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
-    } else {                                                                                  \
+                                              thread_group_width, 2>(                                     \
+          stream, load, store, rows, cols, epsilon, mean, inv_variance);                                  \
+    } else {                                                                                              \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
-                                              thread_group_width, 1>(                         \
-          stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
-    }                                                                                         \
+                                              thread_group_width, 1>(                                     \
+          stream, load, store, rows, cols, epsilon, mean, inv_variance);                                  \
+    }                                                                                                     \
   }
   DEFINE_ONE_ELIF(1)
   DEFINE_ONE_ELIF(2)
@@ -497,11 +497,11 @@ typename std::enable_if<pack_size == 2, bool>::type DispatchLayerNormWarpImplCol
   DEFINE_ONE_ELIF(64)
 #endif
 #undef DEFINE_ONE_ELIF
-#define DEFINE_ONE_ELIF(col)                                                                     \
-  else if (cols <= (col)*kWarpSize) {                                                            \
+#define DEFINE_ONE_ELIF(col)                                                                                 \
+  else if (cols <= (col)*kWarpSize) {                                                                        \
     return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, col, kWarpSize, \
-                                            1>(stream, load, store, rows, cols, epsilon, mean,   \
-                                               inv_variance);                                    \
+                                            1>(stream, load, store, rows, cols, epsilon, mean,               \
+                                               inv_variance);                                                \
   }
   DEFINE_ONE_ELIF(4)
   DEFINE_ONE_ELIF(6)
@@ -528,18 +528,18 @@ typename std::enable_if<pack_size == 4, bool>::type DispatchLayerNormWarpImplCol
     cudaStream_t stream, LOAD load, STORE store, const int64_t rows, const int64_t cols,
     const double epsilon, ComputeType* mean, ComputeType* inv_variance) {
   if (cols <= 0) { return cudaErrorInvalidValue; }
-#define DEFINE_ONE_ELIF(thread_group_width)                                                   \
-  else if (cols <= (thread_group_width)*pack_size) {                                          \
-    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                       \
-    if (rows % 2 == 0 && block_num > 1024) {                                                  \
+#define DEFINE_ONE_ELIF(thread_group_width)                                                               \
+  else if (cols <= (thread_group_width)*pack_size) {                                                      \
+    int64_t block_num = GetNumBlocksWrapImpl(rows, thread_group_width);                                   \
+    if (rows % 2 == 0 && block_num > 1024) {                                                              \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
-                                              thread_group_width, 2>(                         \
-          stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
-    } else {                                                                                  \
+                                              thread_group_width, 2>(                                     \
+          stream, load, store, rows, cols, epsilon, mean, inv_variance);                                  \
+    } else {                                                                                              \
       return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, pack_size, \
-                                              thread_group_width, 1>(                         \
-          stream, load, store, rows, cols, epsilon, mean, inv_variance);                      \
-    }                                                                                         \
+                                              thread_group_width, 1>(                                     \
+          stream, load, store, rows, cols, epsilon, mean, inv_variance);                                  \
+    }                                                                                                     \
   }
   DEFINE_ONE_ELIF(1)
   DEFINE_ONE_ELIF(2)
@@ -551,11 +551,11 @@ typename std::enable_if<pack_size == 4, bool>::type DispatchLayerNormWarpImplCol
   DEFINE_ONE_ELIF(64)
 #endif
 #undef DEFINE_ONE_ELIF
-#define DEFINE_ONE_ELIF(col)                                                                     \
-  else if (cols <= (col)*kWarpSize) {                                                            \
+#define DEFINE_ONE_ELIF(col)                                                                                 \
+  else if (cols <= (col)*kWarpSize) {                                                                        \
     return DispatchLayerNormWarpImplPadding<LOAD, STORE, ComputeType, pack_size, simplified, col, kWarpSize, \
-                                            1>(stream, load, store, rows, cols, epsilon, mean,   \
-                                               inv_variance);                                    \
+                                            1>(stream, load, store, rows, cols, epsilon, mean,               \
+                                               inv_variance);                                                \
   }
   DEFINE_ONE_ELIF(8)
   DEFINE_ONE_ELIF(12)
@@ -624,7 +624,7 @@ __global__ void LayerNormBlockSMemImpl(LOAD load, STORE store, const int64_t row
     ComputeType row_count = 0;
     WelfordBlockAllReduce<ComputeType, simplified>(thread_mean, thread_m2, thread_count, &row_mean, &row_m2,
                                        &row_count);
-    ComputeType row_variance = max(Div(row_m2, row_count), static_cast<ComputeType>(0.0));
+    ComputeType row_variance = _Max(Div(row_m2, row_count), static_cast<ComputeType>(0.0));
     ComputeType row_inv_var = _Rsqrt(row_variance + static_cast<ComputeType>(epsilon));
     if (threadIdx.x == 0) {
       if (mean != nullptr) { mean[row] = row_mean; }
@@ -769,7 +769,7 @@ __global__ void LayerNormBlockUncachedImpl(LOAD load, STORE store, const int64_t
     ComputeType row_count = 0;
     WelfordBlockAllReduce<ComputeType, simplified>(thread_mean, thread_m2, thread_count, &row_mean, &row_m2,
                                        &row_count);
-    ComputeType row_variance = max(Div(row_m2, row_count), static_cast<ComputeType>(0.0));
+    ComputeType row_variance = _Max(Div(row_m2, row_count), static_cast<ComputeType>(0.0));
     ComputeType row_inv_var = _Rsqrt(row_variance + static_cast<ComputeType>(epsilon));
     if (threadIdx.x == 0) {
       if (mean != nullptr) { mean[row] = row_mean; }
@@ -782,9 +782,9 @@ __global__ void LayerNormBlockUncachedImpl(LOAD load, STORE store, const int64_t
 #pragma unroll
       for (int i = 0; i < pack_size; ++i) {
         if (simplified) {
-          pack[i] = pack[i] * row_inv_var; 
+          pack[i] = pack[i] * row_inv_var;
         } else {
-          pack[i] = (pack[i] - row_mean) * row_inv_var; 
+          pack[i] = (pack[i] - row_mean) * row_inv_var;
         }
       }
       store.template store<pack_size>(pack, row, pack_offset);
