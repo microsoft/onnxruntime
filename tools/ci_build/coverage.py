@@ -32,7 +32,7 @@ def parse_arguments():
         help="Configuration(s) to run code coverage.",
     )
     parser.add_argument("--android_sdk_path", required=True, help="The Android SDK root.")
-    parser.add_argument("--compile_path",  help="The Original Compilation Path")
+    parser.add_argument("--compile_path", help="The Original Compilation Path")
     return parser.parse_args()
 
 
@@ -55,10 +55,7 @@ def main():
     os.chdir(cwd)
     run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(" "))
 
-    if len(args.compile_path) > 0:
-        update_path_cmd = ["/bin/bash", "../../tools/ci_build/github/android/update_path.sh", ".gcda",
-                           args.compile_path, source_dir]
-        run_subprocess(update_path_cmd)
+    run_subprocess("find . -name '*.gcda'")
 
     cmd = ["gcovr", "-s", "-r"]
     cmd.append(os.path.join(source_dir, "onnxruntime"))
