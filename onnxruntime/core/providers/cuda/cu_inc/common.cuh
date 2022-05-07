@@ -194,6 +194,24 @@ template <>
 __device__ __inline__ half _Sqrt(half a) { return half(sqrtf((float)a)); }
 
 template <typename T>
+__device__ __inline__ T _Rsqrt(T a) { return T(1) / sqrt(a); }
+
+template <>
+__device__ __inline__ float _Rsqrt(float a) { return rsqrtf(a); }
+
+template <>
+__device__ __inline__ double _Rsqrt(double a) { return rsqrt(a); }
+
+template <>
+__device__ __inline__ half _Rsqrt(half a) {
+#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
+  return hrsqrt(a);
+#else
+  return half(rsqrtf(float(a)));
+#endif
+}
+
+template <typename T>
 __device__ __inline__ T _Erf(T a);
 
 template <>
@@ -341,6 +359,9 @@ __device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
 
 template <>
 __device__ __inline__ BFloat16 _Sqrt(BFloat16 a) { return sqrtf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Rsqrt(BFloat16 a) { return rsqrtf(static_cast<float>(a)); }
 
 template <>
 __device__ __inline__ BFloat16 _Exp(BFloat16 a) { return expf(static_cast<float>(a)); }

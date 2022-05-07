@@ -36,52 +36,8 @@ namespace cuda {
 constexpr int kWarpSize = GPU_WARP_SIZE;
 constexpr int KBlockSizeWrapImpl = 128;
 
-template <typename ComputeType>
-__device__ inline ComputeType rsqrt(const ComputeType& x) {
-  return ComputeType(1) / sqrt(x);
-}
-
-template <>
-__device__ inline half rsqrt(const half& x) {
-#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
-  return hrsqrt(x);
-#else
-  return half(rsqrtf(float(x)));
-#endif
-}
-
-template <>
-__device__ inline float rsqrt(const float& x) {
-  return rsqrtf(x);
-}
-
-template <>
-__device__ inline double rsqrt(const double& x) {
-  return rsqrt(x);
-}
-
-__device__ inline half2 addhalf2(const half2 a, const half2 b) {
-#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
-  return __hadd2(a, b);
-#else
-  return __halves2half2(__hadd(a.x, b.x), __hadd(a.y, b.y));
-#endif
-}
-
 template<typename T>
-__inline__ __device__ T Div(T a, T b);
-
-template<>
-__inline__ __device__ float Div<float>(float a, float b) {
-#ifdef OF_LAYER_NORM_USE_FAST_MATH
-  return __fdividef(a, b);
-#else
-  return a / b;
-#endif
-}
-
-template<>
-__inline__ __device__ double Div<double>(double a, double b) {
+__inline__ __device__ T Div(T a, T b) {
   return a / b;
 }
 
@@ -174,47 +130,6 @@ struct DirectLoadSkip {
   const SRC* src;
   const SRC* skip;
   const SRC* bias;
-  int64_t row_size;
-};
-
-template<typename DST>
-struct DirectLoadSkip<half, DST> {
-  DirectLoadSkip(const half* src, const half* skip, const half* bias, int64_t row_size) : src(src), skip(skip), bias(bias), row_size(row_size) {}
-  template<int N>
-  __device__ typename std::enable_if<N % 2 != 0, void>::type load(DST* dst, int64_t row, int64_t col) const {
-    Pack<half, N> pack;
-    const int64_t offset = (row * row_size + col) / N;
-    pack.storage = *(reinterpret_cast<const PackType<half, N>*>(src) + offset);
-    Pack<half, N> pack_skip;
-    pack_skip.storage = *(reinterpret_cast<const PackType<half, N>*>(skip) + offset);
-#pragma unroll
-    for (int i = 0; i < N; ++i) { dst[i] = (bias == nullptr) ? static_cast<DST>(pack.elem[i]) + static_cast<DST>(pack_skip.elem[i]) : static_cast<DST>(pack.elem[i]) + static_cast<DST>(pack_skip.elem[i]) + static_cast<DST>(bias[col]); }
-  } 
-
-  template<int N>
-  __device__ typename std::enable_if<N % 2 == 0, void>::type load(DST* dst, int64_t row, int64_t col) const {
-    Pack<half, N> pack;
-    const int64_t offset = (row * row_size + col) / N;
-    pack.storage = *(reinterpret_cast<const PackType<half, N>*>(src) + offset);
-    Pack<half, N> pack_skip;
-    pack_skip.storage = *(reinterpret_cast<const PackType<half, N>*>(skip) + offset);
-    #pragma unroll
-    for (int i = 0; i < N / 2; ++i) {
-      const half2 pack2 = __halves2half2(pack.elem[2 * i], pack.elem[2 * i + 1]);
-      const half2 pack_skip2 = __halves2half2(pack_skip.elem[2 * i], pack_skip.elem[2 * i + 1]);
-      half2 res = addhalf2(pack2, pack_skip2);
-      if (bias == nullptr) {
-        dst[2 * i] = static_cast<DST>(__low2half(res));
-        dst[2 * i + 1] = static_cast<DST>(__high2half(res));
-      } else {
-        dst[2 * i] = static_cast<DST>(__low2half(res) + bias[col]); 
-        dst[2 * i + 1] = static_cast<DST>(__high2half(res) + bias[col]);
-      }
-    }
-  }
-  const half* src;
-  const half* skip;
-  const half* bias;
   int64_t row_size;
 };
 
@@ -418,7 +333,7 @@ __global__ void LayerNormWarpImpl(LOAD load, STORE store, const int64_t rows, co
       ComputeType row_mean = warp_mean[row_id];
       ComputeType row_variance =
           max(Div(warp_m2[row_id], warp_count[row_id]), static_cast<ComputeType>(0.0));
-      ComputeType row_inv_var = rsqrt(row_variance + static_cast<ComputeType>(epsilon));
+      ComputeType row_inv_var = _Rsqrt(row_variance + static_cast<ComputeType>(epsilon));
       if (lane_id == 0) {
         if (mean != nullptr) { mean[global_row_id] = row_mean; }
         if (inv_variance != nullptr) { inv_variance[global_row_id] = row_inv_var; }
@@ -710,7 +625,7 @@ __global__ void LayerNormBlockSMemImpl(LOAD load, STORE store, const int64_t row
     WelfordBlockAllReduce<ComputeType, simplified>(thread_mean, thread_m2, thread_count, &row_mean, &row_m2,
                                        &row_count);
     ComputeType row_variance = max(Div(row_m2, row_count), static_cast<ComputeType>(0.0));
-    ComputeType row_inv_var = rsqrt(row_variance + static_cast<ComputeType>(epsilon));
+    ComputeType row_inv_var = _Rsqrt(row_variance + static_cast<ComputeType>(epsilon));
     if (threadIdx.x == 0) {
       if (mean != nullptr) { mean[row] = row_mean; }
       if (inv_variance != nullptr) { inv_variance[row] = row_inv_var; }
@@ -855,7 +770,7 @@ __global__ void LayerNormBlockUncachedImpl(LOAD load, STORE store, const int64_t
     WelfordBlockAllReduce<ComputeType, simplified>(thread_mean, thread_m2, thread_count, &row_mean, &row_m2,
                                        &row_count);
     ComputeType row_variance = max(Div(row_m2, row_count), static_cast<ComputeType>(0.0));
-    ComputeType row_inv_var = rsqrt(row_variance + static_cast<ComputeType>(epsilon));
+    ComputeType row_inv_var = _Rsqrt(row_variance + static_cast<ComputeType>(epsilon));
     if (threadIdx.x == 0) {
       if (mean != nullptr) { mean[row] = row_mean; }
       if (inv_variance != nullptr) { inv_variance[row] = row_inv_var; }

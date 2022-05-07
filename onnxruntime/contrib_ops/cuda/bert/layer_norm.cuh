@@ -35,30 +35,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
-__device__ inline T Rsqrt(const T& x) {
-  return T(1) / sqrt(x);
-}
-
-template <>
-__device__ inline float Rsqrt(const float& x) {
-  return rsqrtf(x);
-}
-
-template <>
-__device__ inline half Rsqrt(const half& x) {
-#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
-  return hrsqrt(x);
-#else
-  return half(rsqrtf(float(x)));
-#endif
-}
-
-template <>
-__device__ inline double Rsqrt(const double& x) {
-  return rsqrt(x);
-}
-
 __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   return __hadd2(a, b);
@@ -100,7 +76,7 @@ __device__ inline void LayerNorm(
 
   if (threadIdx.x == 0) {
     mu = sum_kv.key;
-    rsigma = Rsqrt(sum_kv.value - mu * mu + epsilon);
+    rsigma = _Rsqrt(sum_kv.value - mu * mu + epsilon);
   }
   __syncthreads();
 
@@ -130,7 +106,7 @@ __device__ inline void LayerNormSmall(const T val, const cub::KeyValuePair<T, T>
 
   if (threadIdx.x == 0) {
     mu = sum_kv.key;
-    rsigma = Rsqrt(sum_kv.value - mu * mu + epsilon);
+    rsigma = _Rsqrt(sum_kv.value - mu * mu + epsilon);
   }
   __syncthreads();
 
