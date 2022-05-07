@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import argparse
 from dataclasses import dataclass
@@ -43,7 +43,7 @@ class BenchmarkLayerNorm(BenchmarkOp):
 
     def case_profile(self, op_param, time):
         profile = (
-           f"(batch seq_len feature) = ({op_param.batch_size} {op_param.seq_len} {op_param.feature}), {time:7.4f} ms"
+            f"(batch seq_len feature) = ({op_param.batch_size} {op_param.seq_len} {op_param.feature}), {time:7.4f} ms"
         )
         return profile
 
