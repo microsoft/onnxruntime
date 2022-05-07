@@ -169,9 +169,9 @@ jobs:
     displayName: Publish React Native iOS Instrumented Test Results
 
   - script: |
-      yarn prepack-e2e
+      export ORT_JS_PACK_MODE=e2e
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: Prepare Android and iOS e2e tests
+    displayName: Set env variable 'ORT_JS_PACK_MODE' for  Android and iOS e2e tests
 
   - task: PowerShell@2
     inputs:
@@ -258,10 +258,13 @@ jobs:
 
   - script: |
       git restore .
-      cd react_native
-      yarn prepack-rel
     workingDirectory: '$(Build.SourcesDirectory)/js'
-    displayName: Restore git changes and prepack for npm publish
+    displayName: Restore git changes
+
+  - script: |
+      export ORT_JS_PACK_MODE=
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
+    displayName: Clean up env variable 'ORT_JS_PACK_MODE' for production (default)
 
   - task: PowerShell@2
     inputs:
