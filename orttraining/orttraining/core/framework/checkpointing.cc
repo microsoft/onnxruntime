@@ -20,6 +20,7 @@
 #include "core/platform/path_lib.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "core/util/protobuf_parsing_utils.h"
+#include "orttraining/core/framework/checkpoint_common.h"
 
 namespace onnxruntime {
 namespace training {
@@ -42,6 +43,57 @@ PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_director
   return ConcatPathComponent<PathChar>(checkpoint_directory, k_properties_file_name);
 }
 
+Status SaveRuntimeTensor(
+    const std::string& tensor_name,
+    const Tensor& tensor,
+    gsl::span<const char> tensor_data,
+    const PathString& relative_data_path,
+    std::ofstream& data_file,
+    ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  ORT_RETURN_IF(tensor.DataType() == DataTypeImpl::GetType<std::string>(), "tensor.DataType() is std::string");
+
+  VLOGS_DEFAULT(1) << "Saving tensor " << tensor_name;
+
+  ONNX_NAMESPACE::TensorProto saved_tensor_proto{};
+
+  for (const auto dim : tensor.Shape().GetDims()) {
+    saved_tensor_proto.add_dims(dim);
+  }
+
+  saved_tensor_proto.set_data_type(tensor.GetElementType());
+
+  saved_tensor_proto.set_name(tensor_name);
+
+  auto add_external_data = [&saved_tensor_proto](const std::string& key, const std::string& value) {
+    auto* kvp = saved_tensor_proto.add_external_data();
+    kvp->set_key(key);
+    kvp->set_value(value);
+  };
+
+  // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
+  add_external_data("location", ToUTF8String(relative_data_path));
+  const std::streamoff offset = data_file.tellp();
+  add_external_data("offset", std::to_string(offset));
+  const auto length = tensor_data.size_bytes();
+  add_external_data("length", std::to_string(length));
+
+  saved_tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  // TODO need to ensure the data is written in little-endian format...
+  // e.g., with endian_utils.h:WriteLittleEndian()
+  // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/endian_utils.h
+  if constexpr (endian::native != endian::little) {
+    ORT_NOT_IMPLEMENTED("checkpointing currently requires little-endian host byte order");
+  }
+
+  ORT_RETURN_IF_NOT(
+      data_file.write(tensor_data.data(), length),
+      "Failed to write to data file: ", ToUTF8String(relative_data_path));
+
+  tensor_proto = std::move(saved_tensor_proto);
+  return Status::OK();
+}
+
 std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_value) {
   std::vector<std::string> ordered_names{};
   ordered_names.reserve(name_to_value.size());
@@ -52,77 +104,48 @@ std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_val
   return ordered_names;
 }
 
-}  // namespace
-
 Status SaveRuntimeTensors(
     const PathString& tensors_path,
     const PathString& tensors_data_path,
     const DataTransferManager& data_transfer_manager,
-    const NameMLValMap& ort_values,
-    bool force_save_as_external_data) {
+    const NameMLValMap& ort_values) {
   // just write data file basename to TensorProto - this will get overwritten
   //   with the actual path when loading the checkpoint
   const PathString tensors_data_relative_path = GetLastComponent(tensors_data_path);
+
   const std::vector<std::string> ordered_tensor_names = GetOrderedOrtValueNames(ort_values);
-  bool save_as_external_data = force_save_as_external_data;
-
-  // Check whether there is potential protobuf size limit was hit.
-  if (!save_as_external_data) {
-    unsigned long total_bytes = 0;
-    constexpr unsigned long PROTOBUF_UPPER_LIMIT = 2 * 1000 * 1000 * 1000;
-    for (const auto& tensor_name : ordered_tensor_names) {
-      const OrtValue& ort_value = ort_values.at(tensor_name);
-      ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
-      const Tensor& src_tensor = ort_value.Get<Tensor>();
-      total_bytes += src_tensor.SizeInBytes();
-
-      if (total_bytes >= PROTOBUF_UPPER_LIMIT) {
-        save_as_external_data = true;
-        break;
-      }
-    }
-  }
-
-  // Convert Tensor to TensorProto.
   std::vector<char> tensor_data_buffer{};
   static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
   std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos{};
   saved_tensor_protos.reserve(ordered_tensor_names.size());
+  std::ofstream tensors_data_file{tensors_data_path};
 
   for (const auto& tensor_name : ordered_tensor_names) {
     const OrtValue& ort_value = ort_values.at(tensor_name);
     ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
-    const Tensor& src_tensor = ort_value.Get<Tensor>();
-    tensor_data_buffer.resize(src_tensor.SizeInBytes());
-    auto& tensor_location = src_tensor.Location();
+    const Tensor& tensor = ort_value.Get<Tensor>();
 
-    if (tensor_location.device.Type() == OrtDevice::CPU ||
-        tensor_location.mem_type == OrtMemTypeCPUInput ||
-        tensor_location.mem_type == OrtMemTypeCPUOutput ||
-        tensor_location.device.Type() == OrtDevice::GPU) {
-      gsl::span<char> dst_span = gsl::make_span(tensor_data_buffer);
-      ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
-      Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), cpu_alloc_info};
-      ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
+    tensor_data_buffer.resize(tensor.SizeInBytes());
+    ORT_RETURN_IF_ERROR(CopyTensorDataToByteSpan(
+        data_transfer_manager, tensor, cpu_alloc_info, gsl::make_span(tensor_data_buffer)));
 
-      ONNX_NAMESPACE::TensorProto tensor_proto;
-      if (save_as_external_data) {
-        tensor_proto = utils::TensorToTensorProto(src_tensor, tensor_name, true, tensors_data_relative_path);
-      } else {
-        tensor_proto = utils::TensorToTensorProto(src_tensor, tensor_name);
-      }
-      saved_tensor_protos.emplace_back(tensor_proto);
-    } else {
-      ORT_THROW("Unsupported device type for saving tensors");
-    }
+    saved_tensor_protos.emplace_back();
+    ORT_RETURN_IF_ERROR(SaveRuntimeTensor(
+        tensor_name, tensor, tensor_data_buffer, tensors_data_relative_path,
+        tensors_data_file, saved_tensor_protos.back()));
   }
 
-  // Save TensorProto to file.
-  ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(tensors_path, saved_tensor_protos));
+  ORT_RETURN_IF_ERROR(WithOpenFile(
+      tensors_path, false,
+      [&saved_tensor_protos](int fd) {
+        google::protobuf::io::FileOutputStream output{fd};
+        ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(saved_tensor_protos, output));
+        return Status::OK();
+      }));
+
   return Status::OK();
 }
 
-namespace {
 Status SaveProperties(
     const PathString& properties_path,
     const std::unordered_map<std::string, std::string>& properties) {
@@ -181,19 +204,6 @@ Status SaveModelCheckpoint(
       GetCheckpointPropertiesFilePath(checkpoint_path), properties));
 
   LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
-
-  return Status::OK();
-}
-
-Status SaveTensorProtosToFile(const PathString& proto_file_path,
-                              const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos_to_save) {
-  ORT_RETURN_IF_ERROR(WithOpenFile(
-      proto_file_path, false,
-      [&tensor_protos_to_save](int fd) {
-        google::protobuf::io::FileOutputStream output{fd};
-        ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(tensor_protos_to_save, output));
-        return Status::OK();
-      }));
 
   return Status::OK();
 }

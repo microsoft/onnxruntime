@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/core/framework/checkpointing.h"
-
 #include <unordered_map>
 #include <vector>
 
@@ -11,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/framework_common.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
@@ -24,6 +23,7 @@
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test/test_environment.h"
 
+#include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utilities.h"
 #include "orttraining/training_api/interfaces.h"
@@ -82,13 +82,12 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
 
   // Check the ckpt files in the directory.
-  std::set<PathString> expected_file_names{"param_tensors.pbseq"};  //
+  std::set<PathString> expected_file_names{"param_tensors.pbseq"};
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
           [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
             PathString filename_str = filename;
-            bool is_valid_ckpt_file_exts =
-                HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
+            bool is_valid_ckpt_file_exts = HasExtensionOf(filename_str, ORT_TSTR("pbseq"));
             if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
               return true;
             }

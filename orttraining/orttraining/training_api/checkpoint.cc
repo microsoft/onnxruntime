@@ -11,9 +11,13 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "onnx/defs/tensor_proto_util.h"
-#include "orttraining/core/framework/checkpointing.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "orttraining/training_api/checkpoint.h"
+#include "core/common/path.h"
+#include "core/platform/env.h"
+#include "core/platform/path_lib.h"
+#include "core/framework/framework_common.h"
+#include "orttraining/core/framework/checkpoint_common.h"
 
 namespace onnxruntime {
 namespace training {
@@ -21,10 +25,70 @@ namespace api_test {
 
 namespace {
 
-constexpr const char* k_tensor_proto_file_name = ORT_TSTR("tensors.pbseq");
-constexpr const char* k_external_data_file_name = ORT_TSTR("tensors.bin");
-constexpr const char* k_tensor_proto_properties_file_name = ORT_TSTR("properties.pbseq");
+/**
+ * @brief Create TensorProtos From OrtValue objects
+ *
+ * @param name_to_ort_value name to OrtValue mapping.
+ * @param data_transfer_manager data transfer manager to copy the tensor in OrtValue.
+ * @param saved_tensor_protos saved results.
+ * @return Status
+ */
+Status CreateTensorProtosFromOrtValues(
+    const NameMLValMap& name_to_ort_value,
+    const DataTransferManager& data_transfer_manager,
+    std::vector<ONNX_NAMESPACE::TensorProto>& saved_tensor_protos) {
+  // Order the tensors by name.
+  std::vector<std::string> ordered_tensor_names{};
+  ordered_tensor_names.reserve(name_to_ort_value.size());
+  std::transform(name_to_ort_value.begin(), name_to_ort_value.end(), std::back_inserter(ordered_tensor_names),
+                 [](const NameMLValMap::value_type& v) { return v.first; });
+  std::sort(ordered_tensor_names.begin(), ordered_tensor_names.end());
 
+  // Copy the tensor data and create TensorProto storing the data.
+  std::vector<char> tensor_data_buffer{};
+  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+
+  saved_tensor_protos.reserve(ordered_tensor_names.size());
+
+  unsigned long total_bytes = 0;
+  constexpr unsigned long PROTOBUF_UPPER_LIMIT = 2 * 1000 * 1000 * 1000;
+  for (const auto& tensor_name : ordered_tensor_names) {
+    const OrtValue& ort_value = name_to_ort_value.at(tensor_name);
+    ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
+    const Tensor& src_tensor = ort_value.Get<Tensor>();
+    tensor_data_buffer.resize(src_tensor.SizeInBytes());
+
+    // Currently large model size not considered, so exception thrown here
+    // when protobuf upper limit hit.
+    total_bytes += src_tensor.SizeInBytes();
+    if (total_bytes >= PROTOBUF_UPPER_LIMIT) {
+      ORT_THROW("checkpoint file size hit upper limit.");
+    }
+
+    auto& tensor_location = src_tensor.Location();
+    if (tensor_location.device.Type() == OrtDevice::CPU ||
+        tensor_location.mem_type == OrtMemTypeCPUInput ||
+        tensor_location.mem_type == OrtMemTypeCPUOutput ||
+        tensor_location.device.Type() == OrtDevice::GPU) {
+      gsl::span<char> dst_span = gsl::make_span(tensor_data_buffer);
+      ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
+      Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), cpu_alloc_info};
+      ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
+
+      // Convert Tensor to TensorProto.
+      ONNX_NAMESPACE::TensorProto tensor_proto;
+      tensor_proto = utils::TensorToTensorProto(dst_tensor, tensor_name);
+      saved_tensor_protos.emplace_back(tensor_proto);
+    } else {
+      ORT_THROW("Unsupported device type for saving tensors");
+    }
+  }
+
+  return Status::OK();
+}
+
+constexpr const char* k_tensor_proto_file_name = "tensors.pbseq";
+constexpr const char* k_tensor_proto_properties_file_name = "properties.pbseq";
 constexpr const char* k_param_root_prefix = "param";
 constexpr const char* k_optimizer_root_prefix = "optim";
 constexpr const char* k_property_root_prefix = "custom";
@@ -32,10 +96,6 @@ constexpr const char* k_name_seperator = "_";
 
 PathString GetTensorProtoFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
   return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix + k_name_seperator) + k_tensor_proto_file_name);
-}
-
-PathString GetExternalDataFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
-  return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix + k_name_seperator) + k_external_data_file_name);
 }
 
 PathString GetTensorProtoPropertiesFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
@@ -91,27 +151,6 @@ const std::vector<std::string> ParseStringData(
   return res;
 }
 }  // namespace
-
-Status CreateOrtValuesFromTensorProtos(
-    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
-    NameMLValMap& name_to_ort_value) {
-  static CPUExecutionProviderInfo info;
-  static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
-
-  for (const auto tensor_proto : tensor_protos) {
-    TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(*tensor_proto)};
-    const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type())->GetElementType();
-    auto p_tensor = std::make_unique<Tensor>(tensor_dtype, tensor_shape, cpu_allocator);
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), nullptr, *tensor_proto, *p_tensor));
-
-    OrtValue ort_value;
-    ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-    name_to_ort_value.emplace(tensor_proto->name(), ort_value);
-  }
-
-  return Status::OK();
-}
 
 Status CheckpointUtils::OrtSaveInternal(
     const std::string& model_uri,
@@ -176,9 +215,14 @@ Status CheckpointUtils::OrtSaveInternal(
     for (auto it = custom_properties.begin(); it != custom_properties.end(); ++it) {
       properties_tensor_protos.emplace_back((*it)->ToTensorProto());
     }
-    ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(
-        GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix),
-        properties_tensor_protos));
+
+    ORT_RETURN_IF_ERROR(WithOpenFile(
+        GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix), false,
+        [&properties_tensor_protos](int fd) {
+          google::protobuf::io::FileOutputStream output{fd};
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(properties_tensor_protos, output));
+          return Status::OK();
+        }));
   }
 
   LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
@@ -197,11 +241,21 @@ Status CheckpointUtils::OrtSaveModuleStatesInternal(ModuleCheckpointStates& modu
 
     ORT_ENFORCE(module_states.train_session_data_transfer_mgr_,
                 "module checkpoint state has null train_session_data_transfer_mgr.");
-    ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
-        GetTensorProtoFilePath(parameter_folder_path, k_param_root_prefix),
-        GetExternalDataFilePath(parameter_folder_path, k_param_root_prefix),
+
+    std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos;
+    ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
+        model_parameter_ort_values,
         *module_states.train_session_data_transfer_mgr_,
-        model_parameter_ort_values));
+        saved_tensor_protos));
+
+    // Save TensorProto to file.
+    ORT_RETURN_IF_ERROR(WithOpenFile(
+        GetTensorProtoFilePath(parameter_folder_path, k_param_root_prefix), false,
+        [&saved_tensor_protos](int fd) {
+          google::protobuf::io::FileOutputStream output{fd};
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(saved_tensor_protos, output));
+          return Status::OK();
+        }));
   }
 
   return Status::OK();
@@ -254,11 +308,21 @@ Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates
 
       ORT_ENFORCE(optimizer_states.optimizer_session_data_transfer_mgr_,
                   "optimizer checkpoint state has null optimizer_session_data_transfer_mgr.");
-      ORT_RETURN_IF_ERROR(SaveRuntimeTensors(
-          GetTensorProtoFilePath(checkpoint_path, cur_state_filename_prefix),
-          GetExternalDataFilePath(checkpoint_path, cur_state_filename_prefix),
+
+      std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos;
+      ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
+          param_name_to_ortvalue,
           *optimizer_states.optimizer_session_data_transfer_mgr_,
-          param_name_to_ortvalue));
+          saved_tensor_protos));
+
+      // Save TensorProto to file.
+      ORT_RETURN_IF_ERROR(WithOpenFile(
+          GetTensorProtoFilePath(checkpoint_path, cur_state_filename_prefix), false,
+          [&saved_tensor_protos](int fd) {
+            google::protobuf::io::FileOutputStream output{fd};
+            ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(saved_tensor_protos, output));
+            return Status::OK();
+          }));
     }
 
     // Storing group-wise properties.
@@ -273,9 +337,13 @@ Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates
       group_wise_properties_tensor_protos.emplace_back((*it)->ToTensorProto());
     }
 
-    ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(
-        GetTensorProtoPropertiesFilePath(checkpoint_path, cur_group_filename_prefix),
-        group_wise_properties_tensor_protos));
+    ORT_RETURN_IF_ERROR(WithOpenFile(
+        GetTensorProtoPropertiesFilePath(checkpoint_path, cur_group_filename_prefix), false,
+        [&group_wise_properties_tensor_protos](int fd) {
+          google::protobuf::io::FileOutputStream output{fd};
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(group_wise_properties_tensor_protos, output));
+          return Status::OK();
+        }));
   }
 
   return Status::OK();
@@ -388,8 +456,7 @@ Status CheckpointUtils::OrtLoadOptimizerStatesInternal(
               return true;
             }
 
-            if (StringEndsWith(filename_str, k_tensor_proto_file_name) ||
-                StringEndsWith(filename_str, k_external_data_file_name)) {
+            if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
               optim_state_filenames.push_back(filename_str);
             } else if (StringEndsWith(filename_str, k_tensor_proto_properties_file_name)) {
               optim_property_filenames.push_back(filename_str);

@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <limits>
 #include <gsl/gsl>
-#include <fstream>
 
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
@@ -788,9 +787,7 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
   return CApiElementTypeFromProtoType(tensor_proto.data_type());
 }
 
-ONNX_NAMESPACE::TensorProto TensorToTensorProto(
-    const Tensor& tensor, const std::string& tensor_proto_name,
-    bool save_as_external_data, const PathString& external_data_path) {
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
   ORT_IF_CONSTEXPR(endian::native != endian::little) {
     ORT_THROW("Big endian not supported");
@@ -806,40 +803,15 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(
   }
 
   tensor_proto.set_data_type(tensor.GetElementType());
-
-  if (save_as_external_data) {
-    std::ofstream tensors_data_file{external_data_path};
-    gsl::span<const char> tensor_span = tensor.DataAsSpan<char>();
-    // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
-    const std::string data_loc = ToUTF8String(external_data_path);
-
-    auto add_external_data = [&tensor_proto](const std::string& key, const std::string& value) {
-      auto* kvp = tensor_proto.add_external_data();
-      kvp->set_key(key);
-      kvp->set_value(value);
-    };
-
-    add_external_data("location", data_loc);
-    const std::streamoff offset = tensors_data_file.tellp();
-    add_external_data("offset", std::to_string(offset));
-    const auto length = tensor_span.size_bytes();
-    add_external_data("length", std::to_string(length));
-
-    tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-    ORT_ENFORCE(tensors_data_file.write(tensor_span.data(), length),
-                "Failed to write to data file: ", data_loc);
-
-  } else {
-    if (tensor.IsDataTypeString()) {
-      auto* mutable_string_data = tensor_proto.mutable_string_data();
-      auto f = tensor.Data<std::string>();
-      auto end = f + tensor.Shape().Size();
-      for (; f < end; ++f) {
-        *mutable_string_data->Add() = *f;
-      }
-    } else {
-      tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
+  if (tensor.IsDataTypeString()) {
+    auto* mutable_string_data = tensor_proto.mutable_string_data();
+    auto f = tensor.Data<std::string>();
+    auto end = f + tensor.Shape().Size();
+    for (; f < end; ++f) {
+      *mutable_string_data->Add() = *f;
     }
+  } else {
+    tensor_proto.set_raw_data(tensor.DataRaw(), tensor.SizeInBytes());
   }
 
   return tensor_proto;

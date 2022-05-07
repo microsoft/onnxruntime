@@ -64,8 +64,7 @@ common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
 
     Note: Method currently requires that data is in little-endian format.
  */
-ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name,
-                                                bool save_as_external_data = false, const PathString& external_data_path = ".");
+ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name);
 
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
