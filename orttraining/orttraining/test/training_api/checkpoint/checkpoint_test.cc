@@ -254,17 +254,19 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
 
 TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   CheckpointStates state_dicts_to_save;
-  std::vector<std::shared_ptr<CheckpointProperty>>&
-      custom_properties = state_dicts_to_save.custom_properties;
+  PropertyBag& custom_properties = state_dicts_to_save.custom_properties;
 
   float f_data = 0.5f;
-  custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<float>>("float_number", f_data));
+  std::string f_property_name("float_number");
+  custom_properties.AddProperty<float>(f_property_name, f_data);
 
   int64_t i_data = 400;
-  custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<int64_t>>("dataset_epoch_index", i_data));
+  std::string i_property_name("dataset_epoch_index");
+  custom_properties.AddProperty<int64_t>(i_property_name, i_data);
 
   std::string s_data("/data/path/train.bin");
-  custom_properties.emplace_back(std::make_shared<TypedCheckpointProperty<std::string>>("train_data_path", s_data));
+  std::string s_property_name("train_data_path");
+  custom_properties.AddProperty<std::string>(s_property_name, s_data);
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -301,23 +303,13 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   // Call Load APIs
   CheckpointStates checkpoint_states;
   ASSERT_STATUS_OK(CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
-  std::vector<std::shared_ptr<CheckpointProperty>>&
-      restored_custom_properties = checkpoint_states.custom_properties;
-
-  ASSERT_EQ(restored_custom_properties.size(), 3);
-
-  std::shared_ptr<CheckpointProperty>& float_prop = restored_custom_properties[0];
-  std::shared_ptr<CheckpointProperty>& int_prop = restored_custom_properties[1];
-  std::shared_ptr<CheckpointProperty>& str_prop = restored_custom_properties[2];
-  ASSERT_EQ(float_prop->GetName(), "float_number");
-  ASSERT_EQ(int_prop->GetName(), "dataset_epoch_index");
-  ASSERT_EQ(str_prop->GetName(), "train_data_path");
-
-  float restored_f_data = float_prop->GetData<float>();
+  PropertyBag& restored_custom_properties = checkpoint_states.custom_properties;
+  ASSERT_EQ(restored_custom_properties.Size(), 3);
+  float restored_f_data = restored_custom_properties.GetProperty<float>(f_property_name);
   ASSERT_FLOAT_EQ(f_data, restored_f_data);
-  int64_t restored_i_data = int_prop->GetData<int64_t>();
+  int64_t restored_i_data = restored_custom_properties.GetProperty<int64_t>(i_property_name);
   ASSERT_EQ(i_data, restored_i_data);
-  std::string restored_s_data = str_prop->GetData<std::string>();
+  std::string restored_s_data = restored_custom_properties.GetProperty<std::string>(s_property_name);
   ASSERT_EQ(s_data, restored_s_data);
 }
 

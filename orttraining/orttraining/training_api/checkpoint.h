@@ -24,7 +24,7 @@ struct CheckpointStates {
  public:
   ModuleCheckpointStates module_checkpoint_states;
   OptimizerCheckpointStates optimizer_checkpoint_states;
-  std::vector<std::shared_ptr<CheckpointProperty>> custom_properties;
+  PropertyBag custom_properties;
 };
 
 /**

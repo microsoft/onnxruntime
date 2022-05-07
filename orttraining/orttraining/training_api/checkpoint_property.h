@@ -21,6 +21,8 @@ struct TypedCheckpointProperty;
  */
 struct CheckpointProperty {
  public:
+  CheckpointProperty() {}
+
   CheckpointProperty(const std::string& prop_name)
       : prop_name_(prop_name) {
   }
@@ -54,11 +56,9 @@ struct TypedCheckpointProperty : public CheckpointProperty {
       : CheckpointProperty(prop_name), prop_value_(prop_value) {
   }
 
-  ONNX_NAMESPACE::TensorProto ToTensorProto() override {
-    auto t_proto = ONNX_NAMESPACE::ToTensor<T>(prop_value_);
-    t_proto.set_name(prop_name_);
-    return t_proto;
-  }
+  TypedCheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+  ONNX_NAMESPACE::TensorProto ToTensorProto() override;
 
   T GetData() const {
     return prop_value_;
@@ -66,6 +66,35 @@ struct TypedCheckpointProperty : public CheckpointProperty {
 
  private:
   T prop_value_;
+};
+
+struct PropertyBag {
+  template <typename T>
+  void AddProperty(std::string name, T val) {
+    named_properties.insert({name, std::make_shared<TypedCheckpointProperty<T>>(name, val)});
+  }
+
+  void AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
+  template <typename T>
+  T GetProperty(std::string& name) const {
+    auto it = named_properties.find(name);
+    ORT_ENFORCE(it != named_properties.end(), "No property named ", name);
+    return it->second->GetData<T>();
+  }
+
+  void ToTensorProtos(std::vector<ONNX_NAMESPACE::TensorProto>& properties_tensor_protos) const {
+    for (auto it = named_properties.begin(); it != named_properties.end(); ++it) {
+      properties_tensor_protos.emplace_back((it->second)->ToTensorProto());
+    }
+  }
+
+  int Size() const {
+    return named_properties.size();
+  }
+
+ private:
+  std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties;
 };
 
 }  // namespace api_test

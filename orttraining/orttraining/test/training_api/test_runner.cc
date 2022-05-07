@@ -258,6 +258,7 @@ Status RunTraining(const TestRunnerParameters& params) {
         CheckpointStates state_dicts_to_save;
         ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.module_checkpoint_states).IsOK());
         ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_checkpoint_states).IsOK());
+        state_dicts_to_save.custom_properties.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
         ORT_ENFORCE(CheckpointUtils::SaveORTCheckpoint(state_dicts_to_save, ckpt_file).IsOK());
       }
