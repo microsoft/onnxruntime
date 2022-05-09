@@ -346,7 +346,7 @@ jobs:
 - job: Windows_Packaging_combined_GPU
   workspace:
     clean: all
-  pool: 'onnxruntime-gpu-tensorrt8-winbuild'
+  pool: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
   dependsOn:
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
