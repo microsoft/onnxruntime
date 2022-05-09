@@ -2523,6 +2523,11 @@ static constexpr OrtApi ort_api_1_to_12 = {
     // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::AddExternalInitializers,
+    &OrtApis::CreateOpAttr,
+    &OrtApis::ReleaseOpAttr,
+    &OrtApis::CreateOp,
+    &OrtApis::InvokeOp,
+    &OrtApis::ReleaseOp,
     &OrtApis::KernelInfoGetAttributeArray_void,
 };
 

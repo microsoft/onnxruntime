@@ -10,12 +10,13 @@ from ...ortmodule._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 
 
 def export_gradient_graph(
-        model: torch.nn.Module,
-        loss_fn: Callable[[Any, Any], Any],
-        example_input: torch.Tensor,
-        example_labels: torch.Tensor,
-        gradient_graph_path: Union[Path, str],
-        opset_version=12) -> None:
+    model: torch.nn.Module,
+    loss_fn: Callable[[Any, Any], Any],
+    example_input: torch.Tensor,
+    example_labels: torch.Tensor,
+    gradient_graph_path: Union[Path, str],
+    opset_version=12,
+) -> None:
     r"""
     Build a gradient graph for `model` so that you can output gradients in an inference session when given specific input and corresponding labels.
 
@@ -52,33 +53,37 @@ def export_gradient_graph(
     wrapped_model = WrapperModule()
 
     dynamic_axes = {
-        'input': {0: 'batch_size', },
-        'labels': {0: 'batch_size', },
-        'output': {0: 'batch_size', },
+        "input": {
+            0: "batch_size",
+        },
+        "labels": {
+            0: "batch_size",
+        },
+        "output": {
+            0: "batch_size",
+        },
     }
 
     args = (example_input, example_labels, *tuple(model.parameters()))
     model_param_names = tuple(name for name, _ in model.named_parameters())
-    input_names = ['input', 'labels', *model_param_names]
-    nodes_needing_gradients = set(
-        name for name, param in model.named_parameters()
-        if param.requires_grad)
+    input_names = ["input", "labels", *model_param_names]
+    nodes_needing_gradients = set(name for name, param in model.named_parameters() if param.requires_grad)
 
     f = io.BytesIO()
     torch.onnx.export(
-        wrapped_model, args,
+        wrapped_model,
+        args,
         f,
         export_params=True,
-        opset_version=opset_version, do_constant_folding=False,
+        opset_version=opset_version,
+        do_constant_folding=False,
         training=TrainingMode.TRAINING,
         input_names=input_names,
-        output_names=['output', 'loss'],
-        dynamic_axes=dynamic_axes)
+        output_names=["output", "loss"],
+        dynamic_axes=dynamic_axes,
+    )
 
     exported_model = f.getvalue()
-    builder = GradientGraphBuilder(exported_model,
-                                   {'loss'},
-                                   nodes_needing_gradients,
-                                   'loss')
+    builder = GradientGraphBuilder(exported_model, {"loss"}, nodes_needing_gradients, "loss")
     builder.build()
     builder.save(gradient_graph_path)

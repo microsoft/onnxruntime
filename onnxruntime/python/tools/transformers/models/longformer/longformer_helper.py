@@ -5,23 +5,24 @@
 # --------------------------------------------------------------------------
 # This script helps creating dummy inputs for Longformer model.
 
-import os
 import logging
-import torch
-import onnx
+import os
 import random
-import numpy
-import time
 import re
+import time
 from pathlib import Path
-from typing import List, Dict, Tuple, Union
+from typing import Dict, List, Tuple, Union
+
+import numpy
+import onnx
+import torch
 
 logger = logging.getLogger(__name__)
 
 PRETRAINED_LONGFORMER_MODELS = {
     "longformer-base-4096": "allenai/longformer-base-4096",
     "longformer-large-4096": "allenai/longformer-large-4096",
-    "longformer-random-tiny": "patrickvonplaten/longformer-random-tiny"  # A tiny model for debugging
+    "longformer-random-tiny": "patrickvonplaten/longformer-random-tiny",  # A tiny model for debugging
 }
 
 
@@ -46,23 +47,27 @@ class LongformerInputs:
 
 
 class LongformerHelper:
-    """ A helper class for Longformer model conversion, inference and verification.
-    """
+    """A helper class for Longformer model conversion, inference and verification."""
+
     @staticmethod
-    def get_dummy_inputs(batch_size: int,
-                         sequence_length: int,
-                         num_global_tokens: int,
-                         device: torch.device,
-                         vocab_size: int = 100) -> LongformerInputs:
-        """ Create random inputs for Longformer model.
+    def get_dummy_inputs(
+        batch_size: int,
+        sequence_length: int,
+        num_global_tokens: int,
+        device: torch.device,
+        vocab_size: int = 100,
+    ) -> LongformerInputs:
+        """Create random inputs for Longformer model.
         Returns torch tensors of input_ids, attention_mask and global_attention_mask tensors.
         """
 
-        input_ids = torch.randint(low=0,
-                                  high=vocab_size - 1,
-                                  size=(batch_size, sequence_length),
-                                  dtype=torch.long,
-                                  device=device)
+        input_ids = torch.randint(
+            low=0,
+            high=vocab_size - 1,
+            size=(batch_size, sequence_length),
+            dtype=torch.long,
+            device=device,
+        )
         attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=device)
         global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=device)
         global_token_index = list(range(num_global_tokens))
@@ -71,6 +76,8 @@ class LongformerHelper:
 
     @staticmethod
     def get_output_shapes(batch_size: int, sequence_length: int, hidden_size: int) -> Dict[str, List[int]]:
-        """ Returns a dictionary with output name as key, and shape as value.
-        """
-        return {"last_state": [batch_size, sequence_length, hidden_size], "pooler": [batch_size, sequence_length]}
+        """Returns a dictionary with output name as key, and shape as value."""
+        return {
+            "last_state": [batch_size, sequence_length, hidden_size],
+            "pooler": [batch_size, sequence_length],
+        }

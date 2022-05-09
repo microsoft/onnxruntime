@@ -11,31 +11,33 @@ import onnx
 import onnxruntime
 from onnxruntime.training import optim, _utils
 
-def _single_run(execution_file, scenario, checkopint_dir = None):
+
+def _single_run(execution_file, scenario, checkopint_dir=None):
     cmd = [sys.executable, execution_file]
     if scenario:
-        cmd += ['--scenario', scenario]
+        cmd += ["--scenario", scenario]
     if checkopint_dir:
-        cmd += ['--checkpoint_dir', checkopint_dir]
+        cmd += ["--checkpoint_dir", checkopint_dir]
     assert subprocess.call(cmd) == 0
 
-def _distributed_run(execution_file, scenario, checkopint_dir = None):
+
+def _distributed_run(execution_file, scenario, checkopint_dir=None):
     ngpus = torch.cuda.device_count()
-    cmd = ['mpirun', '-n', str(ngpus), '--tag-output', sys.executable, execution_file]
+    cmd = ["mpirun", "-n", str(ngpus), "--tag-output", sys.executable, execution_file]
     if scenario:
-        cmd += ['--scenario', scenario]
+        cmd += ["--scenario", scenario]
     if checkopint_dir:
-        cmd += ['--checkpoint_dir', checkopint_dir]
+        cmd += ["--checkpoint_dir", checkopint_dir]
     assert subprocess.call(cmd) == 0
+
 
 def is_windows():
     return sys.platform.startswith("win")
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None,
-                   shell=False, env={}, log=None):
+
+def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}, log=None):
     if log:
-        log.info("Running subprocess in '{0}'\n{1}".format(
-            cwd or os.getcwd(), args))
+        log.info("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():
@@ -46,16 +48,12 @@ def run_subprocess(args, cwd=None, capture=False, dll_path=None,
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
 
-    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (
-        None, None)
+    stdout, stderr = (subprocess.PIPE, subprocess.STDOUT) if capture else (None, None)
     my_env.update(env)
-    completed_process = subprocess.run(
-        args, cwd=cwd, check=True, stdout=stdout, stderr=stderr,
-        env=my_env, shell=shell)
-    
+    completed_process = subprocess.run(args, cwd=cwd, check=True, stdout=stdout, stderr=stderr, env=my_env, shell=shell)
+
     if log:
-        log.debug("Subprocess completed. Return code=" +
-                str(completed_process.returncode))
+        log.debug("Subprocess completed. Return code=" + str(completed_process.returncode))
     return completed_process
 
 
@@ -78,7 +76,6 @@ def legacy_cosine_lr_scheduler(global_step, initial_lr, total_steps, warmup, cyc
     return new_lr
 
 
-
 def legacy_linear_lr_scheduler(global_step, initial_lr, total_steps, warmup):
     num_warmup_steps = warmup * total_steps
     if global_step < num_warmup_steps:
@@ -98,7 +95,7 @@ def legacy_poly_lr_scheduler(global_step, initial_lr, total_steps, warmup, power
         lr_range = initial_lr - lr_end
         decay_steps = total_steps - num_warmup_steps
         pct_remaining = 1 - (global_step - num_warmup_steps) / decay_steps
-        decay = lr_range * pct_remaining ** power + lr_end
+        decay = lr_range * pct_remaining**power + lr_end
         new_lr = decay
     return new_lr
 
@@ -132,30 +129,24 @@ def generate_dummy_optim_state(model, optimizer):
     if isinstance(optimizer, optim.LambConfig):
         step_val = np.full([1], 5, dtype=np.int64)
         optim_state[shared_state_key] = {step_key: step_val}
-    return {
-        'optimizer': optim_state,
-        'trainer_options': {
-            'optimizer_name': optimizer.name
-        }
-    }
+    return {"optimizer": optim_state, "trainer_options": {"optimizer_name": optimizer.name}}
+
 
 def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False, data_dir=None):
     # Loads external Pytorch TransformerModel into utils
-    root = 'samples'
+    root = "samples"
     if not os.path.exists(root):
         root = os.path.normpath(
-            os.path.join(
-                os.path.dirname(
-                    os.path.abspath(__file__)), "..", "..", "..", "..", "samples"))
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "samples")
+        )
     if not os.path.exists(root):
-        raise FileNotFoundError(
-            "Unable to find folder 'samples', tried %r." % root)
-    pytorch_transformer_path = os.path.join(root, 'python', 'training', 'orttrainer', 'pytorch_transformer')
-    pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
+        raise FileNotFoundError("Unable to find folder 'samples', tried %r." % root)
+    pytorch_transformer_path = os.path.join(root, "python", "training", "orttrainer", "pytorch_transformer")
+    pt_model_path = os.path.join(pytorch_transformer_path, "pt_model.py")
     pt_model = _utils.import_module_from_file(pt_model_path)
-    ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')
+    ort_utils_path = os.path.join(pytorch_transformer_path, "ort_utils.py")
     ort_utils = _utils.import_module_from_file(ort_utils_path)
-    utils_path = os.path.join(pytorch_transformer_path, 'utils.py')
+    utils_path = os.path.join(pytorch_transformer_path, "utils.py")
     utils = _utils.import_module_from_file(utils_path)
 
     # Modeling
@@ -172,20 +163,20 @@ def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False
         else:
             model_desc = ort_utils.transformer_model_description()
 
-
     # Preparing data
     train_data, val_data, test_data = utils.prepare_data(device, 20, 20, data_dir)
     return model, model_desc, my_loss, utils.get_batch, train_data, val_data, test_data
 
-def generate_random_input_from_bart_model_desc(desc, seed=1, device = "cuda:0"):
-    '''Generates a sample input for the BART model using the model desc'''
+
+def generate_random_input_from_bart_model_desc(desc, seed=1, device="cuda:0"):
+    """Generates a sample input for the BART model using the model desc"""
 
     torch.manual_seed(seed)
     onnxruntime.set_seed(seed)
     dtype = torch.int64
     vocab_size = 30528
     sample_input = []
-    for index, input in enumerate(desc['inputs']):
+    for index, input in enumerate(desc["inputs"]):
         size = []
         for s in input[1]:
             if isinstance(s, (int)):
@@ -195,47 +186,70 @@ def generate_random_input_from_bart_model_desc(desc, seed=1, device = "cuda:0"):
         sample_input.append(torch.randint(0, vocab_size, tuple(size), dtype=dtype).to(device))
     return sample_input
 
+
 def _load_bart_model():
-    bart_onnx_model_path = os.path.join('testdata', "bart_tiny.onnx")
+    bart_onnx_model_path = os.path.join("testdata", "bart_tiny.onnx")
     model = onnx.load(bart_onnx_model_path)
     batch = 2
     seq_len = 1024
     model_desc = {
-        'inputs': [
-            ('src_tokens', [batch, seq_len],),
-            ('prev_output_tokens', [batch, seq_len],),
-            ('target', [batch*seq_len],)],
-        'outputs': [
-            ('loss', [], True)]}
+        "inputs": [
+            (
+                "src_tokens",
+                [batch, seq_len],
+            ),
+            (
+                "prev_output_tokens",
+                [batch, seq_len],
+            ),
+            (
+                "target",
+                [batch * seq_len],
+            ),
+        ],
+        "outputs": [("loss", [], True)],
+    }
 
     return model, model_desc
+
 
 def assert_all_states_close_ort(state_dict_pre_checkpoint, state_dict_post_checkpoint, reshape_states=False):
     """Assert that the two ORTTrainer (hierarchical) state dictionaries are very close for all states"""
 
-    assert ('model' in state_dict_pre_checkpoint) == ('model' in state_dict_post_checkpoint)
-    assert ('optimizer' in state_dict_pre_checkpoint) == ('optimizer' in state_dict_post_checkpoint)
+    assert ("model" in state_dict_pre_checkpoint) == ("model" in state_dict_post_checkpoint)
+    assert ("optimizer" in state_dict_pre_checkpoint) == ("optimizer" in state_dict_post_checkpoint)
 
-    if 'model' in state_dict_pre_checkpoint:
-        for model_state_key in state_dict_pre_checkpoint['model']['full_precision']:
+    if "model" in state_dict_pre_checkpoint:
+        for model_state_key in state_dict_pre_checkpoint["model"]["full_precision"]:
             if reshape_states:
-                assert_allclose(state_dict_pre_checkpoint['model']['full_precision'][model_state_key],
-                    state_dict_post_checkpoint['model']['full_precision'][model_state_key]\
-                        .reshape(state_dict_pre_checkpoint['model']['full_precision'][model_state_key].shape))
+                assert_allclose(
+                    state_dict_pre_checkpoint["model"]["full_precision"][model_state_key],
+                    state_dict_post_checkpoint["model"]["full_precision"][model_state_key].reshape(
+                        state_dict_pre_checkpoint["model"]["full_precision"][model_state_key].shape
+                    ),
+                )
             else:
-                assert_allclose(state_dict_pre_checkpoint['model']['full_precision'][model_state_key],
-                    state_dict_post_checkpoint['model']['full_precision'][model_state_key])
+                assert_allclose(
+                    state_dict_pre_checkpoint["model"]["full_precision"][model_state_key],
+                    state_dict_post_checkpoint["model"]["full_precision"][model_state_key],
+                )
 
-    if 'optimizer' in state_dict_pre_checkpoint:
-        for model_state_key in state_dict_pre_checkpoint['optimizer']:
-            for optimizer_state_key in state_dict_pre_checkpoint['optimizer'][model_state_key]:
+    if "optimizer" in state_dict_pre_checkpoint:
+        for model_state_key in state_dict_pre_checkpoint["optimizer"]:
+            for optimizer_state_key in state_dict_pre_checkpoint["optimizer"][model_state_key]:
                 if reshape_states:
-                    assert_allclose(state_dict_pre_checkpoint['optimizer'][model_state_key][optimizer_state_key],
-                        state_dict_post_checkpoint['optimizer'][model_state_key][optimizer_state_key]\
-                            .reshape(state_dict_pre_checkpoint['optimizer'][model_state_key][optimizer_state_key].shape))
+                    assert_allclose(
+                        state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key],
+                        state_dict_post_checkpoint["optimizer"][model_state_key][optimizer_state_key].reshape(
+                            state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key].shape
+                        ),
+                    )
                 else:
-                    assert_allclose(state_dict_pre_checkpoint['optimizer'][model_state_key][optimizer_state_key],
-                        state_dict_post_checkpoint['optimizer'][model_state_key][optimizer_state_key])
+                    assert_allclose(
+                        state_dict_pre_checkpoint["optimizer"][model_state_key][optimizer_state_key],
+                        state_dict_post_checkpoint["optimizer"][model_state_key][optimizer_state_key],
+                    )
+
 
 def assert_all_states_close_pytorch(state_dict_pre_checkpoint, pytorch_model):
     """Assert that the state_dict_pre_checkpoint state dictionary is very close to the one extracted from the pytorch model after loading"""
