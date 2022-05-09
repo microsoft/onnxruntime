@@ -628,7 +628,7 @@ def parse_arguments():
         cupti library must be added to PATH beforehand.",
     )
 
-    parser.add_argument("--use_xnnpack", action='store_true', help="Enable xnnpack EP.")
+    parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
 
     args = parser.parse_args()
     if args.android_sdk_path:
