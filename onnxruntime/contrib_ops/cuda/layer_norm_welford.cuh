@@ -50,7 +50,7 @@ inline int64_t GetNumBlocksWrapImpl(const int64_t rows, const int64_t thread_gro
 
 template<class Func>
 inline void GetNumBlocks(Func func, const int block_size, const size_t dynamic_smem_size,
-                                const int64_t max_blocks, const int64_t waves, int* num_blocks) {
+                                const int64_t max_blocks, const int waves, int* num_blocks) {
   int dev;
   CUDA_CALL(cudaGetDevice(&dev));
 
@@ -60,8 +60,7 @@ inline void GetNumBlocks(Func func, const int block_size, const size_t dynamic_s
   int max_active_blocks;
   CUDA_CALL(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&max_active_blocks, func,
                                                           block_size, dynamic_smem_size));
-  *num_blocks =
-      std::max<int>(1, std::min<int64_t>(max_blocks, sm_count * max_active_blocks * waves));
+  *num_blocks = std::max<int>(1, static_cast<int>(std::min<int64_t>(max_blocks, sm_count * max_active_blocks * waves)));
   return;
 }
 
