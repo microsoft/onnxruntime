@@ -37,7 +37,15 @@ namespace training_api {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/")
 
+/**
+ * Load ONNX model from file path, save into ORT checkpoint files,
+ * Then load it into ORT, compare with the initial parameter values.
+ */
 TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
+  /// Phase 1 - Test Preparison
+  /// Prepare the data and dest folder for saving checkpoint.
+  /// Also cooked the data for test result comparision.
+
   // Model path and trainable parameter name definitions.
   auto model_uri = MODEL_FOLDER "transform/computation_reduction/e2e.onnx";
   std::vector<std::string> expected_trainable_param_names{
@@ -76,10 +84,13 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
+  /// Phase 2 - Run save checkpoint APIs.
+  /// And check the result checkpoint files.
+
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(CheckpointUtils::SaveCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{"paramfrozen_tensors.pbseq", "paramtrain_tensors.pbseq"};
@@ -97,9 +108,12 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 
   ASSERT_EQ(expected_file_names, valid_file_names);
 
+  /// Phase 3 - Run load checkpoint APIs.
+  /// And check the result comparible with initial parameter values.
+
   // Call Load APIs
   CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(CheckpointUtils::LoadCheckpoint(checkpoint_path, checkpoint_states));
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_states));
   ModuleCheckpointStates module_states = checkpoint_states.module_checkpoint_states;
   const auto& param_states = module_states.named_parameters;
   std::unordered_map<std::string, OrtValue> restored_param_name_to_ort_values;
@@ -154,7 +168,16 @@ class OrtValueTensorData {
   std::vector<float> data_;
 };
 
+/**
+ * Create Optimizer with sets of parameters,
+ * Save Optimizer states into ORT checkpoint files,
+ * Then load it into ORT, compare with the initial optimizer states values.
+ */
 TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
+  /// Phase 1 - Test Preparison
+  /// Prepare the data and dest folder for saving checkpoint.
+  /// Also cooked the data for test result comparision.
+
   auto model_uri = MODEL_FOLDER "transform/computation_reduction/e2e.onnx";
   std::unordered_map<std::string, OrtValueTensorData> name_to_ort_value_data{
       {"param1", {{3}, {1.0f, 2.0f, 3.0f}}},
@@ -181,6 +204,9 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   }
   auto optimizer = Optimizer(model_uri, named_parameters);
 
+  /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
+  /// And check the result checkpoint files.
+
   CheckpointStates state_dicts_to_save;
   ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_checkpoint_states).IsOK());
 
@@ -194,7 +220,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(CheckpointUtils::SaveCheckpoint(state_dicts_to_save, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(state_dicts_to_save, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -218,9 +244,12 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
 
   ASSERT_EQ(expected_file_names, valid_file_names);
 
+  /// Phase 3 - Run load checkpoint APIs.
+  /// And check the result comparible with initial optimizer state values.
+
   // Call Load APIs
   CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(CheckpointUtils::LoadCheckpoint(checkpoint_path, checkpoint_states));
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_states));
   OptimizerCheckpointStates optimizer_states = checkpoint_states.optimizer_checkpoint_states;
   std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>>&
       group_optimizer_states = optimizer_states.group_named_optimizer_states;
@@ -253,7 +282,15 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   }
 }
 
+/**
+ * Create PropertyBag with sets of properties,
+ * Save properties into ORT checkpoint files,
+ * Then load it into ORT, compare with the initial properties' values.
+ */
 TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
+  /// Phase 1 - Test Preparison
+  /// Prepare the data and dest folder for saving checkpoint.
+
   CheckpointStates state_dicts_to_save;
   PropertyBag& custom_properties = state_dicts_to_save.custom_properties;
 
@@ -276,10 +313,13 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   }
   TemporaryDirectory tmp_dir{ckpt_test_root_dir};
 
+  /// Phase 2 - Call save checkpoint APIs.
+  /// And check the result checkpoint files.
+
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(CheckpointUtils::SaveCheckpoint(state_dicts_to_save, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(state_dicts_to_save, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -303,7 +343,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Call Load APIs
   CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(CheckpointUtils::LoadCheckpoint(checkpoint_path, checkpoint_states));
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_states));
   PropertyBag& restored_custom_properties = checkpoint_states.custom_properties;
   ASSERT_EQ(restored_custom_properties.Size(), 3);
   float restored_f_data = restored_custom_properties.GetProperty<float>(f_property_name);

@@ -128,9 +128,7 @@ bool StringEndsWith(std::string const& s, std::string const& p) {
   return std::equal(p.rbegin(), p.rend(), s.rbegin());
 }
 
-}  // namespace
-
-Status CheckpointUtils::OrtSaveInternal(
+Status OrtSaveInternal(
     const std::string& model_uri,
     const std::vector<std::string>& trainable_param_names,
     const PathString& checkpoint_path) {
@@ -181,40 +179,8 @@ Status CheckpointUtils::OrtSaveInternal(
   return Status::OK();
 }
 
-Status CheckpointUtils::OrtSaveInternal(
-    CheckpointStates& states, const PathString& checkpoint_path) {
-  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
-  LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
-      << "Checkpoint directory exists - data may be overwritten.";
-  ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(checkpoint_path));
-
-  // Write weight tensors files.
-  ORT_RETURN_IF_ERROR(OrtSaveModuleStatesInternal(states.module_checkpoint_states, checkpoint_path));
-
-  // Write optimizer state tensors files.
-  ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(states.optimizer_checkpoint_states, checkpoint_path));
-
-  // Write properties file
-  const PropertyBag& custom_properties = states.custom_properties;
-  if (custom_properties.Size() > 0) {
-    std::vector<ONNX_NAMESPACE::TensorProto> properties_tensor_protos;
-    custom_properties.ToTensorProtos(properties_tensor_protos);
-
-    ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix), false,
-        [&properties_tensor_protos](int fd) {
-          google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(properties_tensor_protos, output));
-          return Status::OK();
-        }));
-  }
-
-  LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
-  return Status::OK();
-}
-
-Status CheckpointUtils::OrtSaveModuleStatesInternal(ModuleCheckpointStates& module_states,
-                                                    const PathString& parameter_folder_path) {
+Status OrtSaveModuleStatesInternal(ModuleCheckpointStates& module_states,
+                                   const PathString& parameter_folder_path) {
   // Write weight tensors files.
   const auto& param_states = module_states.named_parameters;
   if (!param_states.empty()) {
@@ -254,8 +220,8 @@ Status CheckpointUtils::OrtSaveModuleStatesInternal(ModuleCheckpointStates& modu
   return Status::OK();
 }
 
-Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states,
-                                                       const PathString& checkpoint_path) {
+Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states,
+                                      const PathString& checkpoint_path) {
   if (optimizer_states.group_named_optimizer_states.empty()) {
     return Status::OK();
   }
@@ -342,36 +308,39 @@ Status CheckpointUtils::OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates
   return Status::OK();
 }
 
-Status CheckpointUtils::OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& states) {
-  ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, states.module_checkpoint_states));
+Status OrtSaveInternal(
+    CheckpointStates& states, const PathString& checkpoint_path) {
+  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
+  LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
+      << "Checkpoint directory exists - data may be overwritten.";
+  ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(checkpoint_path));
 
-  ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(checkpoint_path, states.optimizer_checkpoint_states));
+  // Write weight tensors files.
+  ORT_RETURN_IF_ERROR(OrtSaveModuleStatesInternal(states.module_checkpoint_states, checkpoint_path));
 
-  // Parse other checkpoint properties.
-  const PathString property_file_path = GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix);
-  std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
-  auto file_read_status = WithOpenFile(
-      property_file_path, true,
-      [&property_protos](int fd) {
-        google::protobuf::io::FileInputStream input{fd};
-        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(property_protos, input));
-        return Status::OK();
-      });
+  // Write optimizer state tensors files.
+  ORT_RETURN_IF_ERROR(OrtSaveOptimizerStatesInternal(states.optimizer_checkpoint_states, checkpoint_path));
 
-  if (!file_read_status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " custom property file not found or read failure, skip it.";
-    return Status::OK();
+  // Write properties file
+  const PropertyBag& custom_properties = states.custom_properties;
+  if (custom_properties.Size() > 0) {
+    std::vector<ONNX_NAMESPACE::TensorProto> properties_tensor_protos;
+    custom_properties.ToTensorProtos(properties_tensor_protos);
+
+    ORT_RETURN_IF_ERROR(WithOpenFile(
+        GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix), false,
+        [&properties_tensor_protos](int fd) {
+          google::protobuf::io::FileOutputStream output{fd};
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(properties_tensor_protos, output));
+          return Status::OK();
+        }));
   }
 
-  PropertyBag& custom_properties = states.custom_properties;
-  for (auto& property_proto : property_protos) {
-    custom_properties.AddProperty(property_proto);
-  }
-
+  LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
   return Status::OK();
 }
 
-Status CheckpointUtils::OrtLoadModuleStatesInternal(
+Status OrtLoadModuleStatesInternal(
     const PathString& parameter_folder_path, ModuleCheckpointStates& module_states) {
   // Parameter parsing.
   auto& named_parameters = module_states.named_parameters;
@@ -411,7 +380,7 @@ Status CheckpointUtils::OrtLoadModuleStatesInternal(
   return Status::OK();
 }
 
-Status CheckpointUtils::OrtLoadOptimizerStatesInternal(
+Status OrtLoadOptimizerStatesInternal(
     const PathString& optimizer_folder_path, OptimizerCheckpointStates& optimizer_states) {
   if (!Env::Default().FolderExists(optimizer_folder_path)) {
     return Status::OK();
@@ -535,6 +504,51 @@ Status CheckpointUtils::OrtLoadOptimizerStatesInternal(
   }
 
   return Status::OK();
+}
+
+Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& states) {
+  ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, states.module_checkpoint_states));
+
+  ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(checkpoint_path, states.optimizer_checkpoint_states));
+
+  // Parse other checkpoint properties.
+  const PathString property_file_path = GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix);
+  std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
+  auto file_read_status = WithOpenFile(
+      property_file_path, true,
+      [&property_protos](int fd) {
+        google::protobuf::io::FileInputStream input{fd};
+        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(property_protos, input));
+        return Status::OK();
+      });
+
+  if (!file_read_status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " custom property file not found or read failure, skip it.";
+    return Status::OK();
+  }
+
+  PropertyBag& custom_properties = states.custom_properties;
+  for (auto& property_proto : property_protos) {
+    custom_properties.AddProperty(property_proto);
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+Status SaveCheckpoint(const std::string& model_uri,
+                      const std::vector<std::string>& trainable_param_names,
+                      const PathString& checkpoint_path) {
+  return OrtSaveInternal(model_uri, trainable_param_names, checkpoint_path);
+}
+
+Status SaveCheckpoint(CheckpointStates& states, const PathString& checkpoint_path) {
+  return OrtSaveInternal(states, checkpoint_path);
+}
+
+Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states) {
+  return OrtLoadInternal(checkpoint_path, checkpoint_states);
 }
 
 }  // namespace api

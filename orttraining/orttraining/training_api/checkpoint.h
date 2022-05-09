@@ -8,16 +8,37 @@
 #include "orttraining/training_api/interfaces.h"
 #include "orttraining/training_api/checkpoint_property.h"
 
+/**
+ * There are two representation for checkpoint respectively in memory and files:
+ *
+ * 1. CheckpointStates. A data class representing traing states in memory, which include:
+ *    i. module state:
+ *        a instance of data class `ModuleCheckpointStates` managed along with Module/Parameter classes,
+ *    ii. optimizer state:
+ *        a instance of data class `OptimizerCheckpointStates` managed along with Optimizer class,
+ *    iii. user defined training properties, for example 'epoch', 'best_score':
+ *        a instance of data class `PropertyBag` managed along with CheckpointProperty classes.
+ *
+ *    In terms of class dependencies, Checkpoint implementations are dependent on (and on top of)
+ *        Parameter/Module/Optimizer/CheckpointProperty, NOT vice versa.
+ *
+ * 2. A directory of files:
+ *    checkpoint/
+ *       paramtrain_tensors.pbseq - trainable parameter tensor protobuf messages
+ *       paramfrozen_tensors.pbseq - non_trainable parameter tensor protobuf messages
+ *       optim_group0_momentum0_tensors.pbseq - optimizer momentum state tensor protobuf messages
+ *       optim_group0_momentum1_tensors.pbseq - optimizer momentum state tensor protobuf messages
+ *       optim_group0_properties.pbseq - group-wise optimizer property tensor protobuf messages
+ *       custom_properties.pbseq - custom property protobuf messages
+ *
+ *    LoadCheckpoint takes CheckpointStates as outputs, loading from a directory of checkpoint.
+ *    SaveCheckpoint takes CheckpointStates as inputs, saving checkpoint files into a directory.
+ */
+
 namespace onnxruntime {
 namespace training {
 namespace api {
 
-/**
- * @brief A data class representing traing states, which include:
- * 1). parameter states,
- * 2). optimizer states,
- * 3). user defined training properties, for example 'epoch', 'best_score'.
- */
 struct CheckpointStates {
  public:
   ModuleCheckpointStates module_checkpoint_states;
@@ -26,70 +47,34 @@ struct CheckpointStates {
 };
 
 /**
- * @brief The single entry for checkpoint utilities.
+ * @brief Save ONNX initializers as ORT checkpoint.
  *
- * A checkpoint is a directory of files:
- * checkpoint/
- *   paramtrain_tensors.pbseq - trainable parameter tensor protobuf messages
- *   paramfrozen_tensors.pbseq - non_trainable parameter tensor protobuf messages
- *   optim_group0_momentum0_tensors.pbseq - optimizer momentum state tensor protobuf messages
- *   optim_group0_momentum1_tensors.pbseq - optimizer momentum state tensor protobuf messages
- *   optim_group0_properties.pbseq - group-wise optimizer property tensor protobuf messages
- *   custom_properties.pbseq - custom property protobuf messages
+ * @param model_uri ONNX model file path.
+ * @param trainable_param_names trainable parameter names.
+ * @param checkpoint_path folder where checkpoint is saved.
+ * @return Status
  */
-struct CheckpointUtils {
- public:
-  /**
-   * @brief Save ONNX initializers as ORT checkpoint.
-   *
-   * @param model_uri ONNX model file path.
-   * @param trainable_param_names trainable parameter names.
-   * @param checkpoint_path folder where checkpoint is saved.
-   * @return Status
-   */
-  static Status SaveCheckpoint(const std::string& model_uri,
-                               const std::vector<std::string>& trainable_param_names,
-                               const PathString& checkpoint_path) {
-    return OrtSaveInternal(model_uri, trainable_param_names, checkpoint_path);
-  }
+Status SaveCheckpoint(const std::string& model_uri,
+                      const std::vector<std::string>& trainable_param_names,
+                      const PathString& checkpoint_path);
 
-  /**
-   * @brief Save training states as ORT checkpoint.
-   *
-   * @param states parameter/optimizer and other user defined training states.
-   * @param checkpoint_path folder where checkpoint is saved.
-   * @return Status
-   */
-  static Status SaveCheckpoint(CheckpointStates& states, const PathString& checkpoint_path) {
-    return OrtSaveInternal(states, checkpoint_path);
-  }
+/**
+ * @brief Save training states as ORT checkpoint.
+ *
+ * @param states parameter/optimizer and other user defined training states.
+ * @param checkpoint_path folder where checkpoint is saved.
+ * @return Status
+ */
+Status SaveCheckpoint(CheckpointStates& states, const PathString& checkpoint_path);
 
-  /**
-   * @brief Load training states from ORT checkpoint.
-   *
-   * @param checkpoint_path folder where checkpoint is stored.
-   * @param checkpoint_states parameter/optimizer and other user defined training states.
-   * @return Status
-   */
-  static Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states) {
-    return OrtLoadInternal(checkpoint_path, checkpoint_states);
-  }
-
- private:
-  CheckpointUtils() {}
-
-  static Status OrtSaveInternal(const std::string& model_uri,
-                                const std::vector<std::string>& trainable_param_names,
-                                const PathString& checkpoint_path);
-
-  static Status OrtSaveModuleStatesInternal(ModuleCheckpointStates& module_states, const PathString& parameter_folder_path);
-  static Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_states, const PathString& optimizer_folder_path);
-  static Status OrtSaveInternal(CheckpointStates& states, const PathString& checkpoint_path);
-
-  static Status OrtLoadModuleStatesInternal(const PathString& parameter_folder_path, ModuleCheckpointStates& module_states);
-  static Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path, OptimizerCheckpointStates& optimizer_states);
-  static Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
-};
+/**
+ * @brief Load training states from ORT checkpoint.
+ *
+ * @param checkpoint_path folder where checkpoint is stored.
+ * @param checkpoint_states parameter/optimizer and other user defined training states.
+ * @return Status
+ */
+Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
 
 }  // namespace api
 }  // namespace training
