@@ -6,6 +6,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
+#include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"

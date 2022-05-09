@@ -86,6 +86,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   std::vector<std::unique_ptr<ComputeCapability>> static_capabilities;
 
   if (enable_static_kernels_) {
+#if !defined(ORT_MINIMAL_BUILD)
     std::unordered_set<const Node*> nodes_with_static_kernels;
     auto registry = GetKernelRegistry();
 
@@ -124,6 +125,7 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
         supported_compiled_nodes.erase(node);
       }
     }
+#endif
   }
 
   // NOTE: GetCapability is called for all subgraphs from the bottom up, for one execution provider at a time.
@@ -233,6 +235,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
   KernelCreateInfo info;
@@ -252,6 +255,10 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
+
+  // make Android build happy...
+  // it doesn't count the usage of internal_testing_ep in the macros and generates a warning.
+  static_cast<void>(internal_testing_ep);
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
@@ -273,12 +280,15 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
   return kernel_registry;
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 std::shared_ptr<KernelRegistry> InternalTestingExecutionProvider::GetKernelRegistry() const {
+#if !defined(ORT_MINIMAL_BUILD)
   if (enable_static_kernels_) {
     static std::shared_ptr<KernelRegistry> registry = RegisterKernels();
     return registry;
   }
-
+#endif  // !defined(ORT_MINIMAL_BUILD)
   return nullptr;
 }
 

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 #include "core/framework/op_kernel.h"
 #include "core/framework/allocator.h"
 
@@ -21,3 +23,5 @@ class Conv : public OpKernel {
 
 }  // namespace internal_testing_ep
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)

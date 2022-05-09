@@ -244,12 +244,14 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
 // TEMPORARY test using production model using via the Xnnpack EP.
 // Model has standard and depthwise Conv nodes that can additionally be fused with Clip nodes
 #ifdef USE_XNNPACK
-static void XnnpackEPTest(bool use_xnnpack, OrtValue& output) {
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "TEMP/example_model.onnx";
-
+static void XnnpackEPTest(bool use_xnnpack, bool use_saved_model, OrtValue& output) {
+  const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "TEMP/example_model.onnx";
+  const ORTCHAR_T* saved_model_path = use_xnnpack ? ORT_MODEL_FOLDER "TEMP/example_model.test_output.xnnpack.onnx"
+                                                  : ORT_MODEL_FOLDER "TEMP/example_model.test_output.onnx";
   SessionOptions so;
-  so.optimized_model_filepath = use_xnnpack ? ORT_MODEL_FOLDER "TEMP/example_model.test_output.xnnpack.onnx"
-                                            : ORT_MODEL_FOLDER "TEMP/example_model.test_output.onnx";
+  if (!use_saved_model) {
+    so.optimized_model_filepath = saved_model_path;
+  }
 
   InferenceSessionWrapper session(so, GetEnvironment());
 
@@ -258,7 +260,7 @@ static void XnnpackEPTest(bool use_xnnpack, OrtValue& output) {
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
   }
 
-  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Load(use_saved_model ? saved_model_path : model_path));
   ASSERT_STATUS_OK(session.Initialize());
 
   const auto& graph = session.GetGraph();
@@ -297,18 +299,23 @@ static void XnnpackEPTest(bool use_xnnpack, OrtValue& output) {
   output = fetches[0];
 }
 
-TEST(XnnpackEP, RunProductionModelWithCpuAndXnnpack) {
+TEST(XnnpackEP, DISABLE_RunProductionModelWithCpuAndXnnpack) {
   OrtValue cpu_output;
   OrtValue xnnpack_output;
-  XnnpackEPTest(true, cpu_output);
-  XnnpackEPTest(false, xnnpack_output);
+  OrtValue saved_xnnpack_model_output;
+  XnnpackEPTest(false, false, cpu_output);
+  XnnpackEPTest(true, false, xnnpack_output);
+  XnnpackEPTest(true, true, saved_xnnpack_model_output);
 
   const auto expected = cpu_output.Get<Tensor>().DataAsSpan<float>();
   const auto actual = xnnpack_output.Get<Tensor>().DataAsSpan<float>();
+  const auto actual2 = saved_xnnpack_model_output.Get<Tensor>().DataAsSpan<float>();
 
   ASSERT_EQ(expected.size(), actual.size());
+  ASSERT_EQ(expected.size(), actual2.size());
   for (size_t i = 0, end = expected.size(); i < end; ++i) {
     ASSERT_NEAR(expected[i], actual[i], 0.0001f);
+    ASSERT_NEAR(expected[i], actual2[i], 0.0001f);
   }
 }
 

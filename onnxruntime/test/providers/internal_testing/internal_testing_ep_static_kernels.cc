@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD)
 #include "internal_testing_ep_static_kernels.h"
 
 #include "core/framework/utils.h"
@@ -45,3 +46,5 @@ Status Conv::Compute(OpKernelContext* context) const {
 
 }  // namespace internal_testing_ep
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
