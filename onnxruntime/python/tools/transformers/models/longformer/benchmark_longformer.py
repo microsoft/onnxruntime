@@ -28,7 +28,7 @@
 #   python benchmark_longformer.py --model longformer-base-4096 --batch_sizes 1 --sequence_lengths 4096 \
 #          --global_lengths 8 --onnx ./longformer-base-4096_fp32.onnx --memory -t 10 --engine onnxruntime
 #
-# By default, compact memory kernel is disabled. To enable it, set environment variable ORT_LONGFORMER_COMPACT_MEMORY=1.
+# By default, compact memory kernel is enabled. To enable it, set environment variable ORT_LONGFORMER_COMPACT_MEMORY=0.
 
 import argparse
 import csv
