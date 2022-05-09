@@ -22,7 +22,7 @@ class BenchmarkLayerNorm(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
-    def create_inputs_outputs(cls, op_param):
+    def create_inputs_outputs(self, op_param):
         np.random.seed(0)
         input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.feature).astype(op_param.data_type)
         scale = np.random.rand(op_param.feature).astype(op_param.data_type)

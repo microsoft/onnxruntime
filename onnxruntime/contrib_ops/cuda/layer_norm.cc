@@ -64,7 +64,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   Tensor* Y = ctx->Output(0, x_shape);
   auto Y_data = reinterpret_cast<CudaV*>(Y->template MutableData<V>());
 
-  //Mean and variance
+  // Mean and variance
   std::vector<int64_t> mean_inv_std_var_dim;
   for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
     if (i < axis) {
@@ -93,15 +93,15 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
     return Status::OK();
   }
 
-  if(!HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data,
+  if (!HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data,
                                                       X_data, n1, n2, epsilon_, scale_data, bias_data)) {
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
-  
+
   return Status::OK();
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

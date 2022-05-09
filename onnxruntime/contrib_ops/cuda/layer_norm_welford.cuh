@@ -83,12 +83,7 @@ struct DefaultComputeType<nv_bfloat16> {
 #endif  // CUDA_VERSION >= 11000
 
 template<typename T, int N>
-struct GetPackType {
-  using type = typename std::aligned_storage<N * sizeof(T), N * alignof(T)>::type;
-};
-
-template<typename T, int N>
-using PackType = typename GetPackType<T, N>::type;
+using PackType = aligned_vector<T, N>;
 
 template<typename T, int N>
 union Pack {
