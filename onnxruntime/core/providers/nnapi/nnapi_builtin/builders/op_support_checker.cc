@@ -1171,6 +1171,49 @@ bool CastOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* init
 
 #pragma endregion
 
+#pragma region op_depthtospace
+
+class DepthToSpaceOpSupportChecker : public BaseOpSupportChecker {
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+};
+
+bool DepthToSpaceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+                                                     const OpSupportCheckParams& params) const {
+  NodeAttrHelper helper(node_unit);
+
+  Shape input_shape;
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+    return false;
+
+  const auto input_size = input_shape.size();
+  if (input_size != 4) {
+    LOGS_DEFAULT(VERBOSE) << "DepthToSpace only supports 4d shape, input is "
+                          << input_size << "d shape";
+    return false;
+  }
+
+  if (params.use_nchw && params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    LOGS_DEFAULT(VERBOSE) << "NCHW layout is not supported for android feature level: " << params.android_feature_level;
+    return false;
+  }
+
+  auto since_version = node_unit.SinceVersion();
+  if (since_version >= 11) {
+    // For now, only DCR mode is accepted as NNAPI only supports DCR format data rearrangement
+    const auto mode = helper.Get("mode", "DCR");
+    if (mode != "DCR") {
+      LOGS_DEFAULT(VERBOSE) << "ANEURALNETWORKS_DEPTH_TO_SPACE only supports DCR rearrangement mode. Current mode:" << mode;
+      return false;
+    }
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region op_softmax
 
 class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
@@ -2163,6 +2206,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Cast", CastOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Clip", ClipOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Concat", ConcatOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("DepthToSpace", DepthToSpaceOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("DequantizeLinear", DequantizeLinearOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Elu", EluOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Flatten", FlattenOpSupportChecker);
