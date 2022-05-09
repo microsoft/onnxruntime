@@ -13,6 +13,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
+#include "onnx/checker.h"
 #include <type_traits>
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
@@ -100,7 +101,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKe
   }
   return onnxruntime::ToOrtStatus(status);
 }
-
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ int64_t* out, _Inout_ size_t* size) {
   std::vector<int64_t> values;
@@ -109,6 +109,30 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKe
     status = CopyDataFromVectorToMemory<int64_t>(values, out, size);
   }
   return onnxruntime::ToOrtStatus(status);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_void, _In_ const OrtKernelInfo* info,
+                    _In_ OrtAllocator* ort_allocator, _In_ const char* name, _Out_ void** buffer,
+                    _Out_ size_t* size) {
+  ONNX_NAMESPACE::GraphProto g;
+  const onnxruntime::OpKernelInfo* opkernelinfo = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  auto status = opkernelinfo->GetAttr<ONNX_NAMESPACE::GraphProto>(name, &g);
+
+  *size = g.ByteSizeLong();
+
+  *buffer = ort_allocator->Alloc(ort_allocator, *size);
+  g.SerializeToArray(*buffer, *size);
+
+  return onnxruntime::ToOrtStatus(status);
+  //std::cout << (g.node().size());
+  //*size = g.GetCachedSize();
+  //std::cout << g.ByteSizeLong();
+  //*buffer = ort_allocator->Alloc(ort_allocator, *size);
+  //void* ret = ort_allocator->Alloc(ort_allocator, g.ByteSizeLong());
+  //*buffer = new (ret) ONNX_NAMESPACE::GraphProto(g);
+  //reinterpret_cast<ONNX_NAMESPACE::GraphProto*>(ret) = g;
+  //buffer = &ret;
+  //std::cout << (reinterpret_cast<ONNX_NAMESPACE::GraphProto*>(*buffer)->node().size());
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

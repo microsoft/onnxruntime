@@ -3329,6 +3329,10 @@ struct OrtApi {
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
                   _In_reads_(input_len) const char* const* initializer_names,
                   _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
+
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_void, _In_ const OrtKernelInfo* info,
+                  _In_ OrtAllocator* ort_allocator, _In_ const char* name, _Out_ void** buffer,
+                  _Out_ size_t* size);
 };
 
 /*

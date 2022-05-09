@@ -840,6 +840,8 @@ inline Status OpKernelInfo::GetAttr<float>(const std::string& name, float* value
 template <>
 inline Status OpKernelInfo::GetAttr<std::string>(const std::string& name, std::string* value) const { return g_host->OpKernelInfo__GetAttr_string(this, name, value); }
 template <>
+inline Status OpKernelInfo::GetAttr<ONNX_NAMESPACE::GraphProto>(const std::string& name, ONNX_NAMESPACE::GraphProto* value) const { return g_host->OpKernelInfo__GetAttr_GraphProto(this, name, value); }
+template <>
 inline Status OpKernelInfo::GetAttr<ONNX_NAMESPACE::TensorProto>(const std::string& name, ONNX_NAMESPACE::TensorProto* value) const { return g_host->OpKernelInfo__GetAttr_TensorProto(this, name, value); }
 template <>
 inline Status OpKernelInfo::GetAttrs<int64_t>(const std::string& name, std::vector<int64_t>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }

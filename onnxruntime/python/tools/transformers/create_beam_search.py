@@ -17,19 +17,32 @@ def parse_arguments(argv=None):
                         type=str,
                         help='Path where the model has to be saved')
 
+    parser.add_argument('-s',
+                        '--subgraph',
+                        required=True,
+                        type=str,
+                        help='subgraph path for the custom kernel')
+
     args = parser.parse_args(argv)
 
     return args
 
 def make_custombeamsearchop(args):
     model_type = "CustomBeamsearchOp"
-    domain = "custom.com.microsoft"
+    domain = "test.beamsearchop"
     inputs = ["input_ids", "num_beams"]
     
     outputs = ["logits"]
 
+    model = onnx.load(args.subgraph)
+    model.graph.name = f"customsubgraph"
+
     node = helper.make_node(model_type, inputs=inputs, outputs=outputs, name=f'{model_type}_0')
     node.domain = domain
+    node.attribute.extend([
+        helper.make_attribute("customsubgraph", model.graph),
+        helper.make_attribute("sampleint", 64)
+    ])
 
     input_ids = helper.make_tensor_value_info('input_ids', TensorProto.FLOAT, ['batch_size', 'sequence_length'])
     num_beams = helper.make_tensor_value_info('num_beams', TensorProto.FLOAT, [1])

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <stdio.h>
 
 #include <vector>
 #include <cmath>
@@ -51,22 +52,28 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 struct CustomBearmsearchKernel {
-  CustomBearmsearchKernel(OrtApi api)
-      : api_(api),
-        ort_(api_) {
-    std::cout << "CustomBearmsearchKernel constructor is invoked" << std::endl;
-      if (&api_ == nullptr) {
-        std::cout <<"api is nullptr"<<std::endl;
-      }
+  CustomBearmsearchKernel(OrtApi api, const OrtKernelInfo* info)
+      : api_(api), ort_(api_) {
+      //TODO how to free kernel info.
+    OutputDebugStringA("Kernel Constructor called");
+
+    api_.GetAllocatorWithDefaultOptions(&allocator_);
+    api_.KernelInfoGetAttributeArray_void(info, allocator_, "customsubgraph", &graphProtoBufferPtr_, &size_);
+    api_.KernelInfoGetAttribute_int64(info, "sampleint", &sampleint_);
+    
+    if (&api_ == nullptr) {
+      OutputDebugStringA("api is nullptr");
+    }
+
+    session_ = nullptr;
  }
 
   void Compute(OrtKernelContext* context) {
-   // Setup inputs
-   if (&api_ != nullptr) {
-     std::cout << "api_ exists" << std::endl;
-   }
+   OutputDebugStringA("Compute is called");
+   std::cout << "Size of internal model:"<< size_ << std::endl;
+   std::cout << "Sampleint_:" << sampleint_ << std::endl;
 
-   std::cout << "compute is invoked" << std::endl;
+
    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
    const float* X = ort_.GetTensorData<float>(input_X);
@@ -89,8 +96,9 @@ struct CustomBearmsearchKernel {
      std::wstring model_path_wstring = model_path.wstring();
 
      std::time_t start_time = std::time(0);
-     try {
+     try {      
        api_.CreateSession(env, model_path_wstring.data(), sessionoptions, &session_);
+       //api_.CreateSessionFromArray(env, graphProtoBufferPtr_, size_, sessionoptions, &session_);
      } catch (Ort::Exception& e) {
        std::cout << e.what() << std::endl;
      }
@@ -138,13 +146,20 @@ struct CustomBearmsearchKernel {
  private:
   OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
+  
+  OrtAllocator* allocator_;
   OrtSession* session_;
+
+  //Subgraph variables
+  size_t size_;
+  void* graphProtoBufferPtr_;
+  int64_t sampleint_;
 };
 
 struct CustomBeamSearchOP : Ort::CustomOpBase<CustomBeamSearchOP, CustomBearmsearchKernel> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) const {
 
-    return new CustomBearmsearchKernel(api);
+    return new CustomBearmsearchKernel(api, info);
   };
 
   const char* GetName() const { return "CustomBeamsearchOp"; };

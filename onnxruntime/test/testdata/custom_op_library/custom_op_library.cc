@@ -46,9 +46,10 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 struct KernelOne {
-  KernelOne(OrtApi api)
+  KernelOne(OrtApi api, const OrtKernelInfo* info)
       : api_(api),
         ort_(api_) {
+    ortki_ = info;
   }
 
   void Compute(OrtKernelContext* context) {
@@ -57,6 +58,9 @@ struct KernelOne {
     const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
     const float* X = ort_.GetTensorData<float>(input_X);
     const float* Y = ort_.GetTensorData<float>(input_Y);
+
+    int64_t attr;
+    api_.KernelInfoGetAttribute_int64(ortki_, "sampletest", &attr);
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
@@ -82,6 +86,7 @@ struct KernelOne {
  private:
   OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
+  const OrtKernelInfo* ortki_;
 };
 
 struct KernelTwo {
@@ -117,8 +122,8 @@ struct KernelTwo {
 };
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
-    return new KernelOne(api);
+  void* CreateKernel(OrtApi api, const OrtKernelInfo* info) const {
+    return new KernelOne(api, info);
   };
 
   const char* GetName() const { return "CustomOpOne"; };

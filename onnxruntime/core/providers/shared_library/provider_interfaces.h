@@ -707,6 +707,7 @@ struct ProviderHost {
   virtual Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) = 0;
   virtual Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) = 0;
   virtual Status OpKernelInfo__GetAttr_string(const OpKernelInfo* p, const std::string& name, std::string* value) = 0;
+  virtual Status OpKernelInfo__GetAttr_GraphProto(const OpKernelInfo* p, const std::string& name, ONNX_NAMESPACE::GraphProto* value) = 0;
   virtual Status OpKernelInfo__GetAttr_TensorProto(const OpKernelInfo* p, const std::string& name, ONNX_NAMESPACE::TensorProto* value) = 0;
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<int64_t>& values) = 0;
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) = 0;

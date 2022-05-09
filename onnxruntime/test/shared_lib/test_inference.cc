@@ -173,7 +173,7 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
-static constexpr PATH_TYPE BEAMSEARCH_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/beamsearch_op_library/beamsearch_op.onnx");
+static constexpr PATH_TYPE BEAMSEARCH_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/beamsearch_op_library/beamsearch_op_with_subgraph.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
