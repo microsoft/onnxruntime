@@ -10,16 +10,15 @@ import warnings
 from onnxruntime.capi import _pybind_state as C
 
 
-def get_ort_device_type(device):
-    device_type = device if type(device) is str else device.type.lower()
-    if device_type == 'cuda':
+def get_ort_device_type(device_type, device_index):
+    if device_type == "cuda":
         return C.OrtDevice.cuda()
-    elif device_type == 'cpu':
+    elif device_type == "cpu":
         return C.OrtDevice.cpu()
-    elif device_type == 'ort':
-        return C.get_ort_device(device.index).device_type()
+    elif device_type == "ort":
+        return C.get_ort_device(device_index).device_type()
     else:
-        raise Exception('Unsupported device type: ' + device_type)
+        raise Exception("Unsupported device type: " + device_type)
 
 
 def check_and_normalize_provider_args(providers, provider_options, available_provider_names):
@@ -52,8 +51,10 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
 
     def set_provider_options(name, options):
         if name not in available_provider_names:
-            warnings.warn("Specified provider '{}' is not in available provider names."
-                          "Available providers: '{}'".format(name, ", ".join(available_provider_names)))
+            warnings.warn(
+                "Specified provider '{}' is not in available provider names."
+                "Available providers: '{}'".format(name, ", ".join(available_provider_names))
+            )
 
         if name in provider_name_to_options:
             warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
@@ -85,8 +86,12 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
         for provider in providers:
             if isinstance(provider, str):
                 set_provider_options(provider, dict())
-            elif isinstance(provider, tuple) and len(provider) == 2 and \
-                    isinstance(provider[0], str) and isinstance(provider[1], dict):
+            elif (
+                isinstance(provider, tuple)
+                and len(provider) == 2
+                and isinstance(provider[0], str)
+                and isinstance(provider[1], dict)
+            ):
                 set_provider_options(provider[0], provider[1])
             else:
                 raise ValueError("'providers' values must be either strings or (string, dict) tuples.")
@@ -98,6 +103,7 @@ class Session:
     """
     This is the main class used to run a model.
     """
+
     def __init__(self):
 
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
@@ -216,6 +222,7 @@ class Session:
 
             sess.run([output_name], {input_name: x})
         """
+
         def invoke(sess, output_names, input_dict_ort_values, run_options):
             input_dict = {}
             for n, v in input_dict_ort_values.items():
@@ -268,10 +275,10 @@ class Session:
 
     def run_with_iobinding(self, iobinding, run_options=None):
         """
-         Compute the predictions.
+        Compute the predictions.
 
-         :param iobinding: the iobinding object that has graph inputs/outputs bind.
-         :param run_options: See :class:`onnxruntime.RunOptions`.
+        :param iobinding: the iobinding object that has graph inputs/outputs bind.
+        :param run_options: See :class:`onnxruntime.RunOptions`.
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
@@ -280,6 +287,7 @@ class InferenceSession(Session):
     """
     This is the main class used to run a model.
     """
+
     def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kwargs):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
@@ -326,10 +334,10 @@ class InferenceSession(Session):
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
         self._enable_fallback = True
-        self._read_config_from_model = os.environ.get('ORT_LOAD_CONFIG_FROM_MODEL') == '1'
+        self._read_config_from_model = os.environ.get("ORT_LOAD_CONFIG_FROM_MODEL") == "1"
 
         # internal parameters that we don't expect to be used in general so aren't documented
-        disabled_optimizers = kwargs['disabled_optimizers'] if 'disabled_optimizers' in kwargs else None
+        disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
@@ -347,23 +355,25 @@ class InferenceSession(Session):
         available_providers = C.get_available_providers()
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
-        if 'TensorrtExecutionProvider' in available_providers:
-            self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        elif 'MIGraphXExecutionProvider' in available_providers:
-            self._fallback_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
+        if "TensorrtExecutionProvider" in available_providers:
+            self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif "MIGraphXExecutionProvider" in available_providers:
+            self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
         else:
-            self._fallback_providers = ['CPUExecutionProvider']
+            self._fallback_providers = ["CPUExecutionProvider"]
 
         # validate providers and provider_options before other initialization
-        providers, provider_options = check_and_normalize_provider_args(providers,
-                                                                        provider_options,
-                                                                        available_providers)
+        providers, provider_options = check_and_normalize_provider_args(
+            providers, provider_options, available_providers
+        )
         if providers == [] and len(available_providers) > 1:
             self.disable_fallback()
-            raise ValueError("This ORT build has {} enabled. ".format(available_providers) +
-                             "Since ORT 1.9, you are required to explicitly set " +
-                             "the providers parameter when instantiating InferenceSession. For example, "
-                             "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers))
+            raise ValueError(
+                "This ORT build has {} enabled. ".format(available_providers)
+                + "Since ORT 1.9, you are required to explicitly set "
+                + "the providers parameter when instantiating InferenceSession. For example, "
+                "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers)
+            )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
@@ -410,19 +420,20 @@ class InferenceSession(Session):
 
 
 class IOBinding:
-    '''
+    """
     This class provides API to bind input/output to a specified device, e.g. GPU.
-    '''
+    """
+
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
         self._numpy_obj_references = {}
 
     def bind_cpu_input(self, name, arr_on_cpu):
-        '''
+        """
         bind an input to array on CPU
         :param name: input name
         :param arr_on_cpu: input values as a python array on CPU
-        '''
+        """
         # Hold a reference to the numpy object as the bound OrtValue is backed
         # directly by the data buffer of the numpy object and so the numpy object
         # must be around until this IOBinding instance is around
@@ -430,38 +441,53 @@ class IOBinding:
         self._iobinding.bind_input(name, arr_on_cpu)
 
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):
-        '''
+        """
         :param name: input name
         :param device_type: e.g. cpu, cuda
         :param device_id: device id, e.g. 0
         :param element_type: input element type
         :param shape: input shape
         :param buffer_ptr: memory pointer to input data
-        '''
-        self._iobinding.bind_input(name,
-                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
-                                               device_id),
-                                   element_type, shape, buffer_ptr)
+        """
+        self._iobinding.bind_input(
+            name,
+            C.OrtDevice(
+                get_ort_device_type(device_type, device_id),
+                C.OrtDevice.default_memory(),
+                device_id,
+            ),
+            element_type,
+            shape,
+            buffer_ptr,
+        )
 
     def bind_ortvalue_input(self, name, ortvalue):
-        '''
+        """
         :param name: input name
         :param ortvalue: OrtValue instance to bind
-        '''
+        """
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
 
     def synchronize_inputs(self):
         self._iobinding.synchronize_inputs()
 
-    def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
-        '''
+    def bind_output(
+        self,
+        name,
+        device_type="cpu",
+        device_id=0,
+        element_type=None,
+        shape=None,
+        buffer_ptr=None,
+    ):
+        """
         :param name: output name
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
         :param element_type: output element type
         :param shape: output shape
         :param buffer_ptr: memory pointer to output data
-        '''
+        """
 
         # Follow the `if` path when the user has not provided any pre-allocated buffer but still
         # would like to bind an output to a specific device (e.g. cuda).
@@ -470,32 +496,44 @@ class IOBinding:
         # in which case ORT will allocate the memory for the user
         # (2) The output has a dynamic shape and hence the size of the buffer may not be fixed across runs
         if buffer_ptr is None:
-            self._iobinding.bind_output(name,
-                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
-                                                    device_id))
+            self._iobinding.bind_output(
+                name,
+                C.OrtDevice(
+                    get_ort_device_type(device_type, device_id),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                ),
+            )
         else:
             if element_type is None or shape is None:
                 raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
-            self._iobinding.bind_output(name,
-                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
-                                                    device_id),
-                                        element_type, shape, buffer_ptr)
+            self._iobinding.bind_output(
+                name,
+                C.OrtDevice(
+                    get_ort_device_type(device_type, device_id),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                ),
+                element_type,
+                shape,
+                buffer_ptr,
+            )
 
     def bind_ortvalue_output(self, name, ortvalue):
-        '''
+        """
         :param name: output name
         :param ortvalue: OrtValue instance to bind
-        '''
+        """
         self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
 
     def synchronize_outputs(self):
         self._iobinding.synchronize_outputs()
 
     def get_outputs(self):
-        '''
+        """
         Returns the output OrtValues from the Run() that preceded the call.
         The data buffer of the obtained OrtValues may not reside on CPU memory
-        '''
+        """
         returned_ortvalues = []
 
         for ortvalue in self._iobinding.get_outputs():
@@ -504,7 +542,7 @@ class IOBinding:
         return returned_ortvalues
 
     def copy_outputs_to_cpu(self):
-        '''Copy output contents to CPU (if on another device). No-op if already on the CPU.'''
+        """Copy output contents to CPU (if on another device). No-op if already on the CPU."""
         return self._iobinding.copy_outputs_to_cpu()
 
     def clear_binding_inputs(self):
@@ -515,11 +553,12 @@ class IOBinding:
 
 
 class OrtValue:
-    '''
+    """
     A data structure that supports all ONNX data formats (tensors and non-tensors) that allows users
     to place the data backing these on a device, for example, on a CUDA supported device.
     This class provides APIs to construct and deal with OrtValues.
-    '''
+    """
+
     def __init__(self, ortvalue, numpy_obj=None):
         if isinstance(ortvalue, C.OrtValue):
             self._ortvalue = ortvalue
@@ -528,150 +567,183 @@ class OrtValue:
             self._numpy_obj = numpy_obj
         else:
             # An end user won't hit this error
-            raise ValueError("`Provided ortvalue` needs to be of type " +
-                             "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`")
+            raise ValueError(
+                "`Provided ortvalue` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtValue`"
+            )
 
     def _get_c_value(self):
         return self._ortvalue
 
     @staticmethod
-    def ortvalue_from_numpy(numpy_obj, device_type='cpu', device_id=0):
-        '''
+    def ortvalue_from_numpy(numpy_obj, device_type="cpu", device_id=0):
+        """
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
 
         :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
-        '''
+        """
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
         # is backed directly by the data buffer of the numpy object and so the numpy object
         # must be around until this OrtValue instance is around
-        return OrtValue(C.OrtValue.ortvalue_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type),
-                        C.OrtDevice.default_memory(), device_id)), numpy_obj if device_type.lower() == 'cpu' else None)
+        return OrtValue(
+            C.OrtValue.ortvalue_from_numpy(
+                numpy_obj,
+                C.OrtDevice(
+                    get_ort_device_type(device_type, device_id),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                ),
+            ),
+            numpy_obj if device_type.lower() == "cpu" else None,
+        )
 
     @staticmethod
-    def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type='cpu', device_id=0):
-        '''
+    def ortvalue_from_shape_and_type(shape=None, element_type=None, device_type="cpu", device_id=0):
+        """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
 
         :param shape: List of integers indicating the shape of the OrtValue
         :param element_type: The data type of the elements in the OrtValue (numpy type)
         :param device_type: e.g. cpu, cuda, cpu by default
         :param device_id: device id, e.g. 0
-        '''
+        """
         if shape is None or element_type is None:
             raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
 
-        return OrtValue(C.OrtValue.ortvalue_from_shape_and_type(shape, element_type,
-                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
+        return OrtValue(
+            C.OrtValue.ortvalue_from_shape_and_type(
+                shape,
+                element_type,
+                C.OrtDevice(
+                    get_ort_device_type(device_type, device_id),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                ),
+            )
+        )
 
     @staticmethod
     def ort_value_from_sparse_tensor(sparse_tensor):
-        '''
+        """
         The function will construct an OrtValue instance from a valid SparseTensor
         The new instance of OrtValue will assume the ownership of sparse_tensor
-        '''
+        """
         return OrtValue(C.OrtValue.ort_value_from_sparse_tensor(sparse_tensor._get_c_tensor()))
 
     def as_sparse_tensor(self):
-        '''
+        """
         The function will return SparseTensor contained in this OrtValue
-        '''
+        """
         return SparseTensor(self._ortvalue.as_sparse_tensor())
 
     def data_ptr(self):
-        '''
+        """
         Returns the address of the first element in the OrtValue's data buffer
-        '''
+        """
         return self._ortvalue.data_ptr()
 
     def device_name(self):
-        '''
+        """
         Returns the name of the device where the OrtValue's data buffer resides e.g. cpu, cuda
-        '''
+        """
         return self._ortvalue.device_name().lower()
 
     def shape(self):
-        '''
+        """
         Returns the shape of the data in the OrtValue
-        '''
+        """
         return self._ortvalue.shape()
 
     def data_type(self):
-        '''
+        """
         Returns the data type of the data in the OrtValue
-        '''
+        """
         return self._ortvalue.data_type()
 
+    def element_type(self):
+        """
+        Returns the proto type of the data in the OrtValue
+        if the OrtValue is a tensor.
+        """
+        return self._ortvalue.element_type()
+
     def has_value(self):
-        '''
+        """
         Returns True if the OrtValue corresponding to an
         optional type contains data, else returns False
-        '''
+        """
         return self._ortvalue.has_value()
 
     def is_tensor(self):
-        '''
+        """
         Returns True if the OrtValue contains a Tensor, else returns False
-        '''
+        """
         return self._ortvalue.is_tensor()
 
     def is_sparse_tensor(self):
-        '''
+        """
         Returns True if the OrtValue contains a SparseTensor, else returns False
-        '''
+        """
         return self._ortvalue.is_sparse_tensor()
 
     def is_tensor_sequence(self):
-        '''
+        """
         Returns True if the OrtValue contains a Tensor Sequence, else returns False
-        '''
+        """
         return self._ortvalue.is_tensor_sequence()
 
     def numpy(self):
-        '''
+        """
         Returns a Numpy object from the OrtValue.
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         Use accessors to gain a reference to non-Tensor objects such as SparseTensor
-        '''
+        """
         return self._ortvalue.numpy()
 
     def update_inplace(self, np_arr):
-        '''
+        """
         Update the OrtValue in place with a new Numpy array. The numpy contents
         are copied over to the device memory backing the OrtValue. It can be used
         to update the input valuess for an InferenceSession with CUDA graph
         enabled or other scenarios where the OrtValue needs to be updated while
         the memory address can not be changed.
-        '''
+        """
         self._ortvalue.update_inplace(np_arr)
 
 
 class OrtDevice:
-    '''
+    """
     A data structure that exposes the underlying C++ OrtDevice
-    '''
+    """
+
     def __init__(self, c_ort_device):
-        '''
+        """
         Internal constructor
-        '''
+        """
         if isinstance(c_ort_device, C.OrtDevice):
             self._ort_device = c_ort_device
         else:
-            raise ValueError("`Provided object` needs to be of type " +
-                             "`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`")
+            raise ValueError(
+                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
+            )
 
     def _get_c_device(self):
-        '''
+        """
         Internal accessor to underlying object
-        '''
+        """
         return self._ort_device
 
     @staticmethod
     def make(ort_device_name, device_id):
-        return OrtDevice(C.OrtDevice(get_ort_device_type(ort_device_name),
-                                     C.OrtDevice.default_memory(), device_id))
+        return OrtDevice(
+            C.OrtDevice(
+                get_ort_device_type(ort_device_name, device_id),
+                C.OrtDevice.default_memory(),
+                device_id,
+            )
+        )
 
     def device_id(self):
         return self._ort_device.device_id()
@@ -681,29 +753,31 @@ class OrtDevice:
 
 
 class SparseTensor:
-    '''
+    """
     A data structure that project the C++ SparseTensor object
     The class provides API to work with the object.
     Depending on the format, the class will hold more than one buffer
     depending on the format
-    '''
+    """
+
     def __init__(self, sparse_tensor):
-        '''
+        """
         Internal constructor
-        '''
+        """
         if isinstance(sparse_tensor, C.SparseTensor):
             self._tensor = sparse_tensor
         else:
             # An end user won't hit this error
-            raise ValueError("`Provided object` needs to be of type " +
-                             "`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`")
+            raise ValueError(
+                "`Provided object` needs to be of type " + "`onnxruntime.capi.onnxruntime_pybind11_state.SparseTensor`"
+            )
 
     def _get_c_tensor(self):
         return self._tensor
 
     @staticmethod
     def sparse_coo_from_numpy(dense_shape, values, coo_indices, ort_device):
-        '''
+        """
         Factory method to construct a SparseTensor in COO format from given arguments
 
         :param dense_shape: 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor
@@ -722,13 +796,14 @@ class SparseTensor:
         on GC. The buffers may reside in any storage either CPU or GPU.
         For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
         on other devices and their memory can not be mapped.
-        '''
-        return SparseTensor(C.SparseTensor.sparse_coo_from_numpy(dense_shape, values, coo_indices,
-                            ort_device._get_c_device()))
+        """
+        return SparseTensor(
+            C.SparseTensor.sparse_coo_from_numpy(dense_shape, values, coo_indices, ort_device._get_c_device())
+        )
 
     @staticmethod
     def sparse_csr_from_numpy(dense_shape, values, inner_indices, outer_indices, ort_device):
-        '''
+        """
         Factory method to construct a SparseTensor in CSR format from given arguments
 
         :param dense_shape: 1-D numpy array(int64) or a python list that contains a dense_shape of the
@@ -747,20 +822,27 @@ class SparseTensor:
         The buffers may reside in any storage either CPU or GPU.
         For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
         on other devices and their memory can not be mapped.
-        '''
-        return SparseTensor(C.SparseTensor.sparse_csr_from_numpy(dense_shape, values, inner_indices, outer_indices,
-                            ort_device._get_c_device()))
+        """
+        return SparseTensor(
+            C.SparseTensor.sparse_csr_from_numpy(
+                dense_shape,
+                values,
+                inner_indices,
+                outer_indices,
+                ort_device._get_c_device(),
+            )
+        )
 
     def values(self):
-        '''
+        """
         The method returns a numpy array that is backed by the native memory
         if the data type is numeric. Otherwise, the returned numpy array that contains
         copies of the strings.
-        '''
+        """
         return self._tensor.values()
 
     def as_coo_view(self):
-        '''
+        """
         The method will return coo representation of the sparse tensor which will enable
         querying COO indices. If the instance did not contain COO format, it would throw.
         You can query coo indices as:
@@ -770,11 +852,11 @@ class SparseTensor:
             coo_indices = sparse_tensor.as_coo_view().indices()
 
         which will return a numpy array that is backed by the native memory.
-        '''
+        """
         return self._tensor.get_coo_data()
 
     def as_csrc_view(self):
-        '''
+        """
         The method will return CSR(C) representation of the sparse tensor which will enable
         querying CRS(C) indices. If the instance dit not contain CSR(C) format, it would throw.
         You can query indices as:
@@ -785,11 +867,11 @@ class SparseTensor:
             outer_ndices = sparse_tensor.as_csrc_view().outer()
 
         returning numpy arrays backed by the native memory.
-        '''
+        """
         return self._tensor.get_csrc_data()
 
     def as_blocksparse_view(self):
-        '''
+        """
         The method will return coo representation of the sparse tensor which will enable
         querying BlockSparse indices. If the instance did not contain BlockSparse format, it would throw.
         You can query coo indices as:
@@ -799,11 +881,11 @@ class SparseTensor:
             block_sparse_indices = sparse_tensor.as_blocksparse_view().indices()
 
         which will return a numpy array that is backed by the native memory
-        '''
+        """
         return self._tensor.get_blocksparse_data()
 
     def to_cuda(self, ort_device):
-        '''
+        """
         Returns a copy of this instance on the specified cuda device
 
         :param ort_device: with name 'cuda' and valid gpu device id
@@ -814,29 +896,29 @@ class SparseTensor:
         - this instance is already on GPU. Cross GPU copy is not supported
         - CUDA is not present in this build
         - if the specified device is not valid
-        '''
+        """
         return SparseTensor(self._tensor.to_cuda(ort_device._get_c_device()))
 
     def format(self):
-        '''
+        """
         Returns a OrtSparseFormat enumeration
-        '''
+        """
         return self._tensor.format
 
     def dense_shape(self):
-        '''
+        """
         Returns a numpy array(int64) containing a dense shape of a sparse tensor
-        '''
+        """
         return self._tensor.dense_shape()
 
     def data_type(self):
-        '''
+        """
         Returns a string data type of the data in the OrtValue
-        '''
+        """
         return self._tensor.data_type()
 
     def device_name(self):
-        '''
+        """
         Returns the name of the device where the SparseTensor data buffers reside e.g. cpu, cuda
-        '''
+        """
         return self._tensor.device_name().lower()

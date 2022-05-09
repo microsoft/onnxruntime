@@ -21,11 +21,11 @@
     ],
     [
         "LayerNormalization ai.onnx CPUExecutionProvider",
-        4058615579523172864
+        4827261308628792072
     ],
     [
         "LayerNormalization ai.onnx CPUExecutionProvider",
-        8466416990072218056
+        18418354579469131656
     ],
     [
         "MeanVarianceNormalization ai.onnx CPUExecutionProvider",
@@ -49,11 +49,11 @@
     ],
     [
         "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
-        16349480652468900704
+        4809288790945391544
     ],
     [
-      "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
-      418129161279605176
+        "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
+        13556035637124174064
     ],
     [
         "SparseToDenseMatMul com.microsoft CPUExecutionProvider",

@@ -1,12 +1,14 @@
 /*
- * Copyright (c) 2019, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import ai.onnxruntime.providers.CoreMLFlags;
 import ai.onnxruntime.providers.NNAPIFlags;
+import ai.onnxruntime.providers.OrtCUDAProviderOptions;
 import ai.onnxruntime.providers.OrtFlags;
+import ai.onnxruntime.providers.OrtTensorRTProviderOptions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -369,7 +371,7 @@ public class OrtSession implements AutoCloseable {
    * @return A Map from String to NodeInfo.
    */
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
-    Map<String, NodeInfo> output = new LinkedHashMap<>();
+    Map<String, NodeInfo> output = new LinkedHashMap<>(OrtUtil.capacityFromSize(infos.length));
 
     for (NodeInfo info : infos) {
       output.put(info.getName(), info);
@@ -771,6 +773,22 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Adds CUDA as an execution backend, using the specified CUDA options.
+     *
+     * @param cudaOpts The CUDA execution provider options.
+     * @throws OrtException If there was an error in the native code.
+     */
+    public void addCUDA(OrtCUDAProviderOptions cudaOpts) throws OrtException {
+      checkClosed();
+      if (OnnxRuntime.extractCUDA()) {
+        addCUDAV2(OnnxRuntime.ortApiHandle, nativeHandle, cudaOpts.nativeHandle);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find CUDA shared provider");
+      }
+    }
+
+    /**
      * Add ROCM as an execution backend, using device 0.
      *
      * @throws OrtException If there was an error in native code.
@@ -851,6 +869,22 @@ public class OrtSession implements AutoCloseable {
       checkClosed();
       if (OnnxRuntime.extractTensorRT()) {
         addTensorrt(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find TensorRT shared provider");
+      }
+    }
+
+    /**
+     * Adds Nvidia's TensorRT as an execution backend.
+     *
+     * @param tensorRTOpts The configuration parameters for TensorRT.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addTensorrt(OrtTensorRTProviderOptions tensorRTOpts) throws OrtException {
+      checkClosed();
+      if (OnnxRuntime.extractTensorRT()) {
+        addTensorrtV2(OnnxRuntime.ortApiHandle, nativeHandle, tensorRTOpts.nativeHandle);
       } else {
         throw new OrtException(
             OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find TensorRT shared provider");
@@ -1026,6 +1060,9 @@ public class OrtSession implements AutoCloseable {
     private native void addCUDA(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
+    private native void addCUDAV2(long apiHandle, long nativeHandle, long cudaOptsHandle)
+        throws OrtException;
+
     private native void addROCM(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
@@ -1036,6 +1073,9 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum)
+        throws OrtException;
+
+    private native void addTensorrtV2(long apiHandle, long nativeHandle, long tensorrtOptsHandle)
         throws OrtException;
 
     private native void addNnapi(long apiHandle, long nativeHandle, int nnapiFlags)
@@ -1219,9 +1259,6 @@ public class OrtSession implements AutoCloseable {
      * @param values The output values.
      */
     Result(String[] names, OnnxValue[] values) {
-      map = new LinkedHashMap<>();
-      list = new ArrayList<>();
-
       if (names.length != values.length) {
         throw new IllegalArgumentException(
             "Expected same number of names and values, found names.length = "
@@ -1229,6 +1266,9 @@ public class OrtSession implements AutoCloseable {
                 + ", values.length = "
                 + values.length);
       }
+
+      map = new LinkedHashMap<>(OrtUtil.capacityFromSize(names.length));
+      list = new ArrayList<>(names.length);
 
       for (int i = 0; i < names.length; i++) {
         map.put(names[i], values[i]);

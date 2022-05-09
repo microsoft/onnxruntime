@@ -405,6 +405,27 @@ TEST(CApiTest, custom_op_handler) {
 #endif
 }
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
+//disable test in reduced-op-build since TOPK and GRU are excluded there
+TEST(CApiTest, instant_op_handler) {
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  InstantCustomOp instant_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&instant_op);
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
+}
+#endif
+
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 // test enabled ort-customops negpos
 TEST(CApiTest, test_enable_ort_customops_negpos) {
@@ -1956,7 +1977,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   std::vector<const char*> keys{
       "device_id", "gpu_mem_limit", "arena_extend_strategy",
-      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace"};
+      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
 
   std::vector<const char*> values{
       "0", "1024", "kSameAsRequested",
@@ -1976,6 +1997,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_algo_search=DEFAULT") != std::string::npos);
   ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
+  ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
 

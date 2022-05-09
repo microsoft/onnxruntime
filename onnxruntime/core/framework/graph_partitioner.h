@@ -32,7 +32,7 @@ class GraphPartitioner {
   }
 
   // Run partitioning. Provide compiled_kernel_hashes if mode is kOrtFormatLoad.
-  Status Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, 
+  Status Partition(Graph& graph, FuncManager& func_mgr, 
                    TransformLayoutFunction transform_layout_function,
                    Mode mode = Mode::kNormal,
                    std::unordered_map<std::string, HashValue>* compiled_kernel_hashes = nullptr) const;
@@ -41,7 +41,7 @@ class GraphPartitioner {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
+  Status PartitionOnnxFormatModel(Graph& graph, FuncManager& func_mgr,
                                   KernelRegistry& fused_kernel_registry, Mode mode,
                                   int& fused_node_unique_id, TransformLayoutFunction transform_layout_function) const;
 #endif

@@ -816,7 +816,7 @@ Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecut
 
       auto domain = node->Domain();
       // Skip if domain is incorrect
-      if (domain != kOnnxDomain && domain != kOnnxDomainAlias && domain != kMSDomain) {
+      if (domain != kOnnxDomain && domain != kMSDomain) {
         continue;
       }
 

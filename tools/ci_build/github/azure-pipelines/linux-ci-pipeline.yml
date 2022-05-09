@@ -56,14 +56,15 @@ jobs:
     inputs:
       script: |
          set -e -x
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          # Test ORT with the latest ONNX release.
          export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
          sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu.txt $(Build.BinariesDirectory)/requirements_torch_cpu.txt
-         python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu.txt
+         mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
+         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
+         python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
          ln -sf /data/models $(Build.BinariesDirectory)
          cd $(Build.SourcesDirectory)/java
          /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"

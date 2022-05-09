@@ -34,7 +34,7 @@ Other
   * Consider using 'std::string_view' to use in maps and sets to reduce the number of allocations and avoid string duplication. Keep in mind that the strings referred to must be alive.
   * We have selected to use Abseil library for the above typedefs. Abseil container documentation is [here](https://abseil.io/docs/cpp/guides/container#abseil-containers).
 * Prefer using `reserve()` and not `resize()` on vectors. 'resize()' default constructs all the elements for the size which can be expensive/noticiable even if the type is trivial. Default values are rarely used in practice and it becomes a waste. Construction like 'std::vector<int>(10, 0)' is the same as 'resize()' and is potentially wasteful.
-* Use `reserve()` on hash containers or pass the number of items in the constructor.  
+* Use `reserve()` on hash containers or pass the number of items in the constructor.
 * Don't use else after return. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse std::shared\_ptr. Use std::shared\_ptr only if it's not clear when and where the object will be deallocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
 * Avoid using the 'long' type, which could be either 32 bits or 64 bits.
@@ -48,39 +48,73 @@ Other
 
 #### Clang-format
 
-Clang-format will handle automatically formatting code to these rules. There’s a Visual Studio plugin that can format on save at https://marketplace.visualstudio.com/items?itemName=LLVMExtensions.ClangFormat, or alternatively the latest versions of Visual Studio 2017 include [clang-format support](https://blogs.msdn.microsoft.com/vcblog/2018/03/13/clangformat-support-in-visual-studio-2017-15-7-preview-1/).  
+Clang-format will handle automatically formatting code to these rules. There’s a Visual Studio plugin that can format on save at https://marketplace.visualstudio.com/items?itemName=LLVMExtensions.ClangFormat, or alternatively the latest versions of Visual Studio 2017 include [clang-format support](https://blogs.msdn.microsoft.com/vcblog/2018/03/13/clangformat-support-in-visual-studio-2017-15-7-preview-1/).
 
-There is a .clang-format file in the root directory that has the max line length override and defaults to the google rules. This should be automatically discovered by the clang-format tools. 
+There is a .clang-format file in the root directory that has the max line length override and defaults to the google rules. This should be automatically discovered by the clang-format tools.
 
 ## Code analysis
 
-Visual Studio Code Analysis with [C++ Core guidelines](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md) rules enabled is configured to run on build for the onnxruntime_common, onnxruntime_graph and onnxruntime_util libraries. Updating the onnxruntime_framework and onnxruntime_provider libraries to enable Code Analysis and build warning free is pending. 
+Visual Studio Code Analysis with [C++ Core guidelines](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md) rules enabled is configured to run on build for the onnxruntime_common, onnxruntime_graph and onnxruntime_util libraries. Updating the onnxruntime_framework and onnxruntime_provider libraries to enable Code Analysis and build warning free is pending.
 
-Code changes should build with no Code Analysis warnings, however this is somewhat difficult to achieve consistently as the Code Analysis implementation is in fairly constant flux. Different minor releases may have less false positives (a build with the latest version may be warning free, and a build with an earlier version may not), or detect additional problems (an earlier version builds warning free and a later version doesn't). 
+Code changes should build with no Code Analysis warnings, however this is somewhat difficult to achieve consistently as the Code Analysis implementation is in fairly constant flux. Different minor releases may have less false positives (a build with the latest version may be warning free, and a build with an earlier version may not), or detect additional problems (an earlier version builds warning free and a later version doesn't).
 
 ## Unit Testing and Code Coverage
 
-There should be unit tests that cover the core functionality of the product, expected edge cases, and expected errors. 
-Code coverage from these tests should aim at maintaining over 80% coverage. 
+There should be unit tests that cover the core functionality of the product, expected edge cases, and expected errors.
+Code coverage from these tests should aim at maintaining over 80% coverage.
 
-All changes should be covered by new or existing unit tests. 
+All changes should be covered by new or existing unit tests.
 
-In order to check that all the code you expect to be covered by testing is covered, run code coverage in Visual Studio using 'Analyze Code Coverage' under the Test menu. 
+In order to check that all the code you expect to be covered by testing is covered, run code coverage in Visual Studio using 'Analyze Code Coverage' under the Test menu.
 
-There is a configuration file in onnxruntime\VSCodeCoverage.runsettings that can be used to configure code coverage so that it reports numbers for just the onnxruntime code. Select that file in Visual Studio via the Test menu: 'Test' -> 'Test Settings' -> 'Select Test Settings File'. 
+There is a configuration file in onnxruntime\VSCodeCoverage.runsettings that can be used to configure code coverage so that it reports numbers for just the onnxruntime code. Select that file in Visual Studio via the Test menu: 'Test' -> 'Test Settings' -> 'Select Test Settings File'.
 
 Using 'Show Code Coverage Coloring' will allow you to visually inspect which lines were hit by the tests. See <https://docs.microsoft.com/en-us/visualstudio/test/using-code-coverage-to-determine-how-much-code-is-being-tested?view=vs-2017>.
 
 ## Python Code Style
 
-Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). 
-A maximum line length of 120 characters is allowed for consistency with the C++ code.
+Follow the [Black formatter](https://black.readthedocs.io)'s coding style when possible. A maximum line length of 120 characters is allowed for consistency with the C++ code.
+
+Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). We use [Google's python style guide](https://google.github.io/styleguide/pyguide.html) as the style guide which is an extension to PEP8.
 
 Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/tree/master/.flake8).
 
-The [autopep8](https://pypi.org/project/autopep8/) tool can be used to automatically fix a range of PEP8 issues, as can [yapf](https://github.com/google/yapf). There's a yapf configuration file [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/.style.yapf).
+Use `pyright`, which is provided as a component of the `pylance` extension in VS Code for static type checking.
 
-Editors such as PyCharm [(see here)](https://www.jetbrains.com/help/pycharm/code-inspection.html) and Visual Studio Code [(see here)](https://code.visualstudio.com/docs/python/linting#_flake8) can be configured to check for PEP8 issues. 
+Auto-formatting is done with `black` and `isort`. The tools are configured in `pyproject.toml`. From anywhere in the repository, you can run
+
+```sh
+black <file/dir name>
+isort <file/dir name>
+```
+
+to format Python files.
+
+Use `pydocstyle` to lint documentation styles. `pydocstyle` is enabled in VS Code.
+
+## IDEs
+
+### VS Code
+
+VS Code is automatically configured with workspace configurations.
+
+For Python development is VS Code, read
+[this tutorial](https://code.visualstudio.com/docs/python/python-tutorial) for
+more information.
+
+### PyCharm
+
+Follow [black's documentation](https://black.readthedocs.io/en/stable/integrations/editors.html#pycharm-intellij-idea) to set up the black formatter for PyCharm.
+
+## Testing
+
+We use the Python built-in [`unittest`](https://docs.python.org/3/library/unittest.html) framework for creating unit tests and [`pytest`](https://pytest.org) to run them. Use `pytest` to create tests only when `unittest` does not fit the need.
+
+### Style
+
+Test the *behavior*, instead of the *implementation*. To make what a test is testing clear, the test methods should be named following the pattern `test_<method or function name>_<expected behavior>_[when_<condition>]`.
+
+e.g. `test_method_x_raises_error_when_dims_is_not_a_sequence`
 
 ## Objective-C/C++ Code Style
 

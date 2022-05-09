@@ -59,6 +59,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
                                       size_t& total_output_sizes, const std::string& node_name, std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
   std::stringstream ss;
+  int added_type_shapes = 0;
   ss << "[";
   total_output_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
@@ -78,8 +79,9 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 #endif
       total_output_sizes += tensor_size;
       auto shape_str = tensor.Shape().ToString();
-      ss << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
-         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == output_count - 1 ? "}" : "},");
+      ss << (added_type_shapes++ > 0 ? "," : "")
+         << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]}";
     }
   }
   ss << "]";
@@ -93,6 +95,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   // Calculate total input sizes for this operation.
   std::stringstream ss;
   ss << "[";
+  int added_type_shapes = 0;
   input_activation_sizes = 0;
   input_parameter_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
@@ -124,8 +127,9 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
         input_activation_sizes += tensor_size;
       }
       auto shape_str = p_tensor->Shape().ToString();
-      ss << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
-         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == input_count - 1 ? "}" : "},");
+      ss << (added_type_shapes++ > 0 ? "," : "")
+         << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]}";
     }
   }
   ss << "]";

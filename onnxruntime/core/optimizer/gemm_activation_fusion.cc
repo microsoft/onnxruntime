@@ -70,7 +70,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node.Name()), "FusedGemm",
                                      "fused Gemm " + gemm_node.Name() + "with activation " + act_node.OpType(),
-                                     gemm_node.MutableInputDefs(), {}, &gemm_node.GetAttributes(), "com.microsoft");
+                                     gemm_node.MutableInputDefs(), {}, &gemm_node.GetAttributes(), kMSDomain);
 
     // Add a new attribute to specify the activation type
     fused_gemm.AddAttribute("activation", act_node.OpType());

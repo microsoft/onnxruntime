@@ -80,7 +80,8 @@ class Tensor final {
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
+         gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -90,10 +91,12 @@ class Tensor final {
   /// <param name="shape"></param>
   /// <param name="allocator"></param>
   /// <param name="ort_value"></param>
+  /// <param name="strides"></param>
   static void InitOrtValue(MLDataType elt_type,
                            const TensorShape& shape,
                            std::shared_ptr<IAllocator> allocator,
-                           OrtValue& ort_value);
+                           OrtValue& ort_value,
+                           gsl::span<const int64_t> strides = {});
 
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.

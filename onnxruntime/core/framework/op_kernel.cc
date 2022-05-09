@@ -36,6 +36,9 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
 
+OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
+                                 const logging::Logger& logger) : threadpool_(threadpool), logger_(&logger) {}
+
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
