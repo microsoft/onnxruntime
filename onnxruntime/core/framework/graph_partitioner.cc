@@ -250,15 +250,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
 
         fused_node->SetExecutionProviderType(provider_type);
 
-        // if we have a static kernel we don't need to compile the node and can return nullptr
-        if (KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *fused_node, provider_type)) {
-          if (fusion_style == IExecutionProvider::FusionStyle::FilteredGraphViewer) {
-            // remove the original nodes from the Graph and wire in the new one
-            graph.FinalizeFuseSubGraph(capability, *fused_node); TODO
-          }
-        } else {
-          result = fused_node;
-        }
+        result = fused_node;
       } else {
         // assign the nodes in the indexed subgraph to the current EP so that level 2+ optimizers will not change them.
         // This is used when exporting an ORT format model to maintain the original nodes and re-do the fusion
@@ -346,8 +338,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       continue;
     }
 
-    const IndexedSubGraph& sub_graph = *capability->sub_graph;
-    Node* n = PlaceNode(graph, sub_graph, kernel_registry_mgr, type, fusion_style, mode, fused_node_unique_id);
+    Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     if (n != nullptr) {
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type)) {

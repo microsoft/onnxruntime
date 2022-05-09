@@ -509,6 +509,11 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+  // TODO: Should the EP interface allow the EP to specify this so we don't have to hardcode it here?
+  if (provider_type == kXnnpackExecutionProvider) {
+    is_concurrent_run_supported_ = false;
+  }
+
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
   if (p_data_xfr) {
@@ -1153,7 +1158,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR(partitioner.Partition(graph, 
+  ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             layout_transformer::TransformLayoutForCompilingEP,
                                             GraphPartitioner::Mode::kOrtFormatLoad,
@@ -1858,6 +1863,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // If Execute ever becomes async we need a different approach
       std::unique_ptr<logging::Logger> owned_run_logger;
       auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+      std::unique_ptr<std::lock_guard<OrtMutex>> sequential_run_lock;
+      if (is_concurrent_run_supported_ == false) {
+        sequential_run_lock = std::make_unique<std::lock_guard<OrtMutex>>(session_mutex_);
+      }
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
