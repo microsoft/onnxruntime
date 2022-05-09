@@ -63,17 +63,35 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
     const int16x8_t voutput_zero_point =
         vld1q_dup_s16((int16_t const*)&PostProcessParams->OutputZeroPoint);
     float32x4_t vscale_0123, vscale_4567, vscale_89AB, vscale_CDEF;
-    float32x4_t vpreshift_0123, vpreshift_4567, vpreshift_89AB, vpreshift_CDEF;
-    float32x4_t vmultiplier_0123, vmultiplier_4567, vmultiplier_89AB, vmultiplier_CDEF;
-    float32x4_t vpostshift_0123, vpostshift_4567, vpostshift_89AB, vpostshift_CDEF;
+    int32x4_t vpreshift_0123, vpreshift_4567, vpreshift_89AB, vpreshift_CDEF;
+    int32x4_t vmultiplier_0123, vmultiplier_4567, vmultiplier_89AB, vmultiplier_CDEF;
+    int32x4_t vpostshift_0123, vpostshift_4567, vpostshift_89AB, vpostshift_CDEF;
     const bool is_per_channel = ((KernelFlags & MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE) != 0);
     // Init them anyway due to some compiler will generate uninitialized warnings.
     if constexpr (IsFixedPoint) {
         vpreshift_0123 = vpreshift_4567 = vpreshift_89AB = vpreshift_CDEF = vld1q_dup_s32(PostProcessParams->PreShift);
         vmultiplier_0123 = vmultiplier_4567 = vmultiplier_89AB = vmultiplier_CDEF = vld1q_dup_s32(PostProcessParams->Multiplier);
         vpostshift_0123 = vpostshift_4567 = vpostshift_89AB = vpostshift_CDEF = vld1q_dup_s32(PostProcessParams->PostShift);
+
+        MLAS_UNREFERENCED_PARAMETER(vscale_0123);
+        MLAS_UNREFERENCED_PARAMETER(vscale_4567);
+        MLAS_UNREFERENCED_PARAMETER(vscale_89AB);
+        MLAS_UNREFERENCED_PARAMETER(vscale_CDEF);
     } else {
         vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
+
+        MLAS_UNREFERENCED_PARAMETER(vpreshift_0123);
+        MLAS_UNREFERENCED_PARAMETER(vpreshift_4567);
+        MLAS_UNREFERENCED_PARAMETER(vpreshift_89AB);
+        MLAS_UNREFERENCED_PARAMETER(vpreshift_CDEF);
+        MLAS_UNREFERENCED_PARAMETER(vmultiplier_0123);
+        MLAS_UNREFERENCED_PARAMETER(vmultiplier_4567);
+        MLAS_UNREFERENCED_PARAMETER(vmultiplier_89AB);
+        MLAS_UNREFERENCED_PARAMETER(vmultiplier_CDEF);
+        MLAS_UNREFERENCED_PARAMETER(vpostshift_0123);
+        MLAS_UNREFERENCED_PARAMETER(vpostshift_4567);
+        MLAS_UNREFERENCED_PARAMETER(vpostshift_89AB);
+        MLAS_UNREFERENCED_PARAMETER(vpostshift_CDEF);
     }
 
     while (OutputCount-- > 0) {
