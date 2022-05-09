@@ -72,6 +72,8 @@ def register():
 
     _reg(inverse)
 
+    # TODO(justinchuby): Remove reference to symbolic_helper because it is supposed to be private
+    @torch.onnx.symbolic_helper.parse_args("v", "s")
     def gelu(g, self: torch._C.Value, approximate: str = "none"):
         # Use microsoft::Gelu for performance if possible. It only supports approximate == "none"
         if approximate == "none":
