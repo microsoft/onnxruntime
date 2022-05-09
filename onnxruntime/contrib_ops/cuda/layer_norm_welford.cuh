@@ -49,8 +49,8 @@ inline int64_t GetNumBlocksWrapImpl(const int64_t rows, const int64_t thread_gro
 }
 
 template<class Func>
-inline void GetNumBlocks(Func func, int64_t block_size, size_t dynamic_smem_size,
-                                int64_t max_blocks, int64_t waves, int* num_blocks) {
+inline void GetNumBlocks(Func func, const int block_size, const size_t dynamic_smem_size,
+                                const int64_t max_blocks, const int64_t waves, int* num_blocks) {
   int dev;
   CUDA_CALL(cudaGetDevice(&dev));
 
