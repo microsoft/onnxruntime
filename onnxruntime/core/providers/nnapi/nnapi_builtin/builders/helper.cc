@@ -225,8 +225,8 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, IOKind io_kind) {
-  const auto& io_defs = io_kind == IOKind::Input ? node_unit.Inputs() : node_unit.Outputs();
+    float& scale, int32_t& zero_point, ArgType arg_type) {
+  const auto& io_defs = arg_type == ArgType::kInput ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto& io_def : io_defs) {
     if (io_def.node_arg.Name() == name)
       return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(),
