@@ -49,6 +49,7 @@ class EncoderSubgraph {
   // Create inputs for first inference of subgraph.
   Status CreateInitialFeeds(
     const Tensor& input_ids,
+    const OrtValue* attn_mask_value,
     const std::vector<const OrtValue*>& implicit_inputs,
     int pad_token_id,
     int decoder_start_token_id,

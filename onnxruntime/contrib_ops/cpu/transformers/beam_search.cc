@@ -391,6 +391,16 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
                            dims.size());
   }
 
+  //attn mask should have save shape as input ids todo:
+  const Tensor* attention_mask = context.Input<Tensor>(10);
+  if (attention_mask != nullptr) {
+    const auto& dims_attn = attention_mask->Shape().GetDims();
+    if (dims_attn.size() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have 2 dimensions, got ",
+                             dims_attn.size());
+    }
+  }
+
   const Tensor* vocab_mask = context.Input<Tensor>(8);
   if (vocab_mask != nullptr) {  // vocab_mask is optional
     const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
@@ -632,7 +642,9 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
   const OrtValue* encoder_input_ids_value = context_.GetInputOrtValue(0);
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
-  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, feeds));
+  const OrtValue* encoder_attn_mask_value = context_.GetInputOrtValue(10);
+  //const Tensor& encoder_attn_mask = encoder_attn_mask_value->Get<Tensor>();
+  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, encoder_attn_mask_value, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, feeds));
 
   BeamSearchState<T> beam_state;
   beam_state.Init(temp_space_allocator_,

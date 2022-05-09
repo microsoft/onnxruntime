@@ -221,6 +221,7 @@ const IExecutionProvider* EncoderSubgraph::GetProvider() const {
 
 Status EncoderSubgraph::CreateInitialFeeds(
     const Tensor& input_ids,
+    const OrtValue* attn_mask_value,
     const std::vector<const OrtValue*>& implicit_inputs,
     int pad_token_id,
     int decoder_start_token_id,
@@ -254,31 +255,35 @@ Status EncoderSubgraph::CreateInitialFeeds(
   Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
 
   OrtValue attention_mask;
-  Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
-
-  // def _prepare_attention_mask_for_generation(
-  //     self, input_ids: torch.Tensor, pad_token_id: int, eos_token_id: int
-  // ) -> torch.LongTensor:
-  //     is_pad_token_in_inputs_ids = (pad_token_id is not None) and (pad_token_id in input_ids)
-  //     is_pad_token_not_equal_to_eos_token_id = (eos_token_id is None) or (
-  //         (eos_token_id is not None) and (pad_token_id != eos_token_id)
-  //     )
-  //     if is_pad_token_in_inputs_ids and is_pad_token_not_equal_to_eos_token_id:
-  //         return input_ids.ne(pad_token_id).long()
-  //     return input_ids.new_ones(input_ids.shape)
-  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  const int32_t* word_id = encoder_input_ids.GetMutable<Tensor>()->Data<int32_t>();
-  int32_t* mask = mask_data;
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
-      if (*word_id == pad_token_id) {
-        // bugbug
-        *mask = 1;
-      } else {
-        *mask = 1;
+  if (attn_mask_value != nullptr) {
+    const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
+    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), location, attention_mask);
+  } else {
+    Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
+    // def _prepare_attention_mask_for_generation(
+    //     self, input_ids: torch.Tensor, pad_token_id: int, eos_token_id: int
+    // ) -> torch.LongTensor:
+    //     is_pad_token_in_inputs_ids = (pad_token_id is not None) and (pad_token_id in input_ids)
+    //     is_pad_token_not_equal_to_eos_token_id = (eos_token_id is None) or (
+    //         (eos_token_id is not None) and (pad_token_id != eos_token_id)
+    //     )
+    //     if is_pad_token_in_inputs_ids and is_pad_token_not_equal_to_eos_token_id:
+    //         return input_ids.ne(pad_token_id).long()
+    //     return input_ids.new_ones(input_ids.shape)
+    int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+    const int32_t* word_id = encoder_input_ids.GetMutable<Tensor>()->Data<int32_t>();
+    int32_t* mask = mask_data;
+    for (int i = 0; i < batch_size; i++) {
+      for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
+        if (*word_id == pad_token_id) {
+          *mask = 0;
+        } else {
+          *mask = 1;
+        }
       }
     }
   }
+
 
   OrtValue decoder_input_ids;
   TensorShape decoder_input_ids_shape({batch_size, 1});
@@ -300,8 +305,6 @@ Status EncoderSubgraph::CreateInitialFeeds(
   feeds.push_back(decoder_input_ids);
   feeds.push_back(beam_num);
 
-  // bugbug: what's this for
-  // pass in implicit inputs
   for (const auto* entry : implicit_inputs) {
     feeds.push_back(*entry);
   }

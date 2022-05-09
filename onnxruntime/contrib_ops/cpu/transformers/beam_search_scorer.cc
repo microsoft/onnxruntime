@@ -203,7 +203,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
     }
 
     ORT_ENFORCE(beam_idx == num_beams_);
-    ORT_ENFORCE(hypothesis_buffer_offset_ <= batch_size_ * num_beams_ * max_length_);
+    //ORT_ENFORCE(hypothesis_buffer_offset_ <= batch_size_ * num_beams_ * max_length_);
 
     //  Check if we are done so that we can save a pad step if all(done)
     if (!done_[batch]) {
