@@ -52,7 +52,7 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
  * @param tensor_proto  source data
  * @param tensorp       destination empty tensor
  * @return
- */
+*/
 common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
@@ -406,7 +406,7 @@ inline bool HasModelVersion(const ONNX_NAMESPACE::ModelProto& m_proto) {
 }
 
 inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
-  // XXX: Figure out proto3 style
+  //XXX: Figure out proto3 style
   return node_proto.has_name();
 }
 #endif
