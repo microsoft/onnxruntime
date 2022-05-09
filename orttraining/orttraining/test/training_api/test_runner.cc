@@ -206,7 +206,7 @@ Status RunTraining(const TestRunnerParameters& params) {
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
 
   CheckpointStates state_dicts;
-  ORT_ENFORCE(CheckpointUtils::LoadORTCheckpoint(params.checkpoint_to_load_path, state_dicts).IsOK());
+  ORT_ENFORCE(CheckpointUtils::LoadCheckpoint(params.checkpoint_to_load_path, state_dicts).IsOK());
 
   Module module(params.model_training_graph_path,
                 state_dicts.module_checkpoint_states.named_parameters,
@@ -260,7 +260,7 @@ Status RunTraining(const TestRunnerParameters& params) {
         ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_checkpoint_states).IsOK());
         state_dicts_to_save.custom_properties.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
-        ORT_ENFORCE(CheckpointUtils::SaveORTCheckpoint(state_dicts_to_save, ckpt_file).IsOK());
+        ORT_ENFORCE(CheckpointUtils::SaveCheckpoint(state_dicts_to_save, ckpt_file).IsOK());
       }
 
       batch_idx++;

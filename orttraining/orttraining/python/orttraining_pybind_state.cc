@@ -944,7 +944,7 @@ for every transfered tensor.
         [](const std::string& model_path,
            const std::vector<std::string>& trainable_weight_names,
            const std::string& checkpoint_path) {
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::CheckpointUtils::SaveORTCheckpoint(model_path, trainable_weight_names, checkpoint_path));
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::CheckpointUtils::SaveCheckpoint(model_path, trainable_weight_names, checkpoint_path));
         });
 #endif
 }

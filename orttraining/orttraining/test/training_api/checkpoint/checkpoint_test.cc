@@ -79,7 +79,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
+  ASSERT_STATUS_OK(CheckpointUtils::SaveCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{"paramfrozen_tensors.pbseq", "paramtrain_tensors.pbseq"};
@@ -99,7 +99,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 
   // Call Load APIs
   CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
+  ASSERT_STATUS_OK(CheckpointUtils::LoadCheckpoint(checkpoint_path, checkpoint_states));
   ModuleCheckpointStates module_states = checkpoint_states.module_checkpoint_states;
   const auto& param_states = module_states.named_parameters;
   std::unordered_map<std::string, OrtValue> restored_param_name_to_ort_values;
@@ -194,7 +194,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(state_dicts_to_save, checkpoint_path));
+  ASSERT_STATUS_OK(CheckpointUtils::SaveCheckpoint(state_dicts_to_save, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -220,7 +220,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
 
   // Call Load APIs
   CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
+  ASSERT_STATUS_OK(CheckpointUtils::LoadCheckpoint(checkpoint_path, checkpoint_states));
   OptimizerCheckpointStates optimizer_states = checkpoint_states.optimizer_checkpoint_states;
   std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>>&
       group_optimizer_states = optimizer_states.group_named_optimizer_states;
@@ -279,7 +279,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(CheckpointUtils::SaveORTCheckpoint(state_dicts_to_save, checkpoint_path));
+  ASSERT_STATUS_OK(CheckpointUtils::SaveCheckpoint(state_dicts_to_save, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -303,7 +303,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   // Call Load APIs
   CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(CheckpointUtils::LoadORTCheckpoint(checkpoint_path, checkpoint_states));
+  ASSERT_STATUS_OK(CheckpointUtils::LoadCheckpoint(checkpoint_path, checkpoint_states));
   PropertyBag& restored_custom_properties = checkpoint_states.custom_properties;
   ASSERT_EQ(restored_custom_properties.Size(), 3);
   float restored_f_data = restored_custom_properties.GetProperty<float>(f_property_name);

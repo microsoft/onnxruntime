@@ -30,7 +30,8 @@ struct CheckpointStates {
  *
  * A checkpoint is a directory of files:
  * checkpoint/
- *   param_tensors.pbseq - parameter tensor protobuf messages
+ *   paramtrain_tensors.pbseq - trainable parameter tensor protobuf messages
+ *   paramfrozen_tensors.pbseq - non_trainable parameter tensor protobuf messages
  *   optim_group0_momentum0_tensors.pbseq - optimizer momentum state tensor protobuf messages
  *   optim_group0_momentum1_tensors.pbseq - optimizer momentum state tensor protobuf messages
  *   optim_group0_properties.pbseq - group-wise optimizer property tensor protobuf messages
@@ -46,9 +47,9 @@ struct CheckpointUtils {
    * @param checkpoint_path folder where checkpoint is saved.
    * @return Status
    */
-  static Status SaveORTCheckpoint(const std::string& model_uri,
-                                  const std::vector<std::string>& trainable_param_names,
-                                  const PathString& checkpoint_path) {
+  static Status SaveCheckpoint(const std::string& model_uri,
+                               const std::vector<std::string>& trainable_param_names,
+                               const PathString& checkpoint_path) {
     return OrtSaveInternal(model_uri, trainable_param_names, checkpoint_path);
   }
 
@@ -59,7 +60,7 @@ struct CheckpointUtils {
    * @param checkpoint_path folder where checkpoint is saved.
    * @return Status
    */
-  static Status SaveORTCheckpoint(CheckpointStates& states, const PathString& checkpoint_path) {
+  static Status SaveCheckpoint(CheckpointStates& states, const PathString& checkpoint_path) {
     return OrtSaveInternal(states, checkpoint_path);
   }
 
@@ -70,7 +71,7 @@ struct CheckpointUtils {
    * @param checkpoint_states parameter/optimizer and other user defined training states.
    * @return Status
    */
-  static Status LoadORTCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states) {
+  static Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states) {
     return OrtLoadInternal(checkpoint_path, checkpoint_states);
   }
 
