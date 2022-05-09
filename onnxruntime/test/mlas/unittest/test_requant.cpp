@@ -77,10 +77,12 @@ class MlasMlasRequantizeOutputTest : public MlasTestBase {
 
     for(size_t i = 0; i < M*N; i++) {
       //Input[i] = rand() % 600000;
-      Input[i] = 547793;
+      // Input[i] = 547793;
+      Input[i] = 134217728;
     }
 
-    float scale = 0.000543;
+    //float scale = 0.000543;
+    float scale = 128;
     int32_t multiplier, pre_shift, post_shift;
     ComputeMultiplierShift(scale, multiplier, pre_shift, post_shift);
     MLAS_REQUANT_PARAM RequantParam(&multiplier,

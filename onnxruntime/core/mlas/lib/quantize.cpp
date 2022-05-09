@@ -729,10 +729,10 @@ MlasRequantizeOutputRoundNearestUp(
                 PerColumnPreShiftVector.val[3] = vld1q_s32(&preShift[12]);
                 preShift += 16;
 
-                IntegerVector.val[0] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
-                IntegerVector.val[1] = vshlq_s32(IntegerVector.val[1], PerColumnPreShiftVector.val[1]);
-                IntegerVector.val[2] = vshlq_s32(IntegerVector.val[2], PerColumnPreShiftVector.val[2]);
-                IntegerVector.val[3] = vshlq_s32(IntegerVector.val[3], PerColumnPreShiftVector.val[3]);
+                IntegerVector.val[0] = vqshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
+                IntegerVector.val[1] = vqshlq_s32(IntegerVector.val[1], PerColumnPreShiftVector.val[1]);
+                IntegerVector.val[2] = vqshlq_s32(IntegerVector.val[2], PerColumnPreShiftVector.val[2]);
+                IntegerVector.val[3] = vqshlq_s32(IntegerVector.val[3], PerColumnPreShiftVector.val[3]);
 
                 int32x4x4_t PerColumnMultiplierVector;
                 PerColumnMultiplierVector.val[0] = vld1q_s32(&multiplier[0]);
@@ -759,10 +759,10 @@ MlasRequantizeOutputRoundNearestUp(
                 IntegerVector.val[2] = vrshlq_s32(IntegerVector.val[2], PerColumnPostShiftVector.val[2]);
                 IntegerVector.val[3] = vrshlq_s32(IntegerVector.val[3], PerColumnPostShiftVector.val[3]);
             } else {
-                IntegerVector.val[0] = vshlq_s32(IntegerVector.val[0], PerTensorPreShiftVector);
-                IntegerVector.val[1] = vshlq_s32(IntegerVector.val[1], PerTensorPreShiftVector);
-                IntegerVector.val[2] = vshlq_s32(IntegerVector.val[2], PerTensorPreShiftVector);
-                IntegerVector.val[3] = vshlq_s32(IntegerVector.val[3], PerTensorPreShiftVector);
+                IntegerVector.val[0] = vqshlq_s32(IntegerVector.val[0], PerTensorPreShiftVector);
+                IntegerVector.val[1] = vqshlq_s32(IntegerVector.val[1], PerTensorPreShiftVector);
+                IntegerVector.val[2] = vqshlq_s32(IntegerVector.val[2], PerTensorPreShiftVector);
+                IntegerVector.val[3] = vqshlq_s32(IntegerVector.val[3], PerTensorPreShiftVector);
 
                 IntegerVector.val[0] = vqdmulhq_s32(IntegerVector.val[0], PerTensorMultiplierVector);
                 IntegerVector.val[1] = vqdmulhq_s32(IntegerVector.val[1], PerTensorMultiplierVector);
@@ -860,13 +860,13 @@ MlasRequantizeOutputRoundNearestUp(
                     postShift += 1;
                 }
 
-                IntegerVector = vshlq_s32(IntegerVector, PreShiftVector);
+                IntegerVector = vqshlq_s32(IntegerVector, PreShiftVector);
                 IntegerVector = vqdmulhq_s32(IntegerVector, MultiplierVector);
                 IntegerVector = vrshlq_s32(IntegerVector, PostShiftVector);
 
             } else {
 
-                IntegerVector = vshlq_s32(IntegerVector, PerTensorPreShiftVector);
+                IntegerVector = vqshlq_s32(IntegerVector, PerTensorPreShiftVector);
                 IntegerVector = vqdmulhq_s32(IntegerVector, PerTensorMultiplierVector);
                 IntegerVector = vrshlq_s32(IntegerVector, PerTensorPostShiftVector);
             }
