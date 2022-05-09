@@ -4,7 +4,6 @@ import sys
 from typing import List, Optional, Sequence, Text
 
 import numpy as np  # type: ignore
-import onnx.defs
 from onnx import ModelProto
 from onnx.backend.test.case.test_case import TestCase
 from onnx.backend.test.case.utils import import_recursive

@@ -3,10 +3,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import numpy as np  # type: ignore
-import onnx
 import tensorflow as tf
 import tf2onnx
-from onnx.backend.sample.ops.abs import abs
 from onnx.backend.test.case.base import Base
 
 from . import expect

@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # copied from https://github.com/onnx/onnx/blob/rel-1.11.0/onnx/backend/test/cmd_tools.py with modifications
 import argparse
-import json
 import os
 import shutil
 from typing import Text
