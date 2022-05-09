@@ -3,30 +3,20 @@
 
 #pragma once
 
-#include <string>
-#include <unordered_map>
-#include <vector>
-
-#include "core/common/path_string.h"
-#include "core/common/status.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/data_types.h"
-#include "core/framework/framework_common.h"
-#include "core/common/path.h"
-#include "core/platform/env.h"
-#include "core/platform/path_lib.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
-#include "core/platform/path_lib.h"
+#include "core/common/path.h"
+#include "core/common/path_string.h"
+#include "core/common/status.h"
+#include "core/framework/framework_common.h"
 #include "core/platform/env.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 namespace training {
 
 /**
- * Open file descriptor and call use_fn
+ * @brief Open file descriptor and call use_fn
  *
  * @tparam TUseFileFn
  * @param path file path

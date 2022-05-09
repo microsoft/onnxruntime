@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
 #include "onnx/defs/tensor_proto_util.h"
@@ -65,7 +66,8 @@ Status SaveCheckpoint(const std::string& model_uri,
  * @param checkpoint_path folder where checkpoint is saved.
  * @return Status
  */
-Status SaveCheckpoint(CheckpointStates& states, const PathString& checkpoint_path);
+Status SaveCheckpoint(CheckpointStates& states,
+                      const PathString& checkpoint_path);
 
 /**
  * @brief Load training states from ORT checkpoint.
@@ -74,7 +76,8 @@ Status SaveCheckpoint(CheckpointStates& states, const PathString& checkpoint_pat
  * @param checkpoint_states parameter/optimizer and other user defined training states.
  * @return Status
  */
-Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointStates& checkpoint_states);
+Status LoadCheckpoint(const PathString& checkpoint_path,
+                      CheckpointStates& checkpoint_states);
 
 }  // namespace api
 }  // namespace training

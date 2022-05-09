@@ -1,16 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "onnx/defs/tensor_proto_util.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
-#include "onnx/defs/tensor_proto_util.h"
-#include "orttraining/training_api/interfaces.h"
-#include "orttraining/training_api/checkpoint_property.h"
 #include "core/framework/tensorprotoutils.h"
+#include "orttraining/training_api/checkpoint_property.h"
 
 namespace onnxruntime {
 namespace training {
-
 namespace api {
 
 template <typename T>
@@ -37,7 +35,9 @@ ONNX_NAMESPACE::TensorProto TypedCheckpointProperty<T>::ToTensorProto() {
 }
 
 namespace {
-std::shared_ptr<CheckpointProperty> CreateCheckpointPropertyFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+
+std::shared_ptr<CheckpointProperty> CreateCheckpointPropertyFromTensorProto(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   auto data_type = tensor_proto.data_type();
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto::FLOAT: {

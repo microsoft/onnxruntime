@@ -3,21 +3,18 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/common/path.h"
+#include "core/framework/framework_common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/platform/path_lib.h"
 #include "core/platform/env.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/platform/path_lib.h"
 #include "core/util/protobuf_parsing_utils.h"
-#include "onnx/defs/tensor_proto_util.h"
+
+#include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "orttraining/training_api/checkpoint.h"
-#include "core/common/path.h"
-#include "core/platform/env.h"
-#include "core/platform/path_lib.h"
-#include "core/framework/framework_common.h"
-#include "orttraining/core/framework/checkpoint_common.h"
 
 namespace onnxruntime {
 namespace training {

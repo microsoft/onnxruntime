@@ -18,18 +18,19 @@
 #include "core/graph/model.h"
 #include "core/platform/path_lib.h"
 
-#include "test/test_environment.h"
-#include "test/util/include/asserts.h"
-#include "test/util/include/temp_dir.h"
-#include "test/util/include/test/test_environment.h"
-
 #include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/utilities.h"
 #include "orttraining/training_api/interfaces.h"
 
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
+#include "test/util/include/test/test_environment.h"
+
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api;
+
 namespace onnxruntime {
 namespace training {
 namespace test {

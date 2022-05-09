@@ -2,14 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/platform/path_lib.h"
-#include "core/platform/env.h"
+
 #include "onnx/defs/tensor_proto_util.h"
-#include "orttraining/training_api/interfaces.h"
 
 namespace onnxruntime {
 namespace training {
-
 namespace api {
 
 template <typename T>
@@ -67,6 +64,10 @@ struct TypedCheckpointProperty : public CheckpointProperty {
   T prop_value_;
 };
 
+/**
+ * @brief Collection of user defined properties
+ * Supported scalar value of type int64_t, float, and std::string only.
+ */
 struct PropertyBag {
   template <typename T>
   void AddProperty(std::string name, T val) {
