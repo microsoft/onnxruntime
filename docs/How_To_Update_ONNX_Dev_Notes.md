@@ -15,7 +15,7 @@ git add onnx
 2. Update [cgmanifests/generated/cgmanifest.json](/cgmanifests/generated/cgmanifest.json).
 This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) for instructions.
 
-3. Update [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt) and [tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt](/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt).
+3. Update [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt), [tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt](/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt), [tools/ci_build/github/windows/x64/requirements.txt](tools/ci_build/github/windows/x64/requirements.txt) and [tools/ci_build/github/windows/x86/requirements.txt](tools/ci_build/github/windows/x86/requirements.txt).
 Update the commit hash for `git+http://github.com/onnx/onnx.git@targetonnxcommithash#egg=onnx`.
 
 4. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, you need to re-regenerate OnnxMl.cs. Please build onnxruntime on Windows with csharp enabled, then the file will be auto-updated.
