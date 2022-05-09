@@ -32,6 +32,7 @@
 
 #if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
 #include "orttraining/training_api/include/checkpoint.h"
+#include <google/protobuf/io/zero_copy_stream_impl.h>
 #endif
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
@@ -941,10 +942,27 @@ for every transfered tensor.
 
 #if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
   m.def("save_checkpoint",
-        [](const std::string& model_path,
-           const std::vector<std::string>& trainable_weight_names,
+        [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
+           const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
            const std::string& checkpoint_path) {
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(model_path, trainable_weight_names, checkpoint_path));
+          std::vector<TensorProto> trainable_tensor_protos(trainable_tensor_protos_pybytes.size());
+          std::vector<TensorProto> non_trainable_tensor_protos(non_trainable_tensor_protos_pybytes.size());
+
+          auto parse_pybytes_to_tensor_proto =
+              [](const std::vector<py::bytes>& tensor_protos_pybytes, std::vector<TensorProto>& tensor_protos) {
+                for (size_t i = 0; i < tensor_protos_pybytes.size(); ++i) {
+                  std::istringstream tensor_proto_istream(tensor_protos_pybytes[i]);
+                  ORT_ENFORCE(tensor_proto_istream.good(), "Broken tensor proto istream to read.");
+                  google::protobuf::io::IstreamInputStream zero_copy_input(&tensor_proto_istream);
+                  const bool result = tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
+                  ORT_ENFORCE(result, "Parse tensor proto failed.");
+                }
+              };
+
+          parse_pybytes_to_tensor_proto(trainable_tensor_protos_pybytes, trainable_tensor_protos);
+          parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
+
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path));
         });
 #endif
 }

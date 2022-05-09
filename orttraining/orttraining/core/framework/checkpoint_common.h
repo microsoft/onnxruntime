@@ -52,7 +52,7 @@ common::Status WithOpenFile(const PathString& path, bool readonly, TUseFileFn us
  * @return Status
  */
 Status CreateOrtValuesFromTensorProtos(
-    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+    const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
     NameMLValMap& name_to_ort_value);
 
 }  // namespace training

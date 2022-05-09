@@ -52,13 +52,13 @@ struct CheckpointStates {
 /**
  * @brief Save ONNX initializers as ORT checkpoint.
  *
- * @param model_uri ONNX model file path.
- * @param trainable_param_names trainable parameter names.
+ * @param trainable_tensor_protos trainable parameters in TensorProto format.
+ * @param non_trainable_tensor_protos non-trainable parameters in TensorProto format.
  * @param checkpoint_path folder where checkpoint is saved.
  * @return Status
  */
-Status SaveCheckpoint(const std::string& model_uri,
-                      const std::vector<std::string>& trainable_param_names,
+Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
+                      const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
                       const PathString& checkpoint_path);
 
 /**

@@ -126,49 +126,54 @@ bool StringEndsWith(std::string const& s, std::string const& p) {
 }
 
 Status OrtSaveInternal(
-    const std::string& model_uri,
-    const std::vector<std::string>& trainable_param_names,
+    const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
+    const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
-  auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
-  std::shared_ptr<Model> p_model;
-  ORT_RETURN_IF_ERROR(Model::Load(model_uri, p_model, nullptr, *logger_ptr));
-  Graph& graph = p_model->MainGraph();
-  std::vector<ONNX_NAMESPACE::TensorProto> trainable_weight_values;
-  std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_weight_values;
-  const auto& initializer_tensors = graph.GetAllInitializedTensors();
-  for (const std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>& pair : initializer_tensors) {
-    if (std::find(trainable_param_names.begin(), trainable_param_names.end(), pair.first) != trainable_param_names.end()) {
-      trainable_weight_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
-    } else {
-      non_trainable_weight_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+  // Make sure name unique across trainable and non-trainable lists.
+  auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
+                         std::set<std::string>& unique_names) {
+    for (auto& tensor_proto : tensor_protos) {
+      ORT_ENFORCE(unique_names.find(tensor_proto.name()) == unique_names.end(),
+                  "Duplicated tensor proto named ", tensor_proto.name());
+      unique_names.emplace(tensor_proto.name());
     }
-  }
-  ORT_RETURN_IF_NOT(trainable_weight_values.size() == trainable_param_names.size(),
-                    "Mismatch count of trainable weights and given weight names.");
+  };
+
+  std::set<std::string> trainable_unique_names;
+  std::set<std::string> non_trainable_unique_names;
+  check_unique(trainable_tensor_protos, trainable_unique_names);
+  check_unique(non_trainable_tensor_protos, non_trainable_unique_names);
+
+  std::vector<std::string> inter_sec;
+  std::set_intersection(trainable_unique_names.begin(), trainable_unique_names.end(),
+                        non_trainable_unique_names.begin(), non_trainable_unique_names.end(),
+                        std::back_inserter(inter_sec));
+  ORT_RETURN_IF_NOT(inter_sec.empty(), "Tensor name exists in both trainable param list and non-trainable param list.");
 
   // Keep following saving logic aligned with OrtSaveModuleStatesInternal.
-  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
+  LOGS_DEFAULT(INFO)
+      << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
   LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
       << "Checkpoint directory exists - data may be overwritten.";
   ORT_RETURN_IF_ERROR(Env::Default().CreateFolder(checkpoint_path));
 
   // Save TensorProto to file.
-  if (trainable_weight_values.size() > 0) {
+  if (trainable_tensor_protos.size() > 0) {
     ORT_RETURN_IF_ERROR(WithOpenFile(
         GetTensorProtoFilePath(checkpoint_path, k_trainable_param_root_prefix), false,
-        [&trainable_weight_values](int fd) {
+        [&trainable_tensor_protos](int fd) {
           google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(trainable_weight_values, output));
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(trainable_tensor_protos, output));
           return Status::OK();
         }));
   }
 
-  if (non_trainable_weight_values.size() > 0) {
+  if (non_trainable_tensor_protos.size() > 0) {
     ORT_RETURN_IF_ERROR(WithOpenFile(
         GetTensorProtoFilePath(checkpoint_path, k_non_trainable_param_root_prefix), false,
-        [&non_trainable_weight_values](int fd) {
+        [&non_trainable_tensor_protos](int fd) {
           google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(non_trainable_weight_values, output));
+          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(non_trainable_tensor_protos, output));
           return Status::OK();
         }));
   }
@@ -360,13 +365,8 @@ Status OrtLoadModuleStatesInternal(
       return Status::OK();
     }
 
-    std::vector<const ONNX_NAMESPACE::TensorProto*> param_tensor_proto_ptrs{};
-    for (ONNX_NAMESPACE::TensorProto& param_tensor_proto : param_tensor_protos) {
-      param_tensor_proto_ptrs.emplace_back(&param_tensor_proto);
-    }
-
     std::unordered_map<std::string, OrtValue> name_to_ort_values;
-    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_proto_ptrs, name_to_ort_values));
+    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_protos, name_to_ort_values));
     for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
       auto param = std::make_shared<Parameter>(it->first, it->second);
       ORT_RETURN_IF_ERROR(param->SetRequiresGrad(is_trainable));
@@ -441,13 +441,8 @@ Status OrtLoadOptimizerStatesInternal(
       return Status::OK();
     }
 
-    std::vector<const ONNX_NAMESPACE::TensorProto*> param_optimizer_state_tensor_proto_ptrs{};
-    for (ONNX_NAMESPACE::TensorProto& param_optimizer_state_tensor_proto : param_optimizer_state_tensor_protos) {
-      param_optimizer_state_tensor_proto_ptrs.emplace_back(&param_optimizer_state_tensor_proto);
-    }
-
     std::unordered_map<std::string, OrtValue> name_to_ort_values;
-    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_proto_ptrs, name_to_ort_values));
+    ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_protos, name_to_ort_values));
 
     for (auto& pair : name_to_ort_values) {
       auto& param_name = pair.first;
@@ -534,10 +529,10 @@ Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointStates& stat
 
 }  // namespace
 
-Status SaveCheckpoint(const std::string& model_uri,
-                      const std::vector<std::string>& trainable_param_names,
+Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
+                      const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
                       const PathString& checkpoint_path) {
-  return OrtSaveInternal(model_uri, trainable_param_names, checkpoint_path);
+  return OrtSaveInternal(trainable_tensor_protos, non_trainable_tensor_protos, checkpoint_path);
 }
 
 Status SaveCheckpoint(CheckpointStates& states, const PathString& checkpoint_path) {

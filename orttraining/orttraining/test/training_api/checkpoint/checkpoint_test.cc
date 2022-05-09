@@ -64,13 +64,16 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   ORT_ENFORCE(Model::Load(model_uri, p_model, nullptr, *logger_ptr).IsOK());
   Graph& graph = p_model->MainGraph();
 
-  std::vector<const ONNX_NAMESPACE::TensorProto*> trainable_param_values;
+  std::vector<ONNX_NAMESPACE::TensorProto> trainable_param_values;
   trainable_param_values.reserve(expected_trainable_param_names.size());
-  for (size_t i = 0; i < expected_trainable_param_names.size(); ++i) {
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-    ORT_ENFORCE(graph.GetInitializedTensor(expected_trainable_param_names[i], tensor_proto),
-                "Failed to find weight values: ", expected_trainable_param_names[i]);
-    trainable_param_values.emplace_back(tensor_proto);
+  std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
+  const auto& initializer_tensors = graph.GetAllInitializedTensors();
+  for (const std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>& pair : initializer_tensors) {
+    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), pair.first) != expected_trainable_param_names.end()) {
+      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+    } else {
+      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+    }
   }
 
   std::unordered_map<std::string, OrtValue> expected_trainable_param_name_to_ort_value;
@@ -89,7 +92,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(model_uri, expected_trainable_param_names, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(trainable_param_values, non_trainable_param_values, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{"paramfrozen_tensors.pbseq", "paramtrain_tensors.pbseq"};

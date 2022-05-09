@@ -22,21 +22,21 @@ namespace training {
  * @return Status
  */
 Status CreateOrtValuesFromTensorProtos(
-    const std::vector<const ONNX_NAMESPACE::TensorProto*>& tensor_protos,
+    const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
     NameMLValMap& name_to_ort_value) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
   static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
 
-  for (const auto tensor_proto : tensor_protos) {
-    TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(*tensor_proto)};
-    const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type())->GetElementType();
+  for (const auto& tensor_proto : tensor_protos) {
+    TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};
+    const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
     auto p_tensor = std::make_unique<Tensor>(tensor_dtype, tensor_shape, cpu_allocator);
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), nullptr, *tensor_proto, *p_tensor));
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), nullptr, tensor_proto, *p_tensor));
 
     OrtValue ort_value;
     ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-    name_to_ort_value.emplace(tensor_proto->name(), ort_value);
+    name_to_ort_value.emplace(tensor_proto.name(), ort_value);
   }
 
   return Status::OK();
