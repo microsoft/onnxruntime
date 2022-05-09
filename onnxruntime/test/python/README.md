@@ -1,1 +1,3 @@
-This folder contains model tests that are based on ONNX model test framework. 
+This folder contains model tests that are based on [ONNX model test framework](https://github.com/onnx/onnx/blob/main/docs/OnnxBackendTest.md). They can either be used in our onnxruntime_test_all.exe or onnx_backend_test_series.py. The generated models can be used in the other language binding's tests as well.
+
+It is to fill a gap that ONNX node tests do not have initializers. The weights in ONNX node tests are not considered as constants by ONNX Runtime. However, some Execution Providers can only process constant weights because they do prepacking on weights in their kernels' constructors.  
