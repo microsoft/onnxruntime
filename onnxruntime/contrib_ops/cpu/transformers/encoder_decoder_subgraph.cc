@@ -225,6 +225,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
     const std::vector<const OrtValue*>& implicit_inputs,
     int pad_token_id,
     int decoder_start_token_id,
+    int num_beams,
     std::vector<OrtValue>& feeds) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
@@ -298,7 +299,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   TensorShape beam_num_shape({});
   Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), beam_num_shape, cpu_alloactor, beam_num);
   int64_t* beam_num_data = beam_num.GetMutable<Tensor>()->MutableData<int64_t>();
-  *beam_num_data = static_cast<int64_t>(5); //bugbug
+  *beam_num_data = static_cast<int64_t>(num_beams);
 
   feeds.push_back(encoder_input_ids);
   feeds.push_back(attention_mask);

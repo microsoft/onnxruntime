@@ -644,7 +644,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
   const OrtValue* encoder_attn_mask_value = context_.GetInputOrtValue(10);
   //const Tensor& encoder_attn_mask = encoder_attn_mask_value->Get<Tensor>();
-  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, encoder_attn_mask_value, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, feeds));
+  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, encoder_attn_mask_value, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, parameters_->num_beams, feeds));
 
   BeamSearchState<T> beam_state;
   beam_state.Init(temp_space_allocator_,
