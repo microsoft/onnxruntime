@@ -875,6 +875,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedAddBiasResidualLayerNorm, 1,
                                   propagateElemTypeFromInputToOutput(ctx, 0, 0);
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLayerNormalization, 1, OpSchema().SetDoc("QOrderedLayerNormalization").Attr("axis", "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).", AttributeProto::INT, static_cast<int64_t>(-1)).Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f).Attr("order_X", "cublasLt order of input X", AttributeProto::INT).Attr("order_Y", "cublasLt order of matrix Y, must be same as order_X. ORDER_ROW or ORDER_COL32 supported", AttributeProto::INT).AllowUncheckedAttributes().Input(0, "X", "Input data tensor from the previous layer.", "Q").Input(1, "scale_X", "scale of the quantized X", "S").Input(2, "scale", "Scale tensor, i.e., gamma vector.", "F").Input(3, "B", "Bias tensor.", "F", OpSchema::Optional).Input(4, "scale_Y", "scale of the quantized X", "S").Output(0, "Y", "Output data tensor.", "Q").TypeConstraint("F", {"tensor(float16)"}, "Constrain input scale and bias could be float16 tensors.").TypeConstraint("S", {"tensor(float)"}, "quantization scale must be float tensors.").TypeConstraint("Q", {"tensor(int8)"}, "quantization tensor must be int8 tensors.").TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+  propagateShapeAndTypeFromFirstInput(ctx);
+  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+}));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedGelu, 1, OpSchema().SetDoc(R"DOC(Ordered Quantize Gelu.)DOC").Attr("order_X", "cublasLt order of input X", AttributeProto::INT).Attr("order_Y", "cublasLt order of matrix Y, must be same as order_X. ORDER_ROW or ORDER_COL32 supported", AttributeProto::INT).Input(0, "X", "N-dimensional input A", "Q").Input(1, "scale_X", "scale of the input A", "S").Input(2, "scale_Y", "scale of the output Y", "S").Output(0, "Y", "Output of the Gelu", "Q").TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.").TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32").TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 }  // namespace contrib

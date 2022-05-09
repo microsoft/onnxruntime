@@ -46,6 +46,8 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+
   // inputs are column based
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
@@ -160,6 +162,9 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   // ORT_RETURN_IF_ERROR(
   //     Reorder(cublasLt, stream, device_prop, gsl::narrow_cast<int>(batch_size), sequence_length, hidden_size, CUDA_R_8I,
   //             output_buffer_quantized.get(), (cublasLtOrder_t)1, output->MutableData<int8_t>(), (cublasLtOrder_t)2));
+  
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+
   return Status::OK();
 }
 
