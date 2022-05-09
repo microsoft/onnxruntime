@@ -642,7 +642,7 @@ __global__ void LayerNormBlockSMemImpl(LOAD load, STORE store, const int64_t row
 
 template<typename LOAD, typename STORE, typename ComputeType, int pack_size, bool simplified, int block_size>
 inline bool LaunchLayerNormBlockSMemImpl(cudaStream_t stream, LOAD load, STORE store,
-                                                int smem, const int64_t rows, const int64_t cols,
+                                                size_t smem, const int64_t rows, const int64_t cols,
                                                 const double epsilon, ComputeType* mean,
                                                 ComputeType* inv_variance) {
   constexpr int waves = 32;
