@@ -12,8 +12,6 @@
 
 #include "base_op_builder.h"
 
-#include "coreml/NeuralNetwork.pb.h"
-
 namespace onnxruntime {
 namespace coreml {
 
