@@ -14,11 +14,15 @@ namespace api {
 
 /**
  * @brief States belong to one specific trainable Parameter.
+ *   Momentum states for each Parameter.
+ *   For Adam optimizer, it looks like:
+ *     {
+ *       "moment_0": shared_ptr<OrtValue>,
+ *       "moment_1": shared_ptr<OrtValue>,
+ *     }.
  */
 struct ParameterOptimizerState {
-  // Per param optimizer state, for Adam and param_0, this would contain
-  // {"moment_0": <value>, "moment_1": <value>}.
-  std::unordered_map<std::string, std::shared_ptr<OrtValue>> states_;
+  std::unordered_map<std::string, std::shared_ptr<OrtValue>> momentum_named_states;
 };
 
 /**
@@ -27,7 +31,7 @@ struct ParameterOptimizerState {
 struct GroupOptimizerState {
   int64_t step;
   float learning_rate;
-  std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states_;
+  std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
 /**
@@ -41,7 +45,7 @@ struct OptimizerCheckpointStates {
   const DataTransferManager* optimizer_session_data_transfer_mgr;
 };
 
-class Optimizer {
+struct Optimizer {
  public:
   // Initialize an optimizer module from an ORT inference session with loaded
   // training ONNX model For each parameter, initialize the OptimizerState based

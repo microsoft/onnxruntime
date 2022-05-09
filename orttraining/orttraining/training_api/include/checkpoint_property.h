@@ -83,7 +83,7 @@ struct PropertyBag {
   void AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   template <typename T>
-  T GetProperty(std::string& name) const {
+  T GetProperty(const std::string& name) const {
     auto it = named_properties.find(name);
     ORT_ENFORCE(it != named_properties.end(), "No property named ", name);
     return it->second->GetData<T>();

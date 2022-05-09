@@ -33,7 +33,7 @@ Status CreateOrtValueFromOrtValue(
 Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters) {
   std::unordered_map<std::string, ParameterOptimizerState>&
-      param_named_optimizer_states = optimizer_state_.param_named_optimizer_states_;
+      param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
 
   const SessionOptions session_options;
   std::unique_ptr<Environment> env;
@@ -43,7 +43,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   ORT_ENFORCE(optim_sess_->Load(optim_path_or_bytes).IsOK());
   ORT_ENFORCE(optim_sess_->Initialize().IsOK());
 
-  // TODO: don't hard code the state names.
+  // TODO: don't hard code the state names, should get the state names according to the optimizer types.
   std::vector<std::string> state_names{"momentum0", "momentum1"};
   for (auto& pair : parameters) {
     if (pair.second->RequiresGrad()) {
@@ -53,7 +53,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
         OrtValue param_state;
         // TODO: should reset the state to zero (for both CPU or CUDA Tensors.)
         ORT_ENFORCE(CreateOrtValueFromOrtValue(pair.second->Data(), param_state, optim_sess_.get()).IsOK());
-        cur_param_optimizer_states.states_.insert({state_name, std::make_shared<OrtValue>(param_state)});
+        cur_param_optimizer_states.momentum_named_states.insert({state_name, std::make_shared<OrtValue>(param_state)});
       }
     }
   }
@@ -61,6 +61,9 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
 Status Optimizer::GetStateDict(OptimizerCheckpointStates& optimizer_checkpoint_states) {
   auto& grouped_optimizer_states = optimizer_checkpoint_states.group_named_optimizer_states;
+
+  // Currently all parameters are in a single group, so we hardcode group0 here.
+  // To support multiple groups, Optimizer constructor need accept informations for groupping.
   const std::string group_zero_name = "group0";
   grouped_optimizer_states.insert({group_zero_name, std::make_shared<GroupOptimizerState>(optimizer_state_)});
 

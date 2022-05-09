@@ -8,14 +8,14 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
-class Parameter {
+struct Parameter {
  public:
   // Create parameter
   Parameter(std::string name, const OrtValue& data)
       : name_(name), data_(data) {
   }
 
-  // Return the mutable data
+  // Return the mutable data.
   OrtValue& Data() { return data_; }
   std::string Name() const { return name_; }
 
@@ -24,11 +24,11 @@ class Parameter {
   // session since the gradient graph is prebuilt for this setting.
   bool RequiresGrad() const { return requires_grad_; }
 
-  // Return the mutable gradient for trainable parameter
+  // Return the mutable gradient for trainable parameter.
   OrtValue& Gradient() { return gradient_; }
   std::string GradientName() const { return gradient_name_; }
 
-  // Reset and release the gradient buffer of this Parameter
+  // Reset and release the gradient buffer of this Parameter.
   Status ResetGrad() {
     return Status::OK();
   }
@@ -57,7 +57,7 @@ struct ModuleCheckpointStates {
   const DataTransferManager* train_session_data_transfer_mgr;
 };
 
-class Module {
+struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters

@@ -22,6 +22,17 @@ namespace api {
 
 namespace {
 
+constexpr const char* k_tensor_proto_file_name = "tensors.pbseq";
+constexpr const char* k_tensor_proto_properties_file_name = "properties.pbseq";
+constexpr const char* k_trainable_param_root_prefix = "paramtrain";
+constexpr const char* k_non_trainable_param_root_prefix = "paramfrozen";
+constexpr const char* k_optimizer_root_prefix = "optim";
+constexpr const char* k_property_root_prefix = "custom";
+constexpr const char* k_name_seperator = "_";
+
+const std::string builtin_lr_property_name("builtin.learning_rate");
+const std::string builtin_step_property_name("builtin.step");
+
 /**
  * @brief Create TensorProtos From OrtValue objects
  *
@@ -84,14 +95,6 @@ Status CreateTensorProtosFromOrtValues(
   return Status::OK();
 }
 
-constexpr const char* k_tensor_proto_file_name = "tensors.pbseq";
-constexpr const char* k_tensor_proto_properties_file_name = "properties.pbseq";
-constexpr const char* k_trainable_param_root_prefix = "paramtrain";
-constexpr const char* k_non_trainable_param_root_prefix = "paramfrozen";
-constexpr const char* k_optimizer_root_prefix = "optim";
-constexpr const char* k_property_root_prefix = "custom";
-constexpr const char* k_name_seperator = "_";
-
 PathString GetTensorProtoFilePath(const PathString& checkpoint_directory, const std::string& filename_prefix) {
   return ConcatPathComponent<PathChar>(checkpoint_directory, ORT_TSTR(filename_prefix + k_name_seperator) + k_tensor_proto_file_name);
 }
@@ -130,6 +133,9 @@ Status OrtSaveInternal(
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
   // Make sure name unique across trainable and non-trainable lists.
+  std::set<std::string> trainable_unique_names;
+  std::set<std::string> non_trainable_unique_names;
+  std::vector<std::string> inter_sec;
   auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
                          std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
@@ -138,13 +144,8 @@ Status OrtSaveInternal(
       unique_names.emplace(tensor_proto.name());
     }
   };
-
-  std::set<std::string> trainable_unique_names;
-  std::set<std::string> non_trainable_unique_names;
   check_unique(trainable_tensor_protos, trainable_unique_names);
   check_unique(non_trainable_tensor_protos, non_trainable_unique_names);
-
-  std::vector<std::string> inter_sec;
   std::set_intersection(trainable_unique_names.begin(), trainable_unique_names.end(),
                         non_trainable_unique_names.begin(), non_trainable_unique_names.end(),
                         std::back_inserter(inter_sec));
@@ -237,38 +238,34 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_state
     const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr = group_named_optimizer_state.second;
     const std::string& cur_group_filename_prefix = StringConcat(k_optimizer_root_prefix, group_name);
 
-    /**
-     * Re-organize optimizer_state_ort_values mapping
-     * Firstly indexed by moment state names; Secondly indexed by parameter names.
-     */
+    // Re-organize optimizer_state_ort_values mapping
+    // Firstly indexed by momentum names; Secondly indexed by parameter names.
     std::unordered_map<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
     for (const std::pair<std::string, ParameterOptimizerState>&
-             param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states_) {
+             param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states) {
       const std::string& param_name = param_named_optimizer_state.first;
       const auto& param_optimizer_state = param_named_optimizer_state.second;
 
       for (const std::pair<std::string, std::shared_ptr<OrtValue>>&
-               m_state : param_optimizer_state.states_) {
-        const std::string& m_state_name = m_state.first;
+               m_state : param_optimizer_state.momentum_named_states) {
+        const std::string& momentum_name = m_state.first;
         const std::shared_ptr<OrtValue>& m_state_val = m_state.second;
 
-        if (optimizer_state_ort_values.find(m_state_name) == optimizer_state_ort_values.end()) {
+        if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
           std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, *(m_state_val)}};
-          optimizer_state_ort_values.insert({m_state_name, param_name_to_ortvalue});
+          optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});
         } else {
-          optimizer_state_ort_values[m_state_name].insert({param_name, *(m_state_val)});
+          optimizer_state_ort_values[momentum_name].insert({param_name, *(m_state_val)});
         }
       }
     }
 
-    /**
-     * Save each optimizer state (of all parameters) into single file.
-     * For example: save "momentum_1" of all parameters into one file.
-     */
+    // Save each optimizer state (of all parameters) into single file.
+    // For example: save "momentum_1" of all parameters into one file.
     for (auto& pair : optimizer_state_ort_values) {
-      const auto& state_name = pair.first;
+      const auto& momentum_name = pair.first;
       const std::unordered_map<std::string, OrtValue>& param_name_to_ortvalue = pair.second;
-      const std::string& cur_state_filename_prefix = StringConcat(cur_group_filename_prefix, state_name);
+      const std::string& cur_state_filename_prefix = StringConcat(cur_group_filename_prefix, momentum_name);
 
       std::vector<ONNX_NAMESPACE::TensorProto> saved_tensor_protos;
       ORT_RETURN_IF_ERROR(CreateTensorProtosFromOrtValues(
@@ -287,16 +284,11 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_state
     }
 
     // Storing group-wise properties.
-    std::vector<std::unique_ptr<CheckpointProperty>> group_wise_properties;
-    group_wise_properties.emplace_back(
-        std::make_unique<TypedCheckpointProperty<float>>("learning_rate", group_optimizer_state_ptr->learning_rate));
-    group_wise_properties.emplace_back(
-        std::make_unique<TypedCheckpointProperty<int64_t>>("step", group_optimizer_state_ptr->step));
-
+    PropertyBag properties;
+    properties.AddProperty<float>(builtin_lr_property_name, group_optimizer_state_ptr->learning_rate);
+    properties.AddProperty<int64_t>(builtin_step_property_name, group_optimizer_state_ptr->step);
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
-    for (auto it = group_wise_properties.begin(); it != group_wise_properties.end(); ++it) {
-      group_wise_properties_tensor_protos.emplace_back((*it)->ToTensorProto());
-    }
+    properties.ToTensorProtos(group_wise_properties_tensor_protos);
 
     ORT_RETURN_IF_ERROR(WithOpenFile(
         GetTensorProtoPropertiesFilePath(checkpoint_path, cur_group_filename_prefix), false,
@@ -338,7 +330,7 @@ Status OrtSaveInternal(
         }));
   }
 
-  LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
+  LOGS_DEFAULT(INFO) << "Checkpoint saved successfully.";
   return Status::OK();
 }
 
@@ -346,11 +338,8 @@ Status OrtLoadModuleStatesInternal(
     const PathString& parameter_folder_path, ModuleCheckpointStates& module_states) {
   // Parameter parsing.
   auto& named_parameters = module_states.named_parameters;
-  std::vector<std::string> param_root_prefixes{k_trainable_param_root_prefix, k_non_trainable_param_root_prefix};
-
-  for (auto& root_prefix : param_root_prefixes) {
+  auto load_model_proto_into_module = [&parameter_folder_path, &named_parameters](const std::string& root_prefix, bool is_trainable) -> Status {
     const PathString module_state_file_path = GetTensorProtoFilePath(parameter_folder_path, root_prefix);
-    bool is_trainable = root_prefix == k_trainable_param_root_prefix;
     std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
     auto file_read_status = WithOpenFile(
         module_state_file_path, true,
@@ -361,7 +350,7 @@ Status OrtLoadModuleStatesInternal(
         });
 
     if (!file_read_status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << ToUTF8String(module_state_file_path) << " trainable module state file not found or read failure, skip it.";
+      LOGS_DEFAULT(WARNING) << " trainable module state file not found or read failure, skip it." << ToUTF8String(module_state_file_path);
       return Status::OK();
     }
 
@@ -372,13 +361,17 @@ Status OrtLoadModuleStatesInternal(
       ORT_RETURN_IF_ERROR(param->SetRequiresGrad(is_trainable));
       named_parameters.insert({it->first, param});
     }
-  }
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(load_model_proto_into_module(k_trainable_param_root_prefix, true));
+  ORT_RETURN_IF_ERROR(load_model_proto_into_module(k_non_trainable_param_root_prefix, false));
 
   return Status::OK();
 }
 
-Status OrtLoadOptimizerStatesInternal(
-    const PathString& optimizer_folder_path, OptimizerCheckpointStates& optimizer_states) {
+Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
+                                      OptimizerCheckpointStates& optimizer_states) {
   if (!Env::Default().FolderExists(optimizer_folder_path)) {
     return Status::OK();
   }
@@ -412,11 +405,11 @@ Status OrtLoadOptimizerStatesInternal(
     std::vector<std::string> results;
     StringSplit(filename, results);
     const std::string& group_name = results[1];
-    const std::string& state_name = results[2];
+    const std::string& momentum_name = results[2];
     const std::string& cur_group_filename_prefix = StringConcat(k_optimizer_root_prefix, group_name);
-    std::string cur_state_filename_prefix = StringConcat(cur_group_filename_prefix, state_name);
+    std::string cur_momentum_state_filename_prefix = StringConcat(cur_group_filename_prefix, momentum_name);
 
-    ORT_ENFORCE(filename.compare(StringConcat(cur_state_filename_prefix, k_tensor_proto_file_name)) == 0);
+    ORT_ENFORCE(filename.compare(StringConcat(cur_momentum_state_filename_prefix, k_tensor_proto_file_name)) == 0);
 
     if (grouped_optimizer_states.find(group_name) == grouped_optimizer_states.end()) {
       grouped_optimizer_states.insert({group_name, std::make_shared<GroupOptimizerState>()});
@@ -424,9 +417,9 @@ Status OrtLoadOptimizerStatesInternal(
 
     auto& optimizer_state_in_this_group = grouped_optimizer_states[group_name];
     std::unordered_map<std::string, ParameterOptimizerState>&
-        param_optimizer_state = optimizer_state_in_this_group->param_named_optimizer_states_;
+        param_optimizer_state = optimizer_state_in_this_group->param_named_optimizer_states;
 
-    const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path, cur_state_filename_prefix);
+    const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path, cur_momentum_state_filename_prefix);
     std::vector<ONNX_NAMESPACE::TensorProto> param_optimizer_state_tensor_protos{};
     auto file_read_status = WithOpenFile(
         tensor_file_path, true,
@@ -436,24 +429,22 @@ Status OrtLoadOptimizerStatesInternal(
           return Status::OK();
         });
 
-    if (!file_read_status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << ToUTF8String(tensor_file_path) << " optimizer state file not found or read failure, skip it.";
-      return Status::OK();
-    }
+    ORT_ENFORCE(file_read_status.IsOK(), "optimizer state file read failure, skip it.",
+                ToUTF8String(tensor_file_path));
 
     std::unordered_map<std::string, OrtValue> name_to_ort_values;
     ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_protos, name_to_ort_values));
-
     for (auto& pair : name_to_ort_values) {
       auto& param_name = pair.first;
       if (param_optimizer_state.find(param_name) == param_optimizer_state.end()) {
         ParameterOptimizerState param_state;
         param_optimizer_state.insert({param_name, param_state});
       }
-      param_optimizer_state[param_name].states_.insert({state_name, std::make_shared<OrtValue>(pair.second)});
+      param_optimizer_state[param_name].momentum_named_states.insert({momentum_name, std::make_shared<OrtValue>(pair.second)});
     }
   }
 
+  // For each optimizer properties files, parse the data and feed into grouped_optimizer_states.
   for (auto& filename : optim_property_filenames) {
     std::vector<std::string> results;
     StringSplit(filename, results);
@@ -477,21 +468,16 @@ Status OrtLoadOptimizerStatesInternal(
           return Status::OK();
         });
 
-    if (!file_read_status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << ToUTF8String(tensor_file_path) << " optimizer state group-wise property file not found or read failure, skip it.";
-      return Status::OK();
-    }
+    ORT_ENFORCE(file_read_status.IsOK(), " optimizer state group-wise property file read failure, skip it.",
+                ToUTF8String(tensor_file_path));
 
+    PropertyBag properties;
     for (auto& property_proto : group_wise_property_protos) {
-      if (property_proto.name().compare("learning_rate") == 0) {
-        optimizer_state_in_this_group->learning_rate = TypedCheckpointProperty<float>(property_proto).GetData();
-      } else if (property_proto.name().compare("step") == 0) {
-        optimizer_state_in_this_group->step = TypedCheckpointProperty<int64_t>(property_proto).GetData();
-      } else {
-        continue;
-      }
+      properties.AddProperty(property_proto);
     }
 
+    optimizer_state_in_this_group->learning_rate = properties.GetProperty<float>(builtin_lr_property_name);
+    optimizer_state_in_this_group->step = properties.GetProperty<int64_t>(builtin_step_property_name);
     grouped_optimizer_states.insert({group_name, optimizer_state_in_this_group});
   }
 

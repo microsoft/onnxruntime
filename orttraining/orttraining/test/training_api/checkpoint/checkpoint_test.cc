@@ -260,7 +260,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   ASSERT_EQ(group_optimizer_states.begin()->first, "group0");
 
   std::unordered_map<std::string, ParameterOptimizerState>&
-      param_named_optimizer_states = group_optimizer_states["group0"]->param_named_optimizer_states_;
+      param_named_optimizer_states = group_optimizer_states["group0"]->param_named_optimizer_states;
 
   ASSERT_EQ(param_named_optimizer_states.size(), 2);
   auto it = param_named_optimizer_states.begin();
@@ -269,7 +269,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   ASSERT_EQ(it->first, "param4");
 
   for (auto it = param_named_optimizer_states.begin(); it != param_named_optimizer_states.end(); ++it) {
-    for (auto& state_pair : it->second.states_) {
+    for (auto& state_pair : it->second.momentum_named_states) {
       ASSERT_TRUE(state_pair.first == "momentum0" || state_pair.first == "momentum1");
       const OrtValue& restored_ort_value = *(state_pair.second);
       const OrtValue& expected_ort_value = name_to_ort_value[it->first];
