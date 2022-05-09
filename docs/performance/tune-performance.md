@@ -317,7 +317,7 @@ Math Kernel Library for Deep Neural Networks (MKL_DNN) and nGraph (a C++ library
 
 <h3 id="iobinding">IO Binding</h3>
 
-ONNX Runtime supports [Data-on-device].(https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device). ORT allows custom data structure to support all data formats and allows users to place the **data** backing these on a device, for example, on a CUDA supported device. In ONNX Runtime, this is called IOBinding.
+ONNX Runtime supports [Data-on-device](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device). ORT allows custom data structure to support all data formats and allows users to place the **data** backing these on a device, for example, on a CUDA supported device. In ONNX Runtime, this is called IOBinding.
 
 * When working with non-CPU execution providers, it is most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling Run). When the input is not copied to the target device, ORT copies it from the CPU as part of the Run() call.
 * Similarly, if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when most of the time is spent in these copies. To address this issue, we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run().
