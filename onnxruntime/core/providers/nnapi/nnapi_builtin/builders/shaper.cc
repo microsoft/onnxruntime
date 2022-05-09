@@ -129,6 +129,13 @@ Status Shaper::Squeeze(const std::string& input_name,
   SHAPER_FUNC(Squeeze, input_name, axes, output_name);
 }
 
+Status Shaper::DepthToSpace(const std::string& input_name,
+                            const int32_t blocksize,
+                            bool nchw,
+                            const std::string& output_name) {
+  SHAPER_FUNC(DepthToSpace, input_name, blocksize, nchw, output_name);
+}
+
 Status Shaper::ResizeUsingScales(const std::string& input_name,
                                  const float scale_h, const float scale_w,
                                  bool nchw,
@@ -392,6 +399,30 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
   // the output shape will be {1}
   if (output_dimen.empty())
     output_dimen.push_back(1);
+
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::DepthToSpaceImpl(const std::string& input_name,
+                                const int32_t blocksize,
+                                bool nchw,
+                                const std::string& output_name) {
+  const Shape& input_dimen = shape_map_.at(input_name);
+
+  // Make output dimensions
+  Shape output_dimen = shape_map_.at(input_name);
+  if (nchw) {
+    output_dimen[0] = input_dimen[0];
+    output_dimen[1] = input_dimen[1] / (blocksize * blocksize);
+    output_dimen[2] = input_dimen[2] * blocksize;
+    output_dimen[3] = input_dimen[3] * blocksize;
+  } else {  // nhwc
+    output_dimen[0] = input_dimen[0];
+    output_dimen[1] = input_dimen[1] * blocksize;
+    output_dimen[2] = input_dimen[2] * blocksize;
+    output_dimen[3] = input_dimen[3] / (blocksize * blocksize);
+  }
 
   shape_map_[output_name] = output_dimen;
   return Status::OK();
