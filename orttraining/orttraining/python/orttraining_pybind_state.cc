@@ -31,7 +31,7 @@
 #endif
 
 #if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
-#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/include/checkpoint.h"
 #endif
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);

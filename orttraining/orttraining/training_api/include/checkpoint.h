@@ -6,8 +6,10 @@
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
 #include "onnx/defs/tensor_proto_util.h"
-#include "orttraining/training_api/interfaces.h"
-#include "orttraining/training_api/checkpoint_property.h"
+
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/checkpoint_property.h"
 
 /**
  * There are two representation for checkpoint respectively in memory and files:

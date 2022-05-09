@@ -2,21 +2,24 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/session/inference_session.h"
-#include "orttraining/training_api/interfaces.h"
+
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/checkpoint_property.h"
+#include "orttraining/training_api/include/checkpoint.h"
 
 namespace onnxruntime {
 namespace training {
 namespace api {
-namespace utils {
+
 /*
   module.train_sess.RegisterExecutionProvider(provider);
   module.eval_sess.RegisterExecutionProvider(provider);
   optimizer.optim_sess.RegisterExecutionProvider(provider);
 */
-void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/);
-
-}  // namespace utils
+void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/) {
+  ORT_NOT_IMPLEMENTED("Not implemented.");
+}
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

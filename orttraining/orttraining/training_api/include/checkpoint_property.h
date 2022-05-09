@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <type_traits>
 #include "onnx/defs/tensor_proto_util.h"
 
 namespace onnxruntime {
@@ -50,6 +51,11 @@ struct TypedCheckpointProperty : public CheckpointProperty {
  public:
   TypedCheckpointProperty(const std::string& prop_name, const T& prop_value)
       : CheckpointProperty(prop_name), prop_value_(prop_value) {
+    // Align the data type support with  constructor from TensorProto.
+    if (!(std::is_same<T, float>::value || std::is_same<T, int64_t>::value ||
+          std::is_same<T, std::string>::value)) {
+      ORT_THROW("Not supported data type, only support float, int64_t and std::string.");
+    }
   }
 
   TypedCheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
@@ -65,7 +71,7 @@ struct TypedCheckpointProperty : public CheckpointProperty {
 };
 
 /**
- * @brief Collection of user defined properties
+ * @brief Collection of user defined properties.
  * Supported scalar value of type int64_t, float, and std::string only.
  */
 struct PropertyBag {

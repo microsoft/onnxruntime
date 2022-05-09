@@ -14,7 +14,7 @@
 
 #include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
-#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/include/checkpoint.h"
 
 namespace onnxruntime {
 namespace training {
@@ -284,9 +284,9 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointStates& optimizer_state
     // Storing group-wise properties.
     std::vector<std::unique_ptr<CheckpointProperty>> group_wise_properties;
     group_wise_properties.emplace_back(
-        std::make_unique<TypedCheckpointProperty<float>>("learning_rate_", group_optimizer_state_ptr->learning_rate_));
+        std::make_unique<TypedCheckpointProperty<float>>("learning_rate", group_optimizer_state_ptr->learning_rate));
     group_wise_properties.emplace_back(
-        std::make_unique<TypedCheckpointProperty<int64_t>>("step_", group_optimizer_state_ptr->step_));
+        std::make_unique<TypedCheckpointProperty<int64_t>>("step", group_optimizer_state_ptr->step));
 
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
     for (auto it = group_wise_properties.begin(); it != group_wise_properties.end(); ++it) {
@@ -488,10 +488,10 @@ Status OrtLoadOptimizerStatesInternal(
     }
 
     for (auto& property_proto : group_wise_property_protos) {
-      if (property_proto.name().compare("learning_rate_") == 0) {
-        optimizer_state_in_this_group->learning_rate_ = TypedCheckpointProperty<float>(property_proto).GetData();
-      } else if (property_proto.name().compare("step_") == 0) {
-        optimizer_state_in_this_group->step_ = TypedCheckpointProperty<int64_t>(property_proto).GetData();
+      if (property_proto.name().compare("learning_rate") == 0) {
+        optimizer_state_in_this_group->learning_rate = TypedCheckpointProperty<float>(property_proto).GetData();
+      } else if (property_proto.name().compare("step") == 0) {
+        optimizer_state_in_this_group->step = TypedCheckpointProperty<int64_t>(property_proto).GetData();
       } else {
         continue;
       }

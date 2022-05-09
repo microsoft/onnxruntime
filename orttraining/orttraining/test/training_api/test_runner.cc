@@ -13,9 +13,7 @@
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 
 // ORT training C++ API includes
-// TODO: should we have single header for user.
-#include "orttraining/training_api/checkpoint.h"
-#include "orttraining/training_api/utilities.h"
+#include "orttraining/training_api/include/interfaces.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -216,7 +214,7 @@ Status RunTraining(const TestRunnerParameters& params) {
                       state_dicts.module_checkpoint_states.named_parameters);
 
 #ifdef USE_CUDA
-  api::utils::SetExecutionProvider(module, optimizer, params.provider.get());
+  api::SetExecutionProvider(module, optimizer, params.provider.get());
 #endif
 
   auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);

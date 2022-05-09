@@ -19,9 +19,7 @@
 #include "core/platform/path_lib.h"
 
 #include "orttraining/core/framework/checkpoint_common.h"
-#include "orttraining/training_api/checkpoint.h"
-#include "orttraining/training_api/utilities.h"
-#include "orttraining/training_api/interfaces.h"
+#include "orttraining/training_api/include/interfaces.h"
 
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
