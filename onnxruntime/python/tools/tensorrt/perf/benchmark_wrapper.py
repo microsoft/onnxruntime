@@ -65,7 +65,7 @@ def main():
     model_to_fail_ep = {}
 
     benchmark_fail_csv = fail_name + csv_ending
-    benchmark_metrics_csv = metrics_name + csv_ending
+    benchmark_metrics_csv = op_metrics_name + csv_ending
     benchmark_success_csv = success_name + csv_ending
     benchmark_latency_csv = latency_name + csv_ending
     benchmark_status_csv = status_name + csv_ending

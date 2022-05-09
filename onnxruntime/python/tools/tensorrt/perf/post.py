@@ -175,7 +175,7 @@ def main():
             latency_over_time_name,
             specs_name,
             session_name,
-            metrics_name,
+            op_metrics_name,
         ]
         table_results = {}
         for table_name in tables:
@@ -219,13 +219,13 @@ def main():
                     table_results[status_name] = table_results[status_name].append(
                         get_status(table, model_group), ignore_index=True
                     )
-                elif metrics_name in csv:
-                    table_results[metrics_name] = table_results[metrics_name].append(
+                elif op_metrics_name in csv:
+                    table_results[op_metrics_name] = table_results[op_metrics_name].append(
                         get_op_metrics(table, model_group), ignore_index=True
                     )
 
             os.chdir(result_file)
-        '''
+        """
         for table in tables:
             print("writing " + table + " to database")
             db_table_name = "ep_model_" + table
@@ -236,9 +236,9 @@ def main():
                 date_time,
                 identifier,
             )
-        '''
+        """
         # Temporary: Only write to `ep_model_metrics` table.
-        table = metrics_name
+        table = op_metrics_name
         print("writing " + table + " to database")
         db_table_name = "ep_model_" + table
         write_table(
@@ -248,7 +248,6 @@ def main():
             date_time,
             identifier,
         )
-
 
     except BaseException as e:
         print(str(e))

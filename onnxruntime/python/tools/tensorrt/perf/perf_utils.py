@@ -27,8 +27,7 @@ standalone_trt_fp16 = "TRTFp16"
 acl = "ORT-ACLFp32"
 
 # table names
-# TODO: Rename 'metrics_name' to 'op_metrics_name'
-metrics_name = "metrics"
+op_metrics_name = "op_metrics"
 success_name = "success"
 fail_name = "fail"
 memory_name = "memory"
@@ -45,16 +44,13 @@ group_title = "Group"
 # List of column name tuples for operator metrics: (<map_key>, <csv_column>, <db_column>)
 op_metrics_columns = [
     ("model_name", "Model", "Model"),
-    ("ep", "EP", "EP"),
-    ("num_cpu_ops", "Num CPU Ops", "NumCPUOps"),
-    ("cpu_exec_time", "CPU Ops execution time", "CPUExecTime"),
-    ("cpu_ops", "CPU Ops", "CPUOperatorDurations"),
-    ("num_cuda_ops", "Num CUDA Ops", "NumCUDAOps"),
-    ("cuda_exec_time", "CUDA Ops execution time", "CUDAExecTime"),
-    ("cuda_ops", "CUDA Ops", "CUDAOperatorDurations"),
-    ("num_trt_ops", "Num TRT Ops", "NumTRTOps"),
-    ("trt_exec_time", "TRT Ops execution time", "TRTExecTime"),
-    ("trt_ops", "TRT Ops", "TRTOperatorDurations"),
+    ("input_ep", "Input EP", "InputEP"),
+    ("operator", "Operator", "Operator"),
+    ("assigned_ep", "Assigned EP", "AssignedEP"),
+    ("num_instances", "Num Instances", "NumInstances"),
+    ("total_dur", "Total Duration", "TotalDuration"),
+    ("min_dur", "Min Duration", "MinDuration"),
+    ("max_dur", "Max Duration", "MaxDuration"),
 ]
 
 # endings
@@ -140,30 +136,20 @@ def parse_single_file(f):
 
                 provider = args["provider"]
 
+                op_map = None
+
                 if first_run_flag:
                     if provider not in provider_op_map_first_run:
                         provider_op_map_first_run[provider] = {}
 
                     op_map = provider_op_map_first_run[provider]
-
-                    if row["name"] in op_map:
-                        provider_op_map[provider] = {}
-                        op_map = provider_op_map[provider]
-                        op_map[row["name"]] = row["dur"]
-                        provider_op_map[provider] = op_map
-                    else:
-                        op_map[row["name"]] = row["dur"]
-                        provider_op_map_first_run[provider] = op_map
                 else:
                     if provider not in provider_op_map:
                         provider_op_map[provider] = {}
 
                     op_map = provider_op_map[provider]
 
-                    # avoid duplicated metrics
-                    if not row["name"] in op_map:
-                        op_map[row["name"]] = row["dur"]
-                        provider_op_map[provider] = op_map
+                op_map[row["name"]] = {"dur": row["dur"], "op_name": args["op_name"]}
 
     if debug_verbose:
         pprint._sorted = lambda x: x
@@ -172,13 +158,13 @@ def parse_single_file(f):
         print("------First run ops map (START)------")
         for key, map in provider_op_map_first_run.items():
             print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1]["dur"], reverse=True)})
 
         print("------First run ops map (END) ------")
         print("------Second run ops map (START)------")
         for key, map in provider_op_map.items():
             print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1], reverse=True)})
+            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1]["dur"], reverse=True)})
         print("------Second run ops map (END) ------")
 
     if model_run_flag:
@@ -187,56 +173,65 @@ def parse_single_file(f):
     return None
 
 
-def get_ep_op_metrics(ep, op_map):
-    op_metrics = {"num_ops": 0, "exec_time": 0, "ops": "{}"}
+def get_ep_operator_metrics(ep, ep_nodes):
+    ep_operator_metrics = {}
 
-    if ep in op_map:
-        ops = op_map[ep]
-        op_metrics["ops"] = json.dumps(ops)
-        op_metrics["num_ops"] = len(ops)
+    if ep in ep_nodes:
+        nodes = ep_nodes[ep]
 
-        for _, exec_time in ops.items():
-            op_metrics["exec_time"] += int(exec_time)
+        for _, node_info in nodes.items():
+            node_dur = int(node_info["dur"])
+            op_name = node_info["op_name"]
 
-    return op_metrics
+            if op_name not in ep_operator_metrics:
+                ep_operator_metrics[op_name] = {
+                    "num_instances": 1,
+                    "total_dur": node_dur,
+                    "min_dur": node_dur,
+                    "max_dur": node_dur,
+                }
+            else:
+                node_op_info = ep_operator_metrics[op_name]
+                node_op_info["num_instances"] += 1
+                node_op_info["total_dur"] += node_dur
+                node_op_info["min_dur"] = min(node_dur, node_op_info["min_dur"])
+                node_op_info["max_dur"] = max(node_dur, node_op_info["max_dur"])
+
+    return ep_operator_metrics
 
 
-def get_op_breakdown(op_map):
+def get_operator_metrics(ep_nodes):
     """
     Returns the number of operators and the total execution time for each execution provider.
 
-    :param op_map: A dictionary that maps an execution provider to a dictionary of operator durations.
-        Ex: {"CUDAExecutionProvider": { "op0": 200, "op1": 100 }, "CPUExec...": {...}}
+    :param ep_nodes: A dictionary that maps an ORT execution provider to a dictionary of node information.
 
-    :return: A dictionary that maps an execution provider to a dictionary of operator metrics.
-        Ex: {"CPUExecutionProvider" : { "num_ops": x, "exec_time": y, "ops": "ops json string"},
-             "CUDAExecutionProvider": { ... }, "TensorrtExecutionProvider: { ... }}
+        Ex: {
+                "CUDAExecutionProvider": {
+                    "node0": {"dur": 200, "op_name": "Conv"},
+                    "node1": {"dur": 100, "op_name": "Conv"},
+                    ...
+                },
+                "CPUExecutionProvider": {...}
+            }
 
-    Note that the number of TensorRT operators obtained from parsing profile data (i.e., using op_map)
-    is incorrect. The profile data does not breakdown the individual operators used in TensorRT. Thus, computing
-    the number of operators handled by TensorRT requires comparison with a "baseline" inference session
-    that uses only the CUDA and CPU execution providers.
+    :return: A dictionary that maps an ORT execution provider to a dictionary of summarized operator metrics.
 
-    num_trt_ops = (baseline number of cuda/cpu ops) - (number of cpu/cuda ops used in trt inference session)
-
-    Ex: ep_to_operator = {
-                           'ORT-CUDAFp32': {'CUDAExecutionProvider': { 'op0': 200, 'op1': 100 },
-                                            'CPUExecutionProvider': { 'op2': 10, 'op3': 300 }},
-                           'ORT-TRTFp32': {'CUDAExecutionProvider': { 'op1': 100 },
-                                           'CPUExecutionProvider': { 'op2' : 10 },
-                                           'TensorrtExecutionProvider': { 'subgraph0': 400 }}
-                         }
-
-    num_trt_ops = 4 - 2 = 2
-
-    See output_metrics() for the code that performs the above computations/fixups.
+        Ex: {
+                "CPUExecutionProvider" : {
+                    "Conv": {"num_instances": 20, "total_dur": 32003, "min_dur": 10, "max_dur": 200},
+                    "Add": {"num_instances": 22, "total_dur": ... }
+                },
+                "CUDAExecutionProvider": { ... },
+                "TensorrtExecutionProvider: { ... }
+            }
     """
 
-    cpu_op_metrics = get_ep_op_metrics(cpu_ep, op_map)
-    cuda_op_metrics = get_ep_op_metrics(cuda_ep, op_map)
-    trt_op_metrics = get_ep_op_metrics(trt_ep, op_map)
-
-    return {cpu_ep: cpu_op_metrics, cuda_ep: cuda_op_metrics, trt_ep: trt_op_metrics}
+    return {
+        cpu_ep: get_ep_operator_metrics(cpu_ep, ep_nodes),
+        cuda_ep: get_ep_operator_metrics(cuda_ep, ep_nodes),
+        trt_ep: get_ep_operator_metrics(trt_ep, ep_nodes),
+    }
 
 
 def get_profile_metrics(path, profile_already_parsed, logger=None):

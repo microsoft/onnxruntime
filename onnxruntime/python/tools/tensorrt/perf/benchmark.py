@@ -15,40 +15,15 @@ from datetime import datetime
 import coloredlogs
 import numpy as np
 
-from perf_utils import (
-    acl,
-    acl_ep,
-    avg_ending,
-    basic,
-    cpu,
-    cpu_ep,
-    cuda,
-    cuda_ep,
-    cuda_fp16,
-    disable,
-    enable_all,
-    extended,
-    get_op_breakdown,
-    get_output,
-    get_profile_metrics,
-    is_standalone,
-    memory_ending,
-    model_title,
-    op_metrics_columns,
-    ort_provider_list,
-    percentile_ending,
-    pretty_print,
-    provider_list,
-    second,
-    second_session_ending,
-    session_ending,
-    standalone_trt,
-    standalone_trt_fp16,
-    table_headers,
-    trt,
-    trt_ep,
-    trt_fp16,
-)
+from perf_utils import (acl, acl_ep, avg_ending, basic, cpu, cpu_ep, cuda,
+                        cuda_ep, cuda_fp16, disable, enable_all, extended,
+                        get_operator_metrics, get_output, get_profile_metrics,
+                        is_standalone, memory_ending, model_title,
+                        op_metrics_columns, ort_provider_list,
+                        percentile_ending, pretty_print, provider_list, second,
+                        second_session_ending, session_ending, standalone_trt,
+                        standalone_trt_fp16, table_headers, trt, trt_ep,
+                        trt_fp16)
 
 import onnxruntime  # isort:skip
 import onnx  # isort:skip
@@ -652,7 +627,7 @@ def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
         if ep not in model_to_metrics[model_name]:
             model_to_metrics[model_name][ep] = {}
 
-        model_to_metrics[model_name][ep]["op_breakdown"] = get_op_breakdown(op_map)
+        model_to_metrics[model_name][ep]["operator_metrics"] = get_operator_metrics(op_map)
 
 
 ###################################################################################################
@@ -1753,56 +1728,85 @@ def output_latency(results, csv_filename):
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
 
-def get_model_cuda_op_info(model, ep_info, fp16):
-    cuda_key = cuda_fp16 if fp16 else cuda
-    op_breakdown = ep_info[cuda_key]["op_breakdown"]
-    model_cuda_op_info = {
-        "model_name": model,
-        "ep": cuda_key,
-        "num_cpu_ops": op_breakdown[cpu_ep]["num_ops"],
-        "cpu_exec_time": op_breakdown[cpu_ep]["exec_time"],
-        "cpu_ops": op_breakdown[cpu_ep]["ops"],
-        "num_cuda_ops": op_breakdown[cuda_ep]["num_ops"],
-        "cuda_exec_time": op_breakdown[cuda_ep]["exec_time"],
-        "cuda_ops": op_breakdown[cuda_ep]["ops"],
-        "num_trt_ops": op_breakdown[trt_ep]["num_ops"],  # Should be 0
-        "trt_exec_time": op_breakdown[trt_ep]["exec_time"],  # Should be 0
-        "trt_ops": op_breakdown[trt_ep]["ops"],  # Should be empty
-    }
+def get_operator_metrics_rows(model, input_ep, operator_metrics):
+    """
+    Returns a list of rows to append to the 'operator metrics' CSV file.
+    Each row contains metrics (e.g., num_instances, duration, etc.) for a particular operator (e.g, Conv, Add, etc.) used
+    in the specified model/input_ep.
 
-    return model_cuda_op_info
+    :param model: The name of the model (e.g., zfnet512-9).
+    :param input_ep: The name of the input EP (e.g., ORT-CUDAFp32, ORT-TRTFp32, etc.).
+    :param operator_metrics: A dictionary that maps on ORT execution provider to a dictionary of operator metrics.
 
+        Ex: {
+                "CPUExecutionProvider" : {
+                    "Conv": {"num_instances": 20, "total_dur": 200, "min_dur": 10, "max_dur": 20},
+                    "Add": {"num_instances": 22, "total_dur": ... }
+                },
+                "CUDAExecutionProvider": { ... },
+                "TensorrtExecutionProvider: { ... }
+            }
 
-def get_model_trt_op_info(model, ep_info, model_cuda_op_info, fp16):
-    trt_key = trt_fp16 if fp16 else trt
-    op_breakdown = ep_info[trt_key]["op_breakdown"]
+    :return: A list of rows containing operator metrics for the specified model and input_ep.
+        Ex: [
+            {
+                "model_name": "zfnet512-9",
+                "input_ep": "ORT-CUDAFp32",
+                "Operator": "Conv",
+                "assigned_ep": "CUDAExecutionProvider",
+                "num_instances": 333,
+                "total_dur": 12345,
+                "min_dur": 31,
+                "max_dur": 6003
+            },
+            { ... },
+            ...
+        ]
+    """
 
-    # Because we can't directly parse the number of trt ops from profile data, we need to
-    # calculate the number of trt ops as:
-    # trt_num_ops = (total num ops in ORT-CUDAFpxx) - (cuda and cpu ops in ORT-TRTFpxx)
-    num_cpu_ops = op_breakdown[cpu_ep]["num_ops"]
-    num_cuda_ops = op_breakdown[cuda_ep]["num_ops"]
-    num_cuda_cpu_ops = num_cpu_ops + num_cuda_ops
-    num_trt_ops = (model_cuda_op_info["num_cpu_ops"] + model_cuda_op_info["num_cuda_ops"]) - num_cuda_cpu_ops
+    rows = []
 
-    model_trt_op_info = {
-        "model_name": model,
-        "ep": trt_key,
-        "num_cpu_ops": num_cpu_ops,
-        "cpu_exec_time": op_breakdown[cpu_ep]["exec_time"],
-        "cpu_ops": op_breakdown[cpu_ep]["ops"],
-        "num_cuda_ops": num_cuda_ops,
-        "cuda_exec_time": op_breakdown[cuda_ep]["exec_time"],
-        "cuda_ops": op_breakdown[cuda_ep]["ops"],
-        "num_trt_ops": num_trt_ops,
-        "trt_exec_time": op_breakdown[trt_ep]["exec_time"],
-        "trt_ops": op_breakdown[trt_ep]["ops"],
-    }
+    for assigned_ep, operators in operator_metrics.items():
+        for op_name, metrics in operators.items():
+            row = {
+                "model_name": model,
+                "input_ep": input_ep,
+                "operator": op_name,
+                "assigned_ep": assigned_ep,
+                "num_instances": metrics["num_instances"],
+                "total_dur": metrics["total_dur"],
+                "min_dur": metrics["min_dur"],
+                "max_dur": metrics["max_dur"],
+            }
 
-    return model_trt_op_info
+            rows.append(row)
+
+    return rows
 
 
 def output_metrics(model_to_metrics, csv_filename):
+    """
+    Writes every model's operator metrics to a CSV file.
+
+    :param model_to_metrics: A dictionary that maps a model to operator metrics for each input EP.
+
+        Ex: {
+                "zfnet512-9": {
+                    "ORT-CPUFp32": { ... },
+                    "ORT-CUDAFp32": { ... },
+                    "ORT-TRTFp32": { ... }
+                },
+                "resnet101-v1-7": {
+                    "ORT-CPUFp32": { ... },
+                    "ORT-CUDAFp32": { ... },
+                    "ORT-TRTFp32": { ... }
+                },
+                ...
+            }
+
+    :param csv_filename: The name of the CSV file to write.
+    """
+
     with open(csv_filename, mode="w", newline="") as csv_file:
         column_names = [c[1] for c in op_metrics_columns]
         csv_writer = csv.writer(csv_file)
@@ -1810,27 +1814,16 @@ def output_metrics(model_to_metrics, csv_filename):
 
         results = []
         for model, ep_info in model_to_metrics.items():
-            if cuda in ep_info:
-                model_cuda_op_info = get_model_cuda_op_info(model, ep_info, False)
-                results.append(model_cuda_op_info)
-
-                if trt in ep_info:
-                    model_trt_op_info = get_model_trt_op_info(model, ep_info, model_cuda_op_info, False)
-                    results.append(model_trt_op_info)
-
-            if cuda_fp16 in ep_info:
-                model_cuda_op_info = get_model_cuda_op_info(model, ep_info, True)
-                results.append(model_cuda_op_info)
-
-                if trt_fp16 in ep_info:
-                    model_trt_op_info = get_model_trt_op_info(model, ep_info, model_cuda_op_info, True)
-                    results.append(model_trt_op_info)
+            for input_ep in [cuda, trt, cuda_fp16, trt_fp16]:
+                if input_ep in ep_info:
+                    rows = get_operator_metrics_rows(model, input_ep, ep_info[input_ep]["operator_metrics"])
+                    results.extend(rows)
 
         for value in results:
             row = [value[c[0]] for c in op_metrics_columns]
             csv_writer.writerow(row)
 
-    logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
+    logger.info(f"Execution provider operator metrics are saved to csv file: {csv_filename}")
 
 
 def output_system_info(result, csv_filename):
