@@ -39,7 +39,7 @@ struct GroupOptimizerState {
  * Besides, also maintain a pointer of DataTransferManager* that is owned by InferenceSession.
  * This is used to do Tensor copy in the file saving stage.
  */
-struct OptimizerCheckpointStates {
+struct OptimizerCheckpointState {
  public:
   std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>> group_named_optimizer_states;
   const DataTransferManager* optimizer_session_data_transfer_mgr;
@@ -65,7 +65,7 @@ struct Optimizer {
     return Status::OK();
   }
 
-  Status GetStateDict(OptimizerCheckpointStates& optimizer_checkpoint_states);
+  Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
  protected:
   int64_t GetStep() const {

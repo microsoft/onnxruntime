@@ -203,15 +203,15 @@ Status RunTraining(const TestRunnerParameters& params) {
   std::string tensorboard_file = params.output_dir + "/tb.event";
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
 
-  CheckpointStates state_dicts;
-  ORT_ENFORCE(LoadCheckpoint(params.checkpoint_to_load_path, state_dicts).IsOK());
+  CheckpointState state;
+  ORT_ENFORCE(LoadCheckpoint(params.checkpoint_to_load_path, state).IsOK());
 
   Module module(params.model_training_graph_path,
-                state_dicts.module_checkpoint_states.named_parameters,
+                state.module_checkpoint_state.named_parameters,
                 params.model_evaluation_graph_path);
 
   Optimizer optimizer(params.optimizer_training_graph_path,
-                      state_dicts.module_checkpoint_states.named_parameters);
+                      state.module_checkpoint_state.named_parameters);
 
 #ifdef USE_CUDA
   api::SetExecutionProvider(module, optimizer, params.provider.get());
@@ -253,12 +253,12 @@ Status RunTraining(const TestRunnerParameters& params) {
 
       if (batch_idx % SAVE_STEPS == 0) {
         // save trained weights
-        CheckpointStates state_dicts_to_save;
-        ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.module_checkpoint_states).IsOK());
-        ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_checkpoint_states).IsOK());
-        state_dicts_to_save.custom_properties.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
+        CheckpointState state_to_save;
+        ORT_ENFORCE(module.GetStateDict(state_to_save.module_checkpoint_state).IsOK());
+        ORT_ENFORCE(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
+        state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
-        ORT_ENFORCE(SaveCheckpoint(state_dicts_to_save, ckpt_file).IsOK());
+        ORT_ENFORCE(SaveCheckpoint(state_to_save, ckpt_file).IsOK());
       }
 
       batch_idx++;

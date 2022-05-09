@@ -8,14 +8,14 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
-Status Module::GetStateDict(ModuleCheckpointStates& module_checkpoint_states) {
-  module_checkpoint_states.named_parameters = named_parameters();
+Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {
+  module_checkpoint_state.named_parameters = named_parameters();
 
   // Pass the training session data transfer manager for data copying when saving.
   // An alternative is, we can do copy at this stage.
   ORT_RETURN_IF_NOT(train_sess_, "training session not initialized");
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
-  module_checkpoint_states.train_session_data_transfer_mgr = &sess_data_transfer_manager;
+  module_checkpoint_state.train_session_data_transfer_mgr = &sess_data_transfer_manager;
   return Status::OK();
 }
 

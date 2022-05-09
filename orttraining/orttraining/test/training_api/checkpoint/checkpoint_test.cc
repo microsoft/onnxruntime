@@ -114,10 +114,10 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   /// And check the result comparible with initial parameter values.
 
   // Call Load APIs
-  CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_states));
-  ModuleCheckpointStates module_states = checkpoint_states.module_checkpoint_states;
-  const auto& param_states = module_states.named_parameters;
+  CheckpointState checkpoint_state_to_load;
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
+  ModuleCheckpointState module_state = checkpoint_state_to_load.module_checkpoint_state;
+  const auto& param_states = module_state.named_parameters;
   std::unordered_map<std::string, OrtValue> restored_param_name_to_ort_values;
   std::vector<std::string> restored_trainable_param_names;
   for (auto it = param_states.begin(); it != param_states.end(); ++it) {
@@ -209,8 +209,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
   /// And check the result checkpoint files.
 
-  CheckpointStates state_dicts_to_save;
-  ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_checkpoint_states).IsOK());
+  CheckpointState checkpoint_state;
+  ORT_ENFORCE(optimizer.GetStateDict(checkpoint_state.optimizer_checkpoint_state).IsOK());
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -222,7 +222,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(state_dicts_to_save, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -250,11 +250,11 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   /// And check the result comparible with initial optimizer state values.
 
   // Call Load APIs
-  CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_states));
-  OptimizerCheckpointStates optimizer_states = checkpoint_states.optimizer_checkpoint_states;
+  CheckpointState checkpoint_state_to_load;
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
+  OptimizerCheckpointState optimizer_state = checkpoint_state_to_load.optimizer_checkpoint_state;
   std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>>&
-      group_optimizer_states = optimizer_states.group_named_optimizer_states;
+      group_optimizer_states = optimizer_state.group_named_optimizer_states;
 
   ASSERT_EQ(group_optimizer_states.size(), 1);
   ASSERT_EQ(group_optimizer_states.begin()->first, "group0");
@@ -293,20 +293,20 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
 
-  CheckpointStates state_dicts_to_save;
-  PropertyBag& custom_properties = state_dicts_to_save.custom_properties;
+  CheckpointState checkpoint_state;
+  PropertyBag& property_bag = checkpoint_state.property_bag;
 
   float f_data = 0.5f;
   std::string f_property_name("float_number");
-  custom_properties.AddProperty<float>(f_property_name, f_data);
+  property_bag.AddProperty<float>(f_property_name, f_data);
 
   int64_t i_data = 400;
   std::string i_property_name("dataset_epoch_index");
-  custom_properties.AddProperty<int64_t>(i_property_name, i_data);
+  property_bag.AddProperty<int64_t>(i_property_name, i_data);
 
   std::string s_data("/data/path/train.bin");
   std::string s_property_name("train_data_path");
-  custom_properties.AddProperty<std::string>(s_property_name, s_data);
+  property_bag.AddProperty<std::string>(s_property_name, s_data);
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -321,7 +321,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   // Call Save APIs.
   PathString checkpoint_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("e2e_ckpt_save_cpu"))};
-  ASSERT_STATUS_OK(SaveCheckpoint(state_dicts_to_save, checkpoint_path));
+  ASSERT_STATUS_OK(SaveCheckpoint(checkpoint_state, checkpoint_path));
 
   // Check the ckpt files in the directory.
   std::set<PathString> expected_file_names{
@@ -344,15 +344,15 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   ASSERT_EQ(expected_file_names, valid_file_names);
 
   // Call Load APIs
-  CheckpointStates checkpoint_states;
-  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_states));
-  PropertyBag& restored_custom_properties = checkpoint_states.custom_properties;
-  ASSERT_EQ(restored_custom_properties.Size(), 3);
-  float restored_f_data = restored_custom_properties.GetProperty<float>(f_property_name);
+  CheckpointState checkpoint_state_to_load;
+  ASSERT_STATUS_OK(LoadCheckpoint(checkpoint_path, checkpoint_state_to_load));
+  PropertyBag& restored_property_bag = checkpoint_state_to_load.property_bag;
+  ASSERT_EQ(restored_property_bag.Size(), 3);
+  float restored_f_data = restored_property_bag.GetProperty<float>(f_property_name);
   ASSERT_FLOAT_EQ(f_data, restored_f_data);
-  int64_t restored_i_data = restored_custom_properties.GetProperty<int64_t>(i_property_name);
+  int64_t restored_i_data = restored_property_bag.GetProperty<int64_t>(i_property_name);
   ASSERT_EQ(i_data, restored_i_data);
-  std::string restored_s_data = restored_custom_properties.GetProperty<std::string>(s_property_name);
+  std::string restored_s_data = restored_property_bag.GetProperty<std::string>(s_property_name);
   ASSERT_EQ(s_data, restored_s_data);
 }
 

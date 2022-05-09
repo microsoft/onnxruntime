@@ -59,8 +59,8 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   }
 }
 
-Status Optimizer::GetStateDict(OptimizerCheckpointStates& optimizer_checkpoint_states) {
-  auto& grouped_optimizer_states = optimizer_checkpoint_states.group_named_optimizer_states;
+Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_state) {
+  auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
 
   // Currently all parameters are in a single group, so we hardcode group0 here.
   // To support multiple groups, Optimizer constructor need accept informations for groupping.
@@ -71,7 +71,7 @@ Status Optimizer::GetStateDict(OptimizerCheckpointStates& optimizer_checkpoint_s
   // An alternative is, we can do copy at this stage.
   ORT_RETURN_IF_NOT(optim_sess_, "optimizer session not initialized");
   const DataTransferManager& sess_data_transfer_manager = optim_sess_->GetDataTransferManager();
-  optimizer_checkpoint_states.optimizer_session_data_transfer_mgr = &sess_data_transfer_manager;
+  optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &sess_data_transfer_manager;
   return Status::OK();
 }
 

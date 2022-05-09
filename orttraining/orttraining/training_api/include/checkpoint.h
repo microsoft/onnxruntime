@@ -14,11 +14,11 @@
 /**
  * There are two representation for checkpoint respectively in memory and files:
  *
- * 1. CheckpointStates. A data class representing traing states in memory, which include:
+ * 1. CheckpointState. A data class representing traing states in memory, which include:
  *    i. module state:
- *        a instance of data class `ModuleCheckpointStates` managed along with Module/Parameter classes,
+ *        a instance of data class `ModuleCheckpointState` managed along with Module/Parameter classes,
  *    ii. optimizer state:
- *        a instance of data class `OptimizerCheckpointStates` managed along with Optimizer class,
+ *        a instance of data class `OptimizerCheckpointState` managed along with Optimizer class,
  *    iii. user defined training properties, for example 'epoch', 'best_score':
  *        a instance of data class `PropertyBag` managed along with CheckpointProperty classes.
  *
@@ -34,19 +34,19 @@
  *       optim_group0_properties.pbseq - group-wise optimizer property tensor protobuf messages
  *       custom_properties.pbseq - custom property protobuf messages
  *
- *    LoadCheckpoint takes CheckpointStates as outputs, loading from a directory of checkpoint.
- *    SaveCheckpoint takes CheckpointStates as inputs, saving checkpoint files into a directory.
+ *    LoadCheckpoint takes CheckpointState as outputs, loading from a directory of checkpoint.
+ *    SaveCheckpoint takes CheckpointState as inputs, saving checkpoint files into a directory.
  */
 
 namespace onnxruntime {
 namespace training {
 namespace api {
 
-struct CheckpointStates {
+struct CheckpointState {
  public:
-  ModuleCheckpointStates module_checkpoint_states;
-  OptimizerCheckpointStates optimizer_checkpoint_states;
-  PropertyBag custom_properties;
+  ModuleCheckpointState module_checkpoint_state;
+  OptimizerCheckpointState optimizer_checkpoint_state;
+  PropertyBag property_bag;
 };
 
 /**
@@ -64,11 +64,11 @@ Status SaveCheckpoint(const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_
 /**
  * @brief Save training states as ORT checkpoint.
  *
- * @param states parameter/optimizer and other user defined training states.
+ * @param state parameter/optimizer and other user defined training states.
  * @param checkpoint_path folder where checkpoint is saved.
  * @return Status
  */
-Status SaveCheckpoint(CheckpointStates& states,
+Status SaveCheckpoint(CheckpointState& state,
                       const PathString& checkpoint_path);
 
 /**
@@ -79,7 +79,7 @@ Status SaveCheckpoint(CheckpointStates& states,
  * @return Status
  */
 Status LoadCheckpoint(const PathString& checkpoint_path,
-                      CheckpointStates& checkpoint_states);
+                      CheckpointState& checkpoint_state);
 
 }  // namespace api
 }  // namespace training

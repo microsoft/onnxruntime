@@ -51,7 +51,7 @@ struct Parameter {
   bool requires_grad_{true};
 };
 
-struct ModuleCheckpointStates {
+struct ModuleCheckpointState {
  public:
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   const DataTransferManager* train_session_data_transfer_mgr;
@@ -91,7 +91,7 @@ struct Module {
   }
 
   // Return the states of the module as a map.
-  Status GetStateDict(ModuleCheckpointStates& module_checkpoint_states);
+  Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
