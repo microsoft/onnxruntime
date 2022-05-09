@@ -16,9 +16,9 @@
 #
 # When there is no parameter, all avaiable tests will run on the longformer-base-4096 pretrained model.
 
-# Benchmark the latency (Exported onnx model is in the current directory):
+# Benchmark the latency:
 #   python benchmark_longformer.py --model longformer-base-4096 --batch_sizes 1 --sequence_lengths 512 1024 2048 4096 \
-#          --global_lengths 8 --onnx ./longformer-base-4096_fp16.onnx --validate_onnx -t 100
+#          --global_lengths 8 --onnx ./longformer-base-4096_fp16.onnx -t 100
 #
 # Benchmark GPU peak memory:
 #   export ORT_LONGFORMER_COMPACT_MEMORY=0
@@ -82,15 +82,19 @@ def test_torch_latency(
                     "precision": "fp32",
                     "io_binding": "",
                     "model_name": model_name,
-                    "description": model_name + "[torch]",
+                    "description": model_name + " [torch]",
                     "inputs": 3,
                     "threads": num_threads,
                     "batch_size": batch_size,
                     "sequence_length": sequence_length,
                     "global_length": global_length,
                     "datetime": str(datetime.now()),
-                    "memory": "",
-                    "max_diff": 0,
+                    "memory": "NA",
+                    "diff_max": 0,
+                    "diff_90_percentile": 0,
+                    "diff_95_percentile": 0,
+                    "diff_99_percentile": 0,
+                    "use_compact_memory": "NA",
                 }
                 result.update(benchmark_helper.get_latency_result(runtimes, batch_size))
 
@@ -130,9 +134,9 @@ def test_ort_latency(
     num_threads,
     optimizer=False,
     precision="fp32",
-    validate_onnx=True,
     disable_io_binding=False,
     verbose=True,
+    use_compact_memory=False,
 ):
     results = []
     for batch_size in batch_sizes:
@@ -175,7 +179,11 @@ def test_ort_latency(
                     "test_times": int(test_times),
                     "datetime": str(datetime.now()),
                     "memory": "",
-                    "max_diff": None,
+                    "diff_max": None,
+                    "diff_90_percentile": None,
+                    "diff_95_percentile": None,
+                    "diff_99_percentile": None,
+                    "use_compact_memory": use_compact_memory,
                 }
 
                 if not disable_io_binding:
@@ -203,8 +211,9 @@ def test_ort_latency(
                         batch_size=batch_size,
                     )
 
-                if validate_onnx:
-                    result["max_diff"] = test_parity(
+                # measure result difference between PyTorch and OnnxRuntime
+                diff_results = [
+                    test_parity(
                         device,
                         model,
                         ort_session,
@@ -213,6 +222,13 @@ def test_ort_latency(
                         global_length,
                         verbose,
                     )
+                    for _ in range(test_times)
+                ]
+
+                result["diff_max"] = max(diff_results)
+                result["diff_90_percentile"] = np.percentile(diff_results, 90)
+                result["diff_95_percentile"] = np.percentile(diff_results, 95)
+                result["diff_99_percentile"] = np.percentile(diff_results, 99)
 
                 results.append(result)
     return results
@@ -278,7 +294,6 @@ def load_torch_model(model_name, device):
 
 def find_onnx_model(model_name, onnx_dir="."):
     # Search onnx model in the following order: optimized fp16 model, optimized fp32 model, raw model
-    # TODO: call convert_longformer_to_onnx to export onnx instead.
     import os.path
 
     onnx_model_path = os.path.join(onnx_dir, model_name + ".onnx")
@@ -335,8 +350,10 @@ def test_ort(args, device):
     if session is None:
         raise RuntimeError(f"Failed to create ORT session from ONNX file {onnx_model_path}")
 
+    use_compact_memory = os.environ.get("ORT_LONGFORMER_COMPACT_MEMORY", "0") == "1"
+
     description = onnx_model_path
-    if os.environ.get("ORT_LONGFORMER_COMPACT_MEMORY", "0") == "1":
+    if use_compact_memory:
         description += "[compact_memory]"
 
     return test_ort_latency(
@@ -352,9 +369,9 @@ def test_ort(args, device):
         num_threads,
         optimized,
         precision,
-        args.validate_onnx,
         args.disable_io_binding,
         args.verbose,
+        use_compact_memory,
     )
 
 
@@ -450,14 +467,6 @@ def parse_arguments(argv=None):
     )
 
     parser.add_argument(
-        "-v",
-        "--validate_onnx",
-        required=False,
-        action="store_true",
-        help="Validate that ONNX model generates same output as PyTorch model.",
-    )
-
-    parser.add_argument(
         "--disable_io_binding",
         required=False,
         action="store_true",
@@ -501,7 +510,11 @@ def output_details(results, csv_filename):
             "batch_size",
             "sequence_length",
             "global_length",
-            "max_diff",
+            "use_compact_memory",
+            "diff_max",
+            "diff_90_percentile",
+            "diff_95_percentile",
+            "diff_99_percentile",
             "memory",
             "QPS",
             "average_latency_ms",
@@ -572,28 +585,32 @@ def test_all():
                             for compact_memory in [
                                 "1",
                                 "0",
-                            ]:  # run test with less memory first due to ORT arena memory.
-                                os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
-                                print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
-                                arguments = (
-                                    f"--disable_io_binding -e {engine_name} --onnx {onnx_path} "
-                                    f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
-                                )
+                            ]:
+                                for use_io_binding in [True, False]:
+                                    os.environ["ORT_LONGFORMER_COMPACT_MEMORY"] = compact_memory
+                                    print("ORT_LONGFORMER_COMPACT_MEMORY=", compact_memory)
+                                    arguments = (
+                                        f"-e {engine_name} --onnx {onnx_path} "
+                                        f"-b {batch_size} -s {sequence_length} -g {global_length} -m {model_name}"
+                                    )
 
-                                args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
-                                memory_results = launch_test(args)
-                                print(memory_results)
+                                    if not use_io_binding:
+                                        arguments += " --disable_io_binding"
 
-                                args = parse_arguments(f"{arguments} -t {test_times} --validate_onnx".split(" "))
-                                latency_results = launch_test(args)
-                                if len(latency_results) == 1:
-                                    latency_results[0]["memory"] = memory_results["memory"]
-                                else:
-                                    raise RuntimeError("len(latency_results) is not 1")
+                                    args = parse_arguments(f"{arguments} -t 10 --memory".split(" "))
+                                    memory_results = launch_test(args)
+                                    print(memory_results)
 
-                                print(latency_results)
+                                    args = parse_arguments(f"{arguments} -t {test_times}".split(" "))
+                                    latency_results = launch_test(args)
+                                    if len(latency_results) == 1:
+                                        latency_results[0]["memory"] = memory_results["memory"]
+                                    else:
+                                        raise RuntimeError("len(latency_results) is not 1")
 
-                                results += latency_results
+                                    print(latency_results)
+
+                                    results += latency_results
     return results
 
 
