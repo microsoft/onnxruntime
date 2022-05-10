@@ -58,8 +58,5 @@ enum class ThreadPoolType : uint8_t {
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
                                              ThreadPoolType tpool_type);
 
-std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
-                                             std::function<bool()> is_session_run_in_progress_fn,
-                                             ThreadPoolType tpool_type);
 }  // namespace concurrency
 }  // namespace onnxruntime

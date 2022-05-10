@@ -266,23 +266,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
-    auto is_session_run_in_progress = [&]() -> bool {
-      // invocation_refcounter_ cant be placed into the session state, which is created later than TPs
-      return invocation_refcounter_.load(std::memory_order_relaxed) > 0;
-    };
 
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
       const bool allow_intra_op_spinning =
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
-
-      const bool enable_spin_stop =
-          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableSpinStop, "0") == "1";
-
-      std::function<bool()> spinning_switch;
-      if (allow_intra_op_spinning && enable_spin_stop) {
-        spinning_switch = is_session_run_in_progress;
-      }
 
       OrtThreadPoolParams to = session_options_.intra_op_param;
       std::basic_stringstream<ORTCHAR_T> ss;
@@ -312,7 +300,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       }
 
       thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, std::move(spinning_switch), concurrency::ThreadPoolType::INTRA_OP);
+          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       bool allow_inter_op_spinning =
@@ -343,7 +331,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
       }
       inter_op_thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, is_session_run_in_progress, concurrency::ThreadPoolType::INTER_OP);
+          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
       if (inter_op_thread_pool_ == nullptr) {
         LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
         session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;

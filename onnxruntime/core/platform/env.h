@@ -79,9 +79,6 @@ struct ThreadOptions {
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
-  // This function reports if there are Session::Run() calls in progress
-  // helps to reduce spinning of threads (and CPU usage) in between rare calls.
-  std::function<bool()> is_session_run_in_progress_fn;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

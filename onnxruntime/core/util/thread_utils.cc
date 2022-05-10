@@ -64,20 +64,6 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType) {
   return CreateThreadPoolHelper(env, options);
 }
 
-std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
-                                            std::function<bool()> is_session_run_in_progress_fn,
-                                            ThreadPoolType) {
-
-  auto to = ThreadPoolParamsToOptions(options);
-  if (!to.has_value()) {
-    return nullptr;
-  }
-
-  to->is_session_run_in_progress_fn = std::move(is_session_run_in_progress_fn);
-  return std::make_unique<ThreadPool>(env, *to, options.name, options.thread_pool_size,
-                                      options.allow_spinning);
-}
-
 }  // namespace concurrency
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)

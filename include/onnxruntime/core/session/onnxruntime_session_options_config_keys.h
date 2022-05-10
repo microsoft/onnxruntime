@@ -70,7 +70,6 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 // "1": default, thread will spin a number of times before blocking
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
-static const char* const kOrtSessionOptionsConfigEnableSpinStop = "session.intra_op.enable_spin_stop";
 
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,
