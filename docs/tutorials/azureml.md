@@ -16,7 +16,7 @@ The question answer scenario takes a question and a piece of text called a conte
 
 The model is then deployed on AzureML using an online endpoint.
 
-![Component diagram showing AzureML deployment with ONNX RUntime including environment, ONNX model and scoring code](/images/azureml-deployment.png)
+![Example question and context showing major processing units of tokenizer, BERT model, and post processing to extract indices of max start and end probabilities to produce the answer](/images/qa-nlp.png)
 
 
 ## Contents
@@ -239,6 +239,8 @@ if __name__ == '__main__':
 ## Deploy model with ONNX Runtime through AzureML
 
 Now that we have the ONNX model and the code to run it with ONNX Runtime, we can deploy it using Azure ML.
+
+![Component diagram showing AzureML deployment with ONNX RUntime including environment, ONNX model and scoring code](/images/azureml-deployment.png)
 
 ### Check your environment
 
