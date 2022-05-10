@@ -9,9 +9,7 @@ from _test_commons import run_subprocess
 
 import logging
 
-logging.basicConfig(
-    format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
-    level=logging.DEBUG)
+logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("DistributedTests")
 
 
@@ -22,28 +20,32 @@ def parse_arguments():
 
 
 def run_checkpoint_tests(cwd, log):
-    log.debug('Running: Checkpoint tests')
+    log.debug("Running: Checkpoint tests")
 
-    command = [sys.executable, 'orttraining_test_checkpoint.py']
+    command = [sys.executable, "orttraining_test_checkpoint.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def run_distributed_allreduce_tests(cwd, log):
-    log.debug('Running: distributed allreduce tests')
+    log.debug("Running: distributed allreduce tests")
 
-    command = [sys.executable, 'orttraining_test_allreduce.py']
+    command = [sys.executable, "orttraining_test_allreduce.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def run_pipeline_parallel_tests(cwd, log):
-    log.debug('Running: pipeline parallel tests')
+    log.debug("Running: pipeline parallel tests")
 
-    command = [sys.executable, 'orttraining_test_dhp_parallel_tests.py']
+    command = [sys.executable, "orttraining_test_dhp_parallel_tests.py"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def main():
     import torch
+
     ngpus = torch.cuda.device_count()
 
     if ngpus < 2:

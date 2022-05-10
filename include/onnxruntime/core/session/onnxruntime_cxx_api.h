@@ -362,6 +362,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
   SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
+  SessionOptions& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
   SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
   SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
@@ -971,6 +972,34 @@ struct CustomOpApi {
   void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
 
   void ThrowOnError(OrtStatus* result);
+
+  void CreateOpAttr(_In_ const char* name,
+                    _In_ const void* data,
+                    _In_ int len,
+                    _In_ OrtOpAttrType type,
+                    _Outptr_ OrtOpAttr** op_attr);
+
+  void ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr);
+
+  void CreateOp(_In_ const OrtKernelInfo* info,
+                _In_ const char* op_name,
+                _In_ const char* domain,
+                int version,
+                _In_opt_ const char** type_constraint_names,
+                _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                int type_constraint_count,
+                _In_opt_ const OrtOpAttr* const* attr_values,
+                int attr_count,
+                _Outptr_ OrtOp** ort_op);
+
+  void InvokeOp(_In_ const OrtKernelContext* context,
+                _In_ const OrtOp* ort_op,
+                _In_ const OrtValue* const* input_values,
+                _In_ int input_count,
+                _Inout_ OrtValue* const* output_values,
+                _In_ int output_count);
+
+  void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
 
  private:
   const OrtApi& api_;

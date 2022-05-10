@@ -821,7 +821,9 @@ namespace Microsoft.ML.OnnxRuntime
         // CoreML is available on iOS and macOS so we can't exclude based on __MOBILE__ && __IOS__
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_CoreML(IntPtr /*(OrtSessionOptions*)*/ options, uint coreml_flags);
+#endif
 
+#if !__MOBILE__
         // on non-mobile platforms any of these EPs are possible
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Dnnl(IntPtr /*(OrtSessionOptions*) */ options, int use_arena);
