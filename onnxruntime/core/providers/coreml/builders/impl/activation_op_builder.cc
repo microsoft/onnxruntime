@@ -103,17 +103,20 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   // slope must either:
   // - have shape [C, 1, 1]
   // - have 1 element
+  // TODO: CoreML crashes with single element slope, support it later when fixed
+  // https://github.com/apple/coremltools/issues/1488
   {
     std::vector<int64_t> slope_shape;
     if (!GetShape(*input_defs[1], slope_shape, logger)) {
       return false;
     }
+
     const bool has_supported_slope_shape =
         (slope_shape.size() == 3 && std::all_of(slope_shape.begin() + 1, slope_shape.end(),
-                                                [](int64_t dim) { return dim == 1; })) ||
-        Product(slope_shape) == 1;
+                                                [](int64_t dim) { return dim == 1; }))
+        /* || Product(slope_shape) == 1 */;
     if (!has_supported_slope_shape) {
-      LOGS(logger, VERBOSE) << "PRelu 'slope' input must either have shape [C, 1, 1] or have a single value";
+      LOGS(logger, VERBOSE) << "PRelu 'slope' input must have shape [C, 1, 1] " /*"or have a single value"*/;
       return false;
     }
   }
