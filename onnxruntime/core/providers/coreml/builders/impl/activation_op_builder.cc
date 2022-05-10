@@ -92,7 +92,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
     }
   }
 
-  // slope input must be constant
+  // slope input must be an initializer
   {
     const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
     const auto initializer_it = initializers.find(input_defs[1]->Name());
