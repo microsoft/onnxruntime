@@ -103,8 +103,8 @@ Return Value:
         add     x5,x17,x5               // x5 -> C3
         ldr     x19,[x8,#.LConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
-        ldr     x20,[x8,#.LConvSymPostProcessParams_Multiplier]
-        ldr     x21,[x8,#.LConvSymPostProcessParams_PreShift]
+        ldr     x20,[x8,#.LConvSymPostProcessParams_PreShift]
+        ldr     x21,[x8,#.LConvSymPostProcessParams_Multiplier]
         ldr     x22,[x8,#.LConvSymPostProcessParams_PostShift]
 
 
@@ -428,21 +428,21 @@ FixedPointScale:
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastFixedPointValue
-        ldp     q0,q1,[x20],32          // load multiplier vector
+        ldp     q0,q1,[x20],32          // load preshift vector
         ldp     q2,q3,[x20],32
-        ldp     q4,q5,[x21],32          // load preshift vector
+        ldp     q4,q5,[x21],32          // load multiplier vector
         ldp     q6,q7,[x21],32
         ldp     q8,q9,[x22],32          // load postshift vector
         ldp     q10,q11,[x22],32
         b       ScaleWithFixedPoint
 
 BroadcastFixedPointValue:
-        ld1r    {v0.4s},[x20]           // load multiplier Value
+        ld1r    {v0.4s},[x20]           // load preshift Value
         mov     v1.16b, v0.16b
         mov     v2.16b, v0.16b
         mov     v3.16b, v0.16b
 
-        ld1r    {v4.4s},[x21]           // load preshift Value
+        ld1r    {v4.4s},[x21]           // load multiplier Value
         mov     v5.16b, v4.16b
         mov     v6.16b, v4.16b
         mov     v7.16b, v4.16b
