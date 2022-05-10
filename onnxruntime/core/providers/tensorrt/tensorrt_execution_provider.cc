@@ -44,9 +44,10 @@ TensorrtLogger& GetTensorrtLogger();
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
-#ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
-// instantiate global unused builder object which keeps the TRT kernel library in memory
+#if defined(ORT_RUN_EXTERNAL_ONNX_TESTS) && !defined(_WIN32)
+// Instantiate global unused builder object which keeps the TRT kernel library in memory
 // so that subsequent builders avoid the expensive load / unload process.
+// Disallow on Windows because it causes a deadlock of the loader lock when onnxruntime_providers_tensorrt.dll is loaded.
 auto const trt_builder_placeholder =
     tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
 #endif
