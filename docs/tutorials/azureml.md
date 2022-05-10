@@ -14,9 +14,9 @@ In the following sections, we use the HuggingFace Bert model trained with Stanfo
 
 The question answer scenario takes a question and a piece of text called a context, and produces answer, which is a string of text taken from the context. This scenario tokenizes and encodes the question and the context, feeds the inputs into the transformer model and generates the answer by producing the most likely start and end tokens in the context, which are then mapped back into words.
 
-The model is then deployed on AzureML using an online endpoint.
-
 ![Example question and context showing major processing units of tokenizer, BERT model, and post processing to extract indices of max start and end probabilities to produce the answer](/images/qa-nlp.png)
+
+The model and scoring code are then deployed on AzureML using an online endpoint.
 
 
 ## Contents
