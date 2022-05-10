@@ -550,13 +550,14 @@ struct KeyValuePairSum {
   }
 };
 
-template <unsigned TPB>
+template <unsigned TPB, int num_half_twos_per_thread>
 __global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale,
                                                           const int8_t* __restrict__ residual, const float residual_scale,
                                                           const __half* __restrict__ bias,
                                                           int8_t* __restrict__ dst, const float dst_scale,
                                                           const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
                                                           const unsigned rows, const unsigned cols, const unsigned tile_stride) {
+  half2 cache[num_half_twos_per_thread];
   const int row_offset = (blockIdx.y * rows * cols) + (blockIdx.x << 5);
 
   const __half2 src_scale2 = __float2half2_rn(src_scale);
@@ -569,22 +570,29 @@ __global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restri
 
   cub::KeyValuePair<half2, half2> thread_data(__float2half2_rn(0.f), __float2half2_rn(0.f));
 
-  constexpr unsigned col_stride = (TPB << 1);
+  unsigned col_stride = (TPB << 1);
+  unsigned c = (threadIdx.x << 1);
 
-  for (unsigned c = (threadIdx.x << 1); c < cols; c += col_stride) {
-    unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
-    const half* bias_offset = bias + c;
+#pragma unroll
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+      const half* bias_offset = bias + c;
 
-    const int8_t* process_src = src + offset;
-    const int8_t* process_residual = residual + offset;
+      const int8_t* process_src = src + offset;
+      const int8_t* process_residual = residual + offset;
 
-    half2 val = __hmul2(src_scale2, __half2(__short2half_rn(process_src[0]), __short2half_rn(process_src[1])));
-    const half2 residual_val = __hmul2(residual_scale2, __half2(__short2half_rn(process_residual[0]), __short2half_rn(process_residual[1])));
-    const half2 bias_val = {bias_offset[0], bias_offset[1]};
-    val = __hadd2(val, __hadd2(residual_val, bias_val));
+      half2 val = __hmul2(src_scale2, __half2(__short2half_rn(process_src[0]), __short2half_rn(process_src[1])));
+      const half2 residual_val = __hmul2(residual_scale2, __half2(__short2half_rn(process_residual[0]), __short2half_rn(process_residual[1])));
+      const half2 bias_val = {bias_offset[0], bias_offset[1]};
+      val = __hadd2(val, __hadd2(residual_val, bias_val));
+      cache[idx] = val;
 
-    const half2 rldval = __hmul2(rld, val);
-    thread_data = pair_sum(thread_data, cub::KeyValuePair<half2, half2>(rldval, __hmul2(rldval, val)));
+      const half2 rldval = __hmul2(rld, val);
+      thread_data = pair_sum(thread_data, cub::KeyValuePair<half2, half2>(rldval, __hmul2(rldval, val)));
+
+      c += col_stride;
+    }
   }
 
   // Compute mean, std, and normalize here
@@ -609,43 +617,56 @@ __global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restri
 
   __syncthreads();
 
-  for (unsigned c = threadIdx.x << 1; c < cols; c += col_stride) {
-    unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+  // reset c
+  c = (threadIdx.x << 1);
 
-    const half* bias_offset = bias + c;
+#pragma unroll
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
 
-    const int8_t* process_src = src + offset;
-    const int8_t* process_residual = residual + offset;
+      /*
+      const half* bias_offset = bias + c;
 
-    half2 val = __hmul2(src_scale2, __half2(__short2half_rn(process_src[0]), __short2half_rn(process_src[1])));
-    const half2 residual_val = __hmul2(residual_scale2, __half2(__short2half_rn(process_residual[0]), __short2half_rn(process_residual[1])));
-    const half2 bias_val = {bias_offset[0], bias_offset[1]};
-    val = __hadd2(val, __hadd2(residual_val, bias_val));
+      const int8_t* process_src = src + offset;
+      const int8_t* process_residual = residual + offset;
 
-    const half* gamma_offset = gamma + c;
-    const half2 gamma_val = {gamma_offset[0], gamma_offset[1]};
+      half2 val = __hmul2(src_scale2, __half2(__short2half_rn(process_src[0]), __short2half_rn(process_src[1])));
+      const half2 residual_val = __hmul2(residual_scale2, __half2(__short2half_rn(process_residual[0]), __short2half_rn(process_residual[1])));
+      const half2 bias_val = {bias_offset[0], bias_offset[1]};
+      val = __hadd2(val, __hadd2(residual_val, bias_val));
+      */
 
-    const half* beta_offset = (nullptr == beta) ? nullptr : beta + c;
-    half2 beta_val;
-    if (nullptr == beta) {
-      beta_val = __float2half2_rn(0.0f);
-    } else {
-      beta_val = {beta_offset[0], beta_offset[1]};
+      // re-use cached value
+      half2 val = cache[idx];
+
+      const half* gamma_offset = gamma + c;
+      const half2 gamma_val = {gamma_offset[0], gamma_offset[1]};
+
+      const half* beta_offset = (nullptr == beta) ? nullptr : beta + c;
+      half2 beta_val;
+      if (nullptr == beta) {
+        beta_val = __float2half2_rn(0.0f);
+      } else {
+        beta_val = {beta_offset[0], beta_offset[1]};
+      }
+
+      __half2 output_val = gamma_val * (val - mu) * rsigma + beta_val;
+      output_val *= dst_scale2;
+
+      U1S2 short_output_val;
+      short_output_val.s2.x = __half2short_rn(output_val.x);
+      short_output_val.s2.y = __half2short_rn(output_val.y);
+
+      short_output_val.u1 = __vmaxs2(__vmins2(short_output_val.u1, 0x007F007F), 0xFF80FF80);
+
+      int8_t* process_dst = dst + offset;
+
+      process_dst[0] = static_cast<int8_t>(short_output_val.s2.x);
+      process_dst[1] = static_cast<int8_t>(short_output_val.s2.y);
+
+      c += col_stride;
     }
-
-    __half2 output_val = gamma_val * (val - mu) * rsigma + beta_val;
-    output_val *= dst_scale2;
-
-    U1S2 short_output_val;
-    short_output_val.s2.x = __half2short_rn(output_val.x);
-    short_output_val.s2.y = __half2short_rn(output_val.y);
-
-    short_output_val.u1 = __vmaxs2(__vmins2(short_output_val.u1, 0x007F007F), 0xFF80FF80);
-
-    int8_t* process_dst = dst + offset;
-
-    process_dst[0] = static_cast<int8_t>(short_output_val.s2.x);
-    process_dst[1] = static_cast<int8_t>(short_output_val.s2.y);
   }
 }
 
@@ -657,14 +678,57 @@ void QOrderAddBiasResidualLayerNorm(cudaStream_t stream, const cudaDeviceProp& /
                                     const __half* gamma, const __half* beta, const float epsilon,
                                     const unsigned batch, const unsigned rows, const unsigned cols) {
   if (order == CUBLASLT_ORDER_COL32 && residual != nullptr && bias != nullptr) {
-    constexpr int tpb = 128;
-    const dim3 blocks(rows, batch, 1);
-    const dim3 threads(tpb, 1, 1);
-    QOrderAddResidualBiasLayerNormCol32Kernel<tpb><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
-                                                                                   residual_scale, bias,
-                                                                                   dst, dst_scale, gamma,
-                                                                                   beta, epsilon, rows, cols,
-                                                                                   rows * 32);
+    if (cols > 1024) {
+      ORT_THROW("Unsupported");
+    } else if (cols <= 256) {
+      constexpr unsigned tpb = 128;
+      constexpr int num_half_twos_per_thread = 1;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    } else if (cols <= 512) {
+      constexpr unsigned tpb = 128;
+      constexpr int num_half_twos_per_thread = 2;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    } else if (cols <= 768) {
+      constexpr unsigned tpb = 128;
+      constexpr int num_half_twos_per_thread = 3;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    } else {  // cols == 1024
+      constexpr unsigned tpb = 256;
+      constexpr int num_half_twos_per_thread = 2;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    }
   } else {  // No bias or residual
     dim3 threads(32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1);
     dim3 blocks((unsigned)(rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, (unsigned)batch, 1);
