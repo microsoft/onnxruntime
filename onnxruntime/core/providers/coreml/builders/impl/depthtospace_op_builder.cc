@@ -46,9 +46,8 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   auto* coreml_depthtospace = layer->mutable_reorganizedata();
   coreml_depthtospace->set_blocksize(blocksize);
-  coreml_depthtospace->set_mode(
-      ::CoreML::Specification::ReorganizeDataLayerParams_ReorganizationType::
-          ReorganizeDataLayerParams_ReorganizationType_DEPTH_TO_SPACE);
+  coreml_depthtospace->set_mode(CoreML::Specification::ReorganizeDataLayerParams_ReorganizationType::
+                                    ReorganizeDataLayerParams_ReorganizationType_DEPTH_TO_SPACE);
 
   *layer->mutable_input()->Add() = input_name;
   *layer->mutable_output()->Add() = output_name;
