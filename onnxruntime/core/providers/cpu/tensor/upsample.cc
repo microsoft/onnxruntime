@@ -509,6 +509,120 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
   return p;
 }
 
+// The following method supports a 4-D input in 'Linear mode'
+// that amounts to 'Bilinear' Upsampling/Resizing in the sense that it assumes
+// 1. the scale values for the outermost 2 dimensions are 1 or
+// 2. the scale values for the outermost and innermost dimensions are 1
+// This is the common use-case where the 4-D input (batched multi-channel images)
+// is usually of shapes:
+// - [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
+// - [N, H, W, C] and the scales are [1.0, height_scale, width_scale, 1.0]
+BilinearParamsInteger SetupUpsampleBilinearInteger(const int64_t input_height,
+                                                   const int64_t input_width,
+                                                   const int64_t output_height,
+                                                   const int64_t output_width,
+                                                   const float height_scale,
+                                                   const float width_scale,
+                                                   const std::vector<float>& roi,
+                                                   AllocatorPtr& alloc,
+                                                   const GetOriginalCoordinateFunc& get_original_coordinate,
+                                                   bool is_nchw) {
+  BilinearParamsInteger p;
+
+  p.x_original.reserve(output_width);
+  p.y_original.reserve(output_height);
+
+  // For each index in the output height and output width, cache its corresponding indices in the input
+  // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
+  // each time we come across the output width/ output height value while iterating the output image tensor
+  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) * (output_height + output_width);
+
+  // For each index in the output height and output width, cache its corresponding "weights/scales" for its
+  // corresponding indices in the input which proportionately indicates how much they will influence the final
+  // pixel value in the output
+  // (cache because we don't have to re-compute each time we come across the output width/output height
+  // value while iterating the output image tensor
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) * (output_height + output_width);
+
+  // Limit number of allocations to just 1
+  auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
+  p.idx_scale_data_buffer_holder = BufferUniquePtr(inx_scale_data_buffer, BufferDeleter(alloc));
+
+  // Get pointers to appropriate memory locations in the scratch buffer
+  auto* idx_data = static_cast<int64_t*>(p.idx_scale_data_buffer_holder.get());
+
+  // input_width is the stride for the height dimension
+  p.input_width_mul_y1 = idx_data;
+  p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
+
+  // stride for width is 1 (no multiplication needed)
+  p.in_x1 = p.input_width_mul_y1 + 2 * output_height;
+  p.in_x2 = p.in_x1 + output_width;
+
+  auto* scale_data = reinterpret_cast<int64_t*>(p.in_x2 + output_width);
+
+  p.dy1_scale_10 = scale_data;
+  p.dy2_scale_10 = p.dy1_scale_10 + output_height;
+
+  p.dx1_scale_10 = p.dy1_scale_10 + 2 * output_height;
+  p.dx2_scale_10 = p.dx1_scale_10 + output_width;
+
+  // Start processing
+  const size_t height_rindex = is_nchw ? 1 : 2;
+  auto roi_y_start = roi.size() / 2 - (height_rindex + 1);
+  auto roi_y_end = roi.size() - (height_rindex + 1);
+  for (int64_t y = 0; y < output_height; ++y) {
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height),
+                                                             static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
+    p.y_original.emplace_back(in_y);
+    in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
+    int64_t in_y_scale_10 = static_cast<int64_t>(in_y * (1 << 10));
+
+    const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
+    const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
+    p.dy1_scale_10[y] = std::abs(in_y_scale_10 - in_y1 * (1 << 10));
+    p.dy2_scale_10[y] = std::abs(in_y_scale_10 - in_y2 * (1 << 10));
+
+    if (in_y1 == in_y2) {
+      p.dy1_scale_10[y] = static_cast<int64_t>(0.5f * (1 << 10));
+      p.dy2_scale_10[y] = static_cast<int64_t>(0.5f * (1 << 10));
+    }
+
+    p.input_width_mul_y1[y] = input_width * in_y1;
+    p.input_width_mul_y2[y] = input_width * in_y2;
+  }
+
+  const size_t width_rindex = is_nchw ? 0 : 1;
+  auto roi_x_start = roi.size() / 2 - (width_rindex + 1);
+  auto roi_x_end = roi.size() - (width_rindex + 1);
+  for (int64_t x = 0; x < output_width; ++x) {
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x),
+                                                            width_scale,
+                                                            static_cast<float>(output_width),
+                                                            static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
+    p.x_original.emplace_back(in_x);
+    in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
+    int64_t in_x_scale_10 = static_cast<int64_t>(in_x * (1 << 10));
+
+    p.in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    p.in_x2[x] = std::min(p.in_x1[x] + 1, input_width - 1);
+
+    p.dx1_scale_10[x] = std::abs(in_x_scale_10 - p.in_x1[x] * (1 << 10));
+    p.dx2_scale_10[x] = std::abs(in_x_scale_10 - p.in_x2[x] * (1 << 10));
+    if (p.in_x1[x] == p.in_x2[x]) {
+      p.dx1_scale_10[x] = static_cast<int64_t>(0.5f * (1 << 10));
+      p.dx2_scale_10[x] = static_cast<int64_t>(0.5f * (1 << 10));
+    }
+  }
+
+  return p;
+}
+
 struct TrilinearParams {
   std::vector<float> x_original;
   std::vector<float> y_original;
@@ -1065,11 +1179,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                            Y->MutableData<T>(), alloc, get_original_coordinate_,
                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
-          NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                               height_scale, width_scale, roi,
-                               use_extrapolation_, extrapolation_value_, X->Data<T>(),
-                               Y->MutableData<T>(), alloc, get_original_coordinate_,
-                               output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          NhwcUpsampleBilinearInteger(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                      height_scale, width_scale, roi,
+                                      use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                                      Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                      output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         }
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
