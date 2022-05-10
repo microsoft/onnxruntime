@@ -62,6 +62,9 @@ std::shared_ptr<CheckpointProperty> CreateCheckpointPropertyFromTensorProto(
 }  // namespace
 
 void PropertyBag::AddProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  ORT_ENFORCE(named_properties.find(tensor_proto.name()) == named_properties.end(),
+              "Duplicated property named ", tensor_proto.name());
+
   if (!IsSupportedDataType(tensor_proto.data_type())) {
     ORT_THROW("Failed to add property from tensorproto: float, int64_t and std::string data types supported only.");
   }

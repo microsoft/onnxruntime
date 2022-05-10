@@ -73,9 +73,13 @@ struct PropertyBag {
 
   template <typename T>
   void AddProperty(std::string name, T val) {
+    ORT_ENFORCE(named_properties.find(name) == named_properties.end(),
+                "Duplicated property named ", name);
+
     if (!IsSupportedDataType<T>()) {
       ORT_THROW("Failed to add property: float, int64_t and std::string data types supported only.");
     }
+
     named_properties.insert({name, std::make_shared<TypedCheckpointProperty<T>>(name, val)});
   }
 

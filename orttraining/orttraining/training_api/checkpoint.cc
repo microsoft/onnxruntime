@@ -128,6 +128,34 @@ bool StringEndsWith(std::string const& s, std::string const& p) {
   return std::equal(p.rbegin(), p.rend(), s.rbegin());
 }
 
+void WriteTensorProtoToFile(const PathString& file_path,
+                            const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
+                            std::string caller_context) {
+  auto file_write_status = WithOpenFile(
+      file_path, false,
+      [&tensor_protos](int fd) {
+        google::protobuf::io::FileOutputStream output{fd};
+        ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(tensor_protos, output));
+        return Status::OK();
+      });
+
+  ORT_ENFORCE(file_write_status.IsOK(), caller_context, " write file failed: ", ToUTF8String(file_path));
+}
+
+void LoadTensorProtoFromFile(const PathString& file_path,
+                             std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
+                             std::string caller_context) {
+  auto file_read_status = WithOpenFile(
+      file_path, true,
+      [&tensor_protos](int fd) {
+        google::protobuf::io::FileInputStream input{fd};
+        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(tensor_protos, input));
+        return Status::OK();
+      });
+
+  ORT_ENFORCE(file_read_status.IsOK(), caller_context, " load file failed: ", ToUTF8String(file_path));
+}
+
 Status OrtSaveInternal(
     const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
@@ -160,23 +188,15 @@ Status OrtSaveInternal(
 
   // Save TensorProto to file.
   if (trainable_tensor_protos.size() > 0) {
-    ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetTensorProtoFilePath(checkpoint_path, k_trainable_param_root_prefix), false,
-        [&trainable_tensor_protos](int fd) {
-          google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(trainable_tensor_protos, output));
-          return Status::OK();
-        }));
+    WriteTensorProtoToFile(
+        GetTensorProtoFilePath(checkpoint_path, k_trainable_param_root_prefix),
+        trainable_tensor_protos, "[trainable_param]");
   }
 
   if (non_trainable_tensor_protos.size() > 0) {
-    ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetTensorProtoFilePath(checkpoint_path, k_non_trainable_param_root_prefix), false,
-        [&non_trainable_tensor_protos](int fd) {
-          google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(non_trainable_tensor_protos, output));
-          return Status::OK();
-        }));
+    WriteTensorProtoToFile(
+        GetTensorProtoFilePath(checkpoint_path, k_non_trainable_param_root_prefix),
+        non_trainable_tensor_protos, "[non_trainable_param]");
   }
 
   return Status::OK();
@@ -210,13 +230,9 @@ Status OrtSaveModuleStatesInternal(ModuleCheckpointState& module_state,
           param_tensor_protos));
 
       // Save TensorProto to file.
-      ORT_RETURN_IF_ERROR(WithOpenFile(
-          GetTensorProtoFilePath(parameter_folder_path, pair.first), false,
-          [&param_tensor_protos](int fd) {
-            google::protobuf::io::FileOutputStream output{fd};
-            ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(param_tensor_protos, output));
-            return Status::OK();
-          }));
+      WriteTensorProtoToFile(
+          GetTensorProtoFilePath(parameter_folder_path, pair.first),
+          param_tensor_protos, "[param]");
     }
   }
 
@@ -274,13 +290,9 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
           saved_tensor_protos));
 
       // Save TensorProto to file.
-      ORT_RETURN_IF_ERROR(WithOpenFile(
-          GetTensorProtoFilePath(checkpoint_path, cur_state_filename_prefix), false,
-          [&saved_tensor_protos](int fd) {
-            google::protobuf::io::FileOutputStream output{fd};
-            ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(saved_tensor_protos, output));
-            return Status::OK();
-          }));
+      WriteTensorProtoToFile(
+          GetTensorProtoFilePath(checkpoint_path, cur_state_filename_prefix),
+          saved_tensor_protos, "[optimizer_state]");
     }
 
     // Storing group-wise properties.
@@ -290,13 +302,9 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
     properties.ToTensorProtos(group_wise_properties_tensor_protos);
 
-    ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetTensorProtoPropertiesFilePath(checkpoint_path, cur_group_filename_prefix), false,
-        [&group_wise_properties_tensor_protos](int fd) {
-          google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(group_wise_properties_tensor_protos, output));
-          return Status::OK();
-        }));
+    WriteTensorProtoToFile(
+        GetTensorProtoPropertiesFilePath(checkpoint_path, cur_group_filename_prefix),
+        group_wise_properties_tensor_protos, "[param_group_properties]");
   }
 
   return Status::OK();
@@ -321,13 +329,9 @@ Status OrtSaveInternal(
     std::vector<ONNX_NAMESPACE::TensorProto> properties_tensor_protos;
     property_bag.ToTensorProtos(properties_tensor_protos);
 
-    ORT_RETURN_IF_ERROR(WithOpenFile(
-        GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix), false,
-        [&properties_tensor_protos](int fd) {
-          google::protobuf::io::FileOutputStream output{fd};
-          ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(properties_tensor_protos, output));
-          return Status::OK();
-        }));
+    WriteTensorProtoToFile(
+        GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix),
+        properties_tensor_protos, "[custom_properties]");
   }
 
   LOGS_DEFAULT(INFO) << "Checkpoint saved successfully.";
@@ -336,23 +340,36 @@ Status OrtSaveInternal(
 
 Status OrtLoadModuleStatesInternal(
     const PathString& parameter_folder_path, ModuleCheckpointState& module_state) {
+  // Find parameter files.
+  std::vector<std::pair<std::string, bool>> param_filenames;
+  LoopDir(parameter_folder_path,
+          [&param_filenames](
+              const PathChar* filename, OrtFileType file_type) -> bool {
+            std::string filename_str = filename;
+            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR) {
+              return true;
+            }
+
+            if (StringStartsWith(filename_str, k_trainable_param_root_prefix)) {
+              param_filenames.push_back(std::make_pair(filename_str, true));
+            } else if (StringStartsWith(filename_str, k_non_trainable_param_root_prefix)) {
+              param_filenames.push_back(std::make_pair(filename_str, false));
+            }
+
+            return true;
+          });
+
+  if (param_filenames.empty()) {
+    return Status::OK();
+  }
+
   // Parameter parsing.
   auto& named_parameters = module_state.named_parameters;
-  auto load_model_proto_into_module = [&parameter_folder_path, &named_parameters](const std::string& root_prefix, bool is_trainable) -> Status {
-    const PathString module_state_file_path = GetTensorProtoFilePath(parameter_folder_path, root_prefix);
+  auto load_model_proto_into_module =
+      [&named_parameters](const PathString module_state_file_path, bool is_trainable) -> Status {
     std::vector<ONNX_NAMESPACE::TensorProto> param_tensor_protos{};
-    auto file_read_status = WithOpenFile(
-        module_state_file_path, true,
-        [&param_tensor_protos](int fd) {
-          google::protobuf::io::FileInputStream input{fd};
-          ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_tensor_protos, input));
-          return Status::OK();
-        });
 
-    if (!file_read_status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << " trainable module state file not found or read failure, skip it." << ToUTF8String(module_state_file_path);
-      return Status::OK();
-    }
+    LoadTensorProtoFromFile(module_state_file_path, param_tensor_protos, "[params]");
 
     std::unordered_map<std::string, OrtValue> name_to_ort_values;
     ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_protos, name_to_ort_values));
@@ -364,18 +381,16 @@ Status OrtLoadModuleStatesInternal(
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(load_model_proto_into_module(k_trainable_param_root_prefix, true));
-  ORT_RETURN_IF_ERROR(load_model_proto_into_module(k_non_trainable_param_root_prefix, false));
+  for (auto& pair : param_filenames) {
+    auto param_file_path = ConcatPathComponent<PathChar>(parameter_folder_path, pair.first);
+    ORT_RETURN_IF_ERROR(load_model_proto_into_module(param_file_path, pair.second));
+  }
 
   return Status::OK();
 }
 
 Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
                                       OptimizerCheckpointState& optimizer_state) {
-  if (!Env::Default().FolderExists(optimizer_folder_path)) {
-    return Status::OK();
-  }
-
   // Optimizer states parsing.
   std::vector<std::string> optim_state_filenames;
   std::vector<std::string> optim_property_filenames;
@@ -421,16 +436,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
 
     const PathString& tensor_file_path = GetTensorProtoFilePath(optimizer_folder_path, cur_momentum_state_filename_prefix);
     std::vector<ONNX_NAMESPACE::TensorProto> param_optimizer_state_tensor_protos{};
-    auto file_read_status = WithOpenFile(
-        tensor_file_path, true,
-        [&param_optimizer_state_tensor_protos](int fd) {
-          google::protobuf::io::FileInputStream input{fd};
-          ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(param_optimizer_state_tensor_protos, input));
-          return Status::OK();
-        });
-
-    ORT_ENFORCE(file_read_status.IsOK(), "optimizer state file read failure, skip it.",
-                ToUTF8String(tensor_file_path));
+    LoadTensorProtoFromFile(tensor_file_path, param_optimizer_state_tensor_protos, "[optimizer_state]");
 
     std::unordered_map<std::string, OrtValue> name_to_ort_values;
     ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_optimizer_state_tensor_protos, name_to_ort_values));
@@ -460,16 +466,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
     const std::string& cur_group_filename_prefix = StringConcat(k_optimizer_root_prefix, group_name);
     const PathString& tensor_file_path = GetTensorProtoPropertiesFilePath(optimizer_folder_path, cur_group_filename_prefix);
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_property_protos{};
-    auto file_read_status = WithOpenFile(
-        tensor_file_path, true,
-        [&group_wise_property_protos](int fd) {
-          google::protobuf::io::FileInputStream input{fd};
-          ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(group_wise_property_protos, input));
-          return Status::OK();
-        });
-
-    ORT_ENFORCE(file_read_status.IsOK(), " optimizer state group-wise property file read failure, skip it.",
-                ToUTF8String(tensor_file_path));
+    LoadTensorProtoFromFile(tensor_file_path, group_wise_property_protos, "[optimizer_groupwise_property]");
 
     PropertyBag properties;
     for (auto& property_proto : group_wise_property_protos) {
@@ -484,32 +481,47 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
   return Status::OK();
 }
 
-Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointState& state) {
-  ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, state.module_checkpoint_state));
+Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
+                                     PropertyBag& property_bag) {
+  // Find custom property files.
+  std::vector<std::string> custom_property_filenames;
+  LoopDir(property_folder_path,
+          [&custom_property_filenames](
+              const PathChar* filename, OrtFileType file_type) -> bool {
+            std::string filename_str = filename;
+            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR) {
+              return true;
+            }
 
-  ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(checkpoint_path, state.optimizer_checkpoint_state));
+            if (StringStartsWith(filename_str, k_property_root_prefix)) {
+              custom_property_filenames.push_back(filename_str);
+            }
 
-  // Parse other checkpoint properties.
-  const PathString property_file_path = GetTensorProtoPropertiesFilePath(checkpoint_path, k_property_root_prefix);
-  std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
-  auto file_read_status = WithOpenFile(
-      property_file_path, true,
-      [&property_protos](int fd) {
-        google::protobuf::io::FileInputStream input{fd};
-        ORT_RETURN_IF_ERROR(ReadProtoMessageSequence(property_protos, input));
-        return Status::OK();
-      });
+            return true;
+          });
 
-  if (!file_read_status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << ToUTF8String(property_file_path) << " custom property file not found or read failure, skip it.";
+  if (custom_property_filenames.empty()) {
     return Status::OK();
   }
 
-  PropertyBag& property_bag = state.property_bag;
-  for (auto& property_proto : property_protos) {
-    property_bag.AddProperty(property_proto);
+  for (auto& property_file_path : custom_property_filenames) {
+    std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
+    auto property_file_full_path = ConcatPathComponent<PathChar>(property_folder_path, property_file_path);
+    LoadTensorProtoFromFile(property_file_full_path, property_protos, "[custom_property]");
+
+    for (auto& property_proto : property_protos) {
+      property_bag.AddProperty(property_proto);
+    }
   }
 
+  return Status::OK();
+}
+
+Status OrtLoadInternal(const PathString& checkpoint_path, CheckpointState& state) {
+  ORT_ENFORCE(Env::Default().FolderExists(checkpoint_path), "Checkpoint folder not exit");
+  ORT_RETURN_IF_ERROR(OrtLoadModuleStatesInternal(checkpoint_path, state.module_checkpoint_state));
+  ORT_RETURN_IF_ERROR(OrtLoadOptimizerStatesInternal(checkpoint_path, state.optimizer_checkpoint_state));
+  ORT_RETURN_IF_ERROR(OrtLoadCustomPropertyInternal(checkpoint_path, state.property_bag));
   return Status::OK();
 }
 
