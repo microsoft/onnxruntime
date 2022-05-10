@@ -331,6 +331,10 @@ class QLinearConvOpTester {
     float f = static_cast<float>(sum) * scale;
     f = std::min(f, requantize_values.max_value_);
     f = std::max(f, requantize_values.min_value_);
+    // float f_r = RoundHalfToEven(f);
+    // if(std::abs(f - f_r) ==0.5){
+    //   std::cout<<"sum:"<<sum<<",scale:"<<scale<<",f:"<<f<<",fr:"<<f_r<<std::endl;
+    // }
     return static_cast<T>(RoundHalfToEven(f) + requantize_values.zero_point_);
   }
 
@@ -481,7 +485,7 @@ class QLinearConvOpTester {
       test.AddInput<int32_t>("b", B_shape, B_, all_input_initializer_except_x);
     }
 
-    float abs_error = 0.0f;
+    float abs_error = 1.0f;
 
     // For quantized models, NNAPI's rounding is different than CPU provider
     // Sometimes the result is within +/-1 of result of CPU provider
@@ -512,7 +516,9 @@ class QLinearConvOpTester {
       test.AddAttribute("group", groups_);
     }
 
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+    SessionOptions so;
+    so.intra_op_param.thread_pool_size = 1;
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "");
   }
 
  public:
@@ -637,7 +643,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Sym_M32_C32_Bias_Pads) {
 
 TEST(QLinearConvTest, Conv2D_U8S8_Sym_M8_C8) {
   // Targeting code processing 8 channels, with odd number
-  // of output pixels 
+  // of output pixels
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 8, 3, 5}, .85f, 4);
   test.GenerateRandomWeights({8, 8, 3, 3}, .125f, 0);

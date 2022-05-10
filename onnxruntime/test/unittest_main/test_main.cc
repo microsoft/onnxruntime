@@ -22,6 +22,8 @@
 std::unique_ptr<Ort::Env> ort_env;
 void ortenv_setup(){
   OrtThreadingOptions tpo;
+  tpo.intra_op_thread_pool_params.thread_pool_size = 1;
+  tpo.inter_op_thread_pool_params.thread_pool_size = 1;
   ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
 }
 

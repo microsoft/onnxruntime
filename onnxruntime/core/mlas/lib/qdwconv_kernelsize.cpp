@@ -355,13 +355,15 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
                     vpostshift_4567 = vld1q_s32(preshift); postshift += 4;
                     vpostshift_89AB = vld1q_s32(preshift); postshift += 4;
                     vpostshift_CDEF = vld1q_s32(preshift); postshift += 4;
-
-                    vacc_0123 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_0123, vpreshift_0123), vmultiplier_0123), vpostshift_0123);
-                    vacc_4567 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_4567, vpreshift_4567), vmultiplier_4567), vpostshift_4567);
-                    vacc_89AB = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_89AB, vpreshift_89AB), vmultiplier_89AB), vpostshift_89AB);
-                    vacc_CDEF = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_CDEF, vpreshift_CDEF), vmultiplier_CDEF), vpostshift_CDEF);
                 }
+
+                vacc_0123 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_0123, vpreshift_0123), vmultiplier_0123), vpostshift_0123);
+                vacc_4567 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_4567, vpreshift_4567), vmultiplier_4567), vpostshift_4567);
+                vacc_89AB = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_89AB, vpreshift_89AB), vmultiplier_89AB), vpostshift_89AB);
+                vacc_CDEF = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_CDEF, vpreshift_CDEF), vmultiplier_CDEF), vpostshift_CDEF);
+
             } else {
+
                 if (is_per_channel) {
                     vscale_0123 = vld1q_f32(scale); scale += 4;
                     vscale_4567 = vld1q_f32(scale); scale += 4;
