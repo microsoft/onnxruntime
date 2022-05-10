@@ -9,10 +9,10 @@ import io
 import unittest
 
 import numpy as np
+import onnx
 import parameterized
 import torch
 
-import onnx
 import onnxruntime
 from onnxruntime.tools import pytorch_export_contrib_ops
 
@@ -143,8 +143,9 @@ class ONNXExporterTest(unittest.TestCase):
         )
         f.seek(0)
         onnx_model = onnx.load(f)
-        op_type = onnx_model.graph.node[1].op_type  # Node 0 is the input
-        self.assertEqual(op_type, "com.microsoft::Gelu")
+        node = onnx_model.graph.node[0]
+        self.assertEqual(node.op_type, "Gelu")
+        self.assertEqual(node.domain, "com.microsoft")
 
     @parameterized.parameterized.expand([("default_approximate", "none"), ("tanh_approximate", "tanh")])
     @unittest.skipIf(_torch_version_lower_than("1.12"), "Gelu's approximate parameter unsupported in PyTorch < 1.12")
