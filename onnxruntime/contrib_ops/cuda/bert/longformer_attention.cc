@@ -32,7 +32,8 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {
+LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info)
+  : CudaKernel(info), LongformerAttentionBase(info) {
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, true);
 }
 
@@ -87,7 +88,11 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t pinned_buffer_bytes = GetPinnedBufferSize(batch_size);
   auto pinned_buffer = AllocateBufferOnCPUPinned<void>(pinned_buffer_bytes);
   int* batch_global_num_pinned = reinterpret_cast<int*>(pinned_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(batch_global_num_pinned, batch_global_num_buffer.get(), batch_size * sizeof(int), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(batch_global_num_pinned,
+                                       batch_global_num_buffer.get(),
+                                       batch_size * sizeof(int),
+                                       cudaMemcpyDeviceToHost,
+                                       stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
@@ -159,7 +164,14 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
   }
 
-  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, disable_compact_memory);
+  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size,
+                                                             batch_size,
+                                                             num_heads_,
+                                                             head_size,
+                                                             sequence_length,
+                                                             max_num_global,
+                                                             window_,
+                                                             disable_compact_memory);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
@@ -187,7 +199,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
-  // Defer release of pinnned memory since cudaStreamSynchronize is not used here and launched kernel need access the buffer.
+  // Defer release of pinnned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 
   return Status::OK();

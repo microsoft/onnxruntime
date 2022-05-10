@@ -21,7 +21,7 @@ namespace cuda {
 // Launch the softmax kernels that does not use compact memory.
 bool LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
-    cublasHandle_t& cublas,
+    cublasHandle_t cublas,
     void* workspace,              // softmax space
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)

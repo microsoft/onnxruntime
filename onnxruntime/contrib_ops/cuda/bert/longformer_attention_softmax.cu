@@ -193,7 +193,7 @@ __launch_bounds__(blockSize)
 // Launch the softmax kernel for non compact memory.
 bool LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
-    cublasHandle_t& cublas,
+    cublasHandle_t cublas,
     void* workspace,              // softmax space
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
@@ -308,9 +308,10 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   } else {  // sequence_length > 2 * w
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
-        void* q_head = (char*)q + (i * x_offset + j * sequence_length * head_size + w * head_size) * element_size;
-        void* k_head = (char*)k + (i * x_offset + j * sequence_length * head_size) * element_size;
-        void* qk_head = (char*)scratch1 + \
+        void* q_head = reinterpret_cast<char*>(q) + \
+                       (i * x_offset + j * sequence_length * head_size + w * head_size) * element_size;
+        void* k_head = reinterpret_cast<char*>(k) + (i * x_offset + j * sequence_length * head_size) * element_size;
+        void* qk_head = reinterpret_cast<char*>(scratch1) + \
                         (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -363,9 +364,10 @@ bool LaunchLongformerSoftmaxSimpleKernel(
                                      resultType,
                                      algo));
 
-    void* q_head = (char*)q + (last_block * w * head_size) * element_size;
-    void* k_head = (char*)k + ((last_block - 1) * w * head_size) * element_size;
-    void* qk_head = (char*)scratch1 + (last_block * w * sequence_length + (last_block - 1) * w) * element_size;
+    void* q_head = reinterpret_cast<char*>(q) + (last_block * w * head_size) * element_size;
+    void* k_head = reinterpret_cast<char*>(k) + ((last_block - 1) * w * head_size) * element_size;
+    void* qk_head = reinterpret_cast<char*>(scratch1) + \
+                    (last_block * w * sequence_length + (last_block - 1) * w) * element_size;
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_T,
                                      CUBLAS_OP_N,
@@ -395,9 +397,9 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   // Global attention part
   for (int i = 0; i < batch_size; ++i) {
     if (batch_global_count[i] > 0) {
-      void* q_batch = (char*)q + (i * x_offset) * element_size;
-      void* k_batch = (char*)k + (i * x_offset) * element_size;
-      void* qk_batch = (char*)scratch1 + (i * y_offset) * element_size;
+      void* q_batch = reinterpret_cast<char*>(q) + (i * x_offset) * element_size;
+      void* k_batch = reinterpret_cast<char*>(k) + (i * x_offset) * element_size;
+      void* qk_batch = reinterpret_cast<char*>(scratch1) + (i * y_offset) * element_size;
       // Local tokens attending global tokens
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_T,
@@ -423,8 +425,9 @@ bool LaunchLongformerSoftmaxSimpleKernel(
                                        resultType,
                                        algo));
 
-      void* global_q_batch = (char*)global_q + (i * num_heads * sequence_length * head_size) * element_size;
-      void* global_k_batch = (char*)global_k + (i * x_offset) * element_size;
+      void* global_q_batch = reinterpret_cast<char*>(global_q) + \
+                             (i * num_heads * sequence_length * head_size) * element_size;
+      void* global_k_batch = reinterpret_cast<char*>(global_k) + (i * x_offset) * element_size;
       int strideB_global = sequence_length * head_size;
 
       // Global tokens attending everything
@@ -513,10 +516,10 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   } else {  // sequence_length > 2 * w
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
-        void* v_head = (char*)v + (i * x_offset + j * head_size * sequence_length) * element_size;
-        void* prob_head = (char*)softmax_out + \
+        void* v_head = reinterpret_cast<char*>(v) + (i * x_offset + j * head_size * sequence_length) * element_size;
+        void* prob_head = reinterpret_cast<char*>(softmax_out) + \
                           (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
-        void* out_head = (char*)output + \
+        void* out_head = reinterpret_cast<char*>(output) + \
                          (i * x_offset + j * head_size * sequence_length + w * head_size) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -569,9 +572,10 @@ bool LaunchLongformerSoftmaxSimpleKernel(
                                      resultType,
                                      algo));
 
-    void* v_head = (char*)v + (last_block - 1) * w * head_size * element_size;
-    void* prob_head = (char*)softmax_out + (sequence_length * last_block * w + (last_block - 1) * w) * element_size;
-    void* out_head = (char*)output + last_block * w * head_size * element_size;
+    void* v_head = reinterpret_cast<char*>(v) + (last_block - 1) * w * head_size * element_size;
+    void* prob_head = reinterpret_cast<char*>(softmax_out) + \
+                      (sequence_length * last_block * w + (last_block - 1) * w) * element_size;
+    void* out_head = reinterpret_cast<char*>(output) + last_block * w * head_size * element_size;
 
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_N,
@@ -602,9 +606,10 @@ bool LaunchLongformerSoftmaxSimpleKernel(
     if (batch_global_count[i] > 0) {
       int glob_longdim_mm = (last_block - 1) * w;
 
-      void* v_head = (char*)v + (i * x_offset) * element_size;
-      void* prob_head = (char*)softmax_out + (i * y_offset + 2 * w * sequence_length) * element_size;
-      void* out_head = (char*)output + (i * x_offset + 2 * w * head_size) * element_size;
+      void* v_head = reinterpret_cast<char*>(v) + (i * x_offset) * element_size;
+      void* prob_head = reinterpret_cast<char*>(softmax_out) + \
+                        (i * y_offset + 2 * w * sequence_length) * element_size;
+      void* out_head = reinterpret_cast<char*>(output) + (i * x_offset + 2 * w * head_size) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
@@ -631,9 +636,9 @@ bool LaunchLongformerSoftmaxSimpleKernel(
                                        algo));
 
       // Global tokens
-      v_head = (char*)global_v + (i * x_offset) * element_size;
-      prob_head = (char*)softmax_out + (i * y_offset) * element_size;
-      out_head = (char*)output + (i * x_offset) * element_size;
+      v_head = reinterpret_cast<char*>(global_v) + (i * x_offset) * element_size;
+      prob_head = reinterpret_cast<char*>(softmax_out) + (i * y_offset) * element_size;
+      out_head = reinterpret_cast<char*>(output) + (i * x_offset) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
