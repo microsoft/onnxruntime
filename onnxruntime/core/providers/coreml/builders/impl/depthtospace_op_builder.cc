@@ -42,12 +42,13 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input_name = input_defs[0]->Name();
   const auto& output_name = output_defs[0]->Name();
 
-  NodeAttrHelper helper(node);
   uint64_t blocksize = SafeInt<uint64_t>(node.GetAttributes().at("blocksize").i());
 
   auto* coreml_depthtospace = layer->mutable_reorganizedata();
   coreml_depthtospace->set_blocksize(blocksize);
-  coreml_depthtospace->set_mode(static_cast<::CoreML::Specification::ReorganizeDataLayerParams_ReorganizationType>(1));
+  coreml_depthtospace->set_mode(
+      ::CoreML::Specification::ReorganizeDataLayerParams_ReorganizationType::
+          ReorganizeDataLayerParams_ReorganizationType_DEPTH_TO_SPACE);
 
   *layer->mutable_input()->Add() = input_name;
   *layer->mutable_output()->Add() = output_name;
@@ -66,6 +67,11 @@ bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderI
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     return false;
+  }
+
+  const auto input_size = input_shape.size();
+  if (input_size != 4) {
+    LOGS(logger, VERBOSE) << "DepthToSpace only supports 4d shape, input is " << input_size << "d shape.";
   }
 
   // CoreML spec ReorganizeDataLayer DEPTH_TO_SPACE mode only accepts input with one batch ([C, H, W]).
