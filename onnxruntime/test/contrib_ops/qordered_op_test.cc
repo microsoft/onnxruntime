@@ -30,20 +30,6 @@ enum OrderCublasLt {
   ORDER_COL32_2R_4R4 = 4
 };
 
-template <typename T>
-static std::vector<T> GenDataSimple(std::vector<int64_t> const& shape, float scale) {
-  int64_t n = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
-
-  scale = std::is_same<T, int8_t>::value ? 1.0f : scale;  // using scale = 1.0f to generate int8_t data,
-  std::vector<T> r(n);
-  //RandomValueGenerator random{};
-  //std::vector<int> tmp = random.Uniform<int32_t>(shape, -128, 127);
-  for (int64_t i = 0; i < n; i++) {
-    r[i] = static_cast<T>(2);
-  }
-  return r;
-}
-
 // generate random data without precision loss if quantized.
 template <typename T>
 static std::vector<T> GenData(std::vector<int64_t> const& shape, float scale) {
@@ -481,7 +467,7 @@ static void RunQOrdered_LayerNorm_Test(std::vector<int64_t> const& shape, int ax
   BatchRowColFromShape(shape, batch, rows, cols);
 
   std::vector<int64_t> beta_shape = {cols};
-  std::vector<int8_t> vecX = GenDataSimple<int8_t>(shape, 1.0f);
+  std::vector<int8_t> vecX = GenData<int8_t>(shape, 1.0f);
 
   // Residual's shape is same as X's
   std::vector<int8_t> vecR = GenData<int8_t>(shape, 1.0f);
