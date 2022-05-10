@@ -353,7 +353,7 @@ __global__ void LayerNormWarpImpl(LOAD load, STORE store, const int64_t rows, co
 
 template<typename LOAD, typename STORE, typename ComputeType, int pack_size, bool simplified, int cols_per_thread,
          int thread_group_width, int rows_per_access, bool padding>
-inline bool LaunchLayerNormWarpImpl(cudaStream_t stream, LOAD load, STORE store,
+bool LaunchLayerNormWarpImpl(cudaStream_t stream, LOAD load, STORE store,
                                            const int64_t rows, const int64_t cols,
                                            const double epsilon, ComputeType* mean,
                                            ComputeType* inv_variance) {
@@ -377,7 +377,7 @@ inline bool LaunchLayerNormWarpImpl(cudaStream_t stream, LOAD load, STORE store,
 
 template<typename LOAD, typename STORE, typename ComputeType, int pack_size, bool simplified, int cols_per_thread,
          int thread_group_width, int rows_per_access>
-inline bool DispatchLayerNormWarpImplPadding(cudaStream_t stream, LOAD load, STORE store,
+bool DispatchLayerNormWarpImplPadding(cudaStream_t stream, LOAD load, STORE store,
                                                     const int64_t rows, const int64_t cols,
                                                     const double epsilon, ComputeType* mean,
                                                     ComputeType* inv_variance) {
@@ -583,7 +583,7 @@ struct DispatchLayerNormWarpImplPackSize {
 };
 
 template<typename LOAD, typename STORE, typename ComputeType, bool simplified>
-inline bool DispatchLayerNormWarpImpl(cudaStream_t stream, LOAD load, STORE store,
+bool DispatchLayerNormWarpImpl(cudaStream_t stream, LOAD load, STORE store,
                                              const int64_t rows, const int64_t cols,
                                              const double epsilon, ComputeType* mean,
                                              ComputeType* inv_variance) {
@@ -640,7 +640,7 @@ __global__ void LayerNormBlockSMemImpl(LOAD load, STORE store, const int64_t row
 }
 
 template<typename LOAD, typename STORE, typename ComputeType, int pack_size, bool simplified, int block_size>
-inline bool LaunchLayerNormBlockSMemImpl(cudaStream_t stream, LOAD load, STORE store,
+bool LaunchLayerNormBlockSMemImpl(cudaStream_t stream, LOAD load, STORE store,
                                                 size_t smem, const int64_t rows, const int64_t cols,
                                                 const double epsilon, ComputeType* mean,
                                                 ComputeType* inv_variance) {
@@ -656,7 +656,7 @@ inline bool LaunchLayerNormBlockSMemImpl(cudaStream_t stream, LOAD load, STORE s
 }
 
 template<typename LOAD, typename STORE, typename ComputeType, int pack_size, bool simplified>
-inline bool TryDispatchLayerNormBlockSMemImplBlockSize(
+bool TryDispatchLayerNormBlockSMemImplBlockSize(
     cudaStream_t stream, LOAD load, STORE store, const int64_t rows, const int64_t cols,
     const double epsilon, ComputeType* mean, ComputeType* inv_variance, bool* success) {
   constexpr int block_size_conf_1 = 128;
@@ -731,7 +731,7 @@ struct TryDispatchLayerNormBlockSMemImplPackSize {
 };
 
 template<typename LOAD, typename STORE, typename ComputeType, bool simplified>
-inline bool TryDispatchLayerNormBlockSMemImpl(cudaStream_t stream, LOAD load, STORE store,
+bool TryDispatchLayerNormBlockSMemImpl(cudaStream_t stream, LOAD load, STORE store,
                                                      const int64_t rows, const int64_t cols,
                                                      const double epsilon, ComputeType* mean,
                                                      ComputeType* inv_variance, bool* success) {
@@ -787,7 +787,7 @@ __global__ void LayerNormBlockUncachedImpl(LOAD load, STORE store, const int64_t
 }
 
 template<typename LOAD, typename STORE, typename ComputeType, int pack_size, bool simplified>
-inline bool LaunchLayerNormBlockUncachedImpl(cudaStream_t stream, LOAD load, STORE store,
+bool LaunchLayerNormBlockUncachedImpl(cudaStream_t stream, LOAD load, STORE store,
                                                     const int64_t rows, const int64_t cols,
                                                     const double epsilon, ComputeType* mean,
                                                     ComputeType* inv_variance) {
@@ -821,7 +821,7 @@ struct DispatchLayerNormBlockUncachedImplPackSize {
 };
 
 template<typename LOAD, typename STORE, typename ComputeType, bool simplified>
-inline bool DispatchLayerNormBlockUncachedImpl(cudaStream_t stream, LOAD load, STORE store,
+bool DispatchLayerNormBlockUncachedImpl(cudaStream_t stream, LOAD load, STORE store,
                                                       const int64_t rows, const int64_t cols,
                                                       const double epsilon, ComputeType* mean,
                                                       ComputeType* inv_variance) {
@@ -830,7 +830,7 @@ inline bool DispatchLayerNormBlockUncachedImpl(cudaStream_t stream, LOAD load, S
 }
 
 template<typename LOAD, typename STORE, typename ComputeType, bool simplified = false>
-inline typename std::enable_if<!std::is_same<ComputeType, double>::value, bool>::type
+typename std::enable_if<!std::is_same<ComputeType, double>::value, bool>::type
 DispatchLayerNorm(cudaStream_t stream, LOAD load, STORE store, const int64_t rows,
                   const int64_t cols, const double epsilon, ComputeType* mean,
                   ComputeType* inv_variance) {
@@ -852,7 +852,7 @@ DispatchLayerNorm(cudaStream_t stream, LOAD load, STORE store, const int64_t row
 }
 
 template<typename LOAD, typename STORE, typename ComputeType, bool simplified = false>
-inline typename std::enable_if<std::is_same<ComputeType, double>::value, bool>::type
+typename std::enable_if<std::is_same<ComputeType, double>::value, bool>::type
 DispatchLayerNorm(cudaStream_t stream, LOAD load, STORE store, const int64_t rows,
                   const int64_t cols, const double epsilon, ComputeType* mean,
                   ComputeType* inv_variance) {

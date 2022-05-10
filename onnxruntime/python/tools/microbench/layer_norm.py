@@ -20,7 +20,7 @@ class OpParam:
 
 class BenchmarkLayerNorm(BenchmarkOp):
     def __init__(self, args):
-        BenchmarkOp.__init__(self, args)
+        super().__init__(args)
 
     def create_inputs_outputs(self, op_param):
         np.random.seed(0)
