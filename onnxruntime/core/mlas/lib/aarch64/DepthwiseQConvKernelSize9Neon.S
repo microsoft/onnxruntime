@@ -633,15 +633,14 @@ FloatPointScale:
         b Quantize
 
 FixedPointScale:
-        tst     x6,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX
-        beq     BroadcastFixedPointValue
+        tbz     x6,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, .LBroadcastFixedPointValue
         ldp     q20,q21,[x0],32          // load multiplier vector
         ldp     q22,q23,[x0],32
         ldp     q24,q25,[x4],32          // load postshift vector
         ldp     q26,q27,[x4],32
         b       ScaleWithFixedPoint
 
-BroadcastFixedPointValue:
+.LBroadcastFixedPointValue:
         ld1r    {v20.4s},[x0]           // load multiplier Value
         mov     v21.16b, v20.16b
         mov     v22.16b, v20.16b

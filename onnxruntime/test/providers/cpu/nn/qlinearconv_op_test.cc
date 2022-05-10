@@ -920,6 +920,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Depthwise_Kernelsize) {
 template <typename ActType, typename FilterType>
 void TestQLinearConv2dDepthwiseKernelsizePerChannel() {
   for (int64_t channels : std::initializer_list<int64_t>{32, 96}) {
+    //for (const auto& kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {5LL, 5LL}, {25LL, 1LL}}) {
     for (const auto& kd : std::initializer_list<std::pair<int64_t, int64_t>>{{3LL, 3LL}, {5LL, 5LL}, {25LL, 1LL}}) {
       for (int with_bias : std::initializer_list<int>{0, 1}) {
         QLinearConvOpTester<ActType, FilterType> test;
