@@ -43,7 +43,7 @@ class _LRScheduler(object):
         raise NotImplementedError
 
     def get_last_lr(self):
-        r""" Return last computed learning rate by LR Scheduler"""
+        r"""Return last computed learning rate by LR Scheduler"""
         return self._last_lr
 
 
@@ -82,12 +82,9 @@ class ConstantWarmupLRScheduler(_LRScheduler):
 
     def __init__(self, total_steps, warmup=0.002):
         super().__init__()
-        assert isinstance(total_steps, int) and total_steps > 0,\
-            "total_steps must be a strict positive number"
-        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1,\
-            "warmup must be a float between (0, 1]"
-        assert total_steps > warmup,\
-            "total_steps must be greater than warmup"
+        assert isinstance(total_steps, int) and total_steps > 0, "total_steps must be a strict positive number"
+        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1, "warmup must be a float between (0, 1]"
+        assert total_steps > warmup, "total_steps must be greater than warmup"
 
         self.total_steps = total_steps
         self.warmup = warmup
@@ -141,14 +138,10 @@ class CosineWarmupLRScheduler(_LRScheduler):
 
     def __init__(self, total_steps, cycles=0.5, warmup=0.002):
         super().__init__()
-        assert isinstance(total_steps, int) and total_steps > 0,\
-            "total_steps must be a strict positive number"
-        assert isinstance(cycles, float) and cycles > 0,\
-            "cycles must be a positive float"
-        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1,\
-            "warmup must be a float between (0, 1]"
-        assert total_steps > warmup,\
-            "total_steps must be greater than warmup"
+        assert isinstance(total_steps, int) and total_steps > 0, "total_steps must be a strict positive number"
+        assert isinstance(cycles, float) and cycles > 0, "cycles must be a positive float"
+        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1, "warmup must be a float between (0, 1]"
+        assert total_steps > warmup, "total_steps must be greater than warmup"
 
         self.total_steps = total_steps
         self.cycles = cycles
@@ -158,7 +151,9 @@ class CosineWarmupLRScheduler(_LRScheduler):
     def _warmup_cosine(self, train_step_info):
         if train_step_info.optimization_step < self._num_warmup_steps:
             return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))
-        progress = float(train_step_info.optimization_step - self._num_warmup_steps) / float(max(1, self.total_steps - self._num_warmup_steps))
+        progress = float(train_step_info.optimization_step - self._num_warmup_steps) / float(
+            max(1, self.total_steps - self._num_warmup_steps)
+        )
         return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(self.cycles) * 2.0 * progress)))
 
     def get_lr(self, train_step_info):
@@ -201,12 +196,9 @@ class LinearWarmupLRScheduler(_LRScheduler):
 
     def __init__(self, total_steps, warmup=0.002):
         super().__init__()
-        assert isinstance(total_steps, int) and total_steps > 0,\
-            "total_steps must be a strict positive number"
-        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1,\
-            "warmup must be a float between (0, 1]"
-        assert total_steps > warmup,\
-            "total_steps must be greater than warmup"
+        assert isinstance(total_steps, int) and total_steps > 0, "total_steps must be a strict positive number"
+        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1, "warmup must be a float between (0, 1]"
+        assert total_steps > warmup, "total_steps must be greater than warmup"
 
         self.total_steps = total_steps
         self.warmup = warmup
@@ -215,7 +207,11 @@ class LinearWarmupLRScheduler(_LRScheduler):
     def _warmup_linear(self, train_step_info):
         if train_step_info.optimization_step < self._num_warmup_steps:
             return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))
-        return max(0.0, float(self.total_steps - train_step_info.optimization_step) / float(max(1, self.total_steps - self._num_warmup_steps)))
+        return max(
+            0.0,
+            float(self.total_steps - train_step_info.optimization_step)
+            / float(max(1, self.total_steps - self._num_warmup_steps)),
+        )
 
     def get_lr(self, train_step_info):
         return [train_step_info.optimizer_config.lr * self._warmup_linear(train_step_info)]
@@ -264,16 +260,11 @@ class PolyWarmupLRScheduler(_LRScheduler):
 
     def __init__(self, total_steps, lr_end=1e-7, power=1.0, warmup=0.002):
         super().__init__()
-        assert isinstance(total_steps, int) and total_steps > 0,\
-            "total_steps must be a strict positive number"
-        assert isinstance(lr_end, float) and lr_end >= 0,\
-            "lr_end must be a positive float"
-        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1,\
-            "warmup must be a float between (0, 1]"
-        assert isinstance(power, float) and power >= 0,\
-            "power must be a positive float"
-        assert total_steps > warmup,\
-            "total_steps must be greater than warmup"
+        assert isinstance(total_steps, int) and total_steps > 0, "total_steps must be a strict positive number"
+        assert isinstance(lr_end, float) and lr_end >= 0, "lr_end must be a positive float"
+        assert isinstance(warmup, float) and warmup >= 0 and warmup < 1, "warmup must be a float between (0, 1]"
+        assert isinstance(power, float) and power >= 0, "power must be a positive float"
+        assert total_steps > warmup, "total_steps must be greater than warmup"
 
         self.total_steps = total_steps
         self.lr_end = lr_end
@@ -283,8 +274,9 @@ class PolyWarmupLRScheduler(_LRScheduler):
 
     def _warmup_poly(self, train_step_info):
 
-        assert train_step_info.optimizer_config.lr > self.lr_end,\
-            f"lr_end ({lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"
+        assert (
+            train_step_info.optimizer_config.lr > self.lr_end
+        ), f"lr_end ({lr_end}) must be be smaller than initial lr ({train_step_info.optimizer_config.lr})"
 
         if train_step_info.optimization_step < self._num_warmup_steps:
             return float(train_step_info.optimization_step) / float(max(1, self._num_warmup_steps))
@@ -294,9 +286,8 @@ class PolyWarmupLRScheduler(_LRScheduler):
             lr_range = train_step_info.optimizer_config.lr - self.lr_end
             decay_steps = self.total_steps - self._num_warmup_steps
             pct_remaining = 1 - (train_step_info.optimization_step - self._num_warmup_steps) / decay_steps
-            decay = lr_range * pct_remaining ** self.power + self.lr_end
+            decay = lr_range * pct_remaining**self.power + self.lr_end
             return decay / train_step_info.optimizer_config.lr
-
 
     def get_lr(self, train_step_info):
         return [train_step_info.optimizer_config.lr * self._warmup_poly(train_step_info)]

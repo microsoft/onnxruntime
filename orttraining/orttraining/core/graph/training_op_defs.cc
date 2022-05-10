@@ -363,7 +363,7 @@ bool BuildNllLossInternalFunctionHelper(
   std::vector<FunctionBodyHelper::AttributeProtoWrapper> axis_attr = {};
   if (opset_version <= 12)
     axis_attr.push_back(MakeAttribute("axes", std::vector<int64_t>({1})));
-  auto make_input = [opset_version](const char* arg) { 
+  auto make_input = [opset_version](const char* arg) {
     return (opset_version <= 12) ? std::vector<std::string>{arg} : std::vector<std::string>{arg, "const_one_64"};
   };
   body.push_back(
@@ -995,7 +995,7 @@ void RegisterTrainingOpSchemas() {
           static_cast<int64_t>(0))
       .TypeConstraint(
           "I",
-          {"tensor(int64)"},
+          {"tensor(int32)", "tensor(int64)"},
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
@@ -1714,6 +1714,10 @@ Example 4:
         if (attr_proto) {
           keep_dims = attr_proto->i();
         }
+        int64_t noop_with_empty_axes = 0;
+        if (auto* noop_with_empty_axes_attr = ctx.getAttribute("noop_with_empty_axes")) {
+          noop_with_empty_axes = noop_with_empty_axes_attr->i();
+        }
         auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
         int64_t input_ndim = input_shape.dim_size();
         auto output_shape =
@@ -1727,9 +1731,9 @@ Example 4:
         }
 
         for (int i = 0; i < input_ndim; ++i) {
-          // axes empty means reduce all dim
-          if (!axes.empty() &&
-              std::find(axes.begin(), axes.end(), i) == axes.end()) {
+          if ((axes.empty() && noop_with_empty_axes) ||
+              (!axes.empty() &&  // axes empty means reduce all dim
+               std::find(axes.begin(), axes.end(), i) == axes.end())) {
             auto dim = output_shape->add_dim();
             dim->CopyFrom(input_shape.dim(i));
           } else {

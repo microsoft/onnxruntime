@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import os
+
 import numpy as np
 
 
@@ -41,25 +42,25 @@ def TestReduction(op, data, axes, keepdims):
 
 
 def PrintResult(op, axes, keepdims, res):
-    print("  {\"%s\"," % op)
+    print('  {"%s",' % op)
     print("OpAttributesResult(")
     print("    // ReductionAttribute")
     print("      {")
     print(" // axes_")
-    print("{", end='')
-    print(*axes, sep=", ", end='') if axes else print("")
+    print("{", end="")
+    print(*axes, sep=", ", end="") if axes else print("")
     print("},")
     print(" // keep_dims_")
     print(keepdims, ",")
     print("},")
 
     print(" // expected dims")
-    print("{", end='')
-    print(*res.shape, sep=", ", end='')
+    print("{", end="")
+    print(*res.shape, sep=", ", end="")
     print("},")
 
     print(" // expected values")
-    print("{", end='')
+    print("{", end="")
     for i in range(0, res.size):
         print("%5.6ff," % res.item(i))
 
@@ -69,20 +70,20 @@ def PrintResult(op, axes, keepdims, res):
 def PrintDisableOptimizations():
     print("// Optimizations are disabled in this file to improve build throughput")
     print("#if defined(_MSC_VER) || defined(__INTEL_COMPILER)")
-    print("#pragma optimize (\"\", off)")
+    print('#pragma optimize ("", off)')
     print("#elif defined(__GNUC__)")
     print("#if defined(__clang__)")
     print("\t#pragma clang optimize off")
     print("#else")
     print("\t#pragma GCC push_options")
-    print("\t#pragma GCC optimize (\"O0\")")
+    print('\t#pragma GCC optimize ("O0")')
     print("#endif")
     print("#endif")
 
 
 def PrintReenableOptimizations():
     print("#if defined(_MSC_VER) || defined(__INTEL_COMPILER)")
-    print("\t#pragma optimize (\"\", on)")
+    print('\t#pragma optimize ("", on)')
     print("#elif defined(__GNUC__)")
     print("#if defined(__clang__)")
     print("\t#pragma clang optimize on")
@@ -94,14 +95,35 @@ def PrintReenableOptimizations():
 
 if __name__ == "__main__":
     from itertools import product
+
     input_shape = [2, 3, 2, 2, 3]
     np.random.seed(0)
     input_data = np.random.uniform(size=input_shape)
-    axes_options = [(-1, 3), (2, 3), (2, 1, 4), (0, -2, -3), (0, 2, 3), (0,), (2,), (4,), None]
+    axes_options = [
+        (-1, 3),
+        (2, 3),
+        (2, 1, 4),
+        (0, -2, -3),
+        (0, 2, 3),
+        (0,),
+        (2,),
+        (4,),
+        None,
+    ]
     keepdims_options = [0, 1]
     ops = [
-        "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd",
-        "ReduceSum", "ReduceSumSquare", "ArgMax", "ArgMin"
+        "ReduceL1",
+        "ReduceL2",
+        "ReduceLogSum",
+        "ReduceLogSumExp",
+        "ReduceMax",
+        "ReduceMean",
+        "ReduceMin",
+        "ReduceProd",
+        "ReduceSum",
+        "ReduceSumSquare",
+        "ArgMax",
+        "ArgMin",
     ]
     print("// Please don't manually edit this file. Generated from reduction_test_cases_generator.py")
     PrintDisableOptimizations()
@@ -109,11 +131,13 @@ if __name__ == "__main__":
     print("// input_data")
     print("{")
     for i in range(0, input_data.size):
-        print("%5.6ff," % input_data.item(i),)
+        print(
+            "%5.6ff," % input_data.item(i),
+        )
     print("},")
     print("// input_dims")
-    print("{", end='')
-    print(*input_shape, sep=", ", end='')
+    print("{", end="")
+    print(*input_shape, sep=", ", end="")
     print("},")
 
     print("  // map_op_attribute_expected")
@@ -122,7 +146,7 @@ if __name__ == "__main__":
     for config in product(axes_options, keepdims_options, ops):
         axes, keepdims, op = config
 
-        #ArgMax and ArgMin only take single axis (default 0)
+        # ArgMax and ArgMin only take single axis (default 0)
         skip = False
         if op == "ArgMax" or op == "ArgMin":
             skip = axes is not None and len(axes) > 1

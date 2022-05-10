@@ -1,32 +1,49 @@
-import os
-import csv
-import logging
-import coloredlogs
 import argparse
 import copy
+import csv
 import json
-import re
+import logging
+import os
 import pprint
-from perf_utils import *
+import re
+
+import coloredlogs
 from benchmark import *
+from perf_utils import *
+
 
 def write_model_info_to_file(model, path):
-    with open(path, 'w') as file:
-        file.write(json.dumps(model)) # use `json.loads` to do the reverse
+    with open(path, "w") as file:
+        file.write(json.dumps(model))  # use `json.loads` to do the reverse
 
-def get_ep_list(comparison): 
-    if comparison == 'acl': 
+
+def get_ep_list(comparison):
+    if comparison == "acl":
         ep_list = [cpu, acl]
-    else:   
+    else:
         # test with cuda and trt
-        ep_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
+        ep_list = [
+            cpu,
+            cuda,
+            trt,
+            standalone_trt,
+            cuda_fp16,
+            trt_fp16,
+            standalone_trt_fp16,
+        ]
     return ep_list
 
-def resolve_trtexec_path(workspace): 
+
+def resolve_trtexec_path(workspace):
     trtexec_options = get_output(["find", workspace, "-name", "trtexec"])
-    trtexec_path = re.search(r'.*/bin/trtexec', trtexec_options).group(0)
+    trtexec_path = re.search(r".*/bin/trtexec", trtexec_options).group(0)
     logger.info("using trtexec {}".format(trtexec_path))
     return trtexec_path
+
+
+def dict_to_args(dct):
+    return ",".join(["{}={}".format(k, v) for k, v in dct.items()])
+
 
 def main():
     args = parse_arguments()
@@ -39,7 +56,7 @@ def main():
     else:
         ep_list = get_ep_list(args.comparison)
 
-    if standalone_trt in ep_list or standalone_trt_fp16 in ep_list: 
+    if standalone_trt in ep_list or standalone_trt_fp16 in ep_list:
         trtexec = resolve_trtexec_path(args.workspace)
 
     models = {}
@@ -56,47 +73,70 @@ def main():
     specs_csv = specs_name + csv_ending
 
     for model, model_info in models.items():
-        logger.info("\n" + "="*40 + "="*len(model))
-        logger.info("="*20 + model +"="*20)
-        logger.info("="*40 + "="*len(model))
+        logger.info("\n" + "=" * 40 + "=" * len(model))
+        logger.info("=" * 20 + model + "=" * 20)
+        logger.info("=" * 40 + "=" * len(model))
 
-        model_info["model_name"] = model 
-        
-        model_list_file = os.path.join(os.getcwd(), model +'.json')
+        model_info["model_name"] = model
+
+        model_list_file = os.path.join(os.getcwd(), model + ".json")
         write_model_info_to_file([model_info], model_list_file)
 
         for ep in ep_list:
-            
-            command =  ["python3",
-                        "benchmark.py",
-                        "-r", args.running_mode,
-                        "-m", model_list_file,
-                        "-o", args.perf_result_path,
-                        "--ep", ep,
-                        "--write_test_result", "false"]
-            
-            if ep == standalone_trt or ep == standalone_trt_fp16: 
-                if args.running_mode == "validate": 
-                    continue 
+
+            command = [
+                "python3",
+                "benchmark.py",
+                "-r",
+                args.running_mode,
+                "-m",
+                model_list_file,
+                "-o",
+                args.perf_result_path,
+                "--ep",
+                ep,
+                "--write_test_result",
+                "false",
+            ]
+
+            if ep == standalone_trt or ep == standalone_trt_fp16:
+                if args.running_mode == "validate":
+                    continue
                 else:
                     command.extend(["--trtexec", trtexec])
 
+            if len(args.cuda_ep_options):
+                command.extend(["--cuda_ep_options", dict_to_args(args.cuda_ep_options)])
+
+            if len(args.trt_ep_options):
+                command.extend(["--trt_ep_options", dict_to_args(args.trt_ep_options)])
+
             if args.running_mode == "validate":
                 command.extend(["--benchmark_metrics_csv", benchmark_metrics_csv])
-            
+
             elif args.running_mode == "benchmark":
-                command.extend(["-t", str(args.test_times),
-                                "-o", args.perf_result_path,
-                                "--write_test_result", "false",
-                                "--benchmark_fail_csv", benchmark_fail_csv,
-                                "--benchmark_latency_csv", benchmark_latency_csv,
-                                "--benchmark_success_csv", benchmark_success_csv]) 
-           
+                command.extend(
+                    [
+                        "-t",
+                        str(args.test_times),
+                        "-o",
+                        args.perf_result_path,
+                        "--write_test_result",
+                        "false",
+                        "--benchmark_fail_csv",
+                        benchmark_fail_csv,
+                        "--benchmark_latency_csv",
+                        benchmark_latency_csv,
+                        "--benchmark_success_csv",
+                        benchmark_success_csv,
+                    ]
+                )
+
             p = subprocess.run(command)
             logger.info(p)
 
             if p.returncode != 0:
-                error_type = "runtime error" 
+                error_type = "runtime error"
                 error_message = "Benchmark script exited with returncode = " + str(p.returncode)
                 logger.error(error_message)
                 update_fail_model_map(model_to_fail_ep, model, ep, error_type, error_message)
@@ -108,6 +148,7 @@ def main():
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
         from pathlib import Path
+
         Path(path).mkdir(parents=True, exist_ok=True)
 
     if args.running_mode == "validate":
@@ -118,8 +159,8 @@ def main():
         if os.path.exists(METRICS_FILE):
             model_to_metrics = read_map_from_file(METRICS_FILE)
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
-            logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv)) 
-    
+            logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv))
+
     elif args.running_mode == "benchmark":
         logger.info("\n=========================================")
         logger.info("======= Models/EPs session creation =======")
@@ -129,8 +170,8 @@ def main():
             model_to_session = read_map_from_file(SESSION_FILE)
             pretty_print(pp, model_to_session)
             output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))
-            logger.info("\nSaved session creation results to {}".format(benchmark_session_csv)) 
-        
+            logger.info("\nSaved session creation results to {}".format(benchmark_session_csv))
+
         logger.info("\n=========================================================")
         logger.info("========== Failing Models/EPs (accumulated) ==============")
         logger.info("==========================================================")
@@ -139,7 +180,7 @@ def main():
             model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
             output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
             logger.info(model_to_fail_ep)
-            logger.info("\nSaved model failing results to {}".format(benchmark_fail_csv)) 
+            logger.info("\nSaved model failing results to {}".format(benchmark_fail_csv))
 
         logger.info("\n=======================================================")
         logger.info("=========== Models/EPs Status (accumulated) ===========")
@@ -154,11 +195,11 @@ def main():
             model_fail = read_map_from_file(FAIL_MODEL_FILE)
             is_fail = True
             model_status = build_status(model_status, model_fail, is_fail)
-       
+
         pretty_print(pp, model_status)
-        
-        output_status(model_status, os.path.join(path, benchmark_status_csv)) 
-        logger.info("\nSaved model status results to {}".format(benchmark_status_csv)) 
+
+        output_status(model_status, os.path.join(path, benchmark_status_csv))
+        logger.info("\nSaved model status results to {}".format(benchmark_status_csv))
 
         logger.info("\n=========================================================")
         logger.info("=========== Models/EPs latency (accumulated)  ===========")
@@ -167,20 +208,21 @@ def main():
         if os.path.exists(LATENCY_FILE):
             model_to_latency = read_map_from_file(LATENCY_FILE)
             add_improvement_information(model_to_latency)
-            
+
             pretty_print(pp, model_to_latency)
-            
+
             output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
-            logger.info("\nSaved model latency results to {}".format(benchmark_latency_csv)) 
+            logger.info("\nSaved model latency results to {}".format(benchmark_latency_csv))
 
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
-    info = get_system_info(args.workspace)
+    info = get_system_info(args)
     pretty_print(pp, info)
     logger.info("\n")
     output_specs(info, os.path.join(path, specs_csv))
-    logger.info("\nSaved hardware specs to {}".format(specs_csv)) 
+    logger.info("\nSaved hardware specs to {}".format(specs_csv))
+
 
 if __name__ == "__main__":
     main()

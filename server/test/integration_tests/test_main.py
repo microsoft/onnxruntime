@@ -1,11 +1,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import sys
 import random
+import sys
 import unittest
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.path.append(sys.argv[4])
     sys.path.append(sys.argv[5])
 
@@ -13,7 +13,12 @@ if __name__ == '__main__':
 
     loader = unittest.TestLoader()
 
-    test_classes = [function_tests.HttpJsonPayloadTests, function_tests.HttpProtobufPayloadTests, function_tests.HttpEndpointTests, function_tests.GRPCTests]
+    test_classes = [
+        function_tests.HttpJsonPayloadTests,
+        function_tests.HttpProtobufPayloadTests,
+        function_tests.HttpEndpointTests,
+        function_tests.GRPCTests,
+    ]
 
     test_suites = []
     for tests in test_classes:
@@ -28,9 +33,8 @@ if __name__ == '__main__':
     runner = unittest.TextTestRunner(verbosity=2)
 
     results = runner.run(suites)
-    
+
     if results.wasSuccessful():
         exit(0)
     else:
         exit(1)
- 

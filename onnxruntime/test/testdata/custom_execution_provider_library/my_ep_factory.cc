@@ -11,10 +11,6 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-void Shutdown_DeleteRegistry() {
-
-}
-
 struct MyProviderFactory : IExecutionProviderFactory {
   MyProviderFactory(const MyProviderInfo& info) : info_{info} {}
   ~MyProviderFactory() override {}
@@ -57,8 +53,10 @@ struct MyEP_Provider : Provider {
     return std::make_shared<MyProviderFactory>(info);
   }
 
+  void Initialize() override {
+  }
+
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
   }
 
 } g_provider;
