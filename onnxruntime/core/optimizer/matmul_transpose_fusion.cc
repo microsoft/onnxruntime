@@ -90,7 +90,7 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg, bool& i
   return trans_node;
 }
 
-static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_map<NodeArg*, size_t>& count_map) {
+static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, InlinedHashMap<NodeArg*, size_t>& count_map) {
   const auto& node_consumers = graph.GetConsumerNodes(target->Name());
   ORT_ENFORCE(!node_consumers.empty());
   auto it = count_map.find(target);
@@ -134,7 +134,7 @@ static size_t UpdateConsumerCount(Graph& graph, NodeArg* target, std::unordered_
 *                              V
 */
 static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
-                                     std::unordered_map<NodeArg*, size_t>& consumer_count,
+                                     InlinedHashMap<NodeArg*, size_t>& consumer_count,
                                      std::deque<onnxruntime::NodeIndex>& removed_nodes,
                                      bool& is_trans, bool& is_trans_batch) {
   ORT_ENFORCE(cast != nullptr);
@@ -155,10 +155,10 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   new_cast_output_type_proto.mutable_tensor_type()->set_elem_type(element_type);
   auto& new_cast_output = graph.GetOrCreateNodeArg(cast_output->Name() + "_transformed", &new_cast_output_type_proto);
 
-  const std::vector<NodeArg*> new_cast_input_defs{transpose_input};
-  const std::vector<NodeArg*> new_cast_output_defs{&new_cast_output};
-  const std::vector<NodeArg*> new_transpose_input_defs = {&new_cast_output};
-  const std::vector<NodeArg*> new_transpose_output_defs = {cast_output};
+  const std::array new_cast_input_defs{transpose_input};
+  const std::array new_cast_output_defs{&new_cast_output};
+  const std::array new_transpose_input_defs = {&new_cast_output};
+  const std::array new_transpose_output_defs = {cast_output};
 
   Node& new_cast = graph.AddNode(graph.GenerateNodeName(cast->Name() + "_transformed"),
                       cast->OpType(),
@@ -291,7 +291,7 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   std::deque<onnxruntime::NodeIndex> removed_nodes;
 
-  std::unordered_map<NodeArg*, size_t> consumer_count;
+  InlinedHashMap<NodeArg*, size_t> consumer_count;
 
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
@@ -381,8 +381,8 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       right_input = right->MutableInputDefs()[0];
     }
 
-    const std::vector<NodeArg*> input_defs{left_input, right_input};
-    const std::vector<NodeArg*> output_defs{node.MutableOutputDefs()[0]};
+    const std::array input_defs{left_input, right_input};
+    const std::array output_defs{node.MutableOutputDefs()[0]};
 
     Node& matmul_node = graph.AddNode(graph.GenerateNodeName("MatMul_With_Transpose"),
                                       "FusedMatMul",

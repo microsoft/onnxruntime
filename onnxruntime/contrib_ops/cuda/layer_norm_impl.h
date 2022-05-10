@@ -29,19 +29,19 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, typename V, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
-    T* output,
+    V* output,
     U* mean,
     U* invvar,
     const T* input,
     int n1,
     int n2,
     double epsilon,
-    const T* gamma,
-    const T* beta);
+    const V* gamma,
+    const V* beta);
 
 }  // namespace cuda
 }  // namespace contrib

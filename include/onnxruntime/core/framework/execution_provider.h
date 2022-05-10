@@ -14,7 +14,7 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-
+enum class DataLayout;
 class GraphViewer;
 class Node;
 struct ComputeCapability;
@@ -165,6 +165,24 @@ class IExecutionProvider {
   virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
   /**
+     Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
+     the provider. Currently only CUDA execution provider supports it.
+   */
+  virtual bool IsGraphCaptureEnabled() const { return false; }
+
+  /**
+     Indicate whether the graph has been captured and instantiated. Currently
+     only CUDA execution provider supports it.
+   */
+  virtual bool IsGraphCaptured() const { return false; }
+
+  /**
+     Run the instantiated graph. Currently only CUDA execution provider supports
+     it.
+   */
+  virtual common::Status ReplayGraph() { return Status::OK(); }
+
+  /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and
      clean up its temporary resources to reduce memory and ensure the first run is fast.
@@ -179,48 +197,15 @@ class IExecutionProvider {
   // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
   void TryInsertAllocator(AllocatorPtr allocator);
 
-  // creation of a fused node is not supported in a minimal build, so any EP enabled in that scenario must support
-  // compilation via GraphViewer instances.
-#if !defined(ORT_MINIMAL_BUILD)
-  /**
-  Given a list of fused_node, return create_state/compute/release_state func for each node.
-  */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
-
-  /**
-  Given a list of fused_node, return a dll that expose functions for each node.
-  For each node, there should be three symbols:
-     Create_State_${node_name}
-     Compute_${node_name}
-     Release_State_${node_name}
-  */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::string& dll_path);
-
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'
     const std::reference_wrapper<GraphViewer> filtered_graph;
   };
 
-  /**
-  Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
-  return create_state/compute/release_state func for each node.
-  @remarks This is an optional interface that is only needed if the execution provider compiles nodes
-           in a scenario involving the minimal build. i.e. on a mobile or embedded device with ORT format model.
-
-           Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
-           as it is only valid for the duration of the call to Compile.
-  */
-  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
-#endif
-
   // Fusion approach that is suppported
+  // !!! The "Function" FusionStyle will be deprecated soon.
+  // !!! If your EP is using this fusion style, please migrate it to "FilteredGraphViewer" style.
   enum class FusionStyle {
     // The node fusion will create an onnxruntime::Function based Node that contains a completely new Graph instance
     // in the Node body. The original nodes and initializers are copied to the new Graph instance in Function::Body().
@@ -236,11 +221,34 @@ class IExecutionProvider {
   };
 
   virtual FusionStyle GetFusionStyle() const {
-    // existing EPs use this mode so default to it.
-    // newer EPs that can use the cheaper approach, or need to run in a minimal build, should override to return
-    // FilteredGraphViewer
-    return FusionStyle::Function;
+    // All the ORT build in EP has migrate to FilteredGraphViewer style except Nuphar.
+    // For newer EPs, please avoid use Function style as it will be deprecated soon.
+    return FusionStyle::FilteredGraphViewer;
   }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  /**
+  * !!!! This API will be deprecated soon. If your execution provider overrides this API
+  * !!!! Please migrate it to the "Compile" API with FusedNodeAndGraph type.
+  Given a list of fused_node, return create_state/compute/release_state func for each node.
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  /**
+  Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
+  return create_state/compute/release_state func for each node.
+  @remarks This is now the default interface when execution provider wants to compile nodes
+           for both minimal build and complete ort build.
+
+           Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
+           as it is only valid for the duration of the call to Compile.
+  */
+  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+
+#endif
 
   void SetLogger(const logging::Logger* logger) {
     logger_ = logger;
@@ -272,6 +280,12 @@ class IExecutionProvider {
 
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
+  }
+
+  virtual DataLayout GetPreferredLayout() const {
+    // NCHW is the default ONNX standard data layout. So default to it.
+    // EPs which prefer a different layout should override to return their preferred layout.
+    return static_cast<DataLayout>(0);
   }
 
  private:

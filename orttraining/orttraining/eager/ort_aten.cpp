@@ -9,6 +9,7 @@
 
 #include <torch/csrc/jit/ir/ir.h>
 #include <c10/util/irange.h>
+#include <ATen/WrapDimUtils.h>
 
 
 namespace torch_ort {
@@ -93,11 +94,8 @@ OrtValue create_ort_value(
   at::ScalarType type) {
   float val = scalar.toFloat();
   OrtValue ort_val;
-  CreateMLValue(
-    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    ort_scalar_type_from_aten(type),
-    {},
-    &ort_val);
+  onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(type), onnxruntime::TensorShape({}),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   switch (type) {
     case at::ScalarType::Float:
@@ -129,12 +127,14 @@ OrtValue create_ort_value(
     return impl->tensor();
   }
 
+  OrtMemoryInfo *mem_info;
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info));
+  auto element_type = ort_scalar_type_from_aten(tensor.scalar_type());
+
   OrtValue ort_tensor;
-  CreateMLValue(
-    tensor.data_ptr(),
-    ort_scalar_type_from_aten(tensor.scalar_type()),
-    tensor.sizes().vec(),
-    &ort_tensor);
+  onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape(tensor.sizes().vec()), tensor.data_ptr(),
+                                    *mem_info, ort_tensor, 0L /* offset = 0 - because tensor.data_ptr() includes the underyling offset */,
+                                    tensor.strides().vec());
   return ort_tensor;
 }
 
@@ -155,8 +155,44 @@ std::vector<OrtValue> create_ort_value(
 
 onnx::AttributeProto create_ort_attribute(
   const char* name,
-  at::Scalar value) {
-  return create_ort_attribute(name, value, value.type());
+  at::Scalar value,
+  const bool isTensor) {
+  if (isTensor){
+    onnx::AttributeProto attr;
+    attr.set_name(name);
+    at::ScalarType type = value.type();
+    attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR);
+    auto* constant_attribute_tensor_proto = attr.mutable_t();
+    constant_attribute_tensor_proto->mutable_dims()->Clear(); 
+    switch (type) {
+    case at::ScalarType::Float:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<float>();
+      break;
+    case at::ScalarType::Double:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<double>();
+      break;
+    case at::ScalarType::Bool:
+    case at::ScalarType::Int:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int>();
+      break;
+    case at::ScalarType::Long:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int64_t>();
+      break;
+    default:
+      // For most at::ScalarType, it should be safe to just call value.to<>
+      // on it, but for now we want to explicitly know when we've encountered
+      // a new scalar type while bringing up ORT eager mode.
+      ORT_THROW("Unsupported: at::ScalarType::", value.type());
+    }
+    return attr;
+  }
+  else{
+    return create_ort_attribute(name, value, value.type());
+  }
 }
 
 onnx::AttributeProto create_ort_attribute(
@@ -331,12 +367,8 @@ at::Tensor empty_memory_format(
   // TODO: figure out how to get the correct element type.
   OrtValue ot;
   auto& invoker = GetORTInvoker(*device_opt);
-  CreateMLValue(
-    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    ort_scalar_type_from_aten(*dtype_opt),
-    size.vec(),
-    &ot);
-  
+  onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(*dtype_opt), onnxruntime::TensorShape(size.vec()),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ot);
   return aten_tensor_from_ort(
     std::move(ot),
     at::TensorOptions()
@@ -344,34 +376,43 @@ at::Tensor empty_memory_format(
       .dtype(*dtype_opt));
 }
 
-at::Tensor empty_strided(
-  at::IntArrayRef size,
-  at::IntArrayRef stride,
-  // *
-  c10::optional<at::ScalarType> dtype_opt,
-  c10::optional<at::Layout> layout_opt,
-  c10::optional<at::Device> device_opt,
-  c10::optional<bool> pin_memory_opt) {
+at::Tensor empty_strided(at::IntArrayRef size, at::IntArrayRef stride, c10::optional<at::ScalarType> dtype_opt,
+                         c10::optional<at::Layout> layout_opt, c10::optional<at::Device> device_opt,
+                         c10::optional<bool> pin_memory_opt) {
   ORT_LOG_FN(size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
 
-  // TODO: handle stride
   // TODO: how to handle type conversion
   OrtValue ot;
   assert(device_opt.has_value());
   // TODO: how to support layout
-  //assert(!layout_opt.has_value());
+  // assert(!layout_opt.has_value());
   at::ScalarType dtype = c10::dtype_or_default(dtype_opt);
   auto& invoker = GetORTInvoker(*device_opt);
-  CreateMLValue(
-    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    ort_scalar_type_from_aten(dtype),
-    size.vec(),
-    &ot);
+  onnxruntime::Tensor::InitOrtValue(ort_scalar_type_from_aten(dtype), onnxruntime::TensorShape(size.vec()),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ot,
+                                    stride.vec());
+  return aten_tensor_from_ort(std::move(ot), at::TensorOptions().device(*device_opt).dtype(dtype));
+}
+
+// aten::as_strided(Tensor(a) self, int[] size, int[] stride, int? storage_offset=None) -> Tensor(a)
+at::Tensor as_strided(
+  const at::Tensor& self, 
+  at::IntArrayRef size, 
+  at::IntArrayRef stride, 
+  c10::optional<int64_t> storage_offset) {
+  ORT_LOG_FN(self, size, stride, storage_offset);
+  auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
+  auto* tensor = ort_input.GetMutable<onnxruntime::Tensor>();
+
+  auto byte_offset = storage_offset.has_value() ? (*storage_offset * tensor->DataType()->Size()) : 0;
+  OrtValue ot;
+  onnxruntime::Tensor::InitOrtValue(tensor->DataType(), onnxruntime::TensorShape(size.vec()), tensor->MutableDataRaw(),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
+                                    ot, byte_offset, stride.vec());
   return aten_tensor_from_ort(
     std::move(ot),
-    at::TensorOptions()
-      .device(*device_opt)
-      .dtype(dtype));
+    self.options());
 }
 
 at::Tensor _reshape_alias(
@@ -469,8 +510,8 @@ at::Tensor& zero_(at::Tensor& self){
   OrtValue flag_val;
   //construct a constant tensor
   auto element_type = onnxruntime::DataTypeImpl::GetType<int64_t>();
-  CreateMLValue(invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-                element_type, {}, &flag_val);
+  onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape({}),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), flag_val);
   auto* ort_flag_tensor = flag_val.GetMutable<onnxruntime::Tensor>();
   int64_t one = 1;
   CopyVectorToTensor<int64_t>(invoker, &one, 1, *ort_flag_tensor);
@@ -537,6 +578,60 @@ at::Tensor& add__Tensor(
       "ORT return failure status:" + status.ErrorMessage());
   
   return self;
+}
+
+// aten::slice.Tensor(Tensor(a) self, int dim=0, int? start=None, int? end=None, int step=1) -> Tensor(a)
+at::Tensor slice_Tensor(
+  const at::Tensor& self, 
+  int64_t dim, 
+  c10::optional<int64_t> start, 
+  c10::optional<int64_t> end, 
+  int64_t step) {
+  ORT_LOG_FN(self, dim, start, end, step);
+  int64_t ndim = self.dim();
+  if (ndim == 0) {
+    throw std::runtime_error("slice() cannot be applied to a 0-dim tensor.");
+  }
+  dim = at::maybe_wrap_dim(dim, ndim);
+
+  auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
+  auto* ort_tensor = ort_input.GetMutable<onnxruntime::Tensor>();
+  auto& shape = ort_tensor->Shape();
+  auto strides = ort_tensor->Strides();
+  int64_t l_start = start.has_value() ? *start : 0;
+  int64_t l_end = end.has_value() ? *end : shape[dim];
+  if (l_start < 0) {
+    l_start += shape[dim];
+  }
+  if (l_end < 0) {
+    l_end += shape[dim];
+  }
+  if (l_start < 0) {
+    l_start = 0;
+  } else if (l_start >= shape[dim]) {
+    l_start = shape[dim];
+  }
+  if (l_end < l_start) {
+    l_end = l_start;
+  } else if (l_end >= shape[dim]) {
+    l_end = shape[dim];
+  }
+
+  auto byte_offset = ort_tensor->ByteOffset() + (l_start * strides[dim]) * ort_tensor->DataType()->Size();
+  auto len = l_end - l_start;
+  onnxruntime::TensorShapeVector new_shape = shape.AsShapeVector();
+  onnxruntime::TensorShapeVector new_stride(strides.begin(), strides.end());
+  new_shape[dim] = (len + step - 1) / step;  // round-up
+  new_stride[dim] *= step;
+
+  OrtValue ot;
+  onnxruntime::Tensor::InitOrtValue(
+      ort_tensor->DataType(), onnxruntime::TensorShape(new_shape), ort_tensor->MutableDataRaw(),
+      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(), ot, byte_offset, new_stride);
+  return aten_tensor_from_ort(
+    std::move(ot),
+    self.options());
 }
 
 } // namespace aten

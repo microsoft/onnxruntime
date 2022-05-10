@@ -141,6 +141,9 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
 
     //! The JoinModel fuses two models by linking  outputs from the first model, to inupts of the second. 
     ROOT_NS.AI.MachineLearning.LearningModel JoinModel(ROOT_NS.AI.MachineLearning.LearningModel other, LearningModelJoinOptions options);
+
+    //! The SetName function changes the model name to the specified string
+    void SetName(String model_name);
   }
 
 }  // namespace Microsoft.AI.MachineLearning.Experimental

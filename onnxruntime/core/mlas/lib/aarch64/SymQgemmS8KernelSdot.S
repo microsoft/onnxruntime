@@ -18,14 +18,15 @@ Abstract:
     constant. When the packed right hand side is cached, we achieves higher performance
     by avoid packing all together.
 
+    This version utilizes dot product instructions, and uses 128b loads
+
 --*/
 
 #include "asmmacro.h"
 #include "AssembleDotProduct.h"
 
 //
-// Stack frame layout for the symmetric convolution kernel.
-// d8-d15, x19-x30 need to be preserved if used
+// Stack frame layout d8-d15, x19-x30 need to be preserved if used
 //
         .equ    .LGemmS8S8KernelFrame_SavedRegisters,   (4 * 8)
         .equ    .LGemmS8S8KernelFrame_ColumnSumBuffer,  (0 + .LGemmS8S8KernelFrame_SavedRegisters)

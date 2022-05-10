@@ -10,7 +10,8 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
  public:
   InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
                                    const std::unordered_set<std::string>& stop_ops = {},
-                                   bool debug_output = false);
+                                   bool debug_output = false,
+                                   DataLayout preferred_layout = static_cast<DataLayout>(0));
   virtual ~InternalTestingExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -20,9 +21,7 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  FusionStyle GetFusionStyle() const override {
-    return FusionStyle::FilteredGraphViewer;
-  }
+  DataLayout GetPreferredLayout() const override;
 
  private:
   const std::string ep_name_;
@@ -38,5 +37,7 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   const std::unordered_set<std::string> stop_ops_;
 
   const bool debug_output_;
+
+  DataLayout preferred_layout_;
 };
 }  // namespace onnxruntime

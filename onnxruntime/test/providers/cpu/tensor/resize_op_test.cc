@@ -65,6 +65,38 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapol
   test.Run();
 }
 
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extrapolation) {
+  OpTester test("Resize", 13);
+  std::vector<float> scales{1.0f, 0.8f, 0.8f, 1.0f};
+  std::vector<float> roi{0.0f, 0.4f, 0.6f, 0.0f, 1.0f, 1.2f, 1.7f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute("extrapolation_value", 10.0f);
+
+  constexpr int64_t N = 1, H = 4, W = 4, C = 1;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {8}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {7.6000004f, 10.0f, 10.0f,
+                          12.400001f, 10.f, 10.0f,
+                          10.0f, 10.0f, 10.0f};
+
+  test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  //CUDA: result mismatch due to not implementing NHWC support
+  //TensorRT: results mismatch
+  //ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};
@@ -690,13 +722,14 @@ class ResizeOpTester : public OpTester {
 
     // set the Graph inputs to just X and roi (exclude 'scales') so the 'scales' are a constant initializer
     if (scales_in_initializer_) {
-      // this isn't intended to work with a scenario where the optional 'sizes' input is provided
-      ASSERT_TRUE(graph_input_defs.size() == 3);
       graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
                        graph.GetNodeArg(graph_input_defs[1]->Name())});
-    }
-
-    if (sizes_in_initializer_) {
+      if (sizes_in_initializer_) {
+        ASSERT_TRUE(graph_input_defs.size() == 4);
+      } else {
+        ASSERT_TRUE(graph_input_defs.size() == 3);
+      }
+    } else if (sizes_in_initializer_) {
       ASSERT_TRUE(graph_input_defs.size() == 4);  // 'sizes' is 4th input
       graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
                        graph.GetNodeArg(graph_input_defs[1]->Name()),
@@ -744,9 +777,10 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
 
 TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
   auto run_test = [](bool sizes_in_initializer) {
-    ResizeOpTester test(false, sizes_in_initializer);
+    ResizeOpTester test(sizes_in_initializer, sizes_in_initializer);
 
     std::vector<float> roi{};
+    std::vector<float> scales{};
     std::vector<int64_t> sizes{1, 1, 4, 4};
 
     test.AddAttribute("mode", "nearest");
@@ -760,7 +794,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
 
     test.AddInput<float>("X", {N, C, H, W}, X);
     test.AddInput<float>("roi", {0}, roi);
-    test.AddInput<float>("scales", {0}, {});
+    test.AddInput<float>("scales", {0}, scales, sizes_in_initializer);
     test.AddInput<int64_t>("sizes", {4}, sizes, sizes_in_initializer);
 
     std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,

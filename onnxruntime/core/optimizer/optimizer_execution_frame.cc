@@ -100,6 +100,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 }
 
+Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const{
+  std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
+  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), out);
+}
+
 std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();

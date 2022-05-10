@@ -123,13 +123,13 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // lro: dim indices that are present in left, right, and reduce_dims
   // lo: dim indices that are present in left and reduce_dims
   // ro: dim indices that are present in right and reduce_dims
-  InlinedShapeVector<size_t> lro;
+  InlinedVector<size_t> lro;
   lro.reserve(kTensorShapeSmallBufferElementsSize);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > kTensorShapeSmallBufferElementsSize)
 
-  InlinedShapeVector<size_t> lo;
+  InlinedVector<size_t> lo;
   lo.reserve(kTensorShapeSmallBufferElementsSize);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > kTensorShapeSmallBufferElementsSize)
 
-  InlinedShapeVector<size_t> ro;
+  InlinedVector<size_t> ro;
   ro.reserve(kTensorShapeSmallBufferElementsSize);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > kTensorShapeSmallBufferElementsSize)
 
   // Maintain sizes to create reshaped "views"
@@ -193,7 +193,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
 
   // Permutate the left operand so that the axes order go like this: [lro, lo, reduce_dims, ro]
   TensorShapeVector reshaped_dims;
-  InlinedShapeVector<size_t> left_permutation;
+  InlinedVector<size_t> left_permutation;
   left_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   left_permutation.insert(left_permutation.end(), lro.begin(), lro.end());
   left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
@@ -219,7 +219,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Permutate the right operand so that the axes order go like this: [lro, reduce_dims, ro, lo]
-  InlinedShapeVector<size_t> right_permutation;
+  InlinedVector<size_t> right_permutation;
   right_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   right_permutation.insert(right_permutation.end(), lro.begin(), lro.end());
   right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
@@ -273,7 +273,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // the output is permutated as well with respect to the original ordering of the axes.
   // The permutated order will be the dims in: [lro, lo, reduced_dims, ro]
   // Hence invert the permutation by a permutation that puts the axes in the same ordering
-  InlinedShapeVector<size_t> output_permutation;
+  InlinedVector<size_t> output_permutation;
   if (!is_final_pair) {  // If this is not the final pair, we need to permutate the result to match the pre-fixed order for the next iteration
     output_permutation.resize(lro.size() + lo.size() + reduce_dims.size() + ro.size(), 0);
     size_t iter = 0;

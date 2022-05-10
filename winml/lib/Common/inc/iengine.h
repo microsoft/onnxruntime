@@ -66,6 +66,9 @@ IModelInfo : IUnknown {
   STDMETHOD(GetName)
   (const char** out, size_t* len) PURE;
 
+  STDMETHOD(SetName)
+  (const char* name) PURE;
+
   STDMETHOD(GetDomain)
   (const char** out, size_t* len) PURE;
 
@@ -99,6 +102,9 @@ IModel : IUnknown {
   STDMETHOD(SaveModel)
   (_In_ const wchar_t* const file_name,
    _In_ unsigned size) PURE;
+
+  STDMETHOD(SetName)
+  (const char* name) PURE;
 
   STDMETHOD(AddOperator)
   (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,

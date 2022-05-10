@@ -82,6 +82,7 @@ extern "C" {
     MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelNeon;
     MLAS_CONV_SYM_KERNEL MlasConvSymU8KernelNeon;
     MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelDot;
+    MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelDotLd64;
     MLAS_CONV_SYM_KERNEL MlasConvSymU8KernelDot;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseU8KernelNeon;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseS8KernelNeon;
@@ -143,6 +144,9 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8(
 
 struct MLAS_CONV_SYM_DISPATCH {
     MLAS_CONV_SYM_KERNEL* Kernel;
+#if defined(MLAS_TARGET_ARM64)
+    MLAS_CONV_SYM_KERNEL* KernelLittle; // kernel for little core
+#endif
     MLAS_CONV_SYM_DEPTHWISE_KERNEL* DepthwiseKernel;
     MLAS_SYMM_QCONV_DEPTHWISE_FIXFILTER_PROC* Depthwise3x3Proc;
     MLAS_SYMM_QCONV_DEPTHWISE_FIXFILTER_PROC* Depthwise5x5Proc;
@@ -230,6 +234,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
 #elif defined(MLAS_TARGET_ARM64)
 const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon = {
     MlasConvSymU8KernelNeon,
+    MlasConvSymU8KernelNeon,
     MlasConvSymDepthwiseU8KernelNeon,
     MlasConvSymDepthwiseKernelSize9Arm64U8S8,
     MlasConvSymDepthwiseKernelSize25ArmU8S8,
@@ -245,6 +250,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon = {
 };
 
 const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon = {
+    MlasConvSymS8KernelNeon,
     MlasConvSymS8KernelNeon,
     MlasConvSymDepthwiseS8KernelNeon,
     MlasConvSymDepthwiseKernelSize9Arm64S8S8,
@@ -262,6 +268,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon = {
 
 const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot = {
     MlasConvSymU8KernelDot,
+    MlasConvSymU8KernelDot,
     MlasConvSymDepthwiseU8KernelNeon,
     MlasConvSymDepthwiseKernelSize9Arm64U8S8,
     MlasConvSymDepthwiseKernelSize25ArmU8S8,
@@ -278,6 +285,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot = {
 
 const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot = {
     MlasConvSymS8KernelDot,
+    MlasConvSymS8KernelDotLd64,
     MlasConvSymDepthwiseS8KernelNeon,
     MlasConvSymDepthwiseKernelSize9Arm64S8S8,
     MlasConvSymDepthwiseKernelSize25ArmS8S8,
@@ -356,12 +364,15 @@ MlasConvSymPackWSize(
     } else {
 
 #ifdef MLAS_TARGET_ARM64
-        // TODO!! remove this for functional testing!
-        // TODO!! is there a way to know whether this is called by tests?
-        if (KernelSize <= 1) return 0;
+        if (KernelSize <= 1) {
+            // im2col not needed, indirected buffer not needed
+            // just use qgemm path for pointwise
+            return 0;
+        }
         if (InputChannels < 64) {
             // Shallow indirect conv runs slower.
-            // TODO!! for DOT arch, threshold should be 32 for better perf
+            // TODO!! remove this for functional testing!
+            // TODO!! is there a way to know whether this is called by tests?
             return 0;
         }
 #endif
@@ -467,6 +478,17 @@ MlasConvSym(
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(Params.InputIsSigned);
 
+    // Pick the suitable kernel for current core. Currently we only have specialized core for 
+    // s8s8 under ARM64
+#if defined(MLAS_TARGET_ARM64)
+    const auto Kernel =
+        (Params.InputIsSigned && MLAS_CPUIDINFO::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd())
+            ? ConvSymDispatch->KernelLittle
+            : ConvSymDispatch->Kernel;
+#else
+    const auto Kernel = ConvSymDispatch->Kernel;
+#endif
+
     int32_t KernelFlags = 0;
 
     if (Params.PerChannelScale) {
@@ -513,7 +535,7 @@ MlasConvSym(
                 }
                 size_t OutputCount = std::min<size_t>(oc_outside_block_size - oc, KernelOutputCount);
 
-                ConvSymDispatch->Kernel(
+                Kernel(
                     Input,
                     pwb,
                     conv_out,

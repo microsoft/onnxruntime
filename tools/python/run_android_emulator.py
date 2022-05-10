@@ -7,9 +7,8 @@ import contextlib
 import shlex
 import sys
 
-from util import get_logger
 import util.android as android
-
+from util import get_logger
 
 log = get_logger("run_android_emulator")
 
@@ -18,32 +17,29 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Manages the running of an Android emulator. "
         "Supported modes are to start and stop (default), only start, or only "
-        "stop the emulator.")
+        "stop the emulator."
+    )
 
-    parser.add_argument(
-        "--create-avd", action="store_true",
-        help="Whether to create the Android virtual device.")
+    parser.add_argument("--create-avd", action="store_true", help="Whether to create the Android virtual device.")
 
-    parser.add_argument(
-        "--start", action="store_true", help="Start the emulator.")
-    parser.add_argument(
-        "--stop", action="store_true", help="Stop the emulator.")
+    parser.add_argument("--start", action="store_true", help="Start the emulator.")
+    parser.add_argument("--stop", action="store_true", help="Stop the emulator.")
 
+    parser.add_argument("--android-sdk-root", required=True, help="Path to the Android SDK root.")
     parser.add_argument(
-        "--android-sdk-root", required=True, help="Path to the Android SDK root.")
+        "--system-image",
+        default="system-images;android-29;google_apis;x86_64",
+        help="The Android system image package name.",
+    )
+    parser.add_argument("--avd-name", default="ort_android", help="The Android virtual device name.")
     parser.add_argument(
-        "--system-image", default="system-images;android-29;google_apis;x86_64",
-        help="The Android system image package name.")
-    parser.add_argument(
-        "--avd-name", default="ort_android",
-        help="The Android virtual device name.")
-    parser.add_argument(
-        "--emulator-extra-args", default="",
-        help="A string of extra arguments to pass to the Android emulator.")
+        "--emulator-extra-args", default="", help="A string of extra arguments to pass to the Android emulator."
+    )
     parser.add_argument(
         "--emulator-pid-file",
         help="Output/input file containing the PID of the emulator process. "
-        "This is only required if exactly one of --start or --stop is given.")
+        "This is only required if exactly one of --start or --stop is given.",
+    )
 
     args = parser.parse_args()
 

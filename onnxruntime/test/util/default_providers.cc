@@ -124,17 +124,17 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
 #endif
 }
 
-// std::unique_ptr<IExecutionProvider> DefaultStvmExecutionProvider() {
-// #ifdef USE_STVM
-//   return CreateExecutionProviderFactory_Stvm("")->CreateProvider();
+// std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
+// #ifdef USE_TVM
+//   return CreateExecutionProviderFactory_Tvm("")->CreateProvider();
 // #else
 //   return nullptr;
 // #endif
 // }
 
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
-// For any non - Android system, NNAPI will only be used for ort model converter
-// Make it unavailable here, you can still manually append NNAPI EP to session for model conversion
+// The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
+// Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.
 #if defined(USE_NNAPI) && defined(__ANDROID__)
   return CreateExecutionProviderFactory_Nnapi(0, {})->CreateProvider();
 #else

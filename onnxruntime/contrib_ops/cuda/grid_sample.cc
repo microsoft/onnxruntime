@@ -9,15 +9,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      GridSample,                                                 \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      GridSample,                                                  \
+      kMSDomain,                                                   \
+      1,                                                           \
+      T,                                                           \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       GridSample<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -28,9 +29,9 @@ GridSample<T>::GridSample(const OpKernelInfo& info) : CudaKernel(info) {
   std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
   align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
   ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic",
-      "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
+              "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
   ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection",
-      "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
+              "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
   if (mode_str == "bicubic") {
     mode_i_ = 2;
   } else if (mode_str == "nearest") {
@@ -66,7 +67,7 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
   dims_output[2] = dims_grid[1];
   dims_output[3] = dims_grid[2];
   Tensor* Y = context->Output(0, dims_output);
-    // Return early if the output tensor is going to be of size 0
+  // Return early if the output tensor is going to be of size 0
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
@@ -83,8 +84,7 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
       dims_input.data(),
       dims_grid[1],
       dims_grid[2],
-      Y_data
-      );
+      Y_data);
   return Status::OK();
 }
 }  // namespace cuda

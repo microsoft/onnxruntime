@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 export interface OrtWasmModule extends EmscriptenModule {
-  //#region emscripten functions
+  // #region emscripten functions
   stackSave(): number;
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
@@ -10,9 +10,9 @@ export interface OrtWasmModule extends EmscriptenModule {
   UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
-  //#endregion
+  // #endregion
 
-  //#region ORT APIs
+  // #region ORT APIs
   _OrtInit(numThreads: number, loggingLevel: number): number;
 
   _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
@@ -45,11 +45,11 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtReleaseRunOptions(runOptionsHandle: number): void;
 
   _OrtEndProfiling(sessionHandle: number): number;
-  //#endregion
+  // #endregion
 
-  //#region config
+  // #region config
   mainScriptUrlOrBlob?: string|Blob;
-  //#endregion
+  // #endregion
 }
 
 declare const moduleFactory: EmscriptenModuleFactory<OrtWasmModule>;

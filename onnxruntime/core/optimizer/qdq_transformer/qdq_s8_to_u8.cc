@@ -37,8 +37,8 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
-    std::vector<NodeArg*>& dq_input_defs = dq_node.MutableInputDefs();
+    auto& q_input_defs = q_node.MutableInputDefs();
+    auto& dq_input_defs = dq_node.MutableInputDefs();
 
     constexpr size_t input_cnt_required = 3;
     if (q_input_defs.size() != input_cnt_required ||

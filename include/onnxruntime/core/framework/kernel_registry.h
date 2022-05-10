@@ -45,6 +45,11 @@ class KernelRegistry {
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const KernelCreateInfo** out) const;
 
+  // Find KernelCreateInfo in instant mode
+  Status TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
+                       const std::unordered_map<std::string, MLDataType>& type_constraints,
+                       ProviderType exec_provider, const KernelCreateInfo** out) const;
+
 #endif
 
   // Try to find the kernel given a kernel def hash.
@@ -85,6 +90,7 @@ class KernelRegistry {
 
   static std::string GetMapKey(const std::string& op_name, const std::string& domain, const std::string& provider) {
     std::string key(op_name);
+    // use the kOnnxDomainAlias of 'ai.onnx' instead of kOnnxDomain's empty string
     key.append(1, ' ').append(domain.empty() ? kOnnxDomainAlias : domain).append(1, ' ').append(provider);
     return key;
   }

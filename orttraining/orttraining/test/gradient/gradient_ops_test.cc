@@ -606,9 +606,11 @@ TEST(GradientCheckerTest, GemmGrad) {
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   // Attribute axes supports negative values from opset 11.
-  OpDef op_def{"ReduceMean", kOnnxDomain, 11};
+  OpDef op_def_opset11{"ReduceMean", kOnnxDomain, 11};
+  RunReductionTests(op_def_opset11);
 
-  RunReductionTests(op_def);
+  OpDef op_def_opset13{"ReduceMean", kOnnxDomain, 13};
+  RunReductionTests(op_def_opset13);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
@@ -2517,10 +2519,12 @@ void GradientCheckerMinMaxGradHelper(const std::string op) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op, kOnnxDomain, 11};
-  // Ensure the gap between x1 and x2 is greater than 1e-3f, otherwise the result of NumericJacobian
+  // Ensure the gap between tensors is greater than 1e-3f, otherwise the result of NumericJacobian
   // will be incorrect. This also excludes equal inputs case, where Min/Max is not smooth.
   std::function<float(float)> x1_transformer = [](float x) { return (int)(x * 100) / 100.f; };
   std::function<float(float)> x2_transformer = [](float x) { return (int)(x * 100) / 100.f + 0.002f; };
+  std::function<float(float)> x3_transformer = [](float x) { return (int)(x * 100) / 100.f + 0.004f; };
+  std::function<float(float)> x4_transformer = [](float x) { return (int)(x * 100) / 100.f + 0.006f; };
   TensorInfo x1_info({2, 3}, true, &x1_transformer);
   TensorInfo y_info({2, 3}, true);
 
@@ -2539,6 +2543,23 @@ void GradientCheckerMinMaxGradHelper(const std::string op) {
   {
     TensorInfo x2_info({3}, true, &x2_transformer);
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // More than 2 inputs.
+  {
+    TensorInfo x2_info({2, 3}, true, &x2_transformer);
+    TensorInfo x3_info({2, 3}, true, &x3_transformer);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x2_info({3}, true, &x2_transformer);
+    TensorInfo x3_info({2, 1}, true, &x3_transformer);
+    TensorInfo x4_info({2, 3}, true, &x4_transformer);
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info, x4_info}, {y_info}, &max_error));
     EXPECT_IS_TINY(max_error);
   }
 }

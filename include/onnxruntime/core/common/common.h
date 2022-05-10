@@ -37,6 +37,7 @@
 #include "core/common/status.h"
 #include "core/common/gsl_suppress.h"
 
+
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
@@ -284,5 +285,13 @@ inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
 constexpr size_t kMaxStrLen = 2048;
+
+// Returns whether `key` is in `container`.
+// Like C++20's map/set contains() member function.
+template <typename Key, typename... OtherContainerArgs,
+          template <typename...> typename AssociativeContainer>
+inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, const Key& key) {
+  return container.find(key) != container.end();
+}
 
 }  // namespace onnxruntime

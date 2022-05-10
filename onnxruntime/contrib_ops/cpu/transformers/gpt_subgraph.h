@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
-//#include <functional>
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
-#include "core/framework/session_state.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
+
+namespace onnxruntime {
+class SessionState;
+}
 
 namespace onnxruntime {
 namespace contrib {
@@ -42,39 +45,33 @@ struct GptSubgraph {
                const SessionState& subgraph_session_state);
 
   // Create inputs for first inference of subgraph.
-  void CreateInitialFeeds(
+  Status CreateInitialFeeds(
       const Tensor& input_ids,
       const std::vector<const OrtValue*>& implicit_inputs,
       int num_beams,
       int pad_token_id,
-      gsl::span<int64_t>& next_positions,
-      std::vector<OrtValue>& feeds);
-
-  Status UpdateFeeds(
-      const std::vector<OrtValue>& last_outputs,
-      std::vector<OrtValue>& next_inputs,
-      int current_length,
-      gsl::span<int64_t>& next_positions,
-      gsl::span<const int64_t> beam_next_tokens,
-      gsl::span<const int64_t> beam_indices,
-      int num_beams);
+      gsl::span<int32_t>& sequence_lengths,
+      OrtValue& expanded_input_ids,
+      std::vector<OrtValue>& feeds,
+      const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
+      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+      IAllocatorUniquePtr<char>& buffer);
 
   FeedsFetchesManager* GetFeedsFetchesManager() const { return feeds_fetches_manager_.get(); }
+
+  const IExecutionProvider* GetProvider() const;
+
+  bool IsOutputFloat16() const { return is_output_float16_; }
 
  protected:
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs);
 
-  OrtValue ExpandInputs(const OrtValue& input, int num_beams) const;
-
-  void PickPastState(const std::vector<OrtValue>& last_outputs,
-                     std::vector<OrtValue>& next_inputs,
-                     gsl::span<const int64_t>& beam_indices);
-
   AllocatorPtr allocator_;
   const SessionState* session_state_;
   const SessionState* subgraph_session_state_;
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
+  bool is_output_float16_;
 };
 
 }  // namespace transformers

@@ -87,7 +87,7 @@ QDQReplaceWithNew MatMulIntToFloatReplacer() {
       MoveAndAppend(dq2, ArgType::kInput, 2, ArgType::kInput),
       MoveAll(target, ArgType::kOutput)};
 
-  return QDQReplaceWithNew(kMSDomain, std::move(moves), "MatMulIntegerToFloat");
+  return QDQReplaceWithNew(kMSDomain, "MatMulIntegerToFloat", std::move(moves));
 }
 
 struct SetOptionalZeroPoint {
@@ -191,16 +191,16 @@ Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& select
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(const std::string& domain)
-    : ReplaceWithQLinear(domain, UnaryMoves()) {
+UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(std::string domain)
+    : ReplaceWithQLinear(std::move(domain), UnaryMoves()) {
 }
 
-BinaryReplaceWithQLinear::BinaryReplaceWithQLinear(const std::string& domain)
-    : ReplaceWithQLinear(domain, BinaryMoves()) {
+BinaryReplaceWithQLinear::BinaryReplaceWithQLinear(std::string domain)
+    : ReplaceWithQLinear(std::move(domain), BinaryMoves()) {
 }
 
-VariadicReplaceWithQLinear::VariadicReplaceWithQLinear(const std::string& domain)
-    : ReplaceWithQLinear(domain, VariadicMoves()) {
+VariadicReplaceWithQLinear::VariadicReplaceWithQLinear(std::string domain)
+    : ReplaceWithQLinear(std::move(domain), VariadicMoves()) {
 }
 
 ConvReplaceWithQLinear::ConvReplaceWithQLinear()
@@ -247,8 +247,8 @@ static std::vector<NodeAndMoveInfo> GetGemmMoveInfo(bool does_q_node_exist) {
 }
 
 GemmReplaceWithQuant::GemmReplaceWithQuant()
-    : qgemm_with_float_as_output_replacer_(kMSDomain, GetGemmMoveInfo(false), "QGemm"),
-      qgemm_with_8bits_as_output_replacer_(kMSDomain, GetGemmMoveInfo(true), "QGemm") {
+    : qgemm_with_float_as_output_replacer_(kMSDomain, "QGemm", GetGemmMoveInfo(false)),
+      qgemm_with_8bits_as_output_replacer_(kMSDomain, "QGemm", GetGemmMoveInfo(true)) {
 }
 
 Status GemmReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {

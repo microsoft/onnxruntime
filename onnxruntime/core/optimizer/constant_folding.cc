@@ -16,8 +16,8 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
-                                 const std::unordered_set<std::string>& compatible_execution_providers,
-                                 const std::unordered_set<std::string>& excluded_initializers) noexcept
+                                 const InlinedHashSet<std::string_view>& compatible_execution_providers,
+                                 const InlinedHashSet<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
       excluded_initializers_(excluded_initializers),

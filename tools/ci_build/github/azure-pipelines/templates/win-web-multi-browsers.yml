@@ -6,7 +6,7 @@ parameters:
 jobs:
 - job: build_onnxruntime_web_windows
   pool:
-    vmImage: windows-latest
+    vmImage: windows-2019
   timeoutInMinutes: 30
   workspace:
     clean: all
@@ -33,7 +33,7 @@ jobs:
     displayName: 'Checkout submodule onnx'
   - task: NodeTool@0
     inputs:
-      versionSpec: '14.x'
+      versionSpec: '16.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: 'Release_*/**/*'

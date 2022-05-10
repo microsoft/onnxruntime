@@ -754,10 +754,13 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
 }
 
 // Registers all the predefined transformers with transformer manager
-Status TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                  TransformerLevel graph_optimization_level,
-                                                  bool saving_runtime_optimizations) const {
-  ORT_RETURN_IF(saving_runtime_optimizations, "Saving runtime optimizations is not supported by TrainingSession.");
+Status TrainingSession::AddPredefinedTransformers(
+    GraphTransformerManager& transformer_manager,
+    TransformerLevel graph_optimization_level,
+    MinimalBuildOptimizationHandling minimal_build_optimization_handling) const {
+  ORT_RETURN_IF_NOT(
+      minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations,
+      "Only applying full build optimizations is supported by TrainingSession.");
 
   ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
                     "Exceeded max transformer level. Current level is set to " +
@@ -791,7 +794,7 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   // CPU allocator for partitioning the optimizer state by column.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::unordered_set<std::string> compatible_eps = {};
+  InlinedHashSet<std::string_view> compatible_eps = {};
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
   transformers_to_register.emplace_back(std::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
@@ -1415,7 +1418,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   };
 
   // perform reverse dfs from output node to discover trainable parameters
-  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
+  graph.ReverseDFSFrom(std::array{graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 

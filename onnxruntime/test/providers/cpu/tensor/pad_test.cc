@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -33,15 +34,21 @@ static void RunOnnxOpsetTypedTest(
   }
   test.AddOutput<T>("output", output_dims, output);
   std::unordered_set<std::string> provider_types(excluded_provider_types.begin(), excluded_provider_types.end());
-  if (std::is_same<T, int8_t>::value)
+  if (std::is_same<T, int8_t>::value) {
     provider_types.insert(kTensorrtExecutionProvider);
+  }
+  SessionOptions so;
+  // Don't fail early on shape inference so that we can test the op's error handling.
+  if (expect != OpTester::ExpectResult::kExpectSuccess) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  }
   if constexpr (opset >= 11) {
-    test.Run(expect, error_msg, provider_types);
+    test.Run(so, expect, error_msg, provider_types);
   } else {
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
     provider_types.insert(kOpenVINOExecutionProvider);
 #endif
-    test.Run(expect, error_msg, provider_types);
+    test.Run(so, expect, error_msg, provider_types);
   }
 }
 
@@ -160,7 +167,7 @@ void RunAllOpsetAllDomainPadTests<>(
   test3.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
   test3.AddInput<float>("value", {1}, {value});
   test3.AddOutput<float>("output", output_dims, output);
-  //TensorRT does not support pads as an input
+  // TensorRT does not support pads as an input
   test3.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 
 #endif
@@ -741,7 +748,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
-                                  {1, 1, 1, 1},  // not allowed if it pads the empty dim 
+                                  {1, 1, 1, 1},  // not allowed if it pads the empty dim
                                   T(1),
                                   {4, 0},
                                   {},
@@ -751,7 +758,7 @@ TYPED_TEST(PadOpTest, Pad_Edge_DimWithZeroInput) {
 
   RunAllOpsetAllDomainPadTests<T>({2, 0},  // 2D
                                   {},
-                                  {1, 0, 1, 0},  
+                                  {1, 0, 1, 0},
                                   T(1),
                                   {4, 0},
                                   {},

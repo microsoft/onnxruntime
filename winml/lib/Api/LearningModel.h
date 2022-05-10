@@ -24,10 +24,6 @@ struct LearningModel : LearningModelT<LearningModel> {
   LearningModel(
       const wss::IRandomAccessStreamReference stream,
       const winml::ILearningModelOperatorProvider operator_provider);
-	  
-  LearningModel(
-      const wss::IBuffer stream,
-      const winml::ILearningModelOperatorProvider operator_provider);
 
   LearningModel(
       _winml::IEngineFactory* engine_factory,
@@ -59,6 +55,8 @@ struct LearningModel : LearningModelT<LearningModel> {
   wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
   OutputFeatures();
 
+  void SetName(const hstring& name);
+
   /* IClosable methods. */
   void Close();
 
@@ -81,15 +79,6 @@ struct LearningModel : LearningModelT<LearningModel> {
       wss::IRandomAccessStreamReference const stream,
       winml::ILearningModelOperatorProvider const operator_provider);
 
-  static wf::IAsyncOperation<winml::LearningModel>
-  LoadFromBufferAsync(
-      wss::IBuffer const buffer);
-
-  static wf::IAsyncOperation<winml::LearningModel>
-  LoadFromBufferAsync(
-      wss::IBuffer const buffer,
-      winml::ILearningModelOperatorProvider const operator_provider);
-
   static winml::LearningModel
   LoadFromFilePath(
       hstring const& path);
@@ -102,19 +91,10 @@ struct LearningModel : LearningModelT<LearningModel> {
   static winml::LearningModel
   LoadFromStream(
       wss::IRandomAccessStreamReference const stream);
-	  
-  static winml::LearningModel
-  LoadFromBuffer(
-      wss::IBuffer const buffer);
 
   static winml::LearningModel
   LoadFromStream(
       wss::IRandomAccessStreamReference const stream,
-      winml::ILearningModelOperatorProvider const operator_provider);
-	  
-  static winml::LearningModel
-  LoadFromBuffer(
-      wss::IBuffer const buffer,
       winml::ILearningModelOperatorProvider const operator_provider);
 
  public:

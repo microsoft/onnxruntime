@@ -134,7 +134,8 @@ static Status SwapGatherNDWithTargetNode(Graph& graph, Node& gathernd_node, Node
   target_node_out_arg->SetShape(new_output_shape_for_target_node);
 
   if (need_update_graph_output) {
-    std::vector<const NodeArg*> graph_new_outputs;
+    InlinedVector<const NodeArg*> graph_new_outputs;
+    graph_new_outputs.reserve(graph_outputs.size());
     for (auto out_arg : graph_outputs) {
       if (out_arg->Name().compare(gathernd_out_arg->Name()) == 0) {
         graph_new_outputs.push_back(target_node_out_arg);
@@ -237,7 +238,7 @@ Status ComputationReductionTransformer::ApplyImpl(Graph& graph, bool& modified, 
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     // Same ideas might apply for Gather, GatherElements, Slice, Split, etc.
-    // Todo: let's review the real cases to make the logic more generic.
+    // TODO: let's review the real cases to make the logic more generic.
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "GatherND", {1, 12, 13}, kOnnxDomain) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() > 1) {  // allow GatherND have no out edges in case it is graph output.

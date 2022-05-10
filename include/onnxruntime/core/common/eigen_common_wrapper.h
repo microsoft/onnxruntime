@@ -25,6 +25,15 @@
 #ifdef HAS_CLASS_MEMACCESS
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 #endif
+
+// cmake/external/eigen\Eigen/src/Core/util/Meta.h:454:25:
+// error: 'result_of<Eigen::internal::scalar_product_op<unsigned long long> (const unsigned long long &, const unsigned long long &)>'
+// is deprecated [-Werror,-Wdeprecated-declarations]
+//   typedef typename std::result_of<T>::type type1;
+#ifdef HAS_DEPRECATED_DECLARATIONS
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 #elif defined(_MSC_VER)
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence

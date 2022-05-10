@@ -37,7 +37,9 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
                                                           {"MaxPool", {12}},
-                                                          {"Resize", {}}},
+                                                          {"Resize", {}},
+                                                          {"Squeeze", {}},
+                                                          {"Unsqueeze", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
@@ -78,7 +80,9 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
-                                                          {"LeakyRelu", {}}},
+                                                          {"LeakyRelu", {}},
+                                                          {"GlobalAveragePool", {}},
+                                                          {"Sigmoid", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
@@ -204,11 +208,14 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer(const SatApplyContextVariant& apply_context)
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(
+    bool is_int8_allowed, const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
-          CreateSelectorActionRegistry(QDQIsInt8Allowed()),
-          apply_context} {
+          CreateSelectorActionRegistry(is_int8_allowed),
+          apply_context,
+          // this transformer is only compatible with the CPU EP
+          {kCpuExecutionProvider}} {
 }
 
 }  // namespace onnxruntime

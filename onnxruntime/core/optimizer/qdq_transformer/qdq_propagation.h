@@ -16,7 +16,7 @@ namespace onnxruntime {
 */
 class QDQPropagationTransformer : public GraphTransformer {
  public:
-  QDQPropagationTransformer(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  QDQPropagationTransformer(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("QDQPropagationTransformer", compatible_execution_providers) {
   }
 

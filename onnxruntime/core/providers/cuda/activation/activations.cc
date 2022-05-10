@@ -72,7 +72,7 @@ namespace cuda {
 
 UNARY_ACTIVATION_OP_HFD(Elu, 6);
 UNARY_ACTIVATION_OP_HFD(HardSigmoid, 6);
-UNARY_ACTIVATION_OP_HFD(LeakyRelu, 6);
+UNARY_ACTIVATION_OP_VERSIONED_HFD(LeakyRelu, 6, 15);
 UNARY_ACTIVATION_OP_HFD(Relu, 14);
 UNARY_ACTIVATION_OP_VERSIONED_HFD_WITH_BF16(Relu, 13, 13);
 UNARY_ACTIVATION_OP_VERSIONED_HFD(Relu, 6, 12);
@@ -84,6 +84,9 @@ UNARY_ACTIVATION_OP_HFD(Softsign, 1);
 UNARY_ACTIVATION_OP_HFD(Tanh, 13);
 UNARY_ACTIVATION_OP_VERSIONED_HFD(Tanh, 6, 12);
 UNARY_ACTIVATION_OP_HFD(ThresholdedRelu, 10);
+
+// Opset-16 adds BFloat16 to allowed types for the LeakyRelu operator
+UNARY_ACTIVATION_OP_HFD(LeakyRelu, 16);
 
 }  // namespace cuda
 }  // namespace onnxruntime

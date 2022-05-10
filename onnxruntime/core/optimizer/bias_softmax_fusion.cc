@@ -192,7 +192,7 @@ void FuseBiasSoftmaxSubgraph(
     NodeArg* mask,
     int broadcast_axis,
     int softmax_axis) {
-  std::vector<NodeArg*> fused_inputs{input, mask};
+  const std::array fused_inputs{input, mask};
 
   std::string fused_desc =
       "fused " + add_node.Name() + " and " + softmax_node.Name() + " into softmax(input + bias)";

@@ -12,6 +12,7 @@
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
+#include "core/common/inlined_containers.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
@@ -22,8 +23,10 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
+#include "core/graph/function_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -46,22 +49,6 @@ namespace onnxruntime {
     { __VA_ARGS__; }                                 \
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
-
-static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
-  bool is_latest_opset = false;
-  auto onnx_opset = opset_versions.find(kOnnxDomain);
-
-  if (onnx_opset != opset_versions.cend()) {
-    static int latest_onnx_version = model_load_utils::IsAllowReleasedONNXOpsetsOnlySet()
-                                         ? ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().LastReleaseVersionMap().at(ONNX_NAMESPACE::ONNX_DOMAIN)
-                                         : ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second;
-    if (onnx_opset->second == latest_onnx_version) {
-      is_latest_opset = true;
-    }
-  }
-
-  return is_latest_opset;
-}
 
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
@@ -290,7 +277,7 @@ bool NodeArg::HasTensorOrScalarShape() const {
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
@@ -354,7 +341,7 @@ void NodeArg::ClearShape() {
   }
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -509,14 +496,14 @@ void NodeArg::SetType(DataType p_type) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 void NodeArg::SetType(const TypeProto& type_proto) {
   type_ = DataTypeUtils::ToType(type_proto);
   *(node_arg_info_.mutable_type()) = type_proto;
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 bool NodeArg::Exists() const noexcept {
   return exists_;
@@ -570,23 +557,58 @@ const Path& Node::ModelPath() const noexcept {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-Function* Node::GetMutableFunctionBody(bool try_init_func_body) {
-  if (nullptr != func_body_) {
-    return func_body_;
-  }
-
-  // Initialize function body
-  if (try_init_func_body) {
-    graph_->InitFunctionBodyForNode(*this);
-  }
-
-  return func_body_;
+bool Node::CanBeInlined() const {
+  return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
 }
 
-void Node::SetFunctionBody(Function& func) {
-  func_body_ = &func;
-  op_ = &func.OpSchema();
+Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const {
+  // Initialize function body
+  if (func_template_) {
+    return function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, output);
+  } else if (op_ && (op_->HasFunction() || op_->HasContextDependentFunction())) {
+    // This node has a schema defined function proto. If it is a context dependent function
+    // then build it otherwise fetch the FunctionProto from schema.
+    ONNX_NAMESPACE::FunctionProto onnx_function_proto;
+    if (op_->HasContextDependentFunction()) {
+      NodeProto node_proto;
+      ToProto(node_proto);
+      std::vector<TypeProto> input_types;
+      for (size_t i = 0, n = InputDefs().size(); i < n; i++) {
+        auto p_node_arg = InputDefs().at(i);
+        if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
+          auto& type = *(p_node_arg->TypeAsProto());
+          input_types.emplace_back(type);
+        } else
+          input_types.emplace_back();
+      }
+      ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
+      if (!op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto)) {
+        // I don't know why but the existing behavior is ignore the failure here.
+        // keep the same.
+        return Status::OK();
+      }
+    } else {
+      onnx_function_proto = *(op_->GetFunction());
+    }
+    return function_utils::Instantiate(*graph_, index_, onnx_function_proto, output);
+  } else {
+    return Status::OK();
+  }
+}
+
+Status Node::InstantiateFunctionBody() {
+  if (nullptr != func_body_) {
+    //already instantiated.
+    return Status::OK();
+  }
+
+  return GetInstantiateFunctionBody(func_body_);
+}
+
+void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
+  op_ = func_template.op_schema_.get();
   since_version_ = op_->since_version();
+  func_template_ = &func_template;
 }
 
 void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
@@ -762,7 +784,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const log
         subgraphs_.push_back(std::move(subgraph));
       }
 
-      AddAttribute(attr_proto.name(), attr_proto);
+      AddAttributeProto(std::move(attr_proto));
     }
   }
 
@@ -872,56 +894,47 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-void Node::AddAttribute(const std::string& attr_name, const AttributeProto& value) {
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
-  attributes_[attr_name] = value;
+void Node::AddAttributeProto(AttributeProto value) {
+  utils::SetNodeAttribute(std::move(value), attributes_);
+  if (graph_) {
+    graph_->SetGraphResolveNeeded();
+    graph_->SetGraphProtoSyncNeeded();
+  }
 }
 
-#define ADD_BASIC_ATTR_IMPL(type, enumType, field)                           \
-  void Node::AddAttribute(const std::string& attr_name, const type& value) { \
-    graph_->SetGraphResolveNeeded();                                         \
-    graph_->SetGraphProtoSyncNeeded();                                       \
-    AttributeProto a;                                                        \
-    a.set_name(attr_name);                                                   \
-    a.set_type(enumType);                                                    \
-    a.set_##field(value);                                                    \
-    attributes_[attr_name] = a;                                              \
-  };
+#define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
+  void Node::AddAttribute(std::string attr_name, Type value) {                       \
+    AttributeProto a = utils::MakeAttribute(std::move(attr_name), std::move(value)); \
+    AddAttributeProto(std::move(a));                                                 \
+  }
 
-#define ADD_ATTR_IMPL(type, enumType, field)                                 \
-  void Node::AddAttribute(const std::string& attr_name, const type& value) { \
-    graph_->SetGraphResolveNeeded();                                         \
-    graph_->SetGraphProtoSyncNeeded();                                       \
-    AttributeProto a;                                                        \
-    a.set_name(attr_name);                                                   \
-    a.set_type(enumType);                                                    \
-    *(a.mutable_##field()) = value;                                          \
-    attributes_[attr_name] = a;                                              \
-  };
+#define ADD_ATTR_LIST_IMPL(Type)                                                 \
+  void Node::AddAttribute(std::string attr_name, gsl::span<const Type> values) { \
+    AttributeProto a = utils::MakeAttribute(std::move(attr_name), values);       \
+    AddAttributeProto(std::move(a));                                             \
+  }
 
-#define ADD_LIST_ATTR_IMPL(type, enumType, field)            \
-  void Node::AddAttribute(const std::string& attr_name,      \
-                          const std::vector<type>& values) { \
-    graph_->SetGraphResolveNeeded();                         \
-    graph_->SetGraphProtoSyncNeeded();                       \
-    AttributeProto a;                                        \
-    a.set_name(attr_name);                                   \
-    a.set_type(enumType);                                    \
-    for (const auto& val : values) {                         \
-      *(a.mutable_##field()->Add()) = val;                   \
-    }                                                        \
-    attributes_[attr_name] = a;                              \
-  };
+#define ADD_ATTR_IMPLS(Type) \
+  ADD_ATTR_SINGLE_IMPL(Type) \
+  ADD_ATTR_LIST_IMPL(Type)
 
-void Node::AddAttribute(const std::string& attr_name, const GraphProto& value) {
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
-  AttributeProto a;
-  a.set_name(attr_name);
-  a.set_type(AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH);
-  *a.mutable_g() = value;
-  attributes_[attr_name] = a;
+ADD_ATTR_IMPLS(int64_t)
+ADD_ATTR_IMPLS(float)
+ADD_ATTR_IMPLS(std::string)
+ADD_ATTR_IMPLS(TensorProto)
+#if !defined(DISABLE_SPARSE_TENSORS)
+ADD_ATTR_IMPLS(SparseTensorProto)
+#endif
+ADD_ATTR_IMPLS(TypeProto)
+
+#undef ADD_ATTR_SINGLE_IMPL
+#undef ADD_ATTR_LIST_IMPL
+#undef ADD_ATTR_IMPLS
+
+void Node::AddAttribute(std::string attr_name, GraphProto value) {
+  // Do not move attr_name as it is needed below
+  AttributeProto a = utils::MakeAttribute(attr_name, std::move(value));
+  AddAttributeProto(std::move(a));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // subgraph is created via deserialization and not here in a minimal build
@@ -929,29 +942,13 @@ void Node::AddAttribute(const std::string& attr_name, const GraphProto& value) {
 #endif
 };
 
-ADD_BASIC_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT, f)
-ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INT, i)
-ADD_BASIC_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRING, s)
-ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
-ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
-ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
-ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
-ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
-ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
-ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
-#if !defined(DISABLE_SPARSE_TENSORS)
-ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
-ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
   return attributes_.erase(attr_name) > 0;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {
@@ -1099,18 +1096,18 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-             const logging::Logger& logger)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {}
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger, strict_shape_type_inference) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
@@ -1118,18 +1115,14 @@ Graph::Graph(const Model& owning_model,
       graph_resolve_needed_(true),
       domain_to_version_(domain_to_version),
       ir_version_(ir_version),
-      using_latest_onnx_opset_(UsingLatestOnnxOpset(domain_to_version)),
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),
+      strict_shape_type_inference_(strict_shape_type_inference),
       is_loaded_from_model_file_(GraphLoadedFromModelFile(graph_proto_)) {
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
   const auto& model_path = ModelPath();
-
-  for (auto func : model_functions) {
-    model_local_functions_[function_utils::GetFunctionIdentifier(func->domain(), func->name())] = func;
-  }
 
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
@@ -1279,8 +1272,26 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, {},
-            parent_graph.logger_) {
+            &parent_node,
+            parent_graph.logger_,
+            parent_graph.strict_shape_type_inference_) {
+}
+
+Graph::Graph(const Model& owning_model, 
+    IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
+    ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+    const std::unordered_map<std::string, int>& domain_version_map,
+    const logging::Logger& logger,
+    bool strict_shape_type_inference)
+    : Graph(owning_model,
+            &subgraph_proto,
+            domain_version_map, 
+            owning_model.IrVersion(), 
+            schema_registry,
+            nullptr,
+            nullptr,
+            logger,
+            strict_shape_type_inference) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -1378,7 +1389,7 @@ Status Graph::VerifyNoDuplicateName() {
 
     if (!node_name.empty() && node_name_to_index.end() != node_name_to_index.find(node_name)) {
       // The node has name and its name was used by another node.
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "This is an invalid model. Error: two nodes with same node name (" + node_name + ").");
       return status;
     }
@@ -1392,14 +1403,14 @@ Status Graph::VerifyNoDuplicateName() {
       if (output_def->Exists()) {
         auto& output_arg_name = output_def->Name();
         if (inputs_and_initializers.count(output_arg_name)) {
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
         auto result = output_args.insert({output_arg_name, {&node, output_index}});
         if (!result.second) {
           // Two outputs with same name, so that insertion fails.
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
@@ -1701,11 +1712,11 @@ NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_arg_name
   return node_arg;
 }
 
-void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
+void Graph::ReverseDFSFrom(gsl::span<NodeIndex const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
-  std::vector<const Node*> node_vec;
+  InlinedVector<const Node*> node_vec;
   node_vec.reserve(from.size());
   for (auto i : from) {
     node_vec.push_back(GetNode(i));
@@ -1714,25 +1725,26 @@ void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
   ReverseDFSFrom(node_vec, enter, leave, comp, {});
 }
 
-void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
   ReverseDFSFrom(from, enter, leave, comp, {});
 }
 
-void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp,
                            const std::function<bool(const Node* from, const Node* to)>& stop) const {
   using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
-  std::vector<WorkEntry> stack(from.size());
-  for (size_t i = 0; i < from.size(); i++) {
-    stack[i] = WorkEntry(from[i], false);
+  InlinedVector<WorkEntry> stack;
+  stack.reserve(from.size());
+  for (auto node : from) {
+    stack.emplace_back(node, false);
   }
 
-  std::vector<bool> visited(MaxNodeIndex(), false);
+  InlinedVector<bool> visited(MaxNodeIndex(), false);
   while (!stack.empty()) {
     const WorkEntry last_entry = stack.back();
     stack.pop_back();
@@ -1757,7 +1769,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     if (leave) stack.emplace_back(&n, true);
 
     if (comp) {
-      std::vector<const Node*> sorted_nodes;
+      InlinedVector<const Node*> sorted_nodes;
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
         if (stop && stop(&n, &(*iter))) continue;
         sorted_nodes.push_back(&(*iter));
@@ -1894,7 +1906,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
       const NodeIndex idx = iter->Index();
       // the input to this node is also downstream of this node
       if (downstream_nodes.find(idx) != downstream_nodes.end()) {
-        Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
+        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "This is an invalid model. Error: the graph is not acyclic.");
         return status;
       }
 
@@ -1909,7 +1921,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     return Status::OK();
   }
 
-  return Status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
+  return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "This is an invalid model. Error: the graph is not acyclic.");
 }
 
 bool FullyDefinedType(const TypeProto& type_proto) {
@@ -2220,7 +2232,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 
         // Logic error: This should not happen if we properly checked that every use has
         // a corresponding def, for which type-inference already produced a valid type
-        Status status(ONNXRUNTIME, FAIL,
+        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                       "This is an invalid model. "
                       "Node (" +
                           node_name + ") input arg (" +
@@ -2259,7 +2271,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         } else if (param_to_type_iter->second != input_type) {
           // Type error in input model/graph:
           // The type-parameter T is bound to different values for different inputs.
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
                             ") of Optype (" + op.Name() + ") bound to different types (" + *(param_to_type_iter->second) +
                             " and " + *(input_def->Type()) +
@@ -2330,7 +2342,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       inferred_type = existing_type;
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
       return status;
     }
@@ -2354,7 +2366,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           output_def->SetType(inferred_type);
         }
       } else
-        return Status(ONNXRUNTIME, FAIL,
+        return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                       "Type Error: Type (" + *existing_type + ") of output arg (" +
                           output_def->Name() + ") of node (" + node_name +
                           ") does not match expected type (" + *inferred_type + ").");
@@ -2389,7 +2401,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
 #endif
-        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, using_latest_onnx_opset_, logger_);
+        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, strict_shape_type_inference_, logger_);
         if (!status.IsOK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
         }
@@ -2410,7 +2422,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   // Check that the type of every input is specified:
   for (auto* graph_input : GetInputs()) {
     if (nullptr == graph_input->Type()) {
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "This is an invalid model. "
                     "Model input (" +
                         graph_input->Name() + ") does not have type information.");
@@ -2521,12 +2533,19 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
       SetOpSchemaFromRegistryForNode(node);
 
-      if (!node.op_ || (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction()))) {
-        InitFunctionBodyForNode(node);
+      if (!node.op_) {
+        // check whether it refer to a function.
+        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
+        const auto& model_local_func_templates = owning_model_.GetModelLocalFunctionTemplates();
+        auto iter = model_local_func_templates.find(func_identifier);
+        if (iter != model_local_func_templates.end()) {
+          // This node has a model local function proto.
+          node.SetFunctionTemplate(*(iter->second));
+        }
       }
 
       if (!node.op_) {
-        return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
+        return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
 
       // For ops without schema (like model local functions set the since version after constructing the schema.
@@ -2534,15 +2553,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (node.since_version_ == -1) {
         node.since_version_ = node.op_->since_version();
       }
-    } else {
-      // This is only applicable for model local functions.
-      // In case of nested model local functions, graph resolve is called during resolve for parent
-      // function body graph otherwise type inference for nest function cannot happen.
-      if (options.traverse_function_body && node.GetFunctionBody() != nullptr) {
-        ORT_RETURN_IF_ERROR(node.GetMutableFunctionBody()->MutableBody().Resolve(options));
-      }
-    }
-
+    } 
+   
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
@@ -2559,12 +2571,13 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         // The attribute was not specified in the node.
         if (!attr_def.second.required) {
           if (utils::HasName(attr_def.second.default_value)) {
+            assert(attr_def.first == attr_def.second.default_value.name());
             // Set default value to the node attributes.
-            node.AddAttribute(attr_def.first, attr_def.second.default_value);
+            node.AddAttributeProto(attr_def.second.default_value);
           }
           // TODO: Handle optional attribute but no default value specified in op definition.
         } else {
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "This is an invalid model. "
                         "Node (" +
                             node_name + ") attribute (" + attr_def.first +
@@ -2594,75 +2607,13 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   return Status::OK();
 }
 
-const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& Graph::GetModelLocalFunctions() const {
-  if (parent_graph_ == nullptr) {
-    return model_local_functions_;
-  }
-  return parent_graph_->GetModelLocalFunctions();
-}
-
-void Graph::InitFunctionBodyForNode(Node& node) {
-  ONNX_NAMESPACE::FunctionProto onnx_function_proto;
-  if (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction())) {
-    // This node has a schema defined function proto. If it is a context dependent function
-    // then build it otherwise fetch the FunctionProto from schema.
-    if (node.op_->HasContextDependentFunction()) {
-      NodeProto node_proto;
-      node.ToProto(node_proto);
-      std::vector<TypeProto> input_types;
-      for (size_t i = 0, n = node.InputDefs().size(); i < n; i++) {
-        auto p_node_arg = node.InputDefs().at(i);
-        if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
-          auto& type = *(p_node_arg->TypeAsProto());
-          input_types.emplace_back(type);
-        } else
-          input_types.emplace_back();
-      }
-      ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-      if (!node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto))
-        return;
-    } else {
-      onnx_function_proto = *(node.op_->GetFunction());
-    }
-  } else {
-    std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
-    const auto& model_local_functions = GetModelLocalFunctions();
-    auto iter = model_local_functions.find(func_identifier);
-    if (iter == model_local_functions.end()) {
-      return;
-    }
-
-    // This node has a model local function proto.
-    onnx_function_proto = *(iter->second);
-  }
-
-  ORT_TRY {
-    // Explicitly pass the model local functions as t
-    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                GetModelLocalFunctions(), function_container_, logger_);
-    function_container_.emplace_back(std::move(func_ptr));
-    node.SetFunctionBody(*function_container_.back());
-  }
-  ORT_CATCH(const std::exception& e) {
-    LOGS(logger_, WARNING) << "Function body initialization failed for node '"
-                           << node.Name() << "' optype " << node.OpType()
-#ifndef ORT_NO_EXCEPTIONS
-                           << ". Error message " << e.what()
-#endif  // ORT_NO_EXCEPTIONS
-                           << ". Execution will fail if ORT does not have a specialized kernel for this op";
-    // Return without using this function op's expansion. No need to fail just yet.
-    // If ORT has a specialized kernel for this op then execution will proceed
-    return;
-  }
-}
-
 Status Graph::VerifyInputAndInitializerNames() {
   std::unordered_set<std::string>& inputs_and_initializers = resolve_context_.inputs_and_initializers;
 
   for (auto* input : GetInputs()) {
     auto result = inputs_and_initializers.insert(input->Name());
     if (!result.second) {
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "Error: Duplicate definition-site for (" + input->Name() + ").");
       return status;
     }
@@ -2908,7 +2859,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external) {
   // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
   // look up the const pointer by name, then find and modify the mutable
   // pointed-to TensorProto in graph_proto_.
@@ -2927,6 +2878,8 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
     return true;
   };
 
+  ORT_RETURN_IF_NOT(!is_external || utils::HasExternalData(old_initializer), "Trying to replace non-external initializer with external data");
+
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
                     "Replacement tensor's data type does not match.");
@@ -2940,10 +2893,28 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
               "graph_proto_ is not in sync with name_to_initial_tensor_");
 
-  **existing_entry = new_initializer;
+  **existing_entry = std::move(new_initializer);
 
   return Status::OK();
 }
+
+Status Graph::ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer) {
+  return ReplaceInitializedTensorImpl(std::move(new_initializer), false);
+}
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers) {
+  for (const auto& e : external_initializers) {
+    const auto& name = e.first;
+    const OrtValue& ort_value = e.second;
+    auto tensor_proto = utils::TensorToTensorProto(ort_value.Get<Tensor>(), name);
+    ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(tensor_proto), true));
+    LOGS(logger_, INFO) << "Replaced external initializer: " << name;
+  }
+  return Status::OK();
+}
+#endif // DISABLE_EXTERNAL_INITIALIZERS
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorProto*& value) const {
@@ -3154,7 +3125,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto nodes = builder.CreateVector(nodes_vec);
   auto node_edges = builder.CreateVector(node_edges_vec);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   auto runtime_optimizations = flatbuffers::Offset<fbs::RuntimeOptimizations>{};  // null value
   if (!RuntimeOptimizations().IsEmpty()) {
     flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer>
@@ -3175,7 +3146,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #if !defined(DISABLE_SPARSE_TENSORS)
   gb.add_sparse_initializers(sparse_initializers);
 #endif
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   gb.add_runtime_optimizations(runtime_optimizations);
 #endif
   fbs_graph = gb.Finish();
@@ -3183,7 +3154,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 std::string Graph::GenerateNodeArgName(const std::string& base_name) {
   std::string new_name = base_name;
   // Check if new_name has been used in as any of node_args_' names.
@@ -3239,14 +3210,12 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
 
   return new_name;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,
-                     const std::vector<NodeArg*>& input_args,
-                     const std::vector<NodeArg*>& output_args,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
                      const NodeAttributes* attributes,
                      const std::string& domain) {
   std::vector<NodeArg*> inputs;
@@ -3724,7 +3693,7 @@ Status Graph::SetGraphInputsOutputs() {
               const auto& inputs = graph_inputs_including_initializers_;
               bool in_inputs = std::find(inputs.begin(), inputs.end(), input_arg) != inputs.end();
               if (!in_inputs) {
-                return Status(ONNXRUNTIME, FAIL,
+                return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                               name + " must be either specified in graph inputs or graph initializers.");
               }
             } else {
@@ -3797,7 +3766,7 @@ bool Graph::SetOpSchemaFromRegistryForNode(Node& node) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes() {
   node_arg_to_producer_node_.clear();
   node_arg_to_consumer_nodes_.clear();
@@ -3814,9 +3783,7 @@ Status Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes() {
 
   return Status::OK();
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
@@ -3877,21 +3844,20 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
-
+#if !defined(ORT_MINIMAL_BUILD)
+  // if this is a full build create the lightweight Function implementation that provides the schema so that
+  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
+  // need to create the schema.
+  auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
+  fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+  fused_node.op_ = fused_schemas_containers_.back().get();
+  fused_node.SetSinceVersion(fused_node.op_->SinceVersion());
+#endif
   return fused_node;
 }
 
 Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name) {
   Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // if this is a full build create the lightweight Function implementation that provides the schema so that
-  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
-  // need to create the schema.
-  auto func = std::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
-  function_container_.push_back(std::move(func));
-  node.SetFunctionBody(*function_container_.back());
-#endif
 
   return node;
 }
@@ -3905,15 +3871,15 @@ void Graph::CancelFuseSubGraph(const Node& fused_node) {
     return;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // Remove the function body from function container
-  const auto* fused_node_func = fused_node.GetFunctionBody();
+  // Remove the tempoary schema from schema container container
+  auto* temp_schema_ptr = fused_node.Op();
   auto it = std::find_if(
-      function_container_.begin(), function_container_.end(),
-      [fused_node_func](const std::unique_ptr<onnxruntime::Function>& func) {
-        return func.get() == fused_node_func;
+      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
+      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
+        return schema.get() == temp_schema_ptr;
       });
-  if (it != function_container_.end()) {
-    function_container_.erase(it);
+  if (it != fused_schemas_containers_.end()) {
+    fused_schemas_containers_.erase(it);
   }
 #endif
 
@@ -3996,14 +3962,13 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
                           const std::string& fused_node_name) {
   Node& fused_node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   // create Function before we remove nodes
-  function_container_.emplace_back(MakeFunction(*this, sub_graph, logger_));
-  fused_node.SetFunctionBody(*function_container_.back());
-
+  fused_node.func_body_ = std::make_unique<FunctionImpl>(*this, sub_graph);
   // remove nodes and update edges
   FinalizeFuseSubGraph(sub_graph, fused_node);
 
@@ -4013,6 +3978,8 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
   // main graph.
+  if (!node.GetFunctionBody())
+    ORT_RETURN_IF_ERROR(node.InstantiateFunctionBody());
   const Graph& subgraph = node.GetFunctionBody()->Body();
   auto output_edges = node.GetRelationships().output_edges;
   for (const auto& output_edge : output_edges) {
@@ -4046,9 +4013,13 @@ Status Graph::InlineFunction(Node& node) {
   ss << static_cast<const void*>(&node);
   auto uniq_identifier = ss.str();
 
-  RemoveNode(node.Index());
-
   const auto& model_path = ModelPath();
+  for (auto& init : subgraph.name_to_initial_tensor_) {
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+    *tensor = *init.second;
+    tensor->set_name(tensor->name() + uniq_identifier);
+    name_to_initial_tensor_[tensor->name()] = tensor;
+  }
   for (const auto& subgraph_node : subgraph.Nodes()) {
     if (subgraph_node.OpType() == kConstant) {
       // Copy constant nodes _value to name_to_initial_tensor_
@@ -4060,7 +4031,11 @@ Status Graph::InlineFunction(Node& node) {
     } else {
       std::vector<NodeArg*> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
-        if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
+        if (input->Name().empty()) {
+          // This is a missing (optional) input. No need to rename.
+          auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+          inputs.push_back(&n_input);
+        } else if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(input->Name());
           if (it != remap_input_output.end()) {
             // This is a function input/output and needs to be remapped to node input for correctness
@@ -4078,7 +4053,11 @@ Status Graph::InlineFunction(Node& node) {
         }
       }
       for (auto* output : subgraph_node.OutputDefs()) {
-        if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
+        if (output->Name().empty()) {
+          // Create empty arg (no renaming) for missing optional-outputs
+          auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+          outputs.push_back(&n_output);
+        } else if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(output->Name());
           if (it != remap_input_output.end()) {
             outputs.push_back(it->second);
@@ -4092,27 +4071,29 @@ Status Graph::InlineFunction(Node& node) {
         }
       }
 
-      auto& new_node = AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
+      AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
                                inputs,
                                outputs,
                                &subgraph_node.GetAttributes(),
                                subgraph_node.Domain());
-
-      // If this node has an initialized function body add it to the new node so that reinitialization is not required.
-      if (subgraph_node.GetFunctionBody() != nullptr) {
-        new_node.SetFunctionBody(*(const_cast<onnxruntime::Function*>(subgraph_node.GetFunctionBody())));
-      }
     }
   }
+
+  RemoveNode(node.Index());
 
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();
 }
 
-void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
+void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
+  // creating graph from scratch
+  // rely on SetGraphInputsOutputs() to fix up graph_inputs_excluding_initializers_
+  // if is_loaded_from_model_file_ == false
+  graph_inputs_including_initializers_.reserve(inputs.size());
+  graph_inputs_including_initializers_.assign(inputs.begin(), inputs.end());
+
   if (is_loaded_from_model_file_) {
     // graph loaded from model file
-    graph_inputs_including_initializers_ = inputs;
     graph_inputs_excluding_initializers_.clear();
     for (const auto* input : inputs) {
       ORT_ENFORCE(input->Exists(), "Input to set must exist.");
@@ -4122,10 +4103,6 @@ void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
     }
 
     ComputeOverridableInitializers();
-  } else {
-    // creating graph from scratch
-    // rely on SetGraphInputsOutputs() to fix up graph_inputs_excluding_initializers_
-    graph_inputs_including_initializers_ = inputs;
   }
 
   graph_inputs_manually_set_ = true;
@@ -4133,8 +4110,9 @@ void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
   GraphResolveNeeded(true);
 }
 
-void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
-  graph_outputs_ = outputs;
+void Graph::SetOutputs(gsl::span<const NodeArg* const> outputs) {
+  graph_outputs_.reserve(outputs.size());
+  graph_outputs_.assign(outputs.begin(), outputs.end());
 
   graph_outputs_manually_set_ = true;
   GraphProtoSyncNeeded(true);
@@ -4143,12 +4121,12 @@ void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto) {
   arg.SetType(type_proto);
   GraphResolveNeeded(true);
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 Graph::~Graph() {
   // nothing to do, but we put it here so we don't need to fully define types in Graph that are held in unique_ptr
@@ -4238,7 +4216,9 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 #if !defined(ORT_MINIMAL_BUILD)
                                   schema_registry,
 #endif
-                                  nullptr, nullptr, logger);
+                                  nullptr, nullptr, logger,
+                                  // Assume anything in ORT format has already been validated.
+                                  false);
 
   ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
 
@@ -4263,7 +4243,9 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   parent_graph.schema_registry_,
 #endif
                                   &parent_graph, &parent_node,
-                                  logger);
+                                  logger,
+                                  // Assume anything in ORT format has already been validated.
+                                  false);
 
   return graph->LoadFromOrtFormat(fbs_graph);
 }
@@ -4274,10 +4256,11 @@ Graph::Graph(const Model& owning_model,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
              Graph* parent_graph, const Node* parent_node,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
@@ -4289,6 +4272,7 @@ Graph::Graph(const Model& owning_model,
       parent_graph_(parent_graph),
       parent_node_(parent_node),
       logger_(logger),
+      strict_shape_type_inference_(strict_shape_type_inference),
       is_loaded_from_model_file_(true) {  // true as the Graph isn't manually constructed from scratch
 }
 
@@ -4424,7 +4408,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // populate NodeArg lookups after loading Nodes and NodeArgs
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
 
@@ -4434,7 +4418,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimization_records));
     }
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   return Status::OK();
 }

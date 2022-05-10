@@ -9,6 +9,7 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/common/optional.h"
@@ -604,6 +605,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
           }
 
+        } else if (option.first == "enable_opencl_throttling") {
+          if (option.second == "True") {
+            params.use_compiled_network = true;
+          } else if (option.second == "False") {
+            params.use_compiled_network = false;
+          } else {
+            ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
+          }
         } else if (option.first == "device_id") {
           params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
@@ -647,15 +656,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     nuphar_settings.clear();
     return p;
 #endif
-  } else if (type == kStvmExecutionProvider) {
-#if USE_STVM
-    onnxruntime::StvmExecutionProviderInfo info{};
+  } else if (type == kTvmExecutionProvider) {
+#if USE_TVM
+    onnxruntime::tvm::TvmEPOptions info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      info = onnxruntime::StvmExecutionProviderInfo::FromProviderOptions(it->second);
+      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
     }
 
-    return onnxruntime::CreateExecutionProviderFactory_Stvm(info)->CreateProvider();
+    return onnxruntime::CreateExecutionProviderFactory_Tvm(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
@@ -829,9 +838,9 @@ void InitializeSession(InferenceSession* sess,
 
   ep_registration_fn(sess, provider_types, provider_options_map);
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (!disabled_optimizer_names.empty()) {
-    OrtPybindThrowIfError(sess->FilterEnabledOptimizers(disabled_optimizer_names));
+    OrtPybindThrowIfError(sess->FilterEnabledOptimizers({disabled_optimizer_names.cbegin(), disabled_optimizer_names.cend()}));
   }
 #else
   ORT_UNUSED_PARAMETER(disabled_optimizer_names);
@@ -887,6 +896,13 @@ void addGlobalMethods(py::module& m, Environment& env) {
         default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+  m.def(
+      "set_default_logger_verbosity", [&env](int vlog_level) {
+        logging::LoggingManager* default_logging_manager = env.GetLoggingManager();
+        default_logging_manager->SetDefaultLoggerVerbosity(vlog_level);
+      },
+      "Sets the default logging verbosity level. To activate the verbose log, "
+      "you need to set the default logging severity to 0:Verbose level.");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "
@@ -1219,7 +1235,28 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // This is no different than the native APIs
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
             ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
-          });
+          })
+      .def("add_external_initializers", [](PySessionOptions* options, py::list& names, 
+                                                    const py::list& ort_values) -> void {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+          const auto init_num = ort_values.size();
+          ORT_ENFORCE(init_num == names.size(), "Expecting names and ort_values lists to have equal length");
+          InlinedVector<std::string> names_ptrs;
+          InlinedVector<OrtValue> values_ptrs;
+          names_ptrs.reserve(init_num);
+          values_ptrs.reserve(init_num);
+          for (size_t i = 0; i < init_num; ++i) {
+            names_ptrs.emplace_back(py::str(names[i]));
+            values_ptrs.emplace_back(*ort_values[i].attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<const OrtValue*>());
+          }
+          ORT_THROW_IF_ERROR(options->AddExternalInitializers(names_ptrs, values_ptrs));
+#else
+          ORT_UNUSED_PARAMETER(options);
+          ORT_UNUSED_PARAMETER(names);
+          ORT_UNUSED_PARAMETER(ort_values);
+          ORT_THROW("External initializers are not supported in this build.");
+#endif
+      });
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -1238,7 +1275,27 @@ RunOptions instance. The individual calls will exit gracefully and return an err
                      R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def(
+          "add_run_config_entry",
+          [](RunOptions* options, const char* config_key, const char* config_value) -> void {
+            //config_key and config_value will be copied
+            const Status status = options->config_options.AddConfigEntry(config_key, config_value);
+            if (!status.IsOK())
+              throw std::runtime_error(status.ErrorMessage());
+          },
+          R"pbdoc(Set a single run configuration entry as a pair of strings.)pbdoc")
+      .def(
+          "get_run_config_entry",
+          [](const RunOptions* options, const char* config_key) -> std::string {
+            const std::string key(config_key);
+            std::string value;
+            if (!options->config_options.TryGetConfigEntry(key, value))
+              throw std::runtime_error("RunOptions does not have configuration with key: " + key);
+
+            return value;
+          },
+          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -1490,6 +1547,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
+        // release GIL to allow multiple python threads to invoke Run() in parallel.
+        py::gil_scoped_release release;
         if (!run_options)
           status = sess->GetSessionHandle()->Run(*io_binding.Get());
         else

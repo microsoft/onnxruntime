@@ -54,7 +54,7 @@ bool IsQDQPairSupported(
   Initializer dq_scale(*dq_scale_tensor_proto, model_path);
 
   return q_zp.data_type() == dq_zp.data_type() &&
-         *q_zp.data<int8_t>() == *dq_zp.data<int8_t>() &&
+         *q_zp.raw_data() == *dq_zp.raw_data() &&
          *q_scale.data<float>() == *dq_scale.data<float>();
 }
 
@@ -98,7 +98,7 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
   return true;
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 bool MatchQNode(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, QOpName, {10, 13});
@@ -108,6 +108,6 @@ bool MatchDQNode(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, DQOpName, {10, 13});
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace onnxruntime::QDQ

@@ -26,6 +26,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::CloneModel,
     &winmla::ModelGetAuthor,
     &winmla::ModelGetName,
+    &winmla::ModelSetName,
     &winmla::ModelGetDomain,
     &winmla::ModelGetDescription,
     &winmla::ModelGetVersion,

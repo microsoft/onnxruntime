@@ -13,11 +13,11 @@ class Node;
 namespace QDQ {
 
 // helper that sets optional zero point values before replacing a node
-struct QDQReplaceWithNew : public ReplaceWithNew {
-  QDQReplaceWithNew(const std::string& domain,
-                    std::vector<NodeAndMoveInfo>&& value_moves,
-                    const std::string& op_name)
-      : ReplaceWithNew{domain, op_name, std::move(value_moves)} {}
+struct QDQReplaceWithNew : public ReplaceWithNewFixed {
+  QDQReplaceWithNew(std::string domain,
+                    std::string op_type,
+                    std::vector<NodeAndMoveInfo>&& value_moves)
+      : ReplaceWithNewFixed{std::move(domain), std::move(op_type), std::move(value_moves)} {}
 
   Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 
@@ -31,26 +31,26 @@ struct QDQReplaceWithNew : public ReplaceWithNew {
 // replace node with QLinear version
 struct ReplaceWithQLinear : public QDQReplaceWithNew {
   // provide NodeLocation for source node, and ValueMoveInfo for the value to move to the replacement node
-  ReplaceWithQLinear(const std::string& domain,
+  ReplaceWithQLinear(std::string domain,
                      std::vector<NodeAndMoveInfo>&& value_moves)
-      : QDQReplaceWithNew{domain, std::move(value_moves), "generated at runtime"} {}
+      : QDQReplaceWithNew{std::move(domain), "generated at runtime", std::move(value_moves)} {}
 
  private:
-  std::string OpType(const NodesToOptimize& selected_nodes) const override {
-    return "QLinear" + selected_nodes.Target().OpType();
+  std::string OpType(const RuntimeState& state) const override {
+    return "QLinear" + state.selected_nodes.Target().OpType();
   }
 };
 
 struct UnaryReplaceWithQLinear : ReplaceWithQLinear {
-  UnaryReplaceWithQLinear(const std::string& domain);
+  UnaryReplaceWithQLinear(std::string domain);
 };
 
 struct BinaryReplaceWithQLinear : ReplaceWithQLinear {
-  BinaryReplaceWithQLinear(const std::string& domain);
+  BinaryReplaceWithQLinear(std::string domain);
 };
 
 struct VariadicReplaceWithQLinear : ReplaceWithQLinear {
-  VariadicReplaceWithQLinear(const std::string& domain);
+  VariadicReplaceWithQLinear(std::string domain);
 };
 
 struct ConvReplaceWithQLinear : ReplaceWithQLinear {

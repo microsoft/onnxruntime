@@ -26,7 +26,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
 
 int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
-  return nnapi_ ? nnapi_->nnapi_runtime_feature_level : 0;
+  return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -146,9 +146,9 @@ void ModelBuilder::PreprocessActivations() {
 }
 
 const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
-  // In theory, if node_unit_map_ is generated correctly, see PreprocessNodeUnits(), a NodeUnit can be
-  // found for any single node in the graph_viewer_, unless the given node is not from graph_viewer_
-  return *node_unit_map_.at(node);
+  const auto node_unit_it = node_unit_map_.find(node);
+  ORT_ENFORCE(node_unit_it != node_unit_map_.end(), "Node does not have corresponding NodeUnit.");
+  return *node_unit_it->second;
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
@@ -210,7 +210,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, IOKind::Input));
+          initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
@@ -262,7 +262,7 @@ Status ModelBuilder::RegisterInitializers() {
     shaper_.AddShape(name, operand_type.dimensions);
 
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t padded_size = GetPaddedByteSize(size);
     sizeAll += padded_size;
@@ -352,7 +352,7 @@ Status ModelBuilder::RegisterModelInputs() {
     shaper_.AddShape(input_name, operand_type.dimensions);
 
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, false /* is_nhwc */, index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, index));
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
   }
@@ -386,11 +386,6 @@ Status ModelBuilder::RegisterModelOutputs() {
     }
 
     std::string nnapi_output_name = output_name;
-    if (IsOperandNHWC(output_name)) {
-      // We need to transpose the output still in nhwc back to nchw
-      nnapi_output_name = GetUniqueName(output_name + "_nhwc_to_nchw");
-      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(*this, output_name, nnapi_output_name));
-    }
 
     output_index_vec_.push_back(operand_indices_[nnapi_output_name]);
     nnapi_model_->AddOutput(output_name, nnapi_output_name, operand_types_.at(nnapi_output_name));
@@ -405,10 +400,10 @@ void ModelBuilder::RegisterModelShaper() {
 
 Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,
-                                   bool is_nhwc, uint32_t& index) {
+                                   uint32_t& index) {
   LOGS_DEFAULT(VERBOSE) << "operand name: " << name;
   ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operand_type, index));
-  RegisterOperand(name, index, operand_type, is_nhwc);
+  RegisterOperand(name, index, operand_type);
   return Status::OK();
 }
 
@@ -432,13 +427,10 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
 }
 
 void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
-                                   const OperandType& operand_type, bool is_nhwc) {
+                                   const OperandType& operand_type) {
   operand_indices_[name] = index;
   operand_types_.emplace(name, operand_type);
   operands_.insert(name);
-
-  if (is_nhwc)
-    RegisterNHWCOperand(name);
 }
 
 Status ModelBuilder::SetOperandValue(uint32_t index,
@@ -466,7 +458,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
   uint32_t index = 0;
-  ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
+  ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
@@ -528,19 +520,18 @@ Status ModelBuilder::AddOperations() {
 
 Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
-                                  const std::vector<OperandType>& types,
-                                  const std::vector<bool>& is_nhwc_vec) {
+                                  const std::vector<OperandType>& types) {
   std::vector<uint32_t> output_indices;
   for (size_t i = 0; i < types.size(); i++) {
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], is_nhwc_vec[i], index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], index));
     output_indices.push_back(index);
   }
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_addOperation(
-          nnapi_model_->model_, op, input_indices.size(), &input_indices[0],
-          output_indices.size(), &output_indices[0]),
+          nnapi_model_->model_, op, static_cast<uint32_t>(input_indices.size()), &input_indices[0],
+          static_cast<uint32_t>(output_indices.size()), &output_indices[0]),
       "op = " + std::to_string(op));
 
   num_nnapi_ops_++;
@@ -583,7 +574,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
-            nnapi_target_devices_.size(), supported_ops),
+            static_cast<uint32_t>(nnapi_target_devices_.size()), supported_ops),
         "on getSupportedOperationsForDevices");
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
@@ -607,7 +598,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksCompilation_createForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
-            nnapi_target_devices_.size(), &nnapi_model_->compilation_),
+            static_cast<uint32_t>(nnapi_target_devices_.size()), &nnapi_model_->compilation_),
         "on createForDevices");
   } else {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
@@ -629,13 +620,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 }
 
 int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
-  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   const auto& output_nodes = node_unit.GetOutputNodes();
   if (node_unit.GetOutputNodes().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
                           << "], with " << output_nodes.size() << " output nodes";
-    return fuse_code;
+    return ANEURALNETWORKS_FUSED_NONE;
   }
 
   const auto& outputs = node_unit.Outputs();
@@ -643,42 +633,53 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
                           << "], with " << outputs.size() << " outputs";
-    return fuse_code;
+    return ANEURALNETWORKS_FUSED_NONE;
   }
 
   const NodeArg& output = outputs[0].node_arg;
-  const auto& output_node = *output_nodes[0];
+
+  // if output is a graph output, will add activation separately
+  if (const auto& graph_outputs = graph_viewer_.GetOutputs();
+      std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+    return ANEURALNETWORKS_FUSED_NONE;
+  }
 
   // TODO, add support of activation fusion for quantized node group (qdq or qlinear)
   // We do not support activation fusion for quantized operators for now
   // (usually the activations are fused already in the quantization)
-  auto quant_op_type = GetQuantizedOpType(node_unit);
-  if (quant_op_type != QuantizedOpType::Unknown)
-    return fuse_code;
+  if (auto quant_op_type = GetQuantizedOpType(node_unit);
+      quant_op_type != QuantizedOpType::Unknown) {
+    return ANEURALNETWORKS_FUSED_NONE;
+  }
 
+  const auto& output_node = *output_nodes[0];
+  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  bool fuse_code_assigned_from_activation = false;
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    const auto& dst_node_unit = GetNodeUnit(&dst_node);
-    if (Contains(activation_node_units_, &dst_node_unit)) {
-      if (&output == dst_input) {
-        fuse_code = activation_node_units_.at(&dst_node_unit);
-      }
-    } else {
-      // if there is any other non-relu node using the output
-      // will add relu separately
-      if (&output == dst_input)
-        return ANEURALNETWORKS_FUSED_NONE;
-    }
-  }
 
-  // if output is a graph output, will add activation separately
-  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    const auto& graph_outputs = graph_viewer_.GetOutputs();
-    if (std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+    if (&output != dst_input) {
+      continue;
+    }
+
+    const auto& dst_node_unit = GetNodeUnit(&dst_node);
+    auto activation_it = activation_node_units_.find(&dst_node_unit);
+    if (activation_it == activation_node_units_.end()) {
+      // output node is not a fusable activation
       return ANEURALNETWORKS_FUSED_NONE;
     }
 
+    if (fuse_code_assigned_from_activation) {
+      // don't overwrite a previously assigned fuse code, just don't fuse
+      return ANEURALNETWORKS_FUSED_NONE;
+    }
+
+    fuse_code = activation_it->second;
+    fuse_code_assigned_from_activation = true;
+  }
+
+  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
     LOGS_DEFAULT(VERBOSE) << "Node [" << node_unit.Name() << "] type [" << node_unit.OpType()
                           << "], fused the output [" << output.Name() << "]";
 
@@ -693,7 +694,6 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
   const auto& op_type = node_unit.GetNode().OpType();
   if (!Contains(op_builders, op_type))
     return nullptr;
-
   return op_builders.at(op_type);
 }
 
@@ -708,46 +708,12 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
   return unique_name;
 }
 
+DataLayout ModelBuilder::GetPreferredLayout() const {
+  return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
+}
+
 const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
   return graph_viewer_.GetAllInitializedTensors();
-}
-
-void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
-  nhwc_operands_.insert(name);
-}
-
-bool ModelBuilder::IsOperandNHWC(const std::string& name) const {
-  return Contains(nhwc_operands_, name);
-}
-
-bool ModelBuilder::GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name) {
-  if (Contains(nhwc_to_nchw_map_, nhwc_name)) {
-    nchw_name = nhwc_to_nchw_map_[nhwc_name];
-    return true;
-  }
-  return false;
-}
-
-bool ModelBuilder::GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name) {
-  if (Contains(nchw_to_nhwc_map_, nchw_name)) {
-    nhwc_name = nchw_to_nhwc_map_[nchw_name];
-    return true;
-  }
-  return false;
-}
-
-Status ModelBuilder::SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
-                                             const std::string& nchw_name) {
-  ORT_RETURN_IF_NOT(!Contains(nhwc_to_nchw_map_, nhwc_name), "A previous nchw to nhwc map exists");
-  nhwc_to_nchw_map_[nhwc_name] = nchw_name;
-  return Status::OK();
-}
-
-Status ModelBuilder::SetNCHWToNHWCOperandMap(const std::string& nchw_name,
-                                             const std::string& nhwc_name) {
-  ORT_RETURN_IF_NOT(!Contains(nchw_to_nhwc_map_, nchw_name), "A previous nchw to nhwc map exists");
-  nchw_to_nhwc_map_[nchw_name] = nhwc_name;
-  return Status::OK();
 }
 
 }  // namespace nnapi

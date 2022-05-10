@@ -104,16 +104,11 @@ Abstract:
 #if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
 
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-
 #include "core/common/cpuid_info.h"
 using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
 
-#endif // MLAS_TARGET_ARM64
-
 #else  // BUILD_MLAS_NO_ONNXRUNTIME
 
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
 class MLASCPUIDInfo
 {
    public:
@@ -126,12 +121,61 @@ class MLASCPUIDInfo
     // ARM
     bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
+    uint32_t GetCurrentCoreIdx() const { return 0xFFFFFFFF; }
+
+    int32_t GetCurrentUarch() const { return -1; }
+
+    int32_t GetCoreUarch(uint32_t coreId) const { return -1; }
+
+    bool IsCoreArmv8NarrowLd(uint32_t coreId) const { return false; }
+
+    bool IsCurrentCoreArmv8NarrowLd() const { return false; }
+
    private:
     MLASCPUIDInfo();
 
     bool has_arm_neon_dot_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
+
+#if defined(MLAS_TARGET_ARM64)
+/**
+ * @brief IDs for cpu microarchitectures.
+ *
+ * Copied from python cpuinfo package. Can't use the definition
+ * from cpuinfo directly as it causes lots of compilation issues
+ * in many platforms that we support.
+ */
+enum MlasUArch {
+    cpuinfo_uarch_unknown = 0,
+
+    /** ARM Cortex-A32. */
+    cpuinfo_uarch_cortex_a32 = 0x00300332,
+    /** ARM Cortex-A35. */
+    cpuinfo_uarch_cortex_a35 = 0x00300335,
+    /** ARM Cortex-A53. */
+    cpuinfo_uarch_cortex_a53 = 0x00300353,
+    /** ARM Cortex-A55 revision 0 (restricted dual-issue capabilities compared to revision 1+). */
+    cpuinfo_uarch_cortex_a55r0 = 0x00300354,
+    /** ARM Cortex-A55. */
+    cpuinfo_uarch_cortex_a55 = 0x00300355,
+    /** ARM Cortex-A57. */
+    cpuinfo_uarch_cortex_a57 = 0x00300357,
+    /** ARM Cortex-A65. */
+    cpuinfo_uarch_cortex_a65 = 0x00300365,
+    /** ARM Cortex-A72. */
+    cpuinfo_uarch_cortex_a72 = 0x00300372,
+    /** ARM Cortex-A73. */
+    cpuinfo_uarch_cortex_a73 = 0x00300373,
+    /** ARM Cortex-A75. */
+    cpuinfo_uarch_cortex_a75 = 0x00300375,
+    /** ARM Cortex-A76. */
+    cpuinfo_uarch_cortex_a76 = 0x00300376,
+    /** ARM Cortex-A77. */
+    cpuinfo_uarch_cortex_a77 = 0x00300377,
+    /** ARM Cortex-A78. */
+    cpuinfo_uarch_cortex_a78 = 0x00300378,
+};
 
 #endif // MLAS_TARGET_ARM64
 
@@ -528,6 +572,8 @@ extern "C" {
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelVSX;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelVSX;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -696,6 +742,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
 
 //
 // Symmetric quantized qgemm dispatch structure
@@ -774,6 +821,9 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
 // Environment information class.
 //
 
+enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3 };
+
+
 struct MLAS_PLATFORM {
 
     MLAS_PLATFORM(void);
@@ -800,6 +850,9 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_POWER)
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
@@ -1987,72 +2040,3 @@ MlasReadTimeStampCounter(void)
 #endif
 #endif
 }
-
-/**
- * @brief IDs for cpu microarchitectures.
- *
- * Copied from python cpuinfo package. Can't use the definition
- * from cpuinfo directly as it causes lots of compilation issues
- * in many platforms that we support.
- */
-enum MlasUArch {
-    cpuinfo_uarch_unknown = 0,
-
-    /** ARM Cortex-A32. */
-    cpuinfo_uarch_cortex_a32 = 0x00300332,
-    /** ARM Cortex-A35. */
-    cpuinfo_uarch_cortex_a35 = 0x00300335,
-    /** ARM Cortex-A53. */
-    cpuinfo_uarch_cortex_a53 = 0x00300353,
-    /** ARM Cortex-A55 revision 0 (restricted dual-issue capabilities compared to revision 1+). */
-    cpuinfo_uarch_cortex_a55r0 = 0x00300354,
-    /** ARM Cortex-A55. */
-    cpuinfo_uarch_cortex_a55 = 0x00300355,
-    /** ARM Cortex-A57. */
-    cpuinfo_uarch_cortex_a57 = 0x00300357,
-    /** ARM Cortex-A65. */
-    cpuinfo_uarch_cortex_a65 = 0x00300365,
-    /** ARM Cortex-A72. */
-    cpuinfo_uarch_cortex_a72 = 0x00300372,
-    /** ARM Cortex-A73. */
-    cpuinfo_uarch_cortex_a73 = 0x00300373,
-    /** ARM Cortex-A75. */
-    cpuinfo_uarch_cortex_a75 = 0x00300375,
-    /** ARM Cortex-A76. */
-    cpuinfo_uarch_cortex_a76 = 0x00300376,
-    /** ARM Cortex-A77. */
-    cpuinfo_uarch_cortex_a77 = 0x00300377,
-    /** ARM Cortex-A78. */
-    cpuinfo_uarch_cortex_a78 = 0x00300378,
-};
-
-enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3 };
-
-/**
- *  @return 2 current core is little core with narrow memory load (e.g. ARMv8 a53)
- *          3 current core is big core with wider load (e.g. ARMv8 a72)
- */
-MLAS_FORCEINLINE
-int32_t
-MlasGetCoreUArch()
-{
-    thread_local int32_t core_type = mlas_core_unknown;
-    if (core_type == mlas_core_unknown) {
-        // initialization needed
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-        auto uarch = MLAS_CPUIDINFO::GetCPUIDInfo().GetCurrentUarch();
-        if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
-            uarch == cpuinfo_uarch_cortex_a55) {
-            core_type = mlas_core_little;
-        } else {
-            core_type = mlas_core_big;
-        }
-#else
-        core_type = mlas_core_big;
-#endif  // MLAS_TARGET_ARM64
-
-    }
-    return core_type;
-}
-
-

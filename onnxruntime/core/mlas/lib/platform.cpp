@@ -17,17 +17,30 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <thread>
+#include <mutex>
+
 #if defined(MLAS_TARGET_POWER) && defined(__linux__)
 #include <sys/auxv.h>
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
+
 // N.B. Support building with downlevel versions of the Windows SDK.
 #ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo()
+{
+    has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+}
+#endif
+
 #elif defined(__linux__)
+
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
@@ -40,7 +53,19 @@ Abstract:
 MLASCPUIDInfo::MLASCPUIDInfo() { has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0); }
 #endif
 
+#else
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() {}
 #endif
+
+#endif // Windows vs Linux vs Unknown
+#else // not MLAS_TARGET_ARM64 
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() {}
+#endif
+
 #endif // MLAS_TARGET_ARM64
 
 #ifdef MLAS_TARGET_AMD64_IX86
@@ -381,18 +406,32 @@ Return Value:
 #if defined(MLAS_TARGET_POWER)
     this->GemmFloatKernel = MlasSgemmKernel;
     this->GemmDoubleKernel = MlasDgemmKernel;
-#if defined(__linux__)  && defined(POWER10)
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+
+#if defined(__linux__)
+    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+
+    bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
+    if (HasP9Instructions) {
+        this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
+        this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelVSX;
+    }
+
+#if defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
-    unsigned long hwcap2 = getauxval(AT_HWCAP2);
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
         this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
+        this->GemmU8X8Dispatch = &MlasGemm8X8DispatchPOWER10;
     }
 #endif
 #endif
-#endif
+
+#endif // __linux__
+#endif // MLAS_TARGET_POWER
 
 }
 

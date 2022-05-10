@@ -168,6 +168,9 @@ static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
 #ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
 #endif
+#if !defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequence_tensor.onnx");
+#endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
@@ -401,6 +404,27 @@ TEST(CApiTest, custom_op_handler) {
                        custom_op_domain, nullptr);
 #endif
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
+//disable test in reduced-op-build since TOPK and GRU are excluded there
+TEST(CApiTest, instant_op_handler) {
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  InstantCustomOp instant_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&instant_op);
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
+}
+#endif
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 // test enabled ort-customops negpos
@@ -777,7 +801,7 @@ TEST(CApiTest, test_custom_op_library) {
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_library.dylib";
 #else
-lib_name = "./libcustom_op_library.so";
+  lib_name = "./libcustom_op_library.so";
 #endif
 
   void* library_handle = nullptr;
@@ -1126,6 +1150,95 @@ TEST(CApiTest, io_binding_cuda) {
     cudaMemcpy(y_values_2.data(), values, sizeof(float) * y_values_2.size(), cudaMemcpyDeviceToHost);
     ASSERT_TRUE(std::equal(std::begin(y_values_2), std::end(y_values_2), std::begin(expected_y)));
   }
+
+  // Clean up
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
+#endif
+
+#if defined(USE_CUDA)
+TEST(CApiTest, cuda_graph) {
+  const auto& api = Ort::GetApi();
+
+  // Enable cuda graph in cuda provider option.
+  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+  ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+  std::vector<const char*> keys{"enable_cuda_graph"};
+  std::vector<const char*> values{"1"};
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(
+                  rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_cuda_options.get()) == nullptr);
+
+  // Create IoBinding for inputs and outputs.
+  struct CudaMemoryDeleter {
+    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
+      alloc_ = alloc;
+    }
+    void operator()(void* ptr) const {
+      alloc_->Free(ptr);
+    }
+
+    const Ort::Allocator* alloc_;
+  };
+
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+  Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Allocator cuda_allocator(session, info_cuda);
+  auto allocator_info = cuda_allocator.GetInfo();
+  ASSERT_TRUE(info_cuda == allocator_info);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
+                                                             CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(input_data.get(), nullptr);
+  cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
+                                                              CudaMemoryDeleter(&cuda_allocator));
+  ASSERT_NE(output_data.get(), nullptr);
+
+  // Create an OrtValue tensor backed by data on CUDA memory
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  // One regular run for necessary memory allocation and graph capturing
+  session.Run(Ort::RunOptions(), binding);
+
+  // Check the values against the bound raw memory (needs copying from device to host first)
+  std::array<float, 3 * 2> y_values;
+  cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+
+  // Replay the captured CUDA graph
+  session.Run(Ort::RunOptions(), binding);
+  cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+
+  // Change the input and replay the CUDA graph again.
+  x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+  cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  session.Run(Ort::RunOptions(), binding);
+  cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
+  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
 
   // Clean up
   binding.ClearBoundInputs();
@@ -1864,7 +1977,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   std::vector<const char*> keys{
       "device_id", "gpu_mem_limit", "arena_extend_strategy",
-      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace"};
+      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
 
   std::vector<const char*> values{
       "0", "1024", "kSameAsRequested",
@@ -1884,6 +1997,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_algo_search=DEFAULT") != std::string::npos);
   ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
+  ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
 
@@ -1978,3 +2092,64 @@ TEST(CApiTest, crop_and_resize) {
 #endif
 
 }  // namespace TestPerSessionCustomThreadHooks
+
+#ifdef USE_CUDA
+TEST(CApiTest, GitHubIssue10179) {
+  // https://github.com/microsoft/onnxruntime/issues/10179
+  // the issue was caused by a race condition in CUDAExecutionProvider::GetKernelRegistry()
+  // if the test runs to completion, consider that run successful
+  auto load_model_thread_fn = []() {
+    try {
+      const auto* model_path = MODEL_URI;
+      Ort::SessionOptions session_options{};
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+      Ort::Session session{*ort_env, model_path, session_options};
+    } catch (const std::exception& e) {
+      std::cerr << "exception: " << e.what() << "\n";
+      throw e;
+    }
+  };
+
+  constexpr int num_threads = 4;
+  constexpr int num_iterations = 10;
+
+  for (int i = 0; i < num_iterations; ++i) {
+    std::vector<std::thread> threads(num_threads);
+    for (auto& thread : threads) {
+      thread = std::thread{load_model_thread_fn};
+    }
+
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  }
+}
+
+#endif
+
+// Reduced Ops build doesn't support If (16) yet
+#if !defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
+  const auto* model_path = SEQUENCE_MODEL_URI_2;
+  Ort::SessionOptions session_options{};
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::Session session{*ort_env, model_path, session_options};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names{"cond"};
+  bool input_data[] = {false};
+  std::vector<int64_t> input_dims{};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<bool>(info, input_data, 1U, input_dims.data(), 0));
+  const char* output_names[] = {"sequence"};
+
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+
+  // There is no need to check the contents of the output, we are just checking to see if the
+  // model runs without crashing
+}
+
+#endif

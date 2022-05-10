@@ -35,6 +35,12 @@ parameters:
   type: string
   default: 'Linux-CPU'
 
+- name: packageName
+  # now we can build onnxruntime or onnxruntime-mobile for Android, need specify it here
+  displayName: Package Name
+  type: string
+  default: 'onnxruntime-android'
+
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
@@ -88,6 +94,7 @@ jobs:
           -e BUILD_CONFIG=${{parameters.buildConfig}} \
           -e ORT_VERSION=$(OnnxRuntimeVersion) \
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
+          -e PACKAGE_NAME=${{parameters.packageName}} \
           onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
       workingDirectory: $(Build.SourcesDirectory)

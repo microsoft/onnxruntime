@@ -59,7 +59,7 @@ class DnnlSubgraphPrimitive {
   //set memory to a tensor (output)
   //if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
   //is_scalar is true to indicate a scalar output in order to allocate the correct onnxruntime output buffer
-  void SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output = false, bool is_scalar = false);
+  void SetMemory(const DnnlTensor& tensor, dnnl::memory mem, bool always_copy_output = false, bool is_scalar = false);
   void SetMemory(std::string memory_name, dnnl::memory mem);
   void SetInitializer(std::string memory_name, dnnl::memory mem);
   dnnl::memory::desc GetOutputInfo(std::string name);
@@ -130,10 +130,6 @@ inline std::ostream& operator<<(std::ostream& os, const gsl::span<const int64_t>
 inline std::ostream& operator<<(std::ostream& os, const gsl::span<int64_t>& span) {
   std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
   return os;
-}
-
-inline std::ostream& operator<<(std::ostream& os, const TensorShape& shape) {
-  return os << shape.GetDims();
 }
 
 }  // namespace onnxruntime
