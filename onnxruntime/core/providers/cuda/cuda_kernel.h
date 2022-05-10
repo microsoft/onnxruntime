@@ -11,6 +11,13 @@
 namespace onnxruntime {
 namespace cuda {
 
+static void CUDART_CB cudaStreamCallback(cudaStream_t /*stream*/, cudaError_t /*status*/, void* userData) {
+  auto* p_done = static_cast<OpKernel::DoneCallback*>(userData);
+  (*p_done)();
+  // delete the callback context
+  delete p_done;
+}
+
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
 // -----------------------------------------------------------------------
@@ -21,21 +28,33 @@ class CudaKernel : public OpKernel {
         // Is this OK to have a non-const execution provider?
         provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
   }
+  // make all the cuda kernels async
+  bool IsAsync() const override {
+    return true;
+  }
 
-  Status Compute(OpKernelContext* p_op_kernel_context) const override {
+  Status ComputeAsync(OpKernelContext* p_op_kernel_context, DoneCallback done) const ORT_MUST_USE_RESULT override {
+    // all of our cuda EP kernels are actually "async", as the "ComputeInternal" just launch kernels to cuda stream
+    // although there might be some host code in ComputeInternal (like calculate shape / upload to gpu), but those
+    // code shouldn't be blocking.
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
     //    __debugbreak();
-
     if (s.IsOK()) {
       auto err = cudaGetLastError();
       if (err != cudaSuccess) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
       }
     }
+    // now launch the callback to cuda stream, so it will be executed when the kernel is DONE.
+    DoneCallback* p = new DoneCallback(done);
+    CUDA_CALL_THROW(cudaStreamAddCallback(Stream(), cudaStreamCallback, p, 0));
+    return Status::OK();
+  }
 
-    return s;
+  Status Compute(OpKernelContext* p_op_kernel_context) const override {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;

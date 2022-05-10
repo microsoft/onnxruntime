@@ -52,6 +52,11 @@ class OpKernel {
 
   virtual Status Compute(_Inout_ OpKernelContext* context) const ORT_MUST_USE_RESULT = 0;
 
+  virtual bool IsAsync() const {
+    // by default all kernels are sync version.
+    return false;
+  }
+
   virtual Status ComputeAsync(_Inout_ OpKernelContext*, DoneCallback) const ORT_MUST_USE_RESULT {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
