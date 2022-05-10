@@ -586,6 +586,7 @@ __global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restri
       const half2 residual_val = __hmul2(residual_scale2, __half2(__short2half_rn(process_residual[0]), __short2half_rn(process_residual[1])));
       const half2 bias_val = {bias_offset[0], bias_offset[1]};
       val = __hadd2(val, __hadd2(residual_val, bias_val));
+
       cache[idx] = val;
 
       const half2 rldval = __hmul2(rld, val);
@@ -625,21 +626,6 @@ __global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restri
     if (c < cols) {
       unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
 
-      /*
-      const half* bias_offset = bias + c;
-
-      const int8_t* process_src = src + offset;
-      const int8_t* process_residual = residual + offset;
-
-      half2 val = __hmul2(src_scale2, __half2(__short2half_rn(process_src[0]), __short2half_rn(process_src[1])));
-      const half2 residual_val = __hmul2(residual_scale2, __half2(__short2half_rn(process_residual[0]), __short2half_rn(process_residual[1])));
-      const half2 bias_val = {bias_offset[0], bias_offset[1]};
-      val = __hadd2(val, __hadd2(residual_val, bias_val));
-      */
-
-      // re-use cached value
-      half2 val = cache[idx];
-
       const half* gamma_offset = gamma + c;
       const half2 gamma_val = {gamma_offset[0], gamma_offset[1]};
 
@@ -651,7 +637,9 @@ __global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restri
         beta_val = {beta_offset[0], beta_offset[1]};
       }
 
-      __half2 output_val = gamma_val * (val - mu) * rsigma + beta_val;
+      half2 val = cache[idx];
+
+      half2 output_val = gamma_val * (val - mu) * rsigma + beta_val;
       output_val *= dst_scale2;
 
       U1S2 short_output_val;
@@ -669,6 +657,47 @@ __global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restri
     }
   }
 }
+
+/*
+template <unsigned TPB, int num_half_twos_per_thread>
+__global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale,
+                                                          const int8_t* __restrict__ residual, const float residual_scale,
+                                                          const __half* __restrict__ bias,
+                                                          int8_t* __restrict__ dst, const float dst_scale,
+                                                          const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
+                                                          const unsigned rows, const unsigned cols, const unsigned tile_stride) {
+  const int row_offset = (blockIdx.y * rows * cols) + (blockIdx.x << 5);
+  int8_t cache[num_half_twos_per_thread * 2];
+
+  unsigned col_stride = (TPB << 1);
+  unsigned c = (threadIdx.x << 1);
+
+  //#pragma unroll
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+
+      const int8_t* process_src = src + offset;
+      cache[idx * 2] = process_src[0];
+      cache[idx * 2 + 1] = process_src[1];
+      c += col_stride;
+    }
+  }
+
+  c = (threadIdx.x << 1);
+
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+
+      int8_t* process_dst = dst + offset;
+      process_dst[0] = cache[idx * 2];
+      process_dst[1] = cache[idx * 2 + 1];
+      c += col_stride;
+    }
+  }
+}
+*/
 
 void QOrderAddBiasResidualLayerNorm(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
                                     const int8_t* src, const float src_scale,
