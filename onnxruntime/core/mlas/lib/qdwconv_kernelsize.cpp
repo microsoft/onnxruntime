@@ -346,15 +346,15 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
                     vpreshift_89AB = vld1q_s32(preshift); preshift += 4;
                     vpreshift_CDEF = vld1q_s32(preshift); preshift += 4;
 
-                    vmultiplier_0123 = vld1q_s32(preshift); multiplier += 4;
-                    vmultiplier_4567 = vld1q_s32(preshift); multiplier += 4;
-                    vmultiplier_89AB = vld1q_s32(preshift); multiplier += 4;
-                    vmultiplier_CDEF = vld1q_s32(preshift); multiplier += 4;
+                    vmultiplier_0123 = vld1q_s32(multiplier); multiplier += 4;
+                    vmultiplier_4567 = vld1q_s32(multiplier); multiplier += 4;
+                    vmultiplier_89AB = vld1q_s32(multiplier); multiplier += 4;
+                    vmultiplier_CDEF = vld1q_s32(multiplier); multiplier += 4;
 
-                    vpostshift_0123 = vld1q_s32(preshift); postshift += 4;
-                    vpostshift_4567 = vld1q_s32(preshift); postshift += 4;
-                    vpostshift_89AB = vld1q_s32(preshift); postshift += 4;
-                    vpostshift_CDEF = vld1q_s32(preshift); postshift += 4;
+                    vpostshift_0123 = vld1q_s32(postshift); postshift += 4;
+                    vpostshift_4567 = vld1q_s32(postshift); postshift += 4;
+                    vpostshift_89AB = vld1q_s32(postshift); postshift += 4;
+                    vpostshift_CDEF = vld1q_s32(postshift); postshift += 4;
                 }
 
                 vacc_0123 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_0123, vpreshift_0123), vmultiplier_0123), vpostshift_0123);
