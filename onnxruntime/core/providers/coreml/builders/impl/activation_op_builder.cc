@@ -93,11 +93,13 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   }
 
   // slope input must be constant
-  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-  const auto initializer_it = initializers.find(input_defs[1]->Name());
-  if (initializer_it == initializers.end()) {
-    LOGS(logger, VERBOSE) << "PRelu 'slope' input must be an initializer tensor";
-    return false;
+  {
+    const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
+    const auto initializer_it = initializers.find(input_defs[1]->Name());
+    if (initializer_it == initializers.end()) {
+      LOGS(logger, VERBOSE) << "PRelu 'slope' input must be an initializer tensor";
+      return false;
+    }
   }
 
   // slope must either:
@@ -110,13 +112,12 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
     if (!GetShape(*input_defs[1], slope_shape, logger)) {
       return false;
     }
-
     const bool has_supported_slope_shape =
         (slope_shape.size() == 3 && std::all_of(slope_shape.begin() + 1, slope_shape.end(),
                                                 [](int64_t dim) { return dim == 1; }))
         /* || Product(slope_shape) == 1 */;
     if (!has_supported_slope_shape) {
-      LOGS(logger, VERBOSE) << "PRelu 'slope' input must have shape [C, 1, 1] " /*"or have a single value"*/;
+      LOGS(logger, VERBOSE) << "PRelu 'slope' input must have shape [C, 1, 1]" /*" or have a single value"*/;
       return false;
     }
   }
