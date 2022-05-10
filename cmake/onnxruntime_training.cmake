@@ -15,7 +15,6 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/session/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/core/agent/*.h"
     "${ORTTRAINING_SOURCE_DIR}/core/agent/*.cc"
-
     )
 
 if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)

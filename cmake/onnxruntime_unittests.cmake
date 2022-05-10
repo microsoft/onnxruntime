@@ -250,8 +250,12 @@ file(GLOB onnxruntime_test_training_src
   "${ORTTRAINING_SOURCE_DIR}/test/optimizer/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/framework/*.cc"
   "${ORTTRAINING_SOURCE_DIR}/test/distributed/*.cc"
-  "${ORTTRAINING_SOURCE_DIR}/test/training_api/checkpoint/*.cc"
   )
+
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  file(GLOB onnxruntime_test_training_on_device_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/checkpoint/*.cc")
+endif()
 
 if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
@@ -646,6 +650,9 @@ set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    list(APPEND all_tests ${onnxruntime_test_training_on_device_src})
+  endif()
 endif()
 
 if (onnxruntime_USE_NUPHAR)
