@@ -9,6 +9,7 @@ import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
+
 import {transpose, TransposeAttributes} from './transpose';
 
 export interface SoftmaxAttributes extends AttributeWithCacheKey {

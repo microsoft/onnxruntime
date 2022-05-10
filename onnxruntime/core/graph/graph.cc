@@ -896,9 +896,10 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 void Node::AddAttributeProto(AttributeProto value) {
   utils::SetNodeAttribute(std::move(value), attributes_);
-
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
+  if (graph_) {
+    graph_->SetGraphResolveNeeded();
+    graph_->SetGraphProtoSyncNeeded();
+  }
 }
 
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
@@ -4013,6 +4014,12 @@ Status Graph::InlineFunction(Node& node) {
   auto uniq_identifier = ss.str();
 
   const auto& model_path = ModelPath();
+  for (auto& init : subgraph.name_to_initial_tensor_) {
+    const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
+    *tensor = *init.second;
+    tensor->set_name(tensor->name() + uniq_identifier);
+    name_to_initial_tensor_[tensor->name()] = tensor;
+  }
   for (const auto& subgraph_node : subgraph.Nodes()) {
     if (subgraph_node.OpType() == kConstant) {
       // Copy constant nodes _value to name_to_initial_tensor_
