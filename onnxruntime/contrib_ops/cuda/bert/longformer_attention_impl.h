@@ -31,7 +31,7 @@ bool LaunchLongformerAttentionKernel(
     const int* global_attention,        // Global attention flags with shape (B, S)
     const int* global_index,            // Global index
     const int* batch_global_num,        // Number of global tokens per batch. It is in device memory.
-    void* pinned_buffer,                // Buffer in pinned memory of CPU with two parts: a copy of batch_global_num, and buffer for copy to scratch2.
+    void* pinned_buffer,                // Pinned memory: copy of batch_global_num, and a buffer to copy to scratch2.
     void* workspace,                    // Temporary buffer
     void* output,                       // Output tensor
     int batch_size,                     // Batch size (B)

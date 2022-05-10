@@ -16,7 +16,7 @@ limitations under the License.
 
 // This is cuda kernels for longformer attention softmax that does not use compact memory.
 // It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
-// Its logic is simpler, and it has less constraints (like number of global tokens could be larger than attention windows).
+// Its logic is simpler with less constraints (like number of global tokens could be larger than attention windows).
 
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
@@ -193,7 +193,7 @@ __launch_bounds__(blockSize)
 // Launch the softmax kernel for non compact memory.
 bool LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
-    cublasHandle_t cublas,
+    cublasHandle_t& cublas,
     void* workspace,              // softmax space
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
@@ -202,7 +202,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
     const void* global_q,         // Q for global tokens with shape (B, N, S, H)
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)
-    const int* global_attention,  // global attention with shape (B, S), with value 0 for local attention and 1 for global attention.
+    const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
     const int* global_index,      // Global index with shape (B, S)
     const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
     void* pinned_buffer,          // Pinned memory in CPU. Number of global tokens per batch with shape (B, 1)
@@ -217,7 +217,8 @@ bool LaunchLongformerSoftmaxSimpleKernel(
 
   bool is_fp16 = (element_size == 2);
   void* scratch1 = reinterpret_cast<char*>(workspace);
-  void* scratch2 = reinterpret_cast<char*>(scratch1) + GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+  size_t scratch1_size = GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+  void* scratch2 = reinterpret_cast<char*>(scratch1) + scratch1_size;
 
   // setup shared parameters for two strided batched matrix multiplies
   cudaDataType_t Atype;
@@ -265,7 +266,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   //      [W][W][W]
   //         [W][W]
   // The first and last rows have 2 blocks, and the remaining has 3 blocks per row.
-  // The calculation are splited into 3 parts. Firstly, fill the middle rows,  then the first row and finally the last row.
+  // The calculation are splited into 3 parts: Fill the middle rows, then the first row and finally the last row.
   // The results are stored in scratch1.
 
   int w = attention_window;
@@ -309,7 +310,8 @@ bool LaunchLongformerSoftmaxSimpleKernel(
       for (int j = 0; j < num_heads; ++j) {
         void* q_head = (char*)q + (i * x_offset + j * sequence_length * head_size + w * head_size) * element_size;
         void* k_head = (char*)k + (i * x_offset + j * sequence_length * head_size) * element_size;
-        void* qk_head = (char*)scratch1 + (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
+        void* qk_head = (char*)scratch1 + \
+                        (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
                                          CUBLAS_OP_T,
@@ -512,8 +514,10 @@ bool LaunchLongformerSoftmaxSimpleKernel(
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
         void* v_head = (char*)v + (i * x_offset + j * head_size * sequence_length) * element_size;
-        void* prob_head = (char*)softmax_out + (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
-        void* out_head = (char*)output + (i * x_offset + j * head_size * sequence_length + w * head_size) * element_size;
+        void* prob_head = (char*)softmax_out + \
+                          (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
+        void* out_head = (char*)output + \
+                         (i * x_offset + j * head_size * sequence_length + w * head_size) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
                                          CUBLAS_OP_N,
