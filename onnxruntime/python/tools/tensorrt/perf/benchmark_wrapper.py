@@ -4,18 +4,48 @@ import pprint
 import re
 import subprocess
 
-from benchmark import (FAIL_MODEL_FILE, LATENCY_FILE, OP_METRICS_FILE,
-                       SESSION_FILE, add_improvement_information, build_status,
-                       get_system_info, logger, output_fail, output_latency,
-                       output_metrics, output_session_creation, output_specs,
-                       output_status, parse_arguments, parse_models_helper,
-                       read_map_from_file, setup_logger, update_fail_model_map,
-                       write_map_to_file)
-from perf_utils import (acl, cpu, csv_ending, cuda, cuda_fp16, fail_name,
-                        get_output, latency_name, op_metrics_name,
-                        pretty_print, session_name, specs_name, standalone_trt,
-                        standalone_trt_fp16, status_name, success_name, trt,
-                        trt_fp16)
+from benchmark import (
+    FAIL_MODEL_FILE,
+    LATENCY_FILE,
+    OP_METRICS_FILE,
+    SESSION_FILE,
+    add_improvement_information,
+    build_status,
+    get_system_info,
+    logger,
+    output_fail,
+    output_latency,
+    output_metrics,
+    output_session_creation,
+    output_specs,
+    output_status,
+    parse_arguments,
+    parse_models_helper,
+    read_map_from_file,
+    setup_logger,
+    update_fail_model_map,
+    write_map_to_file,
+)
+from perf_utils import (
+    acl,
+    cpu,
+    csv_ending,
+    cuda,
+    cuda_fp16,
+    fail_name,
+    get_output,
+    latency_name,
+    op_metrics_name,
+    pretty_print,
+    session_name,
+    specs_name,
+    standalone_trt,
+    standalone_trt_fp16,
+    status_name,
+    success_name,
+    trt,
+    trt_fp16,
+)
 
 
 def write_model_info_to_file(model, path):

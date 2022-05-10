@@ -1,14 +1,38 @@
 import argparse
 import os
 import sys
-import time
 
 import pandas as pd
 from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.data_format import DataFormat
-from azure.kusto.data.helpers import dataframe_from_result_table
 from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
-from perf_utils import *
+
+from perf_utils import (
+    avg_ending,
+    cpu,
+    cuda,
+    cuda_fp16,
+    fail_name,
+    group_title,
+    latency_name,
+    latency_over_time_name,
+    memory_ending,
+    memory_name,
+    model_title,
+    op_metrics_columns,
+    op_metrics_name,
+    ort_provider_list,
+    provider_list,
+    second,
+    session_name,
+    specs_name,
+    standalone_trt,
+    standalone_trt_fp16,
+    status_name,
+    table_headers,
+    trt,
+    trt_fp16,
+)
 
 # database connection strings
 cluster_ingest = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
@@ -139,11 +163,6 @@ def write_table(ingest_client, table, table_name, commit_time, identifier):
     )
     # append rows
     ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
-
-
-def get_time():
-    date_time = time.strftime(time_string_format)
-    return date_time
 
 
 def get_identifier(date_time, commit_id, trt_version, branch):

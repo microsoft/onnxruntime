@@ -15,15 +15,40 @@ from datetime import datetime
 import coloredlogs
 import numpy as np
 
-from perf_utils import (acl, acl_ep, avg_ending, basic, cpu, cpu_ep, cuda,
-                        cuda_ep, cuda_fp16, disable, enable_all, extended,
-                        get_operator_metrics, get_output, get_profile_metrics,
-                        is_standalone, memory_ending, model_title,
-                        op_metrics_columns, ort_provider_list,
-                        percentile_ending, pretty_print, provider_list, second,
-                        second_session_ending, session_ending, standalone_trt,
-                        standalone_trt_fp16, table_headers, trt, trt_ep,
-                        trt_fp16)
+from perf_utils import (
+    acl,
+    acl_ep,
+    avg_ending,
+    basic,
+    cpu,
+    cpu_ep,
+    cuda,
+    cuda_ep,
+    cuda_fp16,
+    disable,
+    enable_all,
+    extended,
+    get_operator_metrics,
+    get_output,
+    get_profile_metrics,
+    is_standalone,
+    memory_ending,
+    model_title,
+    op_metrics_columns,
+    ort_provider_list,
+    percentile_ending,
+    pretty_print,
+    provider_list,
+    second,
+    second_session_ending,
+    session_ending,
+    standalone_trt,
+    standalone_trt_fp16,
+    table_headers,
+    trt,
+    trt_ep,
+    trt_fp16,
+)
 
 import onnxruntime  # isort:skip
 import onnx  # isort:skip
