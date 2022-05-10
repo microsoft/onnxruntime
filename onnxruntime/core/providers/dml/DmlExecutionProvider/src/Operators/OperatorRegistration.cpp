@@ -222,6 +222,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Atanh);
 DML_OP_EXTERN_CREATION_FUNCTION(Erf);
 DML_OP_EXTERN_CREATION_FUNCTION(Where);
 DML_OP_EXTERN_CREATION_FUNCTION(Shrink);
+DML_OP_EXTERN_CREATION_FUNCTION(Gelu);
 DML_OP_EXTERN_CREATION_FUNCTION(OneHot);
 DML_OP_EXTERN_CREATION_FUNCTION(EyeLike);
 DML_OP_EXTERN_CREATION_FUNCTION(MaxUnpool);
@@ -627,6 +628,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  ParametricSoftplus,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Dropout,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Shrink,                             typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
 
     // Uncategorized
     {REG_INFO(      7,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
