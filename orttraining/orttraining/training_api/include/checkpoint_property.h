@@ -44,20 +44,13 @@ struct CheckpointProperty {
 
 /**
  * @brief User defined checkpoint property.
- * Only support int64_t, std::string and float data types.
  */
 template <typename T>
 struct TypedCheckpointProperty : public CheckpointProperty {
  public:
   TypedCheckpointProperty(const std::string& prop_name, const T& prop_value)
       : CheckpointProperty(prop_name), prop_value_(prop_value) {
-    // Align the data type support with  constructor from TensorProto.
-    if (!(std::is_same<T, float>::value || std::is_same<T, int64_t>::value ||
-          std::is_same<T, std::string>::value)) {
-      ORT_THROW("Not supported data type, only support float, int64_t and std::string.");
-    }
   }
-
   TypedCheckpointProperty(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   ONNX_NAMESPACE::TensorProto ToTensorProto() override;
@@ -72,11 +65,17 @@ struct TypedCheckpointProperty : public CheckpointProperty {
 
 /**
  * @brief Collection of user defined properties.
- * Supported scalar value of type int64_t, float, and std::string only.
+ * Currently supported scalar value of type int64_t, float, and std::string only.
  */
 struct PropertyBag {
+ public:
+  PropertyBag() {}
+
   template <typename T>
   void AddProperty(std::string name, T val) {
+    if (!IsSupportedDataType<T>()) {
+      ORT_THROW("Failed to add property: float, int64_t and std::string data types supported only.");
+    }
     named_properties.insert({name, std::make_shared<TypedCheckpointProperty<T>>(name, val)});
   }
 
@@ -84,6 +83,10 @@ struct PropertyBag {
 
   template <typename T>
   T GetProperty(const std::string& name) const {
+    if (!IsSupportedDataType<T>()) {
+      ORT_THROW("Failed to get property: float, int64_t and std::string data types supported only.");
+    }
+
     auto it = named_properties.find(name);
     ORT_ENFORCE(it != named_properties.end(), "No property named ", name);
     return it->second->GetData<T>();
@@ -100,6 +103,21 @@ struct PropertyBag {
   }
 
  private:
+  const std::vector<int32_t> supported_data_types{
+      ONNX_NAMESPACE::TensorProto::FLOAT,
+      ONNX_NAMESPACE::TensorProto::INT64,
+      ONNX_NAMESPACE::TensorProto::STRING};
+
+  bool IsSupportedDataType(int32_t data_type) const {
+    return std::find(supported_data_types.begin(), supported_data_types.end(), data_type) != supported_data_types.end();
+  }
+
+  template <typename T>
+  bool IsSupportedDataType() const {
+    return (std::is_same<T, float>::value || std::is_same<T, int64_t>::value ||
+            std::is_same<T, std::string>::value);
+  }
+
   std::unordered_map<std::string, std::shared_ptr<CheckpointProperty>> named_properties;
 };
 
