@@ -499,10 +499,10 @@ bool LaunchLongformerSoftmaxKernel(
     if (middle_count > 0) {
       for (int i = 0; i < batch_size; ++i) {
         for (int j = 0; j < num_heads; ++j) {
-          void* q_head = reinterpret_cast<char*>(q) + \
-                         (i * elements_per_batch + j * sequence_length * head_size + w * head_size) * element_size;
-          void* k_head = reinterpret_cast<char*>(k) + \
-                         (i * elements_per_batch + j * sequence_length * head_size) * element_size;
+          const void* q_head = reinterpret_cast<const char*>(q) + \
+                              (i * elements_per_batch + j * sequence_length * head_size + w * head_size) * element_size;
+          const void* k_head = reinterpret_cast<const char*>(k) + \
+                               (i * elements_per_batch + j * sequence_length * head_size) * element_size;
           void* qk_head = reinterpret_cast<char*>(input_pointers[1]) + \
                           (i * num_heads + j) * buffer_sizes[1] * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -556,8 +556,8 @@ bool LaunchLongformerSoftmaxKernel(
                                      resultType,
                                      algo));
 
-    void* q_head = reinterpret_cast<char*>(q) + (last_block * w * head_size) * element_size;
-    void* k_head = reinterpret_cast<char*>(k) + ((last_block - 1) * w * head_size) * element_size;
+    const void* q_head = reinterpret_cast<const char*>(q) + (last_block * w * head_size) * element_size;
+    const void* k_head = reinterpret_cast<const char*>(k) + ((last_block - 1) * w * head_size) * element_size;
 
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_T,
@@ -587,8 +587,8 @@ bool LaunchLongformerSoftmaxKernel(
   // Global attention part
   for (int i = 0; i < batch_size; ++i) {
     if (global_count[i] > 0) {
-      void* q_batch = reinterpret_cast<char*>(q) + (i * elements_per_batch + w * head_size) * element_size;
-      void* k_batch = reinterpret_cast<char*>(k) + (i * elements_per_batch) * element_size;
+      const void* q_batch = reinterpret_cast<const char*>(q) + (i * elements_per_batch + w * head_size) * element_size;
+      const void* k_batch = reinterpret_cast<const char*>(k) + (i * elements_per_batch) * element_size;
       void* qk_batch = reinterpret_cast<char*>(input_pointers[3]) + (i * buffer_sizes[3]) * num_heads * element_size;
 
       // Local tokens attending global tokens
@@ -620,8 +620,8 @@ bool LaunchLongformerSoftmaxKernel(
       // In that case, elements_per_batch is num_heads * max_num_global * head_size,
       // and stride_per_head is max_num_global * head_size.
 
-      void* global_q_batch = reinterpret_cast<char*>(global_q) + (i * elements_per_batch) * element_size;
-      void* global_k_batch = reinterpret_cast<char*>(global_k) + (i * elements_per_batch) * element_size;
+      const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * elements_per_batch) * element_size;
+      const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * elements_per_batch) * element_size;
       qk_batch = reinterpret_cast<char*>(input_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
 
       // Global tokens attending everything
@@ -685,10 +685,10 @@ bool LaunchLongformerSoftmaxKernel(
     if (middle_count > 0) {
       for (int i = 0; i < batch_size; ++i) {
         for (int j = 0; j < num_heads; ++j) {
-          void* v_head = reinterpret_cast<char*>(v) + \
-                         (i * elements_per_batch + j * head_size * sequence_length) * element_size;
-          void* prob_head = reinterpret_cast<char*>(output_pointers[1]) + \
-                            (i * num_heads * buffer_sizes[1] + j * buffer_sizes[1]) * element_size;
+          const void* v_head = reinterpret_cast<const char*>(v) + \
+                               (i * elements_per_batch + j * head_size * sequence_length) * element_size;
+          const void* prob_head = reinterpret_cast<const char*>(output_pointers[1]) + \
+                                  (i * num_heads * buffer_sizes[1] + j * buffer_sizes[1]) * element_size;
           void* out_head = reinterpret_cast<char*>(output) + \
                            (i * elements_per_batch + j * head_size * sequence_length + w * head_size) * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -742,7 +742,7 @@ bool LaunchLongformerSoftmaxKernel(
                                      resultType,
                                      algo));
 
-    void* v_head = reinterpret_cast<char*>(v) + (last_block - 1) * w * head_size * element_size;
+    const void* v_head = reinterpret_cast<const char*>(v) + (last_block - 1) * w * head_size * element_size;
     void* out_head = reinterpret_cast<char*>(output) + last_block * w * head_size * element_size;
 
     CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -774,9 +774,9 @@ bool LaunchLongformerSoftmaxKernel(
     if (global_count[i] > 0) {
       int glob_longdim_mm = sequence_length - 2 * w;
 
-      void* v_head = reinterpret_cast<char*>(v) + (i * elements_per_batch) * element_size;
-      void* prob_head = reinterpret_cast<char*>(output_pointers[3]) + \
-                        (i * buffer_sizes[3] * num_heads + w * buffer_strides[3]) * element_size;
+      const void* v_head = reinterpret_cast<const char*>(v) + (i * elements_per_batch) * element_size;
+      const void* prob_head = reinterpret_cast<const char*>(output_pointers[3]) + \
+                              (i * buffer_sizes[3] * num_heads + w * buffer_strides[3]) * element_size;
       void* out_head = reinterpret_cast<char*>(output) + (i * elements_per_batch + 2 * w * head_size) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -804,8 +804,8 @@ bool LaunchLongformerSoftmaxKernel(
                                        algo));
 
       // Global tokens
-      v_head = reinterpret_cast<char*>(global_v) + (i * elements_per_batch) * element_size;
-      prob_head = reinterpret_cast<char*>(output_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
+      v_head = reinterpret_cast<const char*>(global_v) + (i * elements_per_batch) * element_size;
+      prob_head = reinterpret_cast<const char*>(output_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
       out_head = reinterpret_cast<char*>(output) + (i * elements_per_batch) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
