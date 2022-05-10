@@ -156,16 +156,28 @@ void LoadTensorProtoFromFile(const PathString& file_path,
   ORT_ENFORCE(file_read_status.IsOK(), caller_context, " load file failed: ", ToUTF8String(file_path));
 }
 
+template <typename Func>
+void FilterFilesFromDirectory(const PathString& folder_path, Func func) {
+  LoopDir(folder_path, [&func](const PathChar* filename, OrtFileType file_type) -> bool {
+    std::string filename_str = filename;
+    if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR) {
+      return true;
+    }
+
+    return func(filename_str);
+  });
+}
+
 Status OrtSaveInternal(
     const std::vector<ONNX_NAMESPACE::TensorProto>& trainable_tensor_protos,
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
   // Make sure name unique across trainable and non-trainable lists.
-  std::set<std::string> trainable_unique_names;
-  std::set<std::string> non_trainable_unique_names;
+  std::unordered_set<std::string> trainable_unique_names;
+  std::unordered_set<std::string> non_trainable_unique_names;
   std::vector<std::string> inter_sec;
   auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                         std::set<std::string>& unique_names) {
+                         std::unordered_set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
       ORT_ENFORCE(unique_names.find(tensor_proto.name()) == unique_names.end(),
                   "Duplicated tensor proto named ", tensor_proto.name());
@@ -342,22 +354,16 @@ Status OrtLoadModuleStatesInternal(
     const PathString& parameter_folder_path, ModuleCheckpointState& module_state) {
   // Find parameter files.
   std::vector<std::pair<std::string, bool>> param_filenames;
-  LoopDir(parameter_folder_path,
-          [&param_filenames](
-              const PathChar* filename, OrtFileType file_type) -> bool {
-            std::string filename_str = filename;
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR) {
-              return true;
-            }
-
-            if (StringStartsWith(filename_str, k_trainable_param_root_prefix)) {
-              param_filenames.push_back(std::make_pair(filename_str, true));
-            } else if (StringStartsWith(filename_str, k_non_trainable_param_root_prefix)) {
-              param_filenames.push_back(std::make_pair(filename_str, false));
-            }
-
-            return true;
-          });
+  FilterFilesFromDirectory(
+      parameter_folder_path,
+      [&param_filenames](const std::string& filename_str) -> bool {
+        if (StringStartsWith(filename_str, k_trainable_param_root_prefix)) {
+          param_filenames.push_back(std::make_pair(filename_str, true));
+        } else if (StringStartsWith(filename_str, k_non_trainable_param_root_prefix)) {
+          param_filenames.push_back(std::make_pair(filename_str, false));
+        }
+        return true;
+      });
 
   if (param_filenames.empty()) {
     return Status::OK();
@@ -394,25 +400,20 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
   // Optimizer states parsing.
   std::vector<std::string> optim_state_filenames;
   std::vector<std::string> optim_property_filenames;
-  LoopDir(optimizer_folder_path,
-          [&optim_state_filenames, &optim_property_filenames](
-              const PathChar* filename, OrtFileType file_type) -> bool {
-            std::string filename_str = filename;
-            if (filename_str[0] == '.' ||
-                file_type == OrtFileType::TYPE_DIR ||
-                !StringStartsWith(filename_str, k_optimizer_root_prefix)) {
-              return true;
-            }
-
-            if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
-              optim_state_filenames.push_back(filename_str);
-            } else if (StringEndsWith(filename_str, k_tensor_proto_properties_file_name)) {
-              optim_property_filenames.push_back(filename_str);
-            } else {
-              ORT_THROW("Unexpected file extension.");
-            }
-            return true;
-          });
+  FilterFilesFromDirectory(
+      optimizer_folder_path,
+      [&optim_state_filenames, &optim_property_filenames](const std::string& filename_str) -> bool {
+        if (StringStartsWith(filename_str, k_optimizer_root_prefix)) {
+          if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
+            optim_state_filenames.push_back(filename_str);
+          } else if (StringEndsWith(filename_str, k_tensor_proto_properties_file_name)) {
+            optim_property_filenames.push_back(filename_str);
+          } else {
+            ORT_THROW("Unexpected file extension.");
+          }
+        }
+        return true;
+      });
 
   auto& grouped_optimizer_states = optimizer_state.group_named_optimizer_states;
   // For each optimizer state files, parse the data and feed into grouped_optimizer_states.
@@ -485,20 +486,14 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
                                      PropertyBag& property_bag) {
   // Find custom property files.
   std::vector<std::string> custom_property_filenames;
-  LoopDir(property_folder_path,
-          [&custom_property_filenames](
-              const PathChar* filename, OrtFileType file_type) -> bool {
-            std::string filename_str = filename;
-            if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR) {
-              return true;
-            }
-
-            if (StringStartsWith(filename_str, k_property_root_prefix)) {
-              custom_property_filenames.push_back(filename_str);
-            }
-
-            return true;
-          });
+  FilterFilesFromDirectory(
+      property_folder_path,
+      [&custom_property_filenames](const std::string& filename_str) -> bool {
+        if (StringStartsWith(filename_str, k_property_root_prefix)) {
+          custom_property_filenames.push_back(filename_str);
+        }
+        return true;
+      });
 
   if (custom_property_filenames.empty()) {
     return Status::OK();
