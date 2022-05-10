@@ -1,11 +1,8 @@
 import json
-import logging
 import pprint
 import re
 import subprocess
 import sys
-
-import coloredlogs
 
 debug = False
 debug_verbose = False
@@ -107,7 +104,7 @@ def parse_single_file(f):
 
     try:
         data = json.load(f)
-    except Exception as e:
+    except Exception:
         return None
 
     model_run_flag = False

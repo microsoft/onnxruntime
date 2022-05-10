@@ -1,15 +1,21 @@
-import argparse
-import copy
-import csv
 import json
-import logging
 import os
 import pprint
 import re
+import subprocess
 
-import coloredlogs
-from benchmark import *
-from perf_utils import *
+from benchmark import (FAIL_MODEL_FILE, LATENCY_FILE, OP_METRICS_FILE,
+                       SESSION_FILE, add_improvement_information, build_status,
+                       get_system_info, logger, output_fail, output_latency,
+                       output_metrics, output_session_creation, output_specs,
+                       output_status, parse_arguments, parse_models_helper,
+                       read_map_from_file, setup_logger, update_fail_model_map,
+                       write_map_to_file)
+from perf_utils import (acl, cpu, csv_ending, cuda, cuda_fp16, fail_name,
+                        get_output, latency_name, op_metrics_name,
+                        pretty_print, session_name, specs_name, standalone_trt,
+                        standalone_trt_fp16, status_name, success_name, trt,
+                        trt_fp16)
 
 
 def write_model_info_to_file(model, path):
@@ -156,8 +162,8 @@ def main():
         logger.info("=========== Models/EPs metrics ==========")
         logger.info("=========================================")
 
-        if os.path.exists(METRICS_FILE):
-            model_to_metrics = read_map_from_file(METRICS_FILE)
+        if os.path.exists(OP_METRICS_FILE):
+            model_to_metrics = read_map_from_file(OP_METRICS_FILE)
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
             logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv))
 

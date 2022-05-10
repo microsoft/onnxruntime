@@ -52,7 +52,7 @@ trt_native_fp16_gain = "TRT_Standalone_fp16_gain(%)"
 # metadata
 FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
-METRICS_FILE = ".metrics_map"
+OP_METRICS_FILE = ".op_metrics_map"
 SESSION_FILE = ".session_map"
 MEMORY_FILE = "./temp_memory.csv"
 
@@ -696,7 +696,7 @@ def read_map_from_file(map_file):
     with open(map_file) as f:
         try:
             data = json.load(f)
-        except Exception as e:
+        except Exception:
             return None
 
     return data
@@ -1116,7 +1116,6 @@ def run_onnxruntime(args, models):
                 logger.info("\n----------------------------- benchmark -------------------------------------")
 
                 # memory tracking variables
-                p = None
                 mem_usage = None
                 result = None
 
@@ -1561,27 +1560,27 @@ def output_session_creation(results, csv_filename):
         trt_fp16_time_2 = ""
 
         for model_name, ep_dict in results.items():
-            for ep, time in ep_dict.items():
+            for ep, t in ep_dict.items():
                 if ep == cpu:
-                    cpu_time = time
+                    cpu_time = t
                 elif ep == cuda:
-                    cuda_fp32_time = time
+                    cuda_fp32_time = t
                 elif ep == trt:
-                    trt_fp32_time = time
+                    trt_fp32_time = t
                 elif ep == cuda_fp16:
-                    cuda_fp16_time = time
+                    cuda_fp16_time = t
                 elif ep == trt_fp16:
-                    trt_fp16_time = time
+                    trt_fp16_time = t
                 if ep == cpu + second:
-                    cpu_time_2 = time
+                    cpu_time_2 = t
                 elif ep == cuda + second:
-                    cuda_fp32_time_2 = time
+                    cuda_fp32_time_2 = t
                 elif ep == trt + second:
-                    trt_fp32_time_2 = time
+                    trt_fp32_time_2 = t
                 elif ep == cuda_fp16 + second:
-                    cuda_fp16_time_2 = time
+                    cuda_fp16_time_2 = t
                 elif ep == trt_fp16 + second:
-                    trt_fp16_time_2 = time
+                    trt_fp16_time_2 = t
                 else:
                     continue
 
@@ -2127,7 +2126,7 @@ def main():
         logger.info("========== Models/EPs metrics  ==========")
         logger.info("=========================================")
         pretty_print(pp, model_to_metrics)
-        write_map_to_file(model_to_metrics, METRICS_FILE)
+        write_map_to_file(model_to_metrics, OP_METRICS_FILE)
 
         if args.write_test_result:
             csv_filename = (
