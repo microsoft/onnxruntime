@@ -11,6 +11,46 @@
 #include "core/framework/session_state.h"
 
 namespace onnxruntime {
+
+bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
+  const auto type_constraint_names = [&]() {
+    const auto& type_constraints = op_schema.typeConstraintParams();
+    InlinedHashSet<std::string_view> names{};
+    names.reserve(type_constraints.size());
+    for (const auto& type_constraint : type_constraints) {
+      names.emplace(type_constraint.type_param_str);
+    }
+    return names;
+  }();
+
+  InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>> type_str_map{};
+  // one entry for each type constraint, input, and output name
+  type_str_map.reserve(type_constraint_names.size() +
+                       op_schema.inputs().size() + op_schema.outputs().size());
+
+  auto process_formal_params = [&](ArgType arg_type,
+                                   gsl::span<const ONNX_NAMESPACE::OpSchema::FormalParameter> params) {
+    for (size_t i = 0; i < params.size(); ++i) {
+      const auto& param = params[i];
+      const auto& type_str = param.GetTypeStr();
+      if (Contains(type_constraint_names, type_str)) {
+        type_str_map[type_str].push_back(ArgTypeAndIndex{arg_type, i});
+      }
+      const bool added = type_str_map.try_emplace(param.GetName(),
+                                                  InlinedVector<ArgTypeAndIndex>{{arg_type, i}})
+                             .second;
+      ORT_ENFORCE(added, "Type string already exists for formal parameter name: ", param.GetName());
+    }
+  };
+
+  process_formal_params(ArgType::kInput, op_schema.inputs());
+  process_formal_params(ArgType::kOutput, op_schema.outputs());
+
+  return op_type_str_map_.try_emplace(OpIdentifier{op_schema.Name(), op_schema.domain(), op_schema.SinceVersion()},
+                                      std::move(type_str_map))
+      .second;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
 // Traverses the node's formal parameters and calls TraverseFn with the formal
@@ -225,90 +265,51 @@ class OpSchemaKernelTypeMatcher final : public IKernelTypeMatcher {
   }
 };
 
-enum class ArgType { kInput,
-                     kOutput };
+bool MatchKernelDefTypes(const Node& node,
+    const KernelDef& kernel_def,
+    const KernelTypeStrResolver& kernel_type_str_resolver,
+    std::string& mismatch_reason) {
+  // for each type constraint
+  //   map type constraint to arg
+  //   check arg type against type constraint enabled types
+  const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
+  for (const auto& [type_str, enabled_types] : kernel_type_constraints) {
+    const auto constraint_args = kernel_type_str_resolver.Resolve(node, type_str);
 
-class ConstraintIndexMapKernelTypeMatcher final : public IKernelTypeMatcher {
- public:
-  using ArgTypeAndIndex = std::pair<ArgType, size_t>;
+    for (const auto [arg_type, formal_arg_idx] : constraint_args) {
+      const NodeArg* arg;
+      if (arg_type == ArgType::kInput) {
+        const auto& input_arg_counts = node.InputArgCount();
+        const size_t first_arg_idx = static_cast<size_t>(std::accumulate(input_arg_counts.begin(),
+                                                                         input_arg_counts.begin() + formal_arg_idx,
+                                                                         int{0}));
+        arg = node.InputDefs()[first_arg_idx];
+      } else {
+        arg = node.OutputDefs()[formal_arg_idx];
+      }
 
-  Status RegisterOpConstraint(const std::string& op_type, const std::string& domain, ONNX_NAMESPACE::OperatorSetVersion since_version, std::string type_str, InlinedVector<ArgTypeAndIndex> args) {
-    auto& constraint_map = op_constraint_index_map_[{op_type, domain, since_version}];
-    const bool inserted = constraint_map.try_emplace(std::move(type_str), std::move(args)).second;
-    ORT_RETURN_IF_NOT(inserted,
-                      "Op type constraint is already registered. ",
-                      domain, ":", op_type, "(", since_version, ") - type constraint: ", type_str);
-    return Status::OK();
-  }
+      if (arg->Exists()) {
+        const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
+        ORT_ENFORCE(type_proto != nullptr);
 
-  Status RegisterOpConstraintsFromNodeOpSchema(const Node& node) {
-    const auto* op_schema = node.Op();
-    ORT_RETURN_IF_NOT(op_schema, "Op schema is unavailable.");
-    const auto& type_constraints = op_schema->typeConstraintParams();
-    // TODO ...
-    return Status::OK();
-  }
-
-  bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const override {
-    // for each type constraint
-    //   map type constraint to arg
-    //   check arg type against type constraint enabled types
-    const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
-    for (const auto& [type_str, enabled_types] : kernel_type_constraints) {
-      const auto& constraint_index_map = container_utils::At(op_constraint_index_map_,
-                                                             {node.Domain(), node.OpType(), node.SinceVersion()});
-
-      const auto& constraint_args = container_utils::At(constraint_index_map, type_str);
-
-      for (const auto [arg_type, formal_arg_idx] : constraint_args) {
-        const NodeArg* arg;
-        if (arg_type == ArgType::kInput) {
-          const auto& input_arg_counts = node.InputArgCount();
-          const size_t first_arg_idx = static_cast<size_t>(std::accumulate(input_arg_counts.begin(),
-                                                                           input_arg_counts.begin() + formal_arg_idx,
-                                                                           int{0}));
-          arg = node.InputDefs()[first_arg_idx];
-        } else {
-          arg = node.OutputDefs()[formal_arg_idx];
+        if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
+          return false;
         }
 
-        if (arg->Exists()) {
-          const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
-          ORT_ENFORCE(type_proto != nullptr);
-
-          if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
-            return false;
-          }
-
-          // found a match, don't need to check other args with this constraint
-          break;
-        }
+        // found a match, don't need to check other args with this constraint
+        break;
       }
     }
-
-    return true;
   }
 
- private:
-  // DomainAndOpType -> {
-  //   SinceVersion -> {
-  //     ConstraintOrArgName -> [ArgTypeAndIndex, ...]
-  //   }
-  // }
-  // TODO could flatten map and include type_str in key
-  using DomainOpTypeAndOpSetVersion = std::tuple<std::string, std::string, ONNX_NAMESPACE::OperatorSetVersion>;
-  using OpConstraintIndexMap =
-      InlinedHashMap<DomainOpTypeAndOpSetVersion,
-                     InlinedHashMap<std::string,
-                                    InlinedVector<ArgTypeAndIndex>>>;
-  OpConstraintIndexMap op_constraint_index_map_;
-};
+  return true;
+}
 
-};  // namespace
+}  // namespace
 
 bool KernelRegistry::VerifyKernelDef(const Node& node,
                                      const KernelDef& kernel_def,
-                                     const IKernelTypeMatcher& kernel_type_matcher,
+                                     const KernelTypeStrResolver& kernel_type_str_resolver,
                                      std::string& error_str) {
   // check if version matches
   int kernel_start_version;
@@ -342,7 +343,7 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
   }
 
   if (std::string mismatch_reason;
-      !kernel_type_matcher.IsMatch(node, kernel_def, mismatch_reason)) {
+      !MatchKernelDefTypes(node, kernel_def, kernel_type_str_resolver, mismatch_reason)) {
     std::ostringstream ostr;
     ostr << "Found kernel for Op with name (" << node.Name() << ")"
          << " and type (" << node.OpType() << ")"
@@ -392,7 +393,11 @@ Status KernelRegistry::TryFindKernel(const Node& node,
                                      ProviderType exec_provider,
                                      const KernelCreateInfo** out) const {
   // TODO make this a parameter
-  OpSchemaKernelTypeMatcher kernel_type_matcher{};
+  KernelTypeStrResolver kernel_type_str_resolver{};
+  {
+    ORT_ENFORCE(node.Op() != nullptr);
+    kernel_type_str_resolver.RegisterOpSchema(*node.Op());
+  }
 
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
@@ -404,7 +409,7 @@ Status KernelRegistry::TryFindKernel(const Node& node,
 
   for (auto i = range.first; i != range.second; ++i) {
     std::string error_str;
-    if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_matcher, error_str)) {
+    if (VerifyKernelDef(node, *i->second.kernel_def, kernel_type_str_resolver, error_str)) {
       if (out) *out = &i->second;
       return Status::OK();
     }

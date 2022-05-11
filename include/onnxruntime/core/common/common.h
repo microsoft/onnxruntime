@@ -290,9 +290,10 @@ namespace container_utils {
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.
 template <typename Key, typename... OtherContainerArgs,
-          template <typename...> typename AssociativeContainer>
-inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, const Key& key) {
-  return container.find(key) != container.end();
+          template <typename...> typename AssociativeContainer,
+          typename LookupKey>
+inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, LookupKey&& key) {
+  return container.find(std::forward<LookupKey>(key)) != container.end();
 }
 }  // namespace container_utils
 

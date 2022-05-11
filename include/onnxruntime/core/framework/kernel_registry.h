@@ -16,6 +16,35 @@ class IKernelTypeMatcher {
   virtual bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const = 0;
 };
 
+class KernelTypeStrResolver {
+ public:
+  using OpIdentifier = std::tuple<std::string, std::string, ONNX_NAMESPACE::OperatorSetVersion>;
+  using ArgTypeAndIndex = std::pair<ArgType, size_t>;
+
+  gsl::span<const ArgTypeAndIndex> Resolve(const Node& node, const std::string& type_str) const {
+    const auto key = OpIdentifier{node.OpType(), node.Domain(), node.SinceVersion()};
+    if (auto op_it = op_type_str_map_.find(key); op_it != op_type_str_map_.end()) {
+      const auto& type_str_map = op_it->second;
+      if (const auto type_str_it = type_str_map.find(type_str); type_str_it != type_str_map.end()) {
+        return type_str_it->second;
+      }
+    }
+    ORT_THROW("Failed to resolve type string '", type_str, "' for op ", node.Domain(), ":", node.OpType(),
+              "(", node.SinceVersion(), ")");
+  }
+
+  bool Register(const OpIdentifier& op_id, std::string type_str, InlinedVector<ArgTypeAndIndex> args) {
+    return op_type_str_map_[op_id].try_emplace(std::move(type_str), std::move(args)).second;
+  }
+
+  bool RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema);
+
+  private:
+   InlinedHashMap<OpIdentifier,
+                  InlinedHashMap<std::string,
+                                 InlinedVector<ArgTypeAndIndex>>> op_type_str_map_;
+};
+
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
  *
@@ -91,7 +120,7 @@ class KernelRegistry {
   // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
   static bool VerifyKernelDef(const Node& node,
                               const KernelDef& kernel_def,
-                              const IKernelTypeMatcher& kernel_type_matcher,
+                              const KernelTypeStrResolver& kernel_type_str_resolver,
                               std::string& error_str);
 #endif
 

@@ -139,7 +139,7 @@ class KernelDef {
   std::string provider_type_;
 
   // The data types that are supported by default for inputs/outputs.
-  // Key is input/output name defined in op schema, Value are supported types.
+  // Key is input/output/type constraint name defined in op schema, Value are supported types.
   // note: std::map as we need the order to be deterministic for the hash
   // Note: default_type_constraints_ are used to calculate the kernel hash so that the hash is
   // stable across builds with and without kernel type reduction enabled.
