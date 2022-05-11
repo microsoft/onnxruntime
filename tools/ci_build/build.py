@@ -1362,10 +1362,6 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
                                  "dml_path='{}' expected_file='{}'."
                                  .format(args.dml_path, file_path))
     elif not args.dml_external_project:
-                raise BuildError(
-                    "dml_path is invalid.", "dml_path='{}' expected_file='{}'.".format(args.dml_path, file_path)
-                )
-    else:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.
