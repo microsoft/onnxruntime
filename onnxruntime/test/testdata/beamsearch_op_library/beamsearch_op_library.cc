@@ -94,8 +94,16 @@ struct CustomBearmsearchKernel {
 
      std::filesystem::path model_path = "D:\\ai\\onnxruntime\\onnxruntime\\bart_mlp_megatron_basic_test.onnx";
      std::wstring model_path_wstring = model_path.wstring();
-
      std::time_t start_time = std::time(0);
+
+     /*
+     OrtCUDAProviderOptionsV2* provideroptions;
+     std::vector<const char*> keys{"enable_cuda_graph", "deviceid"};
+     std::vector<const char*> values{"1", "0"};
+     api_.CreateCUDAProviderOptions(&provideroptions);
+     api_.UpdateCUDAProviderOptions(provideroptions, keys.data(), values.data(), 2);
+     api_.SessionOptionsAppendExecutionProvider_CUDA_V2(sessionoptions, provideroptions);
+     */
      try {      
        api_.CreateSession(env, model_path_wstring.data(), sessionoptions, &session_);
        //api_.CreateSessionFromArray(env, graphProtoBufferPtr_, size_, sessionoptions, &session_);
@@ -105,7 +113,7 @@ struct CustomBearmsearchKernel {
      std::time_t end_time = std::time(0);
      std::cout << "Time elapsed for creating a session:" << end_time - start_time << std::endl;
    } else {
-     //temp = 1;
+     temp = 1;
    }
 
    std::array<int64_t, 3> inputShape = {1, 2, 4};
@@ -128,6 +136,10 @@ struct CustomBearmsearchKernel {
 
     api_.Run(session_, nullptr, inputNames.data(), &inputvalue, 1, outputNames.data(), 1, &outputvalue);
 
+    for (int i = 0; i < 1 * 2 * 4; i++) {
+      std::cout << i << ":" << output1[i] << std::endl;
+    }
+
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
 
@@ -140,6 +152,7 @@ struct CustomBearmsearchKernel {
 
     for (int64_t i = 0; i < size; i++) {
       out[i] = static_cast<int>(X[i] + (*Y) + temp);
+      std::cout << out[i] << std::endl;
     }
   }
 

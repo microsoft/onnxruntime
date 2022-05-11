@@ -408,7 +408,7 @@ TEST(CApiTest, custom_op_handler) {
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
 //disable test in reduced-op-build since TOPK and GRU are excluded there
-TEST(CApiTest, instant_op_handler) {
+TEST(CApiTest, beamsearch_instant_op_handler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -421,7 +421,15 @@ TEST(CApiTest, instant_op_handler) {
   InstantCustomOp instant_op{onnxruntime::kCpuExecutionProvider, nullptr};
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&instant_op);
-
+  /*
+  std::string lib_name;
+#if defined(_WIN32)
+  lib_name = "beamsearch_op_library.dll";
+#endif
+  void* library_handle = nullptr;
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, lib_name.c_str(), &library_handle);
+  */
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
                        custom_op_domain, nullptr);
 }

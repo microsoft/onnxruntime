@@ -2528,6 +2528,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::CreateOp,
     &OrtApis::InvokeOp,
     &OrtApis::ReleaseOp,
+
     &OrtApis::KernelInfoGetAttributeArray_void,
 };
 

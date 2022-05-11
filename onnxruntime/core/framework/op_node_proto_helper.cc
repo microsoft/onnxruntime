@@ -78,18 +78,14 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
   template <>                                                                                      \
   Status OpNodeProtoHelper<IMPL_T>::GetAttr<T>(                                                    \
       const std::string& name, T* value) const {                                                   \
-    std::cout << "Call is coming into GetAttr for "<<name<<std::endl;                              \
     const AttributeProto* attr = TryGetAttribute(name);                                            \
     if (!attr) {                                                                                   \
-      std::cout << "No attribute with name:"<<name<<std::endl;                                     \
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No attribute with name:'", name, "'is defined."); \
     }                                                                                              \
     if (!HasTyped<T>(attr)) {                                                                      \
-      std::cout << "Failing to match type" << std::endl;                                           \
       return Status(ONNXRUNTIME, FAIL, "Attibute name and type don't match");                      \
     } else {                                                                                       \
       *value = static_cast<T>(attr->type());                                                       \
-      std::cout << "value is assigned" << std::endl;                                               \
       return Status::OK();                                                                         \
     }                                                                                              \
   }
@@ -265,7 +261,7 @@ uint32_t OpNodeProtoHelper<Impl_t>::GetPrimitiveAttrElementCount(AttributeProto_
 
       case AttributeProto_AttributeType_GRAPH:
         return 1;
-      
+
       // The following are unsupported through this method
       case AttributeProto_AttributeType_UNDEFINED:
       case AttributeProto_AttributeType_TENSOR:

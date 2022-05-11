@@ -3414,10 +3414,6 @@ struct OrtApi {
                   _Inout_ OrtValue* const* output_values,
                   _In_ int output_count);
 
-  ORT_API2_STATUS(KernelInfoGetAttributeArray_void, _In_ const OrtKernelInfo* info,
-                 _In_ OrtAllocator* ort_allocator, _In_ const char* name, _Out_ void** buffer,
-                 _Out_ size_t* size);
-
   /* \brief: Release an onnxruntime operator
   *
   * \param[in] operator created by OrtApi::CreateOp
@@ -3425,6 +3421,13 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(Op);
+
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_void,
+                  _In_ const OrtKernelInfo* info,
+                  _In_ OrtAllocator* ort_allocator,
+                  _In_ const char* name,
+                  _Out_ void** buffer,
+                  _Out_ size_t* size);
 };
 
 /*

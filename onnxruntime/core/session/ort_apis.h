@@ -374,10 +374,10 @@ ORT_API_STATUS_IMPL(InvokeOp,
                     _Inout_ OrtValue* const* output_values,
                     _In_ int output_count);
 
+ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
+
 ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_void, _In_ const OrtKernelInfo* info,
                   _In_ OrtAllocator* ort_allocator, _In_ const char* name, _Out_ void** buffer,
                   _Out_ size_t* size);
-
-ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
 
 }  // namespace OrtApis
