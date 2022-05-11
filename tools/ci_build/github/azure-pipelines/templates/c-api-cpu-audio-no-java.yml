@@ -173,7 +173,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: arm
     packageName: arm
-    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --enable_wcos
     runTests: false
     buildJava: false
 
