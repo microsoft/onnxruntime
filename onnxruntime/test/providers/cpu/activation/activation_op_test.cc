@@ -4,6 +4,7 @@
 #include "activation_op_test.h"
 #include "core/providers/cpu/activation/activations.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -444,34 +445,37 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel3D) {
 }
 
 TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
-  auto test = [](bool slope_is_initializer) {
-    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer));
+  RandomValueGenerator random{2345};
+
+  auto test = [&](bool slope_is_initializer,
+                  int64_t n, int64_t c, int64_t h, int64_t w) {
+    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer,
+                            ", n: ", n, ", c: ", c, ", h: ", h, ", w: ", w));
 
     OpTester test("PRelu");
 
     auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
 
-    std::vector<float> inputs{1.0f, 2.0f, -4.0f, 3.0f, 0.0f, 5.0f, -9.0f, 8.0f,
-                              2.0f, 4.0f, -8.0f, 6.0f, 0.0f, 10.0f, -18.0f, 16.0f};
-    std::vector<float> slopes{1.0f, -2.0f};
+    const std::vector<int64_t> x_dims{n, c, h, w};
+    const std::vector<int64_t> slope_dims{c, 1, 1};
+    std::vector<float> inputs = random.Uniform<float>(x_dims, -16.0f, 16.0f);
+    std::vector<float> slopes = random.Uniform<float>(slope_dims, -1.0f, 1.0f);
     std::vector<float> outputs;
-    constexpr int64_t num_images = 2;
-    constexpr int64_t num_channels = 2;
-    constexpr int64_t h = 2;
-    constexpr int64_t w = 2;
-    for (unsigned i = 0; i < inputs.size(); i++)
-      outputs.push_back(formula(inputs[i], slopes[i / (h * w) % num_channels]));
+    for (unsigned i = 0; i < inputs.size(); i++) {
+      outputs.push_back(formula(inputs[i], slopes[i / (h * w) % c]));
+    }
 
-    std::vector<int64_t> x_dims{num_images, num_channels, h, w};
-    std::vector<int64_t> slope_dims{num_channels, 1, 1};
     test.AddInput<float>("X", x_dims, inputs);
     test.AddInput<float>("slope", slope_dims, slopes, slope_is_initializer);
     test.AddOutput<float>("Y", x_dims, outputs);
     test.Run();
   };
 
-  test(true /* slope_is_initializer */);
-  test(false /* slope_is_initializer */);
+  test(true /* slope_is_initializer */, 5, 4, 3, 2);
+  test(false, 5, 4, 3, 2);
+
+  test(true, 3, 1, 1, 1);
+  test(false, 3, 1, 1, 1);
 }
 
 TEST_F(ActivationOpTest, Softplus) {

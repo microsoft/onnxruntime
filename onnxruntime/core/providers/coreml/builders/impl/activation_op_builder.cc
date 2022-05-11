@@ -4,6 +4,7 @@
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
+#include "core/framework/tensorprotoutils.h"
 #endif
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
@@ -42,9 +43,45 @@ void ActivationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, con
   }
 }
 
+namespace {
+Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
+                      const logging::Logger& logger,
+                      COREML_SPEC::ActivationPReLU& prelu) {
+  // add slope initializer as alpha weight
+  const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
+  const auto slope_tensor_num_elements = gsl::narrow<size_t>(Product(slope_tensor.dims()));
+  if (slope_tensor_num_elements != 1) {
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*prelu.mutable_alpha(), slope_tensor));
+  } else {
+    // TODO: CoreML crashes with single element slope, hence this special case. Remove when fixed.
+    // https://github.com/apple/coremltools/issues/1488
+
+    // "broadcast" single value by creating a CoreML weight with num_channels copies of it
+    ORT_RETURN_IF_NOT(slope_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                      "slope initializer has unsupported data type: ", slope_tensor.data_type());
+
+    std::vector<int64_t> x_shape;
+    ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], x_shape, logger), "Failed to get shape of X.");
+
+    // assume X has at least 3 dimensions, that was checked in IsPReluOpSupported()
+    const auto num_channels = x_shape[x_shape.size() - 3];
+
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(slope_tensor, unpacked_tensor));
+    float value;
+    std::memcpy(&value, unpacked_tensor.data(), sizeof(value));
+
+    auto& weight_values = *prelu.mutable_alpha()->mutable_floatvalue();
+    weight_values.Clear();
+    weight_values.Resize(num_channels, value);
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                   const Node& node,
-                                                  const logging::Logger& /* logger */) const {
+                                                  const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   const auto& op_type(node.OpType());
@@ -56,9 +93,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     layer->mutable_activation()->mutable_relu();
   } else if (op_type == "PRelu") {
     auto* prelu = layer->mutable_activation()->mutable_prelu();
-    // add slope initializer as alpha weight
-    const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
-    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*prelu->mutable_alpha(), slope_tensor));
+    ORT_RETURN_IF_ERROR(AddPReluWeight(model_builder, node, logger, *prelu));
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -81,19 +116,17 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   const auto& input_defs = node.InputDefs();
 
   // X input rank must be at least 3
-  {
-    std::vector<int64_t> x_shape;
-    if (!GetShape(*input_defs[0], x_shape, logger)) {
-      return false;
-    }
-    if (x_shape.size() < 3) {
-      LOGS(logger, VERBOSE) << "PRelu 'X' input must have at least 3 dimensions";
-      return false;
-    }
+  std::vector<int64_t> x_shape;
+  if (!GetShape(*input_defs[0], x_shape, logger)) {
+    return false;
+  }
+  if (x_shape.size() < 3) {
+    LOGS(logger, VERBOSE) << "PRelu 'X' input must have at least 3 dimensions";
+    return false;
   }
 
   // slope input must be a constant initializer
-  if (!input_params.graph_viewer.GetConstantInitializer(input_defs[1]->Name())) {
+  if (!input_params.graph_viewer.GetConstantInitializer(input_defs[1]->Name(), true)) {
     LOGS(logger, VERBOSE) << "PRelu 'slope' input must be a constant initializer tensor";
     return false;
   }
@@ -101,19 +134,24 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   // slope must either:
   // - have shape [C, 1, 1]
   // - have 1 element
-  // TODO: CoreML crashes with single element slope, support it later when fixed
-  // https://github.com/apple/coremltools/issues/1488
   {
     std::vector<int64_t> slope_shape;
     if (!GetShape(*input_defs[1], slope_shape, logger)) {
       return false;
     }
-    const bool has_supported_slope_shape =
+    const bool has_per_channel_slopes =
         (slope_shape.size() == 3 && std::all_of(slope_shape.begin() + 1, slope_shape.end(),
-                                                [](int64_t dim) { return dim == 1; }))
-        /* || Product(slope_shape) == 1 */;
-    if (!has_supported_slope_shape) {
-      LOGS(logger, VERBOSE) << "PRelu 'slope' input must have shape [C, 1, 1]" /*" or have a single value"*/;
+                                                [](int64_t dim) { return dim == 1; }));
+    const bool has_single_slope = Product(slope_shape) == 1;
+    if (!has_per_channel_slopes && !has_single_slope) {
+      LOGS(logger, VERBOSE) << "PRelu 'slope' input must either have shape [C, 1, 1] or have a single value";
+      return false;
+    }
+
+    if (has_single_slope && x_shape[x_shape.size() - 3] == 1) {
+      // TODO: CoreML crashes with single element slope, hence this special case. Remove when fixed.
+      // https://github.com/apple/coremltools/issues/1488
+      LOGS(logger, VERBOSE) << "PRelu single 'slope' value in CoreML weight is not supported";
       return false;
     }
   }
