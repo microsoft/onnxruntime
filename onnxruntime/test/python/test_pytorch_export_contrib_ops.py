@@ -4,14 +4,20 @@
 """Test export of PyTorch operators using ONNX Runtime contrib ops."""
 
 import copy
+import distutils.version
 import io
 import unittest
 
 import numpy as np
+import parameterized
 import torch
 
 import onnxruntime
 from onnxruntime.tools import pytorch_export_contrib_ops
+
+
+def _torch_version_lower_than(version: str):
+    return distutils.version.LooseVersion(torch.__version__) < distutils.version.LooseVersion(version)
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):
@@ -120,6 +126,15 @@ class ONNXExporterTest(unittest.TestCase):
 
     def test_gelu(self):
         model = torch.nn.GELU()
+        x = torch.randn(3, 3)
+        self.run_test(model, x, custom_opsets={"com.microsoft": 1})
+
+    @parameterized.parameterized.expand([("default_approximate", "none"), ("tanh_approximate", "tanh")])
+    @unittest.skipIf(_torch_version_lower_than("1.12"), "Gelu's approximate parameter unsupported in PyTorch < 1.12")
+    def test_gelu_supports_approximate_param(self, _, approximate: str):
+        # The approximate param was introduced in PyTorch 1.12.
+        # So we need to ignore the type checking when calling nn.Gelu
+        model = torch.nn.GELU(approximate=approximate)  # type: ignore[call-arg]
         x = torch.randn(3, 3)
         self.run_test(model, x, custom_opsets={"com.microsoft": 1})
 
