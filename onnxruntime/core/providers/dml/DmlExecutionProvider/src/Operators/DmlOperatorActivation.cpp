@@ -91,6 +91,7 @@ public:
         case DML_OPERATOR_ACTIVATION_SIGMOID:
         case DML_OPERATOR_ACTIVATION_TANH:
         case DML_OPERATOR_ACTIVATION_SOFTSIGN:
+        case DML_OPERATOR_ACTIVATION_GELU:
             // No additional parameters to set.
             break;
 
@@ -169,5 +170,6 @@ DML_OP_DEFINE_CREATION_FUNCTION(Softmax,             DmlOperatorActivationTempla
 DML_OP_DEFINE_CREATION_FUNCTION(LogSoftmax,          DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_LOG_SOFTMAX>);
 DML_OP_DEFINE_CREATION_FUNCTION(Hardmax,             DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_HARDMAX>);
 DML_OP_DEFINE_CREATION_FUNCTION(Shrink,              DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_SHRINK>);
+DML_OP_DEFINE_CREATION_FUNCTION(Gelu,                DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_GELU>);
 
 } // namespace Dml
