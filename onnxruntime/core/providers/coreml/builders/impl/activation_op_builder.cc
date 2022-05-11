@@ -127,7 +127,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   }
 
   // slope input must be a constant initializer
-  if (!input_params.graph_viewer.GetConstantInitializer(input_defs[1]->Name(), true)) {
+  if (!input_params.graph_viewer.IsConstantInitializer(input_defs[1]->Name(), true)) {
     LOGS(logger, VERBOSE) << "PRelu 'slope' input must be a constant initializer tensor";
     return false;
   }
