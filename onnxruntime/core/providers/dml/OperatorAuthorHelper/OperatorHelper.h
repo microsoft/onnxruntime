@@ -1465,6 +1465,7 @@ using ShapeInferenceHelper_Softplus = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_ParametricSoftplus = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Dropout = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;

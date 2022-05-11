@@ -24,8 +24,8 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 153;
-    static constexpr size_t ActivationFunctionCount = 20;
+    static constexpr auto ValueCount = 154;
+    static constexpr size_t ActivationFunctionCount = 21;
 };
 
 template <>
@@ -1113,6 +1113,12 @@ struct OperatorDescTraits<DML_ACTIVATION_SHRINK_OPERATOR_DESC>
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_SHRINK;
 };
 
+template <>
+struct OperatorDescTraits<DML_ACTIVATION_GELU_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_GELU;
+};
+
 
 template <DML_OPERATOR_TYPE Type>
 struct OperatorTypeTraits
@@ -2055,6 +2061,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_SHRINK>
     using DescType = DML_ACTIVATION_SHRINK_OPERATOR_DESC;
 };
 
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_GELU>
+{
+    using DescType = DML_ACTIVATION_GELU_OPERATOR_DESC;
+};
+
 // Calls a visitor functor, supplying an empty operator desc corresponding to the given DML_OPERATOR_TYPE as
 // the first argument.
 // 
@@ -2382,6 +2394,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_THRESHOLDED_RELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_SHRINK:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SHRINK_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ACTIVATION_GELU:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_GELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
 
     default:
         ORT_THROW_HR(E_INVALIDARG);
