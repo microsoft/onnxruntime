@@ -6,9 +6,13 @@
 #include "providers.h"
 #include "TestCase.h"
 
+#include "utils.h"
+#include <iostream>
+
 #ifdef _WIN32
 #define strdup _strdup
 #endif
+
 extern const OrtApi* g_ort;
 
 namespace onnxruntime {
@@ -450,9 +454,32 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
     }
   }
+  #if 1
+  /// Adding this to mimic WASM model loading path
+  /// WASM is recieving the buffer from JS through a buffer
+  FILE* filepoint;
+  errno_t err;
+  int sz = 0;
+  if ((err = fopen_s(&filepoint, "c:\\git_repo\\Microsoft\\ORT_VS_20220218\\onnxruntime\\Models\\f1_ORT\\HRModel.all.ort", "rb")) != 0) {
+    printf("cannot open file\n");
+  } else {
+    printf("opened file\n");
+    fseek(filepoint, 0L, SEEK_END);
+    sz = ftell(filepoint);
+    rewind(filepoint);
+    char* OrtBuff;
+    OrtBuff = new char[sz];
+    fread(OrtBuff, sizeof(char), sz, filepoint);
+    fclose(filepoint);
 
+    session_ = Ort::Session(env, (void*)OrtBuff, (size_t)sz, session_options);
+    delete OrtBuff;
+  }
+  #else
+  /// Original
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
-
+  /// Shalva - Debug end
+  #endif
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
   Ort::AllocatorWithDefaultOptions a;
@@ -476,6 +503,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
   // iterate over all input nodes
+  //////////////////////////////////////////////////////////////////////////////
+  //size_t peak_workingset_size = utils::GetPeakWorkingSetSize();
+  //std::cout << "Peak working set size: " << peak_workingset_size << " bytes"
+  //          << std::endl;
+  //////////////////////////////////////////////////////////////////////////////
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -496,6 +528,11 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       PreLoadTestData(0, i, std::move(input_tensor));
     }
   }
+  //////////////////////////////////////////////////////////////////////////////
+  //peak_workingset_size = utils::GetPeakWorkingSetSize();
+  //std::cout << "Peak working set size: " << peak_workingset_size << " bytes"
+  //          << std::endl;
+  //////////////////////////////////////////////////////////////////////////////
   return true;
 }
 

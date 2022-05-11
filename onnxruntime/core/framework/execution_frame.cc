@@ -21,6 +21,20 @@
 #include "core/framework/memory_info.h"
 #endif
 
+/// Shalva debug
+#include "..\..\test\perftest\utils.h"
+#include <iostream>
+#include <string>
+
+void printPeak3(std::string s) {
+  size_t set_size = onnxruntime::perftest::utils::GetPeakWorkingSetSize();
+  std::cout << s << " Peak working set size: " << set_size << " bytes"
+            << std::endl;
+}
+
+#define PEAK_MEM_PRINT
+////
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -334,6 +348,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
+#ifdef PEAK_MEM_PRINT
+  printPeak3("ExecutionFrame::ExecutionFrame - Start");
+#endif
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -371,6 +388,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
   if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
+#ifdef PEAK_MEM_PRINT
+    printPeak3("ExecutionFrame::ExecutionFrame - mem pattern enabled");
+#endif
     bool all_tensors = true;
     // Reserve mem to avoid re-allocation.
     for (const auto& feed : feeds) {
@@ -448,6 +468,9 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       }
     }
   }
+#ifdef PEAK_MEM_PRINT
+  printPeak3("ExecutionFrame::ExecutionFrame - End");
+#endif
 }
 
 ExecutionFrame::~ExecutionFrame() = default;

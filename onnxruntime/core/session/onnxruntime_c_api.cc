@@ -37,6 +37,20 @@
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
 
+/// Shalva debug
+#include "..\..\test\perftest\utils.h"
+#include <iostream>
+#include <string>
+
+void printPeak(std::string s){
+    
+    size_t set_size = onnxruntime::perftest::utils::GetPeakWorkingSetSize();
+    std::cout << s << " Peak working set size: " << set_size << " bytes"
+              << std::endl;
+}
+
+#define PEAK_MEM_PRINT
+////
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -615,6 +629,9 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
+  #ifdef PEAK_MEM_PRINT
+  printPeak("CreateSessionAndLoadModel - Start");
+  #endif
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
@@ -657,10 +674,16 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     if (model_path != nullptr) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_path));
     } else {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
+#ifdef PEAK_MEM_PRINT
+      printPeak("CreateSessionAndLoadModel -> Load - Before");
+#endif
+        ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
+#ifdef PEAK_MEM_PRINT
+        printPeak("CreateSessionAndLoadModel -> Load - After");
+#endif
     }
   }
-
+  printPeak("CreateSessionAndLoadModel - End");
   return nullptr;
 }
 
@@ -722,20 +745,35 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data,
                     size_t model_data_length, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
+#ifdef PEAK_MEM_PRINT
+  printPeak("CreateSessionFromArray - Start");
+#endif
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   OrtStatus* status = nullptr;
   *out = nullptr;
 
   ORT_TRY {
+#ifdef PEAK_MEM_PRINT
+    printPeak("CreateSessionFromArray --> CreateSessionAndLoadModel");
+#endif
     ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
+#ifdef PEAK_MEM_PRINT
+    printPeak("CreateSessionFromArray --> CreateSessionAndLoadModel - after");
+    printPeak("CreateSessionFromArray --> InitializeSession");
+#endif
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
-
+#ifdef PEAK_MEM_PRINT
+    printPeak("CreateSessionFromArray --> InitializeSession - After");
+#endif
     *out = reinterpret_cast<OrtSession*>(sess.release());
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = OrtApis::CreateStatus(ORT_FAIL, e.what());
     });
+#ifdef PEAK_MEM_PRINT
+    printPeak("CreateSessionFromArray - End");
+#endif
   }
 
   return status;

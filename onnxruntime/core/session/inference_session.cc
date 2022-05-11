@@ -64,6 +64,20 @@
 #include "core/session/custom_ops.h"
 #endif
 
+/// Shalva debug
+#include "test/perftest/utils.h"
+#include <iostream>
+
+void printPeak2(std::string s) {
+  //static int count = 0;
+  size_t set_size = onnxruntime::perftest::utils::GetPeakWorkingSetSize();
+  std::cout << s << " Peak working set size: " << set_size << " bytes"
+            << std::endl;
+}
+
+#define PEAK_MEM_PRINT
+    ////
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
@@ -649,7 +663,6 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   if (session_profiler_.IsEnabled()) {
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
-
   return status;
 }
 
@@ -732,12 +745,18 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::Load - Start");
+#endif
   std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
        fbs::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+#ifdef PEAK_MEM_PRINT
+    printPeak2("InferenceSession::Load --> LoadOrtModel");
+#endif
     return LoadOrtModel(model_data, model_data_len);
   }
 
@@ -766,7 +785,9 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
-
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::Load - end");
+#endif
   return Load(loader, "model_loading_array");
 #else
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
@@ -987,11 +1008,17 @@ Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
 #endif
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::LoadOrtModel - Start");
+#endif
   return LoadOrtModel([&]() {
     const auto use_ort_model_bytes_directly =
-        GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0");
+        GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1");
     if (use_ort_model_bytes_directly != "1") {
-      // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
+#ifdef PEAK_MEM_PRINT
+      printPeak2("InferenceSession::LoadOrtModel - Copy the ORT file");
+#endif
+        // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
       ort_format_model_bytes_data_holder_.resize(model_data_len);
       std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len,
                   ort_format_model_bytes_data_holder_.data());
@@ -999,8 +1026,14 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
     } else {
       // Use the model_data directly to reduce memory consumption
       // This will require the model_data to be alive until the InferenceSession is initialized
+#ifdef PEAK_MEM_PRINT
+        printPeak2("InferenceSession::LoadOrtModel - Accessing the ORT file directly");
+#endif
       ort_format_model_bytes_ = gsl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(model_data), model_data_len);
     }
+#ifdef PEAK_MEM_PRINT
+    printPeak2("InferenceSession::LoadOrtModel - End");
+#endif
     return Status::OK();
   });
 }
@@ -1009,7 +1042,9 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   static_assert(FLATBUFFERS_LITTLEENDIAN, "ORT format only supports little-endian machines");
 
   std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
-
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) - begin ");
+#endif
   if (is_model_loaded_) {  // already loaded
     Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
@@ -1021,7 +1056,7 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
     LOGS(*session_logger_, ERROR) << status.ErrorMessage();
     return status;
   }
-
+  
   ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
 
   // Verify the ort_format_model_bytes_ is a valid InferenceSessionBuffer before we access the data
@@ -1043,6 +1078,9 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 
   // need to go from unique_ptr to shared_ptr when moving into model_
   std::unique_ptr<Model> tmp_model;
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) - before ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, ");
+#endif
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model,
                                                HasLocalSchema() ? &custom_schema_registries_ : nullptr,
@@ -1051,7 +1089,9 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
 #else
   ORT_RETURN_IF_ERROR(Model::LoadFromOrtFormat(*fbs_model, *session_logger_, tmp_model));
 #endif
-
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) - before ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model)); ");
+#endif
   ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
   model_ = std::move(tmp_model);
 
@@ -1060,7 +1100,9 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   ORT_RETURN_IF(nullptr == fbs_sess_state, "SessionState is null. Invalid ORT format model.");
 
   is_model_loaded_ = true;
-
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) - End ");
+#endif
   return Status::OK();
 }
 
@@ -1763,6 +1805,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+#ifdef PEAK_MEM_PRINT
+    printPeak2("Status InferenceSession::Run - Start");
+#endif
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
@@ -1778,12 +1823,18 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
+#ifdef PEAK_MEM_PRINT
+    printPeak2("InferenceSession::Run - Graph is captured");
+#endif
     LOGS(*session_logger_, INFO) << "Replaying the captured "
                                  << cached_execution_provider_for_graph_replay_.Type()
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag;
     ++current_num_runs_;
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
   } else {
+#ifdef PEAK_MEM_PRINT
+    printPeak2("InferenceSession::Run - Graph is NOT captured");
+#endif
     std::vector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
@@ -1878,7 +1929,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
     }
 
     if (!arenas_to_shrink.empty()) {
+#ifdef PEAK_MEM_PRINT
+      printPeak2("InferenceSession::Run - Mem arenas NOT empty");
+#endif
       ShrinkMemoryArenas(arenas_to_shrink);
+    } else {
+#ifdef PEAK_MEM_PRINT
+      printPeak2("InferenceSession::Run - Mem arenas empty");
+#endif
     }
   }
   --current_num_runs_;
@@ -1886,7 +1944,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // keep track of telemetry
   ++telemetry_.total_runs_since_last_;
   telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
-
+#ifdef PEAK_MEM_PRINT
+  printPeak2("InferenceSession::Run - Telemetry checkpoint");
+#endif
   // time to send telemetry?
   if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
     // send the telemetry
@@ -1920,6 +1980,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                                     "The second one is for capturing the graph.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
+  printPeak2("Status InferenceSession::Run - End");
   return retval;
 }
 

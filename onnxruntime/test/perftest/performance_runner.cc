@@ -112,7 +112,11 @@ Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
   }
-
+  //////////////////////////////////////////////////////////////////////////////
+  //size_t set_size = utils::GetPeakWorkingSetSize();
+  //std::cout << "Peak working set size: " << set_size << " bytes"
+  //          << std::endl;
+  //////////////////////////////////////////////////////////////////////////////
   // warm up
   ORT_RETURN_IF_ERROR(RunOneIteration<true>());
 
@@ -290,6 +294,12 @@ PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig&
 PerformanceRunner::~PerformanceRunner() = default;
 
 bool PerformanceRunner::Initialize() {
+  //////////////////////////////////////////////////////////////////////////////
+  //size_t workingset_size = utils::GetPeakWorkingSetSize();
+  //std::cout << "Peak working set size: " << workingset_size << " bytes"
+  //          << std::endl;
+  //////////////////////////////////////////////////////////////////////////////
+    
   std::basic_string<PATH_CHAR_TYPE> test_case_dir;
   auto st = GetDirNameFromFilePath(performance_test_config_.model_info.model_file_path, test_case_dir);
   if (!st.IsOK()) {
@@ -307,7 +317,11 @@ bool PerformanceRunner::Initialize() {
   // ownership semantics are a little unexpected here as the test case takes ownership of the model info
   TestModelInfo* test_model_info = test_model_info_.get();
   test_case_ = CreateOnnxTestCase(narrow_model_name, std::move(test_model_info_), 0.0, 0.0);
-
+  //////////////////////////////////////////////////////////////////////////////
+  //workingset_size = utils::GetPeakWorkingSetSize();
+  //std::cout << "Peak working set size: " << workingset_size << " bytes"
+  //          << std::endl;
+  //////////////////////////////////////////////////////////////////////////////
   if (performance_test_config_.run_config.generate_model_input_binding) {
     return static_cast<OnnxRuntimeTestSession*>(session_.get())->PopulateGeneratedInputTestData();
   }
