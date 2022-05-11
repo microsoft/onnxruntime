@@ -18,12 +18,13 @@ Abstract:
 #include "asmmacro.h"
 
         .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
+        .equ    .LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE, 4
 
 //
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedNeonRegisters, (10 * 8)
+        .equ    .LConvSymFrame_SavedNeonRegisters, (12 * 8)
         .equ    .LConvSymFrame_SavedRegisters, .LConvSymFrame_SavedNeonRegisters
         .equ    .LConvSymFrame_PostProcessParams, 0 + .LConvSymFrame_SavedRegisters
         .equ    .LConvSymFrame_KernelFlags, 8 + .LConvSymFrame_SavedRegisters
@@ -33,9 +34,9 @@ Abstract:
         .equ    .LConvSymPostProcessParams_Min,       16
         .equ    .LConvSymPostProcessParams_Max,       20
         .equ    .LConvSymPostProcessParams_ZeroPoint, 24
-        .equ    .LConvSymPostProcessParams_Multiplier,28
-        .equ    .LConvSymPostProcessParams_PreShift,  36
-        .equ    .LConvSymPostProcessParams_PostShift, 44
+        .equ    .LConvSymPostProcessParams_Multiplier,32
+        .equ    .LConvSymPostProcessParams_PreShift,  40
+        .equ    .LConvSymPostProcessParams_PostShift, 48
 
         .text
 
@@ -92,17 +93,19 @@ Return Value:
         stp     d12,d13,[sp,#32]
         stp     d14,d15,[sp,#48]
         stp     x19,x20,[sp,#64]
+        stp     x21,x22,[sp,#80]
 
         mov     x9,x3                   // save kernel size
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         mov     x16,x4                  // save input channels
-        ldr     x12,[x8,#.LConvSymPostProcessParams_Multiplier]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
         cmp     x7,2                    // if OutputCount < 2
-        ldr     x19,[x8,#.LConvSymPostProcessParams_PreShift]
         add     x5,x2,x5                // c1 = c0 + ldc
-        ldr     x20,[x8,#.LConvSymPostProcessParams_PostShift]
         add     x4,x4,7                 // kc = (kc + 7) & ~7
         csel    x5,x2,x5,lo             // if OutputCount < 2  c1 = c0
+        ldr     x19,[x8,#.LConvSymPostProcessParams_PreShift]
+        ldr     x20,[x8,#.LConvSymPostProcessParams_Multiplier]
+        ldr     x21,[x8,#.LConvSymPostProcessParams_PostShift]
         bic     x4,x4,7
         ldp     s16,s18,[x11],8         // init accumulators with bias
         ldp     s20,s22,[x11],8
@@ -303,23 +306,20 @@ Return Value:
         b.hi    .LConvSym.KernelSizeLoop
 
 .LConvSym.Requantize:
-        ldr     w11, [x8, #.LConvSymPostProcessParams_ZeroPoint]
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
+        bne     .LConvSym.FixedPointScale
+.LConvSym.FloatPointScale:
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ldr     w11, [x8, #.LConvSymPostProcessParams_ZeroPoint]
         beq     .LConvSym.BroadcastScaleValue
-        ld1     {v4.4s,v5.4s},[x12]     // load multiplier
-        ld1     {v6.4s,v7.4s},[x19]     // load preshift
-        ld1     {v8.4s,v9.4s},[x20]     // load postshift
-        b       .LConvSym.AccumulatorsToFloat
+        ld1     {v4.4s,v5.4s},[x12]     // load scale vector
+        b       .LConvSym.ScaleWithFloatPoint
 
 .LConvSym.BroadcastScaleValue:
-        ld1r    {v4.4s},[x12]           // load multiplier Value
+        ld1r    {v4.4s},[x12]           // load scale Value
         mov     v5.16b, v4.16b
-        ld1r    {v6.4s},[x19]           // load preshift Value
-        mov     v7.16b, v6.16b
-        ld1r    {v8.4s},[x20]           // load postshift Value
-        mov     v9.16b, v8.16b
 
-.LConvSym.AccumulatorsToFloat:
+.LConvSym.ScaleWithFloatPoint:
         addp    v16.4s,v16.4s,v18.4s
         addp    v20.4s,v20.4s,v22.4s
         addp    v24.4s,v24.4s,v26.4s
@@ -332,7 +332,49 @@ Return Value:
         addp    v1.4s,v24.4s,v28.4s
         addp    v2.4s,v17.4s,v21.4s
         addp    v3.4s,v25.4s,v29.4s
+        scvtf   v0.4s,v0.4s             // convert to float
+        scvtf   v1.4s,v1.4s
+        scvtf   v2.4s,v2.4s
+        scvtf   v3.4s,v3.4s
+        fmul    v0.4s,v0.4s,v4.4s       // multiply by scale
+        fmul    v1.4s,v1.4s,v5.4s
+        fmul    v2.4s,v2.4s,v4.4s
+        fmul    v3.4s,v3.4s,v5.4s
+        fcvtns  v0.4s,v0.4s             // convert to int
+        fcvtns  v1.4s,v1.4s
+        fcvtns  v2.4s,v2.4s
+        fcvtns  v3.4s,v3.4s
+        b .LConvSym.Quantize
 
+.LConvSym.FixedPointScale:
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ldr     w11, [x8, #.LConvSymPostProcessParams_ZeroPoint]
+        beq     .LConvSym.BroadcastFixedPointValue
+        ld1     {v4.4s,v5.4s},[x19]     // load preshift
+        ld1     {v6.4s,v7.4s},[x20]     // load multiplier
+        ld1     {v8.4s,v9.4s},[x21]     // load postshift
+        b       .LConvSym.ScaleWithFixedPoint
+.LConvSym.BroadcastFixedPointValue:
+        ld1r    {v4.4s},[x19]           // load preshift Value
+        mov     v5.16b, v4.16b
+        ld1r    {v6.4s},[x20]           // load multiplier Value
+        mov     v7.16b, v6.16b
+        ld1r    {v8.4s},[x21]           // load postshift Value
+        mov     v9.16b, v8.16b
+
+.LConvSym.ScaleWithFixedPoint:
+        addp    v16.4s,v16.4s,v18.4s
+        addp    v20.4s,v20.4s,v22.4s
+        addp    v24.4s,v24.4s,v26.4s
+        addp    v28.4s,v28.4s,v30.4s
+        addp    v17.4s,v17.4s,v19.4s
+        addp    v21.4s,v21.4s,v23.4s
+        addp    v25.4s,v25.4s,v27.4s
+        addp    v29.4s,v29.4s,v31.4s
+        addp    v0.4s,v16.4s,v20.4s
+        addp    v1.4s,v24.4s,v28.4s
+        addp    v2.4s,v17.4s,v21.4s
+        addp    v3.4s,v25.4s,v29.4s
         sqshl   v0.4s, v0.4s, v4.4s       // preshift
         sqshl   v1.4s, v1.4s, v5.4s
         sqshl   v2.4s, v2.4s, v4.4s
@@ -343,12 +385,14 @@ Return Value:
         sqdmulh v3.4s, v3.4s, v7.4s
         srshl   v0.4s,v0.4s, v8.4s        // postshift
         srshl   v1.4s,v1.4s, v9.4s
-        dup     v9.8h,w11
         srshl   v2.4s,v2.4s, v8.4s
         srshl   v3.4s,v3.4s, v9.4s
+
+.LConvSym.Quantize:
+        dup     v9.8h,w11
         sqxtn   v0.4h,v0.4s
-        sqxtn2  v0.8h,v1.4s
         sqxtn   v2.4h,v2.4s
+        sqxtn2  v0.8h,v1.4s
         sqxtn2  v2.8h,v3.4s
         subs    x6, x6, 8
         sqadd   v0.8h,v0.8h,v9.8h
@@ -357,15 +401,16 @@ Return Value:
         sqxtn2 v0.16b,v2.8h
         b.lo    .LConvSym.PartialStore
 
-        st1     {v0.d}[1],[x5]          // full 2x8 store to c 
+        st1     {v0.d}[1],[x5]          // full 2x8 store to c
         st1     {v0.8b},[x2]
 
 .LConvSym.ExitKernel:
+        ldp     x21,x22,[sp,#80]
         ldp     x19,x20,[sp,#64]
         ldp     d14,d15,[sp,#48]
         ldp     d12,d13,[sp,#32]
         ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp], #80
+        ldp     d8,d9,[sp], #96
         ret
 
 .LConvSym.8InputChannels:
