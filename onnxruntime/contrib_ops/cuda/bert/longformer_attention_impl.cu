@@ -47,16 +47,19 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Denote: batch size (B), sequence length (S), number of heads (N), dimension per head (H), max number of global tokens (G)
+// Denote: batch size (B), sequence length (S), number of heads (N), dimension per head (H), maximum global tokens (G)
 //
 // Workspace layout (default data type T is float or half):
-//   [SoftmaxSpace: see below] [Q:BxNxSxH] [K:BxNxSxH] [V:BxNxSxH] [Global_Q:BxNxSxH] [Global_K:BxNxSxH] [Global_V:BxNxSxH]
+//   [SoftmaxSpace] [Q:BxNxSxH] [K:BxNxSxH] [V:BxNxSxH] [Global_Q:BxNxSxH] [Global_K:BxNxSxH] [Global_V:BxNxSxH]
 // where Global_Q, Global_K and Global_V are optional. They are not allocated when there is no global token.
 //
-// SoftmaxSpace layout:
-//    [scratch1: (5S-3W)*W*N*B][scratch2: size_t 20]
+// SoftmaxSpace layout is the following when compact memory is enabled:
+//    [scratch1: (5S-3W)*W*N*B] [scratch2: size_t 20]
 // Scratch1 has 5 buffers for local and global attention calculation.
 // Scratch2 has 5 input pointers, 5 output pointers, 5 buffer sizes and 5 strides related to scratch1.
+//
+// SoftmaxSpace layout is the following When compact memory is disabled:
+//    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
 
 size_t GetScratch1Size(size_t element_size, int batch_size, int num_heads, int sequence_length, int window) {
   return (5 * sequence_length - 3 * window) * window * num_heads * batch_size * element_size;
@@ -72,14 +75,12 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     int num_heads,
     int sequence_length,
     int window,
-    bool use_fast_kernel) {
-  if (!use_fast_kernel) {
-      size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
-      size_t scratch2_size = 10 * (sizeof(void*) + sizeof(size_t));
-      return scratch1_size + scratch2_size;
+    bool disable_compact_memory) {
+  if (!disable_compact_memory) {
+    size_t scratch1_size = GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
+    size_t scratch2_size = 10 * (sizeof(void*) + sizeof(size_t));
+    return scratch1_size + scratch2_size;
   } else {
-    // Non-compact layout when environment variable ORT_LONGFORMER_COMPACT_MEMORY=0 is set.
-    //    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
     return 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
   }
 }
@@ -92,8 +93,13 @@ size_t GetLongformerAttentionWorkspaceSize(
     int sequence_length,
     int max_num_global,
     int window,
-    bool use_fast_kernel) {
-  size_t softmax_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
+    bool disable_compact_memory) {
+  size_t softmax_size = GetLongformerSoftmaxWorkspaceSize(element_size,
+                                                          batch_size,
+                                                          num_heads,
+                                                          sequence_length,
+                                                          window,
+                                                          disable_compact_memory);
   size_t qkv_size = 3 * batch_size * sequence_length * num_heads * head_size * element_size;
   size_t global_qkv_size = max_num_global > 0 ? qkv_size : 0;
   return softmax_size + qkv_size + global_qkv_size;
@@ -356,7 +362,7 @@ __launch_bounds__(blockSize)
   }
 }
 
-bool launchSoftmaxKernel(
+bool LaunchLongformerSoftmaxKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,
@@ -367,10 +373,10 @@ bool launchSoftmaxKernel(
     const void* global_q,         // Q for global tokens with shape (B, N, S, H).
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)
-    const int* global_attention,  // global attention with shape (B, S), with value 0 for local attention and 1 for global attention.
+    const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
     const int* global_index,      // Global index with shape (B, S)
     const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
-    void* pinned_buffer,          // Pinned memory in CPU. It has two parts: Number of global tokens per batch with shape (B, 1), and a buffer to copy data to scratch2
+    void* pinned_buffer,          // Pinned memory in CPU with 2 parts: global tokens per batch, and data for scratch2
     void* output,                 // output with shape (B, N, S, H)
     float scaler,                 // scalar
     int batch_size,               // batch size
@@ -382,8 +388,8 @@ bool launchSoftmaxKernel(
   const int* global_count = reinterpret_cast<const int*>(pinned_buffer);
 
   bool is_fp16 = (element_size == 2);
-  void* scratch1 = reinterpret_cast<char*>(workspace);
-  char* scratch2 = (char*)scratch1 + GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
+  char* scratch1 = reinterpret_cast<char*>(workspace);
+  char* scratch2 = scratch1 + GetScratch1Size(element_size, batch_size, num_heads, sequence_length, window);
 
   // Setup shared parameters for two strided batched matrix multiplies
   cudaDataType_t Atype;
@@ -433,7 +439,7 @@ bool launchSoftmaxKernel(
   //      [W][W][W]
   //         [W][W]
   // The first and last rows have 2 blocks per row, and the remaining has 3 blocks per row.
-  // The calculation are splited into 3 parts. Firstly, fill the middle rows,  then the first row and finally the last row.
+  // The calculation are splited into 3 parts: middle rows,  then the first row and finally the last row.
   // To save space, we do not store the whole matrix. Instead, we only allocate space for these blocks.
   //
   // For global attention part, we have two assumptions:
@@ -457,20 +463,20 @@ bool launchSoftmaxKernel(
       static_cast<size_t>(w * w * 2),                  // first row of blocks has 2 WxW blocks
       static_cast<size_t>(w * w * middle_count * 3),   // middle rows of blocks have 3 WxW blocks per row
       static_cast<size_t>(w * w * 2),                  // last row of blocks has 2 WxW blocks
-      static_cast<size_t>(w * (sequence_length - w)),  // local attends to global: global tokens are assumed to be smaller than window size
+      static_cast<size_t>(w * (sequence_length - w)),  // local attends to global: global tokens <= window size
       static_cast<size_t>(w * sequence_length)};       // global attends to everything.
 
   size_t buffer_strides[5] = {
       static_cast<size_t>(w * 2),
       static_cast<size_t>(w * 3),
       static_cast<size_t>(w * 2),
-      static_cast<size_t>(w),  // global tokens are assumed to be smaller than window size
+      static_cast<size_t>(w),  // number of global tokens <= window size
       static_cast<size_t>(sequence_length)};
 
   void* input_pointers[5];
   void* output_pointers[5];
 
-  char* current_pointer = (char*)scratch1;
+  char* current_pointer = scratch1;
   for (int i = 0; i < 5; ++i) {
     input_pointers[i] = (void*)current_pointer;
     output_pointers[i] = (void*)current_pointer;  // output pointer is same as input
@@ -493,9 +499,12 @@ bool launchSoftmaxKernel(
     if (middle_count > 0) {
       for (int i = 0; i < batch_size; ++i) {
         for (int j = 0; j < num_heads; ++j) {
-          void* q_head = (char*)q + (i * elements_per_batch + j * sequence_length * head_size + w * head_size) * element_size;
-          void* k_head = (char*)k + (i * elements_per_batch + j * sequence_length * head_size) * element_size;
-          void* qk_head = (char*)input_pointers[1] + (i * num_heads + j) * buffer_sizes[1] * element_size;
+          const void* q_head = reinterpret_cast<const char*>(q) + \
+                              (i * elements_per_batch + j * sequence_length * head_size + w * head_size) * element_size;
+          const void* k_head = reinterpret_cast<const char*>(k) + \
+                               (i * elements_per_batch + j * sequence_length * head_size) * element_size;
+          void* qk_head = reinterpret_cast<char*>(input_pointers[1]) + \
+                          (i * num_heads + j) * buffer_sizes[1] * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
                                            CUBLAS_OP_T,
                                            CUBLAS_OP_N,
@@ -547,8 +556,8 @@ bool launchSoftmaxKernel(
                                      resultType,
                                      algo));
 
-    void* q_head = (char*)q + (last_block * w * head_size) * element_size;
-    void* k_head = (char*)k + ((last_block - 1) * w * head_size) * element_size;
+    const void* q_head = reinterpret_cast<const char*>(q) + (last_block * w * head_size) * element_size;
+    const void* k_head = reinterpret_cast<const char*>(k) + ((last_block - 1) * w * head_size) * element_size;
 
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_T,
@@ -578,9 +587,9 @@ bool launchSoftmaxKernel(
   // Global attention part
   for (int i = 0; i < batch_size; ++i) {
     if (global_count[i] > 0) {
-      void* q_batch = (char*)q + (i * elements_per_batch + w * head_size) * element_size;
-      void* k_batch = (char*)k + (i * elements_per_batch) * element_size;
-      void* qk_batch = (char*)input_pointers[3] + (i * buffer_sizes[3]) * num_heads * element_size;
+      const void* q_batch = reinterpret_cast<const char*>(q) + (i * elements_per_batch + w * head_size) * element_size;
+      const void* k_batch = reinterpret_cast<const char*>(k) + (i * elements_per_batch) * element_size;
+      void* qk_batch = reinterpret_cast<char*>(input_pointers[3]) + (i * buffer_sizes[3]) * num_heads * element_size;
 
       // Local tokens attending global tokens
       CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -608,11 +617,12 @@ bool launchSoftmaxKernel(
                                        algo));
 
       // It is feasible to use compact format for Global_Q with shape BxNxGxH to save space.
-      // In that case, elements_per_batch is num_heads * max_num_global * head_size, and stride_per_head is max_num_global * head_size.
+      // In that case, elements_per_batch is num_heads * max_num_global * head_size,
+      // and stride_per_head is max_num_global * head_size.
 
-      void* global_q_batch = (char*)global_q + (i * elements_per_batch) * element_size;
-      void* global_k_batch = (char*)global_k + (i * elements_per_batch) * element_size;
-      qk_batch = (char*)input_pointers[4] + (i * buffer_sizes[4] * num_heads) * element_size;
+      const void* global_q_batch = reinterpret_cast<const char*>(global_q) + (i * elements_per_batch) * element_size;
+      const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * elements_per_batch) * element_size;
+      qk_batch = reinterpret_cast<char*>(input_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
 
       // Global tokens attending everything
       // This GEMMs need to be last to make sure all global token entries are re-written.
@@ -675,9 +685,12 @@ bool launchSoftmaxKernel(
     if (middle_count > 0) {
       for (int i = 0; i < batch_size; ++i) {
         for (int j = 0; j < num_heads; ++j) {
-          void* v_head = (char*)v + (i * elements_per_batch + j * head_size * sequence_length) * element_size;
-          void* prob_head = (char*)output_pointers[1] + (i * num_heads * buffer_sizes[1] + j * buffer_sizes[1]) * element_size;
-          void* out_head = (char*)output + (i * elements_per_batch + j * head_size * sequence_length + w * head_size) * element_size;
+          const void* v_head = reinterpret_cast<const char*>(v) + \
+                               (i * elements_per_batch + j * head_size * sequence_length) * element_size;
+          const void* prob_head = reinterpret_cast<const char*>(output_pointers[1]) + \
+                                  (i * num_heads * buffer_sizes[1] + j * buffer_sizes[1]) * element_size;
+          void* out_head = reinterpret_cast<char*>(output) + \
+                           (i * elements_per_batch + j * head_size * sequence_length + w * head_size) * element_size;
           CHECK(cublasGemmStridedBatchedEx(cublas,
                                            CUBLAS_OP_N,
                                            CUBLAS_OP_N,
@@ -729,8 +742,8 @@ bool launchSoftmaxKernel(
                                      resultType,
                                      algo));
 
-    void* v_head = (char*)v + (last_block - 1) * w * head_size * element_size;
-    void* out_head = (char*)output + last_block * w * head_size * element_size;
+    const void* v_head = reinterpret_cast<const char*>(v) + (last_block - 1) * w * head_size * element_size;
+    void* out_head = reinterpret_cast<char*>(output) + last_block * w * head_size * element_size;
 
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_N,
@@ -761,9 +774,10 @@ bool launchSoftmaxKernel(
     if (global_count[i] > 0) {
       int glob_longdim_mm = sequence_length - 2 * w;
 
-      void* v_head = (char*)v + (i * elements_per_batch) * element_size;
-      void* prob_head = (char*)output_pointers[3] + (i * buffer_sizes[3] * num_heads + w * buffer_strides[3]) * element_size;
-      void* out_head = (char*)output + (i * elements_per_batch + 2 * w * head_size) * element_size;
+      const void* v_head = reinterpret_cast<const char*>(v) + (i * elements_per_batch) * element_size;
+      const void* prob_head = reinterpret_cast<const char*>(output_pointers[3]) + \
+                              (i * buffer_sizes[3] * num_heads + w * buffer_strides[3]) * element_size;
+      void* out_head = reinterpret_cast<char*>(output) + (i * elements_per_batch + 2 * w * head_size) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
@@ -790,9 +804,9 @@ bool launchSoftmaxKernel(
                                        algo));
 
       // Global tokens
-      v_head = (char*)global_v + (i * elements_per_batch) * element_size;
-      prob_head = (char*)output_pointers[4] + (i * buffer_sizes[4] * num_heads) * element_size;
-      out_head = (char*)output + (i * elements_per_batch) * element_size;
+      v_head = reinterpret_cast<const char*>(global_v) + (i * elements_per_batch) * element_size;
+      prob_head = reinterpret_cast<const char*>(output_pointers[4]) + (i * buffer_sizes[4] * num_heads) * element_size;
+      out_head = reinterpret_cast<char*>(output) + (i * elements_per_batch) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
@@ -810,7 +824,7 @@ bool launchSoftmaxKernel(
                                        (int)buffer_strides[4],  // ldb
                                        buffer_sizes[4],         // strideB
                                        beta_0,                  // beta: overwrite
-                                       out_head,                // C: assumes global tokens are at the beginning of sequence
+                                       out_head,                // C: assumes global tokens at the beginning of sequence
                                        Ctype,                   // C type
                                        head_size,               // ldc
                                        stride_per_head,         // strideC
@@ -825,7 +839,7 @@ bool launchSoftmaxKernel(
 
 template <typename T>
 bool LongformerQkvToContext(
-  const cudaDeviceProp& device_prop, cublasHandle_t& cublas, cudaStream_t stream,
+    const cudaDeviceProp& device_prop, cublasHandle_t cublas, cudaStream_t stream,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const int window, const size_t element_size,
     const T* input, const T* attention_mask,
@@ -834,8 +848,8 @@ bool LongformerQkvToContext(
     void* pinned_buffer, T* workspace,
     T* output,
     size_t softmax_workspace_size,
-    bool use_fast_kernel) {
-  T* qkv = reinterpret_cast<T*>((char*)workspace + softmax_workspace_size);
+    bool disable_compact_memory) {
+  T* qkv = reinterpret_cast<T*>(reinterpret_cast<char*>(workspace) + softmax_workspace_size);
 
   // Number of elements in Q, K, V, Global_Q, Global_K or Global_V are same: BxNxSxH
   const int elements = batch_size * num_heads * sequence_length * head_size;
@@ -843,7 +857,16 @@ bool LongformerQkvToContext(
   const int max_threads_per_block(device_prop.maxThreadsPerBlock);
 
   // Input should be BxSx3xNxH => qkv: 3xBxNxSxH
-  if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, input, qkv)) {
+  if (!LaunchTransQkv(stream,
+                      3,
+                      sequence_length,
+                      batch_size,
+                      head_size,
+                      num_heads,
+                      max_threads_per_block,
+                      false,
+                      input,
+                      qkv)) {
     return false;
   }
 
@@ -852,7 +875,16 @@ bool LongformerQkvToContext(
 
   // When there is no global token, no need to process global Q, K and V
   if (max_num_global > 0 && nullptr != global_input) {
-    if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, global_input, global_qkv)) {
+    if (!LaunchTransQkv(stream,
+                        3,
+                        sequence_length,
+                        batch_size,
+                        head_size,
+                        num_heads,
+                        max_threads_per_block,
+                        false,
+                        global_input,
+                        global_qkv)) {
       return false;
     }
   }
@@ -871,8 +903,8 @@ bool LongformerQkvToContext(
 
   T* temp_output = qkv;  // Q will be overwritten
 
-  if (use_fast_kernel) {
-    if (!launchSoftmaxFastKernel(
+  if (disable_compact_memory) {
+    if (!LaunchLongformerSoftmaxSimpleKernel(
             stream,
             cublas,
             workspace,         // softmax space
@@ -883,7 +915,7 @@ bool LongformerQkvToContext(
             global_q,          // Q for global tokens with shape (B, N, S, H)
             global_k,          // K for global tokens with shape (B, N, S, H)
             global_v,          // V for global tokens with shape (B, N, S, H)
-            global_attention,  // global attention with shape (B, S), with value 0 for local attention and 1 for global attention.
+            global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
             global_index,      // Global index with shape (B, S)
             batch_global_num,  // Number of global tokens per batch with shape (B, 1)
             pinned_buffer,     // Pinned memory in CPU. Number of global tokens per batch with shape (B, 1)
@@ -899,7 +931,7 @@ bool LongformerQkvToContext(
     }
   } else {
     assert(max_num_global <= window);
-    if (!launchSoftmaxKernel(
+    if (!LaunchLongformerSoftmaxKernel(
             stream,
             cublas,
             workspace,         // softmax space
@@ -926,14 +958,14 @@ bool LongformerQkvToContext(
     }
   }
 
-
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
-  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, temp_output, output);
+  return LaunchTransCtx(stream, sequence_length, batch_size, head_size,
+                        num_heads, max_threads_per_block, false, temp_output, output);
 }
 
 bool LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& cublas,
+    cublasHandle_t cublas,
     cudaStream_t stream,
     const void* input,
     const void* attention_mask,
@@ -951,9 +983,14 @@ bool LaunchLongformerAttentionKernel(
     int window,
     int max_num_global,
     const size_t element_size,
-    bool use_fast_kernel) {
+    bool disable_compact_memory) {
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
-  size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
+  size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size,
+                                                                    batch_size,
+                                                                    num_heads,
+                                                                    sequence_length,
+                                                                    window,
+                                                                    disable_compact_memory);
   if (element_size == 2) {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -968,7 +1005,7 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<half*>(workspace),
                                   reinterpret_cast<half*>(output),
                                   softmax_workspace_size,
-                                  use_fast_kernel);
+                                  disable_compact_memory);
   } else {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
@@ -983,7 +1020,7 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<float*>(workspace),
                                   reinterpret_cast<float*>(output),
                                   softmax_workspace_size,
-                                  use_fast_kernel);
+                                  disable_compact_memory);
   }
 }
 
