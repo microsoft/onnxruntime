@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #ifdef __APPLE__
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
-#include "core/framework/tensorprotoutils.h"
 #endif
+#include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
