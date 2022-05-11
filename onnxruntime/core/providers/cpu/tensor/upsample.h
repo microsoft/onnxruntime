@@ -515,6 +515,124 @@ void NhwcUpsampleBilinear(const int64_t batch_size,
   }
 }
 
+inline void ComputeInterpolationValuesInteger(
+    const int32_t value, const int32_t scale_10, const ResizeCoordinateTransformationMode coordinate_transform_mode,
+    int32_t input_size, int32_t* scaled_value, int32_t* lower_bound,
+    int32_t* upper_bound) {
+  ORT_ENFORCE(coordinate_transform_mode == HALF_PIXEL || coordinate_transform_mode == ALIGN_CORNERS);
+  if (coordinate_transform_mode == HALF_PIXEL) {
+    *scaled_value = value * scale_10 + scale_10 / 2 - (1 << 9);
+  } else {
+    *scaled_value = value * scale_10;
+  }
+  constexpr int32_t zero = 0;
+  *lower_bound = std::max(*scaled_value / (1 << 10), zero);
+  *upper_bound =
+      std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
+}
+
+inline int Offset(gsl::span<const int64_t> dims_data, int i0, int i1, int i2, int i3) {
+  ORT_ENFORCE(dims_data.size() == 4);
+  ORT_ENFORCE(i0 >= 0 && i0 < dims_data[0]);
+  ORT_ENFORCE(i1 >= 0 && i1 < dims_data[1]);
+  ORT_ENFORCE(i2 >= 0 && i2 < dims_data[2]);
+  ORT_ENFORCE(i3 >= 0 && i3 < dims_data[3]);
+  return static_cast<int>(((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3);
+}
+
+// Same as above but doesn't use any floating-point for the resize
+template <typename T>
+inline void NhwcUpsampleBilinearInteger(
+    const ResizeCoordinateTransformationMode coordinate_transform_mode,
+    const int32_t batches, const int32_t input_height, const int32_t input_width, const int32_t depth,
+    gsl::span<const int64_t> input_dims,
+    const T* input_data,
+    const int32_t output_height, const int32_t output_width,
+    gsl::span<const int64_t> output_dims,
+    T* output_data) {
+  ORT_ENFORCE(coordinate_transform_mode == HALF_PIXEL || coordinate_transform_mode == ALIGN_CORNERS);
+  ORT_ENFORCE(input_dims.size() == 4);
+  ORT_ENFORCE(output_dims.size() == 4);
+#if 0
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_size_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  const int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int32_t input_height = input_shape.Dims(1);
+  const int32_t input_width = input_shape.Dims(2);
+  const int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
+
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
+  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
+  const int32_t output_height =
+      output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
+  const int32_t output_width =
+      output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
+#endif
+
+  int32_t height_scale_10 =
+      ((1 << 10) * input_height + output_height / 2) / output_height;
+  int32_t width_scale_10 =
+      ((1 << 10) * input_width + output_width / 2) / output_width;
+  if (coordinate_transform_mode == ALIGN_CORNERS && output_height > 1) {
+    height_scale_10 =
+        ((1 << 10) * (input_height - 1) + (output_height - 1) / 2) /
+        (output_height - 1);
+  }
+  if (coordinate_transform_mode == ALIGN_CORNERS && output_width > 1) {
+    width_scale_10 = ((1 << 10) * (input_width - 1) + (output_width - 1) / 2) /
+                     (output_width - 1);
+  }
+
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < output_height; ++y) {
+      int32_t input_y, y0, y1;
+      ComputeInterpolationValuesInteger(y, height_scale_10,
+                                        coordinate_transform_mode,
+                                        input_height, &input_y, &y0, &y1);
+      for (int x = 0; x < output_width; ++x) {
+        int32_t input_x, x0, x1;
+        ComputeInterpolationValuesInteger(x, width_scale_10,
+                                          coordinate_transform_mode,
+                                          input_width, &input_x, &x0, &x1);
+        for (int c = 0; c < depth; ++c) {
+          const int64_t output_20_ll =
+              static_cast<int64_t>(
+                  input_data[Offset(input_dims, b, y0, x0, c)]) *
+              ((1 << 10) - (input_y - (1 << 10) * y0)) *
+              ((1 << 10) - (input_x - (1 << 10) * x0));
+          const int64_t output_20_lu =
+              static_cast<int64_t>(
+                  input_data[Offset(input_dims, b, y1, x0, c)]) *
+              (input_y - (1 << 10) * y0) *
+              ((1 << 10) - (input_x - (1 << 10) * x0));
+          const int64_t output_20_rl =
+              static_cast<int64_t>(
+                  input_data[Offset(input_dims, b, y0, x1, c)]) *
+              ((1 << 10) - (input_y - (1 << 10) * y0)) *
+              (input_x - (1 << 10) * x0);
+          const int64_t output_20_ru =
+              static_cast<int64_t>(
+                  input_data[Offset(input_dims, b, y1, x1, c)]) *
+              (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
+          const int64_t output_20 =
+              output_20_ll + output_20_lu + output_20_rl + output_20_ru;
+          const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
+          const T interpolation =
+              static_cast<T>((output_20 + round) / (1 << 20));
+          output_data[Offset(output_dims, b, y, x, c)] = interpolation;
+        }
+      }
+    }
+  }
+}
+
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
