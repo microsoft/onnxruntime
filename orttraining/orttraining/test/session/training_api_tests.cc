@@ -186,6 +186,18 @@ TEST(TrainingApiTest, ModuleTrainStep) {
       OrtValueToVec(bias_grad, single_bias_grad_vec);
     }
   }
+  // reset grad
+  ORT_ENFORCE(module_sess->ResetGrad().IsOK());
+
+  // run a single step
+  std::vector<OrtValue>& inputs = *data_loader.begin();
+  std::vector<OrtValue> fetches;
+  ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
+  OrtValueToVec(bias_grad, current_bias_grad_vec);
+  for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
+    ORT_ENFORCE(current_bias_grad_vec[i] == single_bias_grad_vec[i]);
+  }
+
 }
 
 }  // namespace test
