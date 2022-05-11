@@ -58,7 +58,7 @@ If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_fi
 
 ### Performance and Profiling Report
 
-In both the cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, and so on). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
+In both the cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, and so on). This file is a standard performance tracing file, and to view it in a user-friendly way, you can open it by using chrome://tracing:
 
 1. Open Chrome browser
 2. Type chrome://tracing in the address bar
@@ -168,11 +168,11 @@ session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionP
 
 ## Selecting the Execution Provider for best performance
 
-Performance is dependent on the specific model you're trying to run, the session, the run options, and, your specific hardware target. Here is some additional information for selecting the right Execution Provider for optimizing the ORT performance.
+Performance is dependent on the specific model you're trying to run, the session, the run options, and your specific hardware target. Here is some additional information for selecting the right Execution Provider for optimizing the ORT performance.
 
 ### CUDA (Default GPU) or CPU?
 
-The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully. In order to keep the binary size small, common data types are supported for the ops. If you are using an uncommon data type that is not supported, you can file an issue and/or contribute a PR (see examples - [PR #2112](https://github.com/microsoft/onnxruntime/pull/2112), [PR #2034](https://github.com/microsoft/onnxruntime/pull/2034), [PR #1565](https://github.com/microsoft/onnxruntime/pull/1565)). Please make sure you provide details on usage justification.
+The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully. In order to keep the binary size small, common data types are supported for the ops. If you are using an uncommon data type that is not supported, you can file a Github issue and/or contribute a Github Pull Request. (see examples - [PR #2112](https://github.com/microsoft/onnxruntime/pull/2112), [PR #2034](https://github.com/microsoft/onnxruntime/pull/2034), [PR #1565](https://github.com/microsoft/onnxruntime/pull/1565)). Please make sure you provide details on usage justification.
 
 Additionally, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. This means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact. If you require a specific operator that is not currently supported, please consider [contributing](https://github.com/microsoft/onnxruntime/tree/master/CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible.
 
@@ -192,6 +192,8 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 ## Tips for Tuning Performance
 
 Here are some tips for tuning the performance of ORT in terms of <a href="#memory">reducing memory consumption</a>, <a href ="#thread">thread management</a>, <a href="#iobinding">IO Binding</a>, and <a href="#customCUDA">customizing CUDA Execution Provider</a>.
+
+Please refer to [Execution Provider](../execution-providers/index.md) specific performance tuning samples and tips for optimizing your OnnxRuntime performance.
 
 <h3 id="memory">Memory Consumption Reduction</h3>
 
@@ -345,7 +347,7 @@ IO Binding is available in all the ORT language bindings. Here are the code snip
 **Python IOBinding**
 
 
-Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python). Follow the best practices on [ONNX Runtime Python binding.](https://github.com/pybind/pybind11/blob/master/docs/faq.rst#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclassmember--wattributes).
+Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python). Follow the best practices on [ONNX Runtime Python binding](https://github.com/pybind/pybind11/blob/master/docs/faq.rst#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclassmember--wattributes).
 
 You can refer to the Github issues that were resolved to optimize IO Binding.
 - [Add IO Binding support for Bert Benchmark util](https://github.com/microsoft/onnxruntime/pull/10907)
@@ -623,7 +625,11 @@ Here are some FAQs for the OnnxRuntime performance tuning.
 
 ### 1. How do I optimize BERT models in ORT?
 
-For some BERT models, ONNX Runtime cannot apply the best optimization due to framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
+For some BERT models, ONNX Runtime cannot apply the best optimization due to framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions. The Transformer Model Optimization tool automatically applies the optimization while loading a model. 
+
+A set of [Jypyter notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) and [Onnx Runtime Inference Examples](https://github.com/microsoft/onnxruntime-inference-examples/) are available to help you optimize your BERT models in ORT.
+
+
 
 ### 2. Why is the ONNX model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 
