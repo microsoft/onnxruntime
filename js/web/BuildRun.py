@@ -2,14 +2,14 @@ import os
 import shutil
 import argparse
 
-HR_Model_Path_1inference = ".\\test\\data\\f1\\"
-HR_Model_Path_4inference = ".\\test\\data\\f\\"
+HR_Model_Path_ONNX = ".\\test\\data\\f\\"
+HR_Model_Path_ORT = ".\\test\\data\\f1\\"
 MobileNet_Model_Path_4inference = ".\\test\\data\\Med-MobileNet\\"
 MobileNet_Model_Path_1inference = ".\\test\\data\\Med-MobileNet1\\"
 MSRA_Model_Path_1inference = ".\\test\\data\\msra_190729_new1\\"
 MSRA_Model_Path_4inference = ".\\test\\data\\msra_190729_new\\"
 
-models = [HR_Model_Path_1inference,HR_Model_Path_4inference,MobileNet_Model_Path_1inference,MobileNet_Model_Path_4inference,MSRA_Model_Path_1inference,MSRA_Model_Path_4inference]
+models = [HR_Model_Path_ONNX,HR_Model_Path_ORT,MobileNet_Model_Path_1inference,MobileNet_Model_Path_4inference,MSRA_Model_Path_1inference,MSRA_Model_Path_4inference]
 
 Build_Path = "..\\..\\build\\Windows\\Release\\"
 Dist_Path = ".\\dist\\"
@@ -41,7 +41,8 @@ if(args.build):
         os.system(command)
     else:
         ## Building WASM - Release - WASM_SIMD
-        command = "..\\..\\build.bat --build_wasm --skip_tests --skip_submodule_sync --config "+configuration+" --wasm_malloc dlmalloc --enable_wasm_simd --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit"
+        ## --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit
+        command = "..\\..\\build.bat --build_wasm --skip_tests --skip_submodule_sync --config "+configuration+" --wasm_malloc dlmalloc --enable_wasm_simd"
         #print(command)
         os.system(command)
         ## Building WASM - Release - WASM
@@ -73,7 +74,7 @@ if(args.run):
     model_name = args.run
     #print(model_name)
     ## Running the tests
-    command = "npm test -- model "+HR_Model_Path_4inference+" -b=wasm --wasm-enable-simd=false --wasm-number-threads=1"
+    command = "npm test -- model "+HR_Model_Path_ORT+" -b=wasm --wasm-enable-simd=false --wasm-number-threads=1"
     os.system(command)
 
 exit()

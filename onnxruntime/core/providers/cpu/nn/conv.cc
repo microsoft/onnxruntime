@@ -20,6 +20,11 @@
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+#include <iostream>
+//
+
 namespace onnxruntime {
 using ConvPadVector = ConvAttributes::ConvPadVector;
 
@@ -153,6 +158,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 }
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
+  //("Conv<float>::Compute - start"); 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const auto* X = context->Input<Tensor>(0);
   const auto* W = context->Input<Tensor>(1);
@@ -164,7 +170,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
-
+  ////checkMemory("Conv<float>::Compute - #1"); 
   ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
@@ -177,13 +183,19 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
-
+  ////checkMemory("Conv<float>::Compute - #2"); 
   TensorShapeVector Y_dims({N, M});
+  ////checkMemory("Conv<float>::Compute - #2 - 1");
   TensorShape input_shape = X->Shape().Slice(2);
+  ////checkMemory("Conv<float>::Compute - #2 - 2");
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  ////checkMemory("Conv<float>::Compute - #2 - 3");
+  //printf("%d\n",(int)M);
+  //printf("%d\n",(int)N);
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
+  ////checkMemory("Conv<float>::Compute - #2 - 4");
   TensorShape output_shape = Y->Shape().Slice(2);
-
+  ////checkMemory("Conv<float>::Compute - #3"); 
   // Bail out early if one of the dimensions is zero.
   if (Y->Shape().Size() == 0) {
     return Status::OK();
@@ -198,7 +210,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
-
+  ////checkMemory("Conv<float>::Compute - #4"); 
   if (kernel_rank >= 1 && kernel_rank <= 3) {
     MLAS_CONV_PARAMETERS Parameters;
     size_t WorkingBufferSize;
@@ -277,7 +289,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
       Ydata += Y_offset * conv_attrs_.group;
     }
   }
-
+  ////checkMemory("Conv<float>::Compute - end"); 
   return Status::OK();
 }
 

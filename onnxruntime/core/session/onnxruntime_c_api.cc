@@ -618,11 +618,11 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
-  checkMemory("CreateSessionAndLoadModel - Line 621 - start");  
+  //checkMemory("CreateSessionAndLoadModel - Line 621 - start");  
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
-  checkMemory("CreateSessionAndLoadModel - Line 625");  
+  //checkMemory("CreateSessionAndLoadModel - Line 625");  
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (model_path != nullptr) {
@@ -644,7 +644,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
-  checkMemory("CreateSessionAndLoadModel - Line 647");  
+  //checkMemory("CreateSessionAndLoadModel - Line 647");  
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
@@ -655,16 +655,20 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
   // Finish load
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
+    //checkMemory("CreateSessionAndLoadModel - Line 658");  
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load());
 #endif
   } else {
     if (model_path != nullptr) {
+      //checkMemory("CreateSessionAndLoadModel - Line 663");  
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_path));
     } else {
+      //checkMemory("CreateSessionAndLoadModel - Line 666");  
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
     }
   }
-  checkMemory("CreateSessionAndLoadModel - Line 667 - end");  
+  //CreateSessionAndLoadModel --> Load --> LoadOrtModel -Return-> CreateSessionAndLoadModel - Jump in memory - Why ???
+  //checkMemory("CreateSessionAndLoadModel - Line 667 - end");    
   return nullptr;
 }
 
@@ -725,14 +729,18 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data,
                     size_t model_data_length, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
+  //checkMemory("CreateSessionFromArray - Line 731 - start");
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   OrtStatus* status = nullptr;
   *out = nullptr;
 
   ORT_TRY {
+    //CreateSessionFromArray - Before - CreateSessionAndLoadModel");
     ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
+    //checkMemory("CreateSessionFromArray - Before - InitializeSession");
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
+    //checkMemory("CreateSessionFromArray - after - InitializeSession");
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
   }
@@ -741,7 +749,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
       status = OrtApis::CreateStatus(ORT_FAIL, e.what());
     });
   }
-
+  //checkMemory("CreateSessionFromArray - Line 748 - end");
   return status;
   API_IMPL_END
 }
@@ -2097,6 +2105,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
+  ////checkMemory("CFG arena V1 - creation");
   *out = new OrtArenaCfg();
   (*out)->max_mem = max_mem;
   (*out)->arena_extend_strategy = arena_extend_strategy;
@@ -2109,6 +2118,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys, _In_reads_(num_keys) const size_t* arena_config_values,
                     _In_ size_t num_keys, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
+  ////checkMemory("CFG arena V2 - creation");
   auto cfg = std::make_unique<OrtArenaCfg>();
 
   for (size_t i = 0; i < num_keys; ++i) {

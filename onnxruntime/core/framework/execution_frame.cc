@@ -21,6 +21,9 @@
 #include "core/framework/memory_info.h"
 #endif
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -137,16 +140,20 @@ OrtValue* IExecutionFrame::GetMutableNodeInputOrOutputMLValue(int index) {
 Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int output_arg_index,
                                                      const TensorShape* shape, OrtValue*& p_ort_value,
                                                      const Node& node) {
+  ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - #1");
   auto status = Status::OK();
   int ort_value_idx = GetNodeIdxToMLValueIdx(output_arg_index);
-
+  ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - #2");
   // return nullptr if it is optional
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry) {
+    ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - IF taken");
     p_ort_value = nullptr;
   } else {
+    ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - IF NOT taken");
     p_ort_value = &all_values_[ort_value_idx];
 
     if (p_ort_value->IsAllocated()) {
+      ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - Found allocated");
       // already allocated. verify shape matches if tensor.
       if (p_ort_value->IsTensor()) {
         const Tensor& tensor = p_ort_value->Get<Tensor>();
@@ -155,6 +162,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                     " Requested shape:", shape ? shape->ToString() : "null");
       } else if (p_ort_value->IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
+        ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - Found spare tensor");
         const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
         ORT_ENFORCE(shape && sp_tensor.DenseShape() == *shape,
                     "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
@@ -162,6 +170,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
 #endif
       }
     } else {
+      ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - couldn't find spare or alocated tensor");
       // shape is nullptr for traditional ML output values
       if (shape != nullptr && IsOutput(ort_value_idx)) {
         VerifyOutputSizes(output_index, node, *shape);
@@ -169,7 +178,7 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
       status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape);
     }
   }
-
+  ////checkMemory("IExecutionFrame::GetOrCreateNodeOutputMLValue - #3");
   return status;
 }
 
@@ -334,6 +343,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       session_state_(session_state),
       mem_patterns_(nullptr),
       planner_(nullptr) {
+  ////checkMemory("ExecutionFrame::ExecutionFrame - Start - Init"); 
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -354,9 +364,10 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::IncreaseIteration();
 #endif
-
+  ////checkMemory("ExecutionFrame::ExecutionFrame - #1"); 
   // map the custom allocators to ort_value_idx entries
   if (!fetch_allocators.empty()) {
+    ////checkMemory("ExecutionFrame::ExecutionFrame - fetching allocators"); 
     for (size_t idx = 0, end = fetch_mlvalue_idxs.size(); idx < end; ++idx) {
       int ort_value_idx = fetch_mlvalue_idxs[idx];
 
@@ -367,10 +378,18 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
     }
   }
 
+  ////checkMemory("ExecutionFrame::ExecutionFrame - #2"); 
   // If the session enable memory pattern optimization
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
+  // Shalva debug
+  #if 0
+  if (0){
+  #else
+  /// original code
   if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
+  #endif
+    ////checkMemory("ExecutionFrame::ExecutionFrame - #2 - Mem pattern enabled"); 
     bool all_tensors = true;
     // Reserve mem to avoid re-allocation.
     for (const auto& feed : feeds) {
@@ -379,7 +398,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
         break;
       }
     }
-
+    ////checkMemory("ExecutionFrame::ExecutionFrame - #2 - Mid if statment"); 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(feeds, feed_mlvalue_idxs, inferred_shapes_);
@@ -387,6 +406,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       if (!mem_patterns_) {
         planner_ = std::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
       } else {
+        ////checkMemory("ExecutionFrame::ExecutionFrame - #2 - before for loop"); 
         // pre-allocate the big chunk requested in memory pattern.
         // all the internal kernel's input/output tensors will be allocated on these buffer.
         for (size_t i = 0; i < mem_patterns_->locations.size(); i++) {
@@ -448,6 +468,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       }
     }
   }
+  ////checkMemory("ExecutionFrame::ExecutionFrame - End"); 
 }
 
 ExecutionFrame::~ExecutionFrame() = default;
@@ -471,6 +492,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
                                                                 MLDataType element_type,
                                                                 const OrtMemoryInfo& location,
                                                                 const TensorShape& shape, bool create_fence) {
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #1");
   if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
@@ -483,10 +505,11 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   if (static_cast<uint64_t>(len) > std::numeric_limits<size_t>::max()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Tensor shape is too large");
   }
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #2");
   if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(static_cast<size_t>(len), element_type->Size(), &size)) {
     return Status(ONNXRUNTIME, FAIL, "size overflow");
   }
-
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #3");
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
 
@@ -499,7 +522,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // and allocator::CreateFence returns nullptr
     ort_value.SetFence(f);
   }
-
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #4");
   // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
   const auto& per_alloc_plan = GetAllocationPlan(ort_value_index);
@@ -535,15 +558,17 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
       }
     }
   }
-
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #5");
   //no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #5 - 1");
   Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
-
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #5 - 2");
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need
   // placement new, we don't support it in memory pattern optimization.
   if (!utils::IsDataTypeString(element_type)) {
+    ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #5 - 3");
     TraceAllocate(ort_value_index, size);
   }
 
@@ -557,7 +582,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     MemoryInfo::SetDynamicAllocation(ort_value_index);
 #endif
   }
-
+  ////checkMemory("ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper - #6");
   return Status::OK();
 }
 
@@ -660,11 +685,12 @@ Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlva
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
+  ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #1");
   const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
   const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
-
+  ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #2");
   const auto& alloc_info = per_alloc_plan.location;
   const auto* ml_type = per_alloc_plan.value_type;
   if (ml_type == nullptr) {
@@ -672,7 +698,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
         ONNXRUNTIME, INVALID_ARGUMENT,
         "Tried to allocate without valid type information, ort_value index=" + std::to_string(ort_value_index));
   }
-
+  ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #3");
   // if there is a custom allocator for this ort_value_index, call it to do the allocation
   auto custom_alloc_entry = custom_allocators_.find(ort_value_index);
   if (custom_alloc_entry != custom_allocators_.cend()) {
@@ -683,12 +709,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     if (allocated || !status.IsOK())
       return status;
   }
-
+  ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #4");
   if (ml_type->IsTensorType()
 #if !defined(DISABLE_OPTIONAL_TYPE)
       || utils::IsOptionalTensor(ml_type)
 #endif
   ) {
+    ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #5");
     ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
 
     // tensors / optional tensors
@@ -706,6 +733,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       // In the future we may want to have different way to handle it.
       case AllocKind::kAllocateOutput:
       case AllocKind::kAllocate: {
+        ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - Same as native");
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
                                                                *shape, per_alloc_plan.create_fence_if_async));
         break;
@@ -739,6 +767,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
     return Status::OK();
   } else if (ml_type->IsSparseTensorType()) {
+    //heckMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #6");
 #if !defined(DISABLE_SPARSE_TENSORS)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, per_alloc_plan.create_fence_if_async, session_state_);
@@ -751,6 +780,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
              || utils::IsOptionalSeqTensor(ml_type)
 #endif
   ) {
+    ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #7");
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
 
     if (alloc_kind == AllocKind::kReuse) {
@@ -768,6 +798,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       return AllocateTensorSequence(ort_value);
     }
   } else {
+    ////checkMemory("ExecutionFrame::AllocateAsPerAllocationPlan - #8");
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }
 }

@@ -11,6 +11,11 @@
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorPrivate.h"
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+#include <iostream>
+//
+
 using namespace Microsoft::WRL;
 
 namespace Windows::AI::MachineLearning::Adapter
@@ -1620,7 +1625,7 @@ AbiOpKernel::AbiOpKernel(
 onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) const {
   auto winmlProviderCapture = m_winmlProvider;
   auto internalOpCapture = m_internalOperator;
-
+  checkMemory("onnxruntime::Status AbiOpKernel::Compute - start"); 
   MLOperatorTensorGetter constantInputGetter = [context, winmlProviderCapture, internalOpCapture](uint32_t index) {
     Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = nullptr;
     const onnxruntime::Tensor* tensor = context->Input<onnxruntime::Tensor>(static_cast<int>(index));
@@ -1635,7 +1640,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
 
     return tensorWrapper;
   };
-
+  checkMemory("onnxruntime::Status AbiOpKernel::Compute - #1"); 
   auto inferShapesAndCreateKernel = [&](const EdgeShapes& inputShapes, EdgeShapes& outputShapes) -> ComPtr<IMLOperatorKernel> {
     // If the output size is not dynamic, infer it using the kernel. The result of inference is stored in m_inferredOutputShapes.
     if (m_requiresOutputShapesAtCreation) {
@@ -1662,7 +1667,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
 
     return ret;
   };
-
+  checkMemory("onnxruntime::Status AbiOpKernel::Compute - #2"); 
   // The kernel creation may have been delayed because input shapes were required but not inferred by schema.
   if (RequiresLazyInitialization()) {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -1697,8 +1702,10 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
 
       m_kernel = inferShapesAndCreateKernel(m_inputShapesOfKernelInference, m_inferredOutputShapes);
       SetLazyInitialized();
+      checkMemory("onnxruntime::Status AbiOpKernel::Compute - #2 - end of if true"); 
     }
   } else if (m_inputShapesOfKernelInference.EdgeCount() > 0) {
+    checkMemory("onnxruntime::Status AbiOpKernel::Compute - #2 - start of if false"); 
     EdgeShapes local_input_shapes = GetInputShapes(context);
 
     bool requiredCpuInputsChanged = false;
@@ -1724,7 +1731,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
         }
       }
     }
-
+    checkMemory("onnxruntime::Status AbiOpKernel::Compute - #2 - mid of if false"); 
     // In the edge case that the input size is changing across invocations and the kernel requires
     // its input size at construction, use a local instance of the kernel.
     if (local_input_shapes != m_inputShapesOfKernelInference || requiredCpuInputsChanged) {
@@ -1748,7 +1755,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
       return onnxruntime::Status();
     }
   }
-
+  checkMemory("onnxruntime::Status AbiOpKernel::Compute - #3"); 
   ComPtr<OpKernelContextWrapper> kernelContextWrapper = wil::MakeOrThrow<OpKernelContextWrapper>(
       context,
       Info().GetExecutionProvider(),
@@ -1763,7 +1770,7 @@ onnxruntime::Status AbiOpKernel::Compute(onnxruntime::OpKernelContext* context) 
   if (m_winmlProvider) {
     m_winmlProvider->QueueReference(m_kernel.Get());
   }
-
+  checkMemory("onnxruntime::Status AbiOpKernel::Compute - end"); 
   return onnxruntime::Status();
 }
 

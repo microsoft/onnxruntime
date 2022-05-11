@@ -557,6 +557,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
+  //checkMemory("ExecuteGraphImpl - Start"); 
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
@@ -569,18 +570,21 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       p_exec = std::make_unique<ParallelExecutor>(session_state, terminate_flag);
     }
   }
-
+  //checkMemory("ExecuteGraphImpl - #1"); 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
+    //checkMemory("ExecuteGraphImpl - No Copy"); 
     // no device copies are needed so simple execute
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                         logger));
+    //checkMemory("ExecuteGraphImpl - No Copy - after p_exec->Execute"); 
   } else {
+    //checkMemory("ExecuteGraphImpl - Yes Copy"); 
     const std::vector<OrtValue>* p_feeds = &feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
     std::vector<OrtValue> device_feeds;
@@ -610,7 +614,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
       p_fetches = &device_fetches;
     }
-
+    //checkMemory("ExecuteGraphImpl - #2"); 
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
@@ -620,7 +624,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
     }
   }
-
+  //checkMemory("ExecuteGraphImpl - End"); 
   return Status::OK();
 }
 
@@ -629,14 +633,15 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
                             const logging::Logger& logger, bool only_execute_path_to_fetches) {
+  //checkMemory("ExecuteGraph - Start"); 
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
-
+  //checkMemory("ExecuteGraph - After InitializeFeedFetchCopyInfo"); 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
-
+  //checkMemory("ExecuteGraph - After FinalizeFeedFetchCopyInfo"); 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
                                  execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
-
+  //checkMemory("ExecuteGraph - End"); 
   return status;
 }
 

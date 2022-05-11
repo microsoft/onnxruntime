@@ -6,6 +6,12 @@
 #include "core/framework/session_state.h"
 #include "core/graph/op.h"
 #include "core/common/logging/logging.h"
+
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+#include <iostream>
+////
+
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
@@ -37,7 +43,9 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
 }
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
+  ////checkMemory("OpKernelContext::Output - #1");
   auto p_ml_value = OutputMLValue(index, shape);
+  ////checkMemory("OpKernelContext::Output - #2");
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }
 
@@ -65,6 +73,7 @@ bool OpKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) c
 }
 
 OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
+  ////checkMemory("OpKernelContext::OutputMLValue - #1");
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
@@ -72,10 +81,12 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   //"error: 'ret' may be used uninitialized in this function"
   //This warning only exists in Release build.
   //I believe it's a false alarm.
-
+  ////checkMemory("OpKernelContext::OutputMLValue - #2");
   OrtValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());
+  ////checkMemory("OpKernelContext::OutputMLValue - #3");
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ////checkMemory("OpKernelContext::OutputMLValue - #4");
   return p_ml_value;
 }
 

@@ -10,6 +10,11 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/utils.h"
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+#include <iostream>
+////
+
 namespace onnxruntime {
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
@@ -47,9 +52,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape,
                           std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
+  ////checkMemory("Tensor::InitOrtValue - #1");
   auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+  ////checkMemory("Tensor::InitOrtValue - #2");
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ////checkMemory("Tensor::InitOrtValue - #3");
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  ////checkMemory("Tensor::InitOrtValue - #4");
 }
 
 void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location,

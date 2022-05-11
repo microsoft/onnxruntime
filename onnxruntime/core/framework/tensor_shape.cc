@@ -7,11 +7,19 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+#include <iostream>
+////
+
 namespace onnxruntime {
 
 TensorShape::TensorShape(gsl::span<const int64_t> dims) {
+  ////checkMemory("TensorShape::TensorShape - #1");
   Allocate(dims.size());
+  ////checkMemory("TensorShape::TensorShape - #2");
   gsl::copy(dims, values_);
+  ////checkMemory("TensorShape::TensorShape - #3");
 }
 
 TensorShape& TensorShape::operator=(const TensorShape& other) {
@@ -39,6 +47,7 @@ TensorShape& TensorShape::operator=(TensorShape&& other) noexcept {
 }
 
 void TensorShape::Allocate(size_t size) {
+
   if (values_.size() == size)
     return;
 
