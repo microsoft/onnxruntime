@@ -242,7 +242,7 @@ Status RunTraining(const TestRunnerParameters& params) {
         ORT_ENFORCE(optimizer.Step().IsOK());
         // modify learning rate
         ORT_ENFORCE(scheduler->Step().IsOK());
-        ORT_ENFORCE(optimizer.ResetGrad().IsOK());
+        ORT_ENFORCE(module.ResetGrad().IsOK());
       }
 
       if (batch_idx % EVAL_STEPS == 0) {

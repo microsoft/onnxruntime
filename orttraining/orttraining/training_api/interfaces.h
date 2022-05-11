@@ -26,7 +26,7 @@ class Parameter {
   // Return if trainable. The trainable property of a param
   // cannot change over the lifetime of the on-device training
   // session since the gradient graph is prebuilt for this setting.
-  bool requires_grad() const { return requires_grad_; }
+  bool RequiresGrad() const { return requires_grad_; }
 
   // Return the mutable gradient for trainable parameter
   OrtValue& gradient() { return gradient_; }
@@ -69,6 +69,9 @@ class Module {
     return parameters_;
   }
 
+  // Reset and release the gradient buffer of all trainable params
+  Status ResetGrad();
+
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs. Gradients will be accumulated within the Parameter object
   Status TrainStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
 
@@ -97,13 +100,11 @@ class Module {
 
 // Internal state
 struct ParameterOptimizerState {
-  int64_t step_;
-  float learning_rate_;
   // Per param optimizer state. E.g. For Adam and param_0, this would contain
   // {“Moment_1_param_0”:<value>, …},
   // It should be noted that the names should only be maintained to correlate with
   // the graph inputs for the optimizer graph
-  std::map<std::string, OrtValue> states_;
+  std::map<std::string, std::shared_ptr<OrtValue>> states_;
 };
 
 struct OptimizerState {
@@ -119,15 +120,7 @@ class Optimizer {
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input’s ValueInfoProto if the parameter doesn’t have it already.
   Optimizer(const std::string& /*optim_path_or_bytes*/,
-            std::map<std::string, std::shared_ptr<Parameter>>& /*parameters*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-  }
-
-  // Reset and release the gradient buffer of all trainable params
-  Status ResetGrad() {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return Status::OK();
-  }
+            std::map<std::string, std::shared_ptr<Parameter>>& /*parameters*/);
 
   // Optimizer Step.
   Status Step() {
@@ -153,8 +146,12 @@ class Optimizer {
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  std::vector<std::shared_ptr<Parameter>> parameters_;
+  std::map<std::string, std::shared_ptr<Parameter>> parameters_;
   OptimizerState optimizer_state_;
+  std::vector<std::string> input_names_;
+  std::vector<std::string> output_names_;
+  std::vector<OrtValue> weights_;
+  std::vector<OrtValue> gradients_;
 };
 
 class LearningRateScheduler {
