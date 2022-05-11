@@ -667,6 +667,8 @@ TEST_F(DataTypeTest, DataUtilsTest) {
   }
 }
 
+#ifndef  DISABLE_ABSEIL
+
 template <typename T>
 using Calc = CalculateInlinedVectorDefaultInlinedElements<T>;
 
@@ -687,6 +689,8 @@ TEST(InlinedVectorTests, TestDefaultInlinedCapacity) {
   TypeMinimunInlinedElements<int8_t, int16_t, int32_t, int64_t, std::string> sizes;
   sizes.print(std::cout);
 }
+
+#endif  // ! DISABLE_ABSEIL
 
 TEST(TypeLiterals, Tests) {
   {

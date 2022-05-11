@@ -26,7 +26,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
 
 int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
-  return nnapi_ ? nnapi_->nnapi_runtime_feature_level : 0;
+  return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -210,7 +210,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, IOKind::Input));
+          initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
@@ -530,8 +530,8 @@ Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_ind
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_addOperation(
-          nnapi_model_->model_, op, input_indices.size(), &input_indices[0],
-          output_indices.size(), &output_indices[0]),
+          nnapi_model_->model_, op, static_cast<uint32_t>(input_indices.size()), &input_indices[0],
+          static_cast<uint32_t>(output_indices.size()), &output_indices[0]),
       "op = " + std::to_string(op));
 
   num_nnapi_ops_++;
@@ -574,7 +574,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
-            nnapi_target_devices_.size(), supported_ops),
+            static_cast<uint32_t>(nnapi_target_devices_.size()), supported_ops),
         "on getSupportedOperationsForDevices");
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
@@ -598,7 +598,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksCompilation_createForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
-            nnapi_target_devices_.size(), &nnapi_model_->compilation_),
+            static_cast<uint32_t>(nnapi_target_devices_.size()), &nnapi_model_->compilation_),
         "on createForDevices");
   } else {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(

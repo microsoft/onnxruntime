@@ -154,7 +154,7 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
   auto model = testCase.CreateModel(inline_call);
   if (!inline_call) {
     auto& node = *model->MainGraph().Nodes().begin();
-    auto* fnbody = node.GetMutableFunctionBody(true);
+    auto* fnbody = node.GetFunctionBody();
     EXPECT_EQ(fnbody, nullptr);
   }
 }

@@ -6,20 +6,36 @@
 
 import os
 import sys
+
 import numpy
 import torch
 
 
-def find_transformers_source():
-    source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
-    if (os.path.exists(source_dir)):
+def find_transformers_source(sub_dir_paths=[]):
+    source_dir = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        "python",
+        "tools",
+        "transformers",
+        *sub_dir_paths,
+    )
+    if os.path.exists(source_dir):
         if source_dir not in sys.path:
             sys.path.append(source_dir)
         return True
     return False
 
 
-def create_inputs(batch_size=1, sequence_length=1, hidden_size=768, float16=False, device=torch.device('cuda')):
+def create_inputs(
+    batch_size=1,
+    sequence_length=1,
+    hidden_size=768,
+    float16=False,
+    device=torch.device("cuda"),
+):
     float_type = torch.float16 if float16 else torch.float32
     input = torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
     return input
@@ -27,42 +43,54 @@ def create_inputs(batch_size=1, sequence_length=1, hidden_size=768, float16=Fals
 
 def export_onnx(model, onnx_model_path, float16, hidden_size, device):
     from pathlib import Path
+
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
     input_hidden_states = create_inputs(hidden_size=hidden_size, float16=float16, device=device)
     with torch.no_grad():
         outputs = model(input_hidden_states)
 
-    dynamic_axes = {'input': {0: 'batch_size', 1: 'seq_len'}, "output": {0: 'batch_size', 1: 'seq_len'}}
+    dynamic_axes = {
+        "input": {0: "batch_size", 1: "seq_len"},
+        "output": {0: "batch_size", 1: "seq_len"},
+    }
 
-    torch.onnx.export(model,
-                      args=(input_hidden_states),
-                      f=onnx_model_path,
-                      input_names=['input'],
-                      output_names=["output"],
-                      dynamic_axes=dynamic_axes,
-                      opset_version=11,
-                      do_constant_folding=True)
+    torch.onnx.export(
+        model,
+        args=(input_hidden_states),
+        f=onnx_model_path,
+        input_names=["input"],
+        output_names=["output"],
+        dynamic_axes=dynamic_axes,
+        opset_version=11,
+        do_constant_folding=True,
+    )
     print("exported:", onnx_model_path)
 
 
-def optimize_onnx(input_onnx_path, optimized_onnx_path, expected_op=None, use_gpu=False, opt_level=None):
+def optimize_onnx(
+    input_onnx_path,
+    optimized_onnx_path,
+    expected_op=None,
+    use_gpu=False,
+    opt_level=None,
+):
     if find_transformers_source():
         from optimizer import optimize_model
     else:
         from onnxruntime.transformers.optimizer import optimize_model
 
-    onnx_model = optimize_model(input_onnx_path, model_type='gpt2', use_gpu=use_gpu, opt_level=opt_level)
+    onnx_model = optimize_model(input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level)
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:
-        assert len(onnx_model.get_nodes_by_op_type(expected_op)) == 1, \
-            f"Expected {expected_op} node not found in the optimized model {optimized_onnx_path}"
+        assert (
+            len(onnx_model.get_nodes_by_op_type(expected_op)) == 1
+        ), f"Expected {expected_op} node not found in the optimized model {optimized_onnx_path}"
 
 
 def diff_outputs(torch_outputs, ort_outputs, index):
-    """ Returns the maximum difference between PyTorch and OnnxRuntime outputs.
-    """
+    """Returns the maximum difference between PyTorch and OnnxRuntime outputs."""
     expected_outputs = torch_outputs[index].cpu().numpy()
     diff = numpy.abs(expected_outputs - ort_outputs[index])
     return numpy.amax(diff)
@@ -81,10 +109,12 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
         is_all_close(bool): whether all elements are close.
         max_abs_diff(float): maximum absolute difference.
     """
-    same = numpy.asarray([
-        numpy.allclose(ort_outputs[i], torch_outputs[i].cpu().numpy(), atol=atol, rtol=0)
-        for i in range(len(ort_outputs))
-    ])
+    same = numpy.asarray(
+        [
+            numpy.allclose(ort_outputs[i], torch_outputs[i].cpu().numpy(), atol=atol, rtol=0)
+            for i in range(len(ort_outputs))
+        ]
+    )
 
     max_abs_diff = [diff_outputs(torch_outputs, ort_outputs, i) for i in range(len(ort_outputs))]
 
@@ -94,43 +124,47 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
             diff = numpy.fabs(ort_outputs[i] - torch_outputs[i].cpu().numpy())
             idx = numpy.unravel_index(diff.argmax(), diff.shape)
             print(
-                f'Output {i}, diff={diff[idx]:.9f} index={idx} ort={ort_outputs[i][idx]:.9f} torch={float(torch_outputs[i][idx]):.9f}'
+                f"Output {i}, diff={diff[idx]:.9f} index={idx} ort={ort_outputs[i][idx]:.9f} torch={float(torch_outputs[i][idx]):.9f}"
             )
 
     return is_all_close, max(max_abs_diff)
 
 
 def create_ort_session(onnx_model_path, use_gpu=True):
-    from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
+    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+    from onnxruntime import __version__ as onnxruntime_version
+
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
     sess_options.intra_op_num_threads = 2
     sess_options.log_severity_level = 2
-    execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    execution_providers = ["CPUExecutionProvider"] if not use_gpu else ["CUDAExecutionProvider", "CPUExecutionProvider"]
     return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 
 
 def onnxruntime_inference(ort_session, input):
-    ort_inputs = {'input': numpy.ascontiguousarray(input.cpu().numpy())}
+    ort_inputs = {"input": numpy.ascontiguousarray(input.cpu().numpy())}
     ort_outputs = ort_session.run(None, ort_inputs)
     return ort_outputs
 
 
-def run_parity(model,
-               onnx_model_path,
-               batch_size,
-               hidden_size,
-               sequence_length,
-               float16,
-               device,
-               optimized,
-               test_cases=100,
-               verbose=False,
-               tolerance=None):
+def run_parity(
+    model,
+    onnx_model_path,
+    batch_size,
+    hidden_size,
+    sequence_length,
+    float16,
+    device,
+    optimized,
+    test_cases=100,
+    verbose=False,
+    tolerance=None,
+):
     passed_cases = 0
     max_diffs = []
     printed = False  # print only one sample
-    ort_session = create_ort_session(onnx_model_path, device.type == 'cuda')
+    ort_session = create_ort_session(onnx_model_path, device.type == "cuda")
     for i in range(test_cases):
         input_hidden_states = create_inputs(batch_size, sequence_length, hidden_size, float16, device)
 
@@ -147,7 +181,7 @@ def run_parity(model,
             passed_cases += 1
         elif verbose and not printed:
             printed = True
-            numpy.set_printoptions(precision=10, floatmode='fixed')
+            numpy.set_printoptions(precision=10, floatmode="fixed")
             torch.set_printoptions(precision=10)
             print("input", input_hidden_states)
             print("torch_outputs", torch_outputs)
