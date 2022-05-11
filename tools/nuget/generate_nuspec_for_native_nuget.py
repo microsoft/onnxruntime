@@ -56,7 +56,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                     if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/win-%s/native"/>' % cpu_arch)
-        for cpu_arch in ['x86_64', 'arm64']:
+        for cpu_arch in ['x64', 'x86_64', 'arm64']:
             if child.name == get_package_name('osx', cpu_arch, ep):
                 child = child / 'lib'
                 if cpu_arch == 'x86_64':
