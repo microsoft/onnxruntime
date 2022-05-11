@@ -3409,20 +3409,16 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
   graph_proto.set_name(Name());
   graph_proto.set_doc_string(Description());
 
-  std::unordered_set<std::string> existing_value_info;
-
   for (const auto* input_arg : GetInputsIncludingInitializers()) {
     *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
   }
 
   for (const auto* output_arg : GetOutputs()) {
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
-    existing_value_info.insert(output_arg->Name());
   }
 
   for (const auto* value_info : value_info_) {
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
-    existing_value_info.insert(value_info->Name());
   }
 
   // add the NodeArg info for outer scope NodeArgs so we capture the type information
@@ -3440,16 +3436,6 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
     // we need to update any GraphProto attributes for subgraphs so that any changes made by things
     // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
     p_node->ToProto(*node_proto, /* update_subgraphs */ true);
-
-    // we don't have shape inferencing for the NHWC operators, so save the value info with the model
-    if (p_node->Domain() == kMSInternalNHWCDomain) {
-      for (const auto* output_arg : p_node->OutputDefs()) {
-        if (output_arg->Exists() && existing_value_info.count(output_arg->Name()) == 0) {
-          *(graph_proto.mutable_value_info()->Add()) = output_arg->ToProto();
-          existing_value_info.insert(output_arg->Name());
-        }
-      }
-    }
   }
 }
 

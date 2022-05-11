@@ -197,10 +197,11 @@ TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
 }
 
 TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "TEMP/example_model.onnx";
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
 
   SessionOptions so;
-  so.optimized_model_filepath = ORT_MODEL_FOLDER "TEMP/example_model.test_output.onnx";
+  // set this if you want to manually inspect the optimized model
+  // so.optimized_model_filepath = ORT_MODEL_FOLDER "squeezenet/model.test_output.onnx";
   InferenceSessionWrapper session(so, GetEnvironment());
 
   const std::unordered_set<std::string> supported_ops{"Conv" /*, "Clip"*/};
@@ -222,17 +223,17 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
     }
   }
 
-  TensorShape input_shape_x{1, 128, 128, 3};
+  TensorShape input_shape_x{1, 3, 224, 224};
   std::vector<float> input_x(input_shape_x.Size(), 1.f);
   OrtValue ml_value_x;
   CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
 
   NameMLValMap feeds;
-  feeds.insert(std::make_pair("model_input", ml_value_x));
+  feeds.insert(std::make_pair("data_0", ml_value_x));
 
   // prepare outputs
   std::vector<std::string> output_names;
-  output_names.push_back("sequential");
+  output_names.push_back("softmaxout_1");
   std::vector<OrtValue> fetches;
 
   auto status = session.Run(feeds, output_names, &fetches);
@@ -241,7 +242,7 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
                                    "Status Message: TODO: add NHWC implementation here."));
 }
 
-// TEMPORARY test using production model using via the Xnnpack EP.
+// TEMPORARY test using production model and the Xnnpack EP.
 // Model has standard and depthwise Conv nodes that can additionally be fused with Clip nodes
 #ifdef USE_XNNPACK
 static void XnnpackEPTest(bool use_xnnpack, bool use_saved_model, OrtValue& output) {
@@ -272,6 +273,8 @@ static void XnnpackEPTest(bool use_xnnpack, bool use_saved_model, OrtValue& outp
         ASSERT_EQ(node.Domain(), kMSInternalNHWCDomain);
       }
     }
+
+    ASSERT_EQ(test::CountOpsInGraph(graph)["Clip"], 0) << "All Clip nodes should have been fused.";
   }
 
   TensorShape input_shape_x{1, 128, 128, 3};
