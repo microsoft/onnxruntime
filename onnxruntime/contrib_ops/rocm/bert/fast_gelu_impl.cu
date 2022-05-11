@@ -281,7 +281,7 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
     const half2 C2 = __float2half2_rn(C);
     const half2 one2 = __float2half2_rn(one);
     const half2 two2 = __float2half2_rn(two);
-    if (0 == (bias_length % 8) && (input_length >= 3145728)) {
+    if (0 == (bias_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
       const int n = input_length / 8;
       const int gridSize = (n + blockSize - 1) / blockSize;
       const float4* input8 = reinterpret_cast<const float4*>(input);
