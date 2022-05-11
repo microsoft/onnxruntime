@@ -1,7 +1,7 @@
 # transformers requires sklearn
 # transformers requires sklearn
 --pre
--f https://download.pytorch.org/whl/rocm4.2/torch_stable.html
+-f https://repo.radeon.com/rocm/manylinux/rocm-rel-5.1.1/
 torch==1.10.0
 pandas
 sklearn
