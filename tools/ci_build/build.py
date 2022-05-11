@@ -624,11 +624,6 @@ def parse_arguments():
         "--eager_customop_header", default=None, help="Header containing custom op definitions for eager mode."
     )
 
-    # on device training
-    parser.add_argument(
-        "--build_on_device_training", action='store_true',
-        help="Build on device training.")
-
     parser.add_argument(
         "--enable_external_custom_op_schemas",
         action="store_true",
@@ -915,9 +910,6 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
-        "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
-        + ("ON" if args.enable_external_custom_op_schemas else "OFF"),
-        "-Donnxruntime_ENABLE_ON_DEVICE_TRAINING=" + ("ON" if args.build_on_device_training else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
