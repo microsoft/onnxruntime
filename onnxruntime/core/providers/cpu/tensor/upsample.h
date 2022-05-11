@@ -516,11 +516,10 @@ void NhwcUpsampleBilinear(const int64_t batch_size,
 }
 
 inline void ComputeInterpolationValuesInteger(
-    const int32_t value, const int32_t scale_10, const ResizeCoordinateTransformationMode coordinate_transform_mode,
+    const int32_t value, const int32_t scale_10, const bool is_half_pixel,
     int32_t input_size, int32_t* scaled_value, int32_t* lower_bound,
     int32_t* upper_bound) {
-  ORT_ENFORCE(coordinate_transform_mode == HALF_PIXEL || coordinate_transform_mode == ALIGN_CORNERS);
-  if (coordinate_transform_mode == HALF_PIXEL) {
+  if (is_half_pixel) {
     *scaled_value = value * scale_10 + scale_10 / 2 - (1 << 9);
   } else {
     *scaled_value = value * scale_10;
@@ -543,14 +542,15 @@ inline int Offset(gsl::span<const int64_t> dims_data, int i0, int i1, int i2, in
 // Same as above but doesn't use any floating-point for the resize
 template <typename T>
 inline void NhwcUpsampleBilinearInteger(
-    const ResizeCoordinateTransformationMode coordinate_transform_mode,
+    //const ResizeCoordinateTransformationMode coordinate_transform_mode,
+    bool is_half_pixel, bool is_align_corners,
     const int32_t batches, const int32_t input_height, const int32_t input_width, const int32_t depth,
     gsl::span<const int64_t> input_dims,
     const T* input_data,
     const int32_t output_height, const int32_t output_width,
     gsl::span<const int64_t> output_dims,
     T* output_data) {
-  ORT_ENFORCE(coordinate_transform_mode == HALF_PIXEL || coordinate_transform_mode == ALIGN_CORNERS);
+  ORT_ENFORCE(!is_half_pixel || !is_align_corners);
   ORT_ENFORCE(input_dims.size() == 4);
   ORT_ENFORCE(output_dims.size() == 4);
 #if 0
@@ -580,12 +580,12 @@ inline void NhwcUpsampleBilinearInteger(
       ((1 << 10) * input_height + output_height / 2) / output_height;
   int32_t width_scale_10 =
       ((1 << 10) * input_width + output_width / 2) / output_width;
-  if (coordinate_transform_mode == ALIGN_CORNERS && output_height > 1) {
+  if (is_align_corners && output_height > 1) {
     height_scale_10 =
         ((1 << 10) * (input_height - 1) + (output_height - 1) / 2) /
         (output_height - 1);
   }
-  if (coordinate_transform_mode == ALIGN_CORNERS && output_width > 1) {
+  if (is_align_corners && output_width > 1) {
     width_scale_10 = ((1 << 10) * (input_width - 1) + (output_width - 1) / 2) /
                      (output_width - 1);
   }
@@ -594,12 +594,12 @@ inline void NhwcUpsampleBilinearInteger(
     for (int y = 0; y < output_height; ++y) {
       int32_t input_y, y0, y1;
       ComputeInterpolationValuesInteger(y, height_scale_10,
-                                        coordinate_transform_mode,
+                                        is_half_pixel,
                                         input_height, &input_y, &y0, &y1);
       for (int x = 0; x < output_width; ++x) {
         int32_t input_x, x0, x1;
         ComputeInterpolationValuesInteger(x, width_scale_10,
-                                          coordinate_transform_mode,
+                                          is_half_pixel,
                                           input_width, &input_x, &x0, &x1);
         for (int c = 0; c < depth; ++c) {
           const int64_t output_20_ll =
