@@ -1065,11 +1065,22 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                            Y->MutableData<T>(), alloc, get_original_coordinate_,
                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
-          NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                               height_scale, width_scale, roi,
-                               use_extrapolation_, extrapolation_value_, X->Data<T>(),
-                               Y->MutableData<T>(), alloc, get_original_coordinate_,
-                               output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          if (!is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
+              (coordinate_transform_mode_ == HALF_PIXEL || coordinate_transform_mode_ == ALIGN_CORNERS)) {
+            NhwcUpsampleBilinearInteger(coordinate_transform_mode_,
+                                        static_cast<int32_t>(batch_size), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(num_channels),
+                                        dims,
+                                        X->Data<T>(),
+                                        static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
+                                        output_dims,
+                                        Y->MutableData<T>());
+          } else {
+            NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                 height_scale, width_scale, roi,
+                                 use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                                 Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                 output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          }
         }
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
