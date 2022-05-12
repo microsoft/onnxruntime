@@ -20,7 +20,7 @@ Here is a simple demo of deploying and optimizing a distilled BERT model to infe
 
 <div class="embed-responsive embed-responsive-4by3">
 
-<iframe class="embed-responsive-item" height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/v=W_lUGPMW_Eg?rel=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
+<iframe class="embed-responsive-item table-wrapper py px" src="https://www.youtube.com/embed/v=W_lUGPMW_Eg?rel=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
 
 </div>
 
