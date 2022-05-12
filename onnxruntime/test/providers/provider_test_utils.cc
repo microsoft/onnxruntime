@@ -118,20 +118,20 @@ struct TensorCheck<T, typename std::enable_if<utils::IsByteType<T>::value>::type
     // For int8_t/uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
     // For any other EPs, we still expect an exact match for the results
     // if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
-      double threshold = has_abs_err
-                             ? *(params.absolute_error_)
-                             : 0.0;
+    double threshold = has_abs_err
+                           ? *(params.absolute_error_)
+                           : 0.0;
 
-      for (int i = 0; i < size; ++i) {
-        if (has_rel_err) {
-          EXPECT_NEAR(expected[i], output[i],
-                      *(params.relative_error_) * expected[i])  // expected[i] is unsigned, can't be negative
-              << "i:" << i << ", provider_type: " << provider_type;
-        } else {  // has_abs_err
-          EXPECT_NEAR(expected[i], output[i], threshold)
-              << "i:" << i << ", provider_type: " << provider_type;
-        }
+    for (int i = 0; i < size; ++i) {
+      if (has_rel_err) {
+        EXPECT_NEAR(expected[i], output[i],
+                    *(params.relative_error_) * expected[i])  // expected[i] is unsigned, can't be negative
+            << "i:" << i << ", provider_type: " << provider_type;
+      } else {  // has_abs_err
+        EXPECT_NEAR(expected[i], output[i], threshold)
+            << "i:" << i << ", provider_type: " << provider_type;
       }
+    }
     // } else {
     //   for (int i = 0; i < size; ++i) {
     //     EXPECT_EQ(expected[i], output[i]) << "i:" << i
@@ -1089,9 +1089,11 @@ void OpTester::Run(
           ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         std::unique_ptr<IExecutionProvider> execution_provider;
-        if (provider_type == onnxruntime::kCpuExecutionProvider)
-          execution_provider = DefaultCpuExecutionProvider();
-        else if (provider_type == onnxruntime::kCudaExecutionProvider)
+        if (provider_type == onnxruntime::kCpuExecutionProvider) {
+          const bool use_fixed_point_requant_on_arm64 =
+              so.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigFixedPointRequantOnARM64, "0") == "1";
+          execution_provider = DefaultCpuExecutionProvider(CPUExecutionProviderInfo(so.enable_cpu_mem_arena, use_fixed_point_requant_on_arm64));
+        } else if (provider_type == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();

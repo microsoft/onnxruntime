@@ -9,6 +9,7 @@
 #include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -324,8 +325,7 @@ class QLinearConvOpTester {
     }
 
     if (round_kind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
-      // return std::round(input);
-      return input - std::remainderf(input, 1.f);
+      return std::round(input);
     }
 
     // std::remainder returns x - n, where n is the integral value nearest to x. When |x - n| = 0.5, n is chosen to be even
@@ -522,8 +522,8 @@ class QLinearConvOpTester {
     }
 
     SessionOptions so;
-    so.config_options.AddConfigEntry("kOrtSessionOptionsConfigFixedPointRequantOnARM64",
-                                     requant_with_fixed_point_on_arm64 ? "1" : "1");
+    so.config_options.AddConfigEntry(kOrtSessionOptionsConfigFixedPointRequantOnARM64,
+                                     requant_with_fixed_point_on_arm64 ? "1" : "0");
     so.intra_op_param.thread_pool_size = 1;
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "");
   }
