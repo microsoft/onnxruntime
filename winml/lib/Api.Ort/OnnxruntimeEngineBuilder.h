@@ -50,7 +50,7 @@ class OnnxruntimeEngineBuilder : public Microsoft::WRL::RuntimeClass<
   std::optional<uint32_t> batch_size_override_;
   wfc::IMapView<winrt::hstring, uint32_t> named_dimension_overrides_;
   std::optional<uint32_t> intra_op_num_threads_override_;
-  bool allow_thread_spinning_;
+  bool allow_thread_spinning_ = true;
 };
 
 }  // namespace _winml
