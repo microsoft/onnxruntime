@@ -132,10 +132,18 @@ class InferenceSession {
   explicit InferenceSession(const SessionOptions& session_options,
                             const Environment& session_env);
 
+  /**
+    Create a new InferenceSession that accepts thread pools for intra and inter op thread execution.
+    Used by WinML only!
+    @param session_options Session options.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
+    @param external_intra_op_thread_pool This represents the intra op threadpool.
+    @param external_inter_op_thread_pool This represents the inter op threadpool.
+    */
   explicit InferenceSession(const SessionOptions& session_options,
                             const Environment& session_env,
-                            onnxruntime::concurrency::ThreadPool* intra_op_thread_pool,
-                            onnxruntime::concurrency::ThreadPool* inter_op_thread_pool);
+                            onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
+                            onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool);
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**

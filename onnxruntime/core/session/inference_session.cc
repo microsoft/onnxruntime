@@ -371,16 +371,16 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const Environment& session_env,
-                                   onnxruntime::concurrency::ThreadPool* intra_op_thread_pool,
-                                   onnxruntime::concurrency::ThreadPool* inter_op_thread_pool)
+                                   onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
+                                   onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool)
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
 #endif
       logging_manager_(session_env.GetLoggingManager()),
-      external_intra_op_thread_pool_(intra_op_thread_pool),
-      external_inter_op_thread_pool_(inter_op_thread_pool),
+      external_intra_op_thread_pool_(external_intra_op_thread_pool),
+      external_inter_op_thread_pool_(external_inter_op_thread_pool),
       environment_(session_env)
 {
   // Initialize assets of this session instance
@@ -1177,7 +1177,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR(partitioner.Partition(graph, 
+  ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             layout_transformer::TransformLayoutForCompilingEP,
                                             GraphPartitioner::Mode::kOrtFormatLoad,
