@@ -9,13 +9,30 @@ nav_order: 10
 
 ONNX Runtime works with different hardware acceleration libraries through its extensible **Execution Providers** (EP) framework to optimally execute the ONNX models on the hardware platform. This interface enables flexibility for the AP application developer to deploy their ONNX models in different environments in the cloud and the edge and optimize the execution by taking advantage of the compute capabilities of the platform.
 
-<p align="center"><img width="50%" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP1.png" alt="Executing ONNX models across different HW environments"/></p>
+<div>
+<hr>
+
+<p align="center"><strong>Onnx Runtime</strong></p>
+
+<img class=img-responsive src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP1.png" alt="Executing ONNX models across different HW environments">
+
+<hr>
+</div>
+
 
 ONNX Runtime works with the execution provider(s) using the `GetCapability()` interface to allocate specific nodes or sub-graphs for execution by the EP library in supported hardware. The EP libraries that are pre-installed in the execution environment process and execute the ONNX sub-graph on the hardware. This architecture abstracts out the details of the hardware specific libraries that are essential to optimize the execution of deep neural networks across hardware platforms like CPU, GPU, FPGA or specialized NPUs.
+<div>
+<hr>
 
-<p align="center"><img width="50%" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP3.png" alt="ONNX Runtime GetCapability()"/></p>
+<p align="center"><strong>Onnx Model</strong></p>
 
+<img class=img-responsive src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP3.png" alt="ONNX Runtime GetCapability()">
+
+<hr>
+</div>
 ONNX Runtime supports many different execution providers today. Some of the EPs are in production for live service, while others are released in preview to enable developers to develop and customize their application using the different options.
+
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
 ## Contents
 {: .no_toc }
@@ -54,7 +71,76 @@ The same ONNX Runtime API is used across all EPs. This provides the consistent i
         The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
 
+<p><a href="#" id="back-to-top">Back to top</a></p>
+
 ### Use Execution Providers
+
+To learn more about different Execution Providers, see [Reference: Execution Providers](../execution-providers).
+
+### Build the Execution Provider
+
+ORT can be customized by building with different Execution Providers in different programming languages.
+
+**Python**
+
+Official Python packages on Pypi only support the default CPU Microsoft Linear Algebra Subprogram (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to [build from source](../build/eps.md). The recommended instructions build the wheel with debug info in parallel.
+
+For example:
+
+`DNNL:		 ./build.sh --config RelWithDebInfo --use_dnnl --build_wheel --parallel`
+
+`CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_wheel --parallel`
+
+**C and C#**
+
+Official releases on Nuget support default (MLAS) for CPU, and CUDA for GPU. For other execution providers, you need to build from source. Append `--build_csharp` to the instructions to build both C# and C packages.
+
+For example:
+
+`DNNL:		 ./build.sh --config RelWithDebInfo --use_dnnl --build_csharp --parallel`
+
+`CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_csharp --parallel`
+
+### Register the Execution Provider
+
+Registering the ORT Execution Provider can be done in C, C#, and Python.
+
+**C API Example:**
+
+In order to use DNNL, CUDA, or TensorRT execution provider, you need to call the C API OrtSessionOptionsAppendExecutionProvider.
+```c
+  const OrtApi* g_ort = OrtGetApi(ORT_API_VERSION);
+  OrtEnv* env;
+  g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env)
+  OrtSessionOptions* session_option;
+  g_ort->OrtCreateSessionOptions(&session_options);
+  g_ort->OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0);
+  OrtSession* session;
+  g_ort->CreateSession(env, model_path, session_option, &session);
+```
+
+**C# API Example:**
+
+```c#
+SessionOptions so = new SessionOptions();
+so.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_EXTENDED;
+so.AppendExecutionProvider_CUDA(0);
+var session = new InferenceSession(modelPath, so);
+```
+
+**Python API Example:**
+
+```python
+import onnxruntime as rt
+
+so = rt.SessionOptions()
+so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
+session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionProvider'])
+```
+
+<p><a href="#" id="back-to-top">Back to top</a></p>
+
+Here are some steps to set the execution providers for your Onnx Runtime.
 
 ``` python
 import onnxruntime as rt
@@ -88,5 +174,5 @@ sess.set_providers(['CPUExecutionProvider'])
 cpu_detection = sess.run(...)
 
 ```
-
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
