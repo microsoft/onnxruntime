@@ -630,7 +630,6 @@ For some BERT models, ONNX Runtime cannot apply the best optimization due to fra
 A set of [Jypyter notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) and [Onnx Runtime Inference Examples](https://github.com/microsoft/onnxruntime-inference-examples/) are available to help you optimize your BERT models in ORT.
 
 
-
 ### 2. Why is the ONNX model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 
 The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion, and so on.
