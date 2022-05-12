@@ -10,14 +10,11 @@
 #include "core/providers/providers.h"
 
 namespace onnxruntime {
-struct SessionOptions;
-
 struct XnnpackExecutionProviderInfo {
-  const SessionOptions* session_options{nullptr};  // required if you want fusion of Conv+Activation
   bool create_arena{true};
 
-  explicit XnnpackExecutionProviderInfo(const SessionOptions* so = nullptr, bool use_arena = true)
-      : session_options{so}, create_arena{use_arena} {}
+  explicit XnnpackExecutionProviderInfo(bool use_arena = true)
+      : create_arena{use_arena} {}
 
   XnnpackExecutionProviderInfo() = delete;
 };
@@ -36,9 +33,6 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
-
- private:
-  const SessionOptions* session_options_{nullptr};
 };
 
 }  // namespace onnxruntime

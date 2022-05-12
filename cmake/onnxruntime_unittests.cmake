@@ -482,10 +482,6 @@ if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
 endif()
 
-if (onnxruntime_USE_XNNPACK)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
-endif()
-
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   set(ONNXRUNTIME_INTEROP_TEST_LIBS PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
@@ -565,6 +561,14 @@ if(onnxruntime_USE_COREML)
     list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml)
   endif()
 endif()
+
+if(onnxruntime_USE_XNNPACK)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/xnnpack/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_xnnpack)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
+endif()
+
 
 if(WIN32)
   if (onnxruntime_USE_NUPHAR_TVM)

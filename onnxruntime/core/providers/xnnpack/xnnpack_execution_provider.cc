@@ -7,7 +7,6 @@
 
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/session_options.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 
 #include <xnnpack.h>
@@ -85,20 +84,16 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace xnnpack;
 
-XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true},
-      session_options_{info.session_options} {
-  // TODO: Could/should we provide our default CPU allocator to this call via an adapter?
+XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
+    : IExecutionProvider{kXnnpackExecutionProvider, true} {
+  // TODO: Setup RegisterAllocator. Requires updates to InferenceSession so we make the RegisterAllocator calls after
+  // all EPs are registered, and do so in the reverse priority order. This will allow the CPU EP's allocator to be
+  // preferred. We will need to delay the call to xnn_initialize until after that happens.
+
   xnn_status st = xnn_initialize(nullptr);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
-
-  // TODO: Allocation planner calls GetAllocator for the individual EP. It would be better if it goes through
-  // the session state to get the allocator so it's per-device (or for the allocation planner to try the EP first
-  // and fall back to using session state next by passing in a functor it can use to call SessionState::GetAllocator).
-  // That way we only need one allocator per-device unless the EP needs/wants to override any previously registered
-  // allocator. Which also means one arena per-device if the per-EP allocators are using arenas.
 
   AllocatorCreationInfo device_info(
       [](int) {
@@ -117,12 +112,6 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
   std::shared_ptr<KernelRegistry> registry = GetKernelRegistry();
   std::unordered_set<const Node*> supported_nodes;
   NodeSupportChecker checker{graph, supported_nodes};
-
-  // L2 optimizations include fusing Conv or MaxPool with Clip or Relu.
-  // check that the session options are available, and if so whether L2 optimizations are enabled.
-  // If they're not available we can't assume the fusion will occur, so we can't take the activation node.
-  bool l2_optimizations_enabled = session_options_ &&
-                                  session_options_->graph_optimization_level >= TransformerLevel::Level2;
 
   std::unordered_map<const Node*, ComputeCapability*> node_to_compute_capability;
 
@@ -157,26 +146,24 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
       } else {
         // see if it's an activation we can fuse with a node we support. note that we can only do this after
         // the layout transform as we need to fuse with the NWHC op that we have the real kernel for.
-        if (l2_optimizations_enabled) {
-          const Node* fuse_with = checker.IsNodeSupportedWithFusion(node);
-          if (fuse_with) {
-            // add new MetaDef to existing ComputeCapability.
-            // we know an entry must exist in node_to_compute_capability as we update supported_nodes
-            // when creating the ComputeCapability, and the logic in IsNodeSupportedWithFusion
-            // checks the fuse_with node is in supported_nodes.
-            auto iter = node_to_compute_capability.find(fuse_with);
-            ORT_ENFORCE(iter != node_to_compute_capability.cend(),
-                        "node_to_compute_capability is not is sync with supported_nodes. ");
+        const Node* fuse_with = checker.IsNodeSupportedWithFusion(node);
+        if (fuse_with) {
+          // add new MetaDef to existing ComputeCapability.
+          // we know an entry must exist in node_to_compute_capability as we update supported_nodes
+          // when creating the ComputeCapability, and the logic in IsNodeSupportedWithFusion
+          // checks the fuse_with node is in supported_nodes.
+          auto iter = node_to_compute_capability.find(fuse_with);
+          ORT_ENFORCE(iter != node_to_compute_capability.cend(),
+                      "node_to_compute_capability is not is sync with supported_nodes. ");
 
-            // update the MetaDef to cover the nodes being fused.
-            // the fused node will have OpType:'Conv' and Domain:kMSInternalNHWCDomain.
-            // GraphPartitioner will match the statically registered xnnpack NHWC Conv kernel instead of
-            // calling IExecutionProvider::Compile
-            ComputeCapability& capability = *iter->second;
-            capability.sub_graph->SetMetaDef(FuseActivation(*fuse_with, node, graph));
-            capability.sub_graph->nodes.push_back(node.Index());
-            capability.sub_graph->SetUseExistingSchema(true);
-          }
+          // update the MetaDef to cover the nodes being fused.
+          // the fused node will have OpType:'Conv' and Domain:kMSInternalNHWCDomain.
+          // GraphPartitioner will match the statically registered xnnpack NHWC Conv kernel instead of
+          // calling IExecutionProvider::Compile
+          ComputeCapability& capability = *iter->second;
+          capability.sub_graph->SetMetaDef(FuseActivation(*fuse_with, node, graph));
+          capability.sub_graph->nodes.push_back(node.Index());
+          capability.sub_graph->SetUseExistingSchema(true);
         }
       }
     } else if (node.GetExecutionProviderType() == Type()) {

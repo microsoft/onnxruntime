@@ -9,25 +9,22 @@
 namespace onnxruntime {
 
 struct XnnpackProviderFactory : IExecutionProviderFactory {
-  XnnpackProviderFactory(const SessionOptions* so) : so_{so} {}
+  XnnpackProviderFactory() = default;
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
-
- private:
-  const SessionOptions* so_;
 };
 
 std::unique_ptr<IExecutionProvider> XnnpackProviderFactory::CreateProvider() {
-  XnnpackExecutionProviderInfo info{so_, true};
+  XnnpackExecutionProviderInfo info{true};
   return std::make_unique<XnnpackExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Xnnpack(const SessionOptions* so = nullptr) {
-  return std::make_shared<onnxruntime::XnnpackProviderFactory>(so);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Xnnpack() {
+  return std::make_shared<onnxruntime::XnnpackProviderFactory>();
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Xnnpack, _In_ OrtSessionOptions* options) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Xnnpack(&options->value));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Xnnpack());
   return nullptr;
 }

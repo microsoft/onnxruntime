@@ -17,10 +17,6 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#ifdef USE_XNNPACK
-#include "core/providers/xnnpack/xnnpack_execution_provider.h"
-#endif
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
@@ -241,89 +237,6 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
               ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
                                    "Status Message: TODO: add NHWC implementation here."));
 }
-
-// TEMPORARY test using production model and the Xnnpack EP.
-// Model has standard and depthwise Conv nodes that can additionally be fused with Clip nodes
-#ifdef USE_XNNPACK
-static void XnnpackEPTest(bool use_xnnpack, bool use_saved_model, OrtValue& output) {
-  const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "TEMP/example_model.onnx";
-  const ORTCHAR_T* saved_model_path = use_xnnpack ? ORT_MODEL_FOLDER "TEMP/example_model.test_output.xnnpack.onnx"
-                                                  : ORT_MODEL_FOLDER "TEMP/example_model.test_output.onnx";
-  SessionOptions so;
-  if (!use_saved_model) {
-    so.optimized_model_filepath = saved_model_path;
-  }
-
-  InferenceSessionWrapper session(so, GetEnvironment());
-
-  if (use_xnnpack) {
-    auto ep = std::make_unique<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{&so});
-    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
-  }
-
-  ASSERT_STATUS_OK(session.Load(use_saved_model ? saved_model_path : model_path));
-  ASSERT_STATUS_OK(session.Initialize());
-
-  const auto& graph = session.GetGraph();
-
-  if (use_xnnpack) {
-    // all Conv nodes should have been converted to NHWC versions and
-    for (const auto& node : graph.Nodes()) {
-      if (node.OpType() == "Conv") {
-        ASSERT_EQ(node.Domain(), kMSInternalNHWCDomain);
-      }
-    }
-
-    ASSERT_EQ(test::CountOpsInGraph(graph)["Clip"], 0) << "All Clip nodes should have been fused.";
-  }
-
-  TensorShape input_shape_x{1, 128, 128, 3};
-  std::vector<float> input_x(input_shape_x.Size(), 1.f);
-  OrtValue ml_value_x;
-  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
-
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("model_input", ml_value_x));
-
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("sequential");
-  std::vector<OrtValue> fetches;
-
-  auto status = session.Run(feeds, output_names, &fetches);
-
-  const Tensor& result = fetches[0].Get<Tensor>();
-  const float* data = result.Data<float>();
-  for (int64_t cur = 0, end = result.Shape().Size(); cur < end; ++cur) {
-    std::cout << data[cur] << " ";
-  }
-  std::cout << "\n";
-
-  output = fetches[0];
-}
-
-TEST(XnnpackEP, DISABLE_RunProductionModelWithCpuAndXnnpack) {
-  OrtValue cpu_output;
-  OrtValue xnnpack_output;
-  OrtValue saved_xnnpack_model_output;
-  XnnpackEPTest(false, false, cpu_output);
-  XnnpackEPTest(true, false, xnnpack_output);
-  XnnpackEPTest(true, true, saved_xnnpack_model_output);
-
-  const auto expected = cpu_output.Get<Tensor>().DataAsSpan<float>();
-  const auto actual = xnnpack_output.Get<Tensor>().DataAsSpan<float>();
-  const auto actual2 = saved_xnnpack_model_output.Get<Tensor>().DataAsSpan<float>();
-
-  ASSERT_EQ(expected.size(), actual.size());
-  ASSERT_EQ(expected.size(), actual2.size());
-  for (size_t i = 0, end = expected.size(); i < end; ++i) {
-    ASSERT_NEAR(expected[i], actual[i], 0.0001f);
-    ASSERT_NEAR(expected[i], actual2[i], 0.0001f);
-  }
-}
-
-#endif
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
