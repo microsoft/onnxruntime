@@ -41,6 +41,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateReshapeOpBuilder("Reshape", op_registrations);
   }
 
+  {  // DepthToSpace
+    CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
+  }
+
   {  // Pool
     CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
