@@ -4,6 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
+#include "transformer_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -29,6 +30,8 @@ template <typename T>
 SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  use_half2_ = !options->DisableHalf2();
 }
 
 template <typename T>
@@ -96,6 +99,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t element_size = sizeof(T);
 
   if (!LaunchSkipLayerNormKernel(
+          GetDeviceProp(),
           Stream(),
           output->template MutableData<T>(),
           input->template Data<T>(),
@@ -106,7 +110,8 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           epsilon_,
           hidden_size,
           static_cast<int>(element_count),  //TODO: check range
-          element_size)) {
+          element_size,
+          use_half2_)) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);

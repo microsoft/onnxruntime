@@ -8,6 +8,7 @@ namespace contrib {
 namespace cuda {
 
 bool LaunchSkipLayerNormKernel(
+    const cudaDeviceProp& prop,
     cudaStream_t stream,
     void* output,        // output tensor
     const void* input,   // input tensor
@@ -18,7 +19,8 @@ bool LaunchSkipLayerNormKernel(
     float epsilon,      // Layer normalization epsilon
     int hidden_size,     // hidden size, it is the leading dimension (ld)
     int element_count,   // number of elements in input tensor
-    size_t element_size  // element size of input tensor
+    size_t element_size,  // element size of input tensor
+    bool use_half2
 );
 
 }  // namespace cuda
