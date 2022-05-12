@@ -24,25 +24,72 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+void CUDART_CB cudaStreamCallback(cudaStream_t /*stream*/, cudaError_t /*status*/, void* userData) {
+  auto* p_done = static_cast<OpKernel::DoneCallback*>(userData);
+  (*p_done)();
+  // delete the callback context
+  delete p_done;
+}
 
 class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
 
+  bool IsAsync(OpKernelContext* ctx) const override {
+    // TODO: should we support async copy for sparse tensor / seq tensor?
+    if (!ctx->InputType(0)->IsTensorType())
+      return false;
+    
+    const auto* X = ctx->Input<Tensor>(0);
+    Tensor* Y = ctx->Output(0, X->Shape());
+
+    auto& src_device = X->Location().device;
+    auto& dst_device = Y->Location().device;
+
+    return !((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
+           (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED));
+  }
+
+  Status ComputeAsync(OpKernelContext* ctx, DoneCallback done) const ORT_MUST_USE_RESULT override {
+    const auto* X = ctx->Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+    Tensor* Y = ctx->Output(0, X->Shape());
+    ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+    auto s = Info().GetDataTransferManager().CopyTensor(*X, *Y);
+
+    if (s.IsOK()) {
+      auto err = cudaGetLastError();
+      if (err != cudaSuccess) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
+      }
+    }
+    // now launch the callback to cuda stream, so it will be executed when the kernel is DONE.
+    auto* stream = Info().GetComputeStream();
+    ORT_ENFORCE(stream);
+    DoneCallback* p = new DoneCallback(done);
+    CUDA_CALL_THROW(cudaStreamAddCallback(static_cast<cudaStream_t>(stream->handle), cudaStreamCallback, p, 0));
+    return Status::OK();
+  }
+
   Status Compute(OpKernelContext* ctx) const override {
+    // sync the stream frist, since it is a sync memory copy
+    auto* stream = Info().GetComputeStream();
+    ORT_ENFORCE(stream);
+    cudaStreamSynchronize(static_cast<cudaStream_t>(stream->handle));
+
     auto X_type = ctx->InputType(0);
     if (X_type->IsTensorType()) {
       const auto* X = ctx->Input<Tensor>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+      return Info().GetDataTransferManager().CopyTensor(*X, *Y);
     } else if (X_type->IsSparseTensorType()) {
       const auto* X = ctx->Input<SparseTensor>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
-      return X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
+      return X->Copy(Info().GetDataTransferManager(), *Y);
     } else if (X_type->IsTensorSequenceType()) {
       const TensorSeq* X = ctx->Input<TensorSeq>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
@@ -75,7 +122,7 @@ class Memcpy final : public OpKernel {
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
+        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor);
         if (!retval.IsOK()) {
           return retval;
         }
@@ -1219,7 +1266,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 
 // OpSet 14
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, CumSum);
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, float, Relu);
+//class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, float, Relu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, double, Relu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, MLFloat16, Relu);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, int32_t, Add);
@@ -2091,7 +2138,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
       // OpSet 14
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, CumSum)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, float, Relu)>,
+      //BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, float, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, double, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, MLFloat16, Relu)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 14, int32_t, Add)>,

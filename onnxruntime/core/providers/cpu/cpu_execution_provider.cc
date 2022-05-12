@@ -2196,6 +2196,8 @@ void FlushCPUStream(StreamHandle) {
 
 void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
+  //TODO: move it to cuda ep?
+  stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCudaExecutionProvider, WaitCPUNotification);
   stream_handle_registry.RegisterNotifyFn(kCpuExecutionProvider, NotifyCPUNotification);
   stream_handle_registry.RegisterCreateNotificationFn(kCpuExecutionProvider, CreateCPUNotification);
   stream_handle_registry.RegisterReleaseNotificationFn(kCpuExecutionProvider, ReleaseCPUNotification);

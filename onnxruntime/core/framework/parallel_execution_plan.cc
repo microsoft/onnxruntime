@@ -242,7 +242,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         OpKernelContext kernel_ctx(ctx.frame, p_kernel, intra_tp, *ctx.logger);
-        if (p_kernel->IsAsync()) {
+        if (p_kernel->IsAsync(&kernel_ctx)) {
           ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, [node_index, i]() {
                 std::cout << "Kernel for node index: " << node_index << " on logic stream: " << i << " execution is done. " << std::endl;
               }).IsOK(), MakeString("kernel fail!"));

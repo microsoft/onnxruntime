@@ -18,6 +18,8 @@
 
 namespace onnxruntime {
 
+void CUDART_CB cudaStreamCallback(cudaStream_t /*stream*/, cudaError_t /*status*/, void* userData);
+
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
