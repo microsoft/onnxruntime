@@ -4,10 +4,12 @@
 
 #include <chrono>
 #include <time.h>
-//#include <fmt/format.h>
 
 #include "rocm_profiler.h"
 #include "RoctracerLogger.h"
+#include "Demangle.h"
+
+#define BSIZE 4096
 
 typedef uint64_t timestamp_t;
 static timestamp_t timespec_to_ns(const timespec& time) {
@@ -37,7 +39,6 @@ bool RocmProfiler::StartProfiling()
 void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
 {
   d->stopLogging();
-  fprintf(stderr, "------------  kernels: %ld, copies: %ld\n", d->kernelRows_.size(), d->copyRows_.size());
 
   std::map<uint64_t, std::vector<EventRecord>> event_map;
   std::map<uint64_t, kernelRow*> kernelLaunches;   // correlation id -> kernel info
@@ -54,41 +55,57 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
   const uint64_t toffset = (timespec_to_ns(t0) >> 1) + (timespec_to_ns(t00) >> 1) - timespec_to_ns(t1);
   profiling_start = profiling_start - toffset;
 
-  // FIXME: disable api calls for now.  Need a a formatter.  Is this data desired?
-#if 0
-  fprintf(stderr, "base\n");
+  char buff[BSIZE];
+
   for (auto &item : d->rows_) {
     std::initializer_list<std::pair<std::string, std::string>> args = {{"op_name", ""}};
     addEventRecord(item, profiling_start, args, event_map);
   }
 
-  fprintf(stderr, "malloc\n");
   for (auto &item : d->mallocRows_) {
+    snprintf(buff, BSIZE, "%p", item.ptr);
+    const std::string arg_ptr{buff};
+
     std::initializer_list<std::pair<std::string, std::string>> args = {{"op_name", ""},
-                                            //{"ptr", fmt::format("{}", item.ptr},
+                                            {"ptr", arg_ptr},
                                             {"size", std::to_string(item.size)}
                                             };
     addEventRecord(item, profiling_start, args, event_map);
   }
 
-  fprintf(stderr, "copy\n");
   for (auto &item : d->copyRows_) {
+    snprintf(buff, BSIZE, "%p", item.stream);
+    const std::string arg_stream{buff};
+    snprintf(buff, BSIZE, "%p", item.src);
+    const std::string arg_src{buff};
+    snprintf(buff, BSIZE, "%p", item.dst);
+    const std::string arg_dst{buff};
+
     std::initializer_list<std::pair<std::string, std::string>> args = {{"op_name", ""},
-                                            //{"stream", fmt::format("{}", item.stream}},
-                                            //{"src", fmt::format("{}", item.src},
-                                            //{"dst", fmt::format("{}", item.dst},
+                                            {"stream", arg_stream},
+                                            {"src", arg_src},
+                                            {"dst", arg_dst},
                                             {"size", std::to_string(item.size)},
                                             {"kind", std::to_string(item.kind)},
                                             };
     addEventRecord(item, profiling_start, args, event_map);
+    copyLaunches[item.id] = &item;
   }
 
-  fprintf(stderr, "kernel\n");
   for (auto &item : d->kernelRows_) {
+    snprintf(buff, BSIZE, "%p", item.stream);
+    const std::string arg_stream{buff};
+    if (item.functionAddr)
+        snprintf(buff, BSIZE, "%s", demangle(hipKernelNameRefByPtr(item.functionAddr, item.stream)).c_str());
+    else if (item.function)
+        snprintf(buff, BSIZE, "%s", demangle(hipKernelNameRef(item.function)).c_str());
+    else
+        snprintf(buff, BSIZE, " ");
+    const std::string arg_kernel{buff};
+
     std::initializer_list<std::pair<std::string, std::string>> args = {{"op_name", ""},
-                                            //{"stream", fmt::format("{}", item.stream}},
-                                            //{"kernel", demangle(hipKernelNameRef(item.function))},
-                                            //{"kernel", demangle(hipKernelNameRefByPtr(item.functioniAddr, item.stream))},
+                                            {"stream", arg_stream},
+                                            {"kernel", arg_kernel},
                                             {"grid_x", std::to_string(item.gridX)},
                                             {"grid_y", std::to_string(item.gridY)},
                                             {"grid_z", std::to_string(item.gridZ)},
@@ -97,21 +114,14 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
                                             {"block_z", std::to_string(item.workgroupZ)},
                                             };
     addEventRecord(item, profiling_start, args, event_map);
-    kernelLaunches[item.id] = item;
-  }
-#endif
-
-  // FIXME: remove once apis enabled
-  for (auto &item : d->kernelRows_) {
     kernelLaunches[item.id] = &item;
   }
-  for (auto &item : d->copyRows_) {
-    copyLaunches[item.id] = &item;
-  }
+
+  // Async Ops - e.g. "Kernel"
 
   for (auto& buffer : *d->gpuTraceBuffers_) {
-    const roctracer_record_t* record = (const roctracer_record_t*)(buffer.data);
-    const roctracer_record_t* end_record = (const roctracer_record_t*)(buffer.data + buffer.validSize);
+    const roctracer_record_t* record = (const roctracer_record_t*)(buffer.data_);
+    const roctracer_record_t* end_record = (const roctracer_record_t*)(buffer.data_ + buffer.validSize_);
     while (record < end_record) {
       std::unordered_map<std::string, std::string> args;
       std::string name = roctracer_op_string(record->domain, record->op, record->kind);
@@ -120,7 +130,8 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
       auto kit = kernelLaunches.find(record->correlation_id);
       if (kit != kernelLaunches.end()) {
         auto &item = *(*kit).second;
-        args["stream"] = "FIXME: format";
+        snprintf(buff, BSIZE, "%p", item.stream);
+        args["stream"] = std::string(buff);
         args["grid_x"] = std::to_string(item.gridX); 
         args["grid_y"] = std::to_string(item.gridY); 
         args["grid_z"] = std::to_string(item.gridZ); 
@@ -128,12 +139,10 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
         args["block_y"] = std::to_string(item.workgroupY); 
         args["block_z"] = std::to_string(item.workgroupZ); 
         if (item.functionAddr != nullptr) {
-          //name = demangle(hipKernelNameRefByPtr(item.functionAddr, item.stream));
-          name = hipKernelNameRefByPtr(item.functionAddr, item.stream);
+          name = demangle(hipKernelNameRefByPtr(item.functionAddr, item.stream)).c_str();
         }
         else if (item.function != nullptr) {
-          //name = demangle(hipKernelNameRef(item.function));
-          name = hipKernelNameRef(item.function);
+          name = demangle(hipKernelNameRef(item.function)).c_str();
         }
       }
 
@@ -141,9 +150,12 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
       auto cit = copyLaunches.find(record->correlation_id);
       if (cit != copyLaunches.end()) {
         auto &item = *(*cit).second;
-        args["stream"] = "FIXME: format";
-        args["dst"] = "FIXME: format";
-        args["src"] = "FIXME: format";
+        snprintf(buff, BSIZE, "%p", item.stream);
+        args["stream"] = std::string(buff);
+        snprintf(buff, BSIZE, "%p", item.src);
+        args["dst"] = std::string(buff);
+        snprintf(buff, BSIZE, "%p", item.dst);
+        args["src"] = std::string(buff);
         args["size"] = std::to_string(item.size);
         args["kind"] = std::to_string(item.kind);
       }
@@ -167,7 +179,6 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
        }
 
        roctracer_next_record(record, &record);
-       //fprintf(stderr, "EventRecord: %s %lld (duration %lld)  ext %ld\n", event.name.c_str(), event.ts, event.dur, extId);
     }
   }
 
@@ -205,7 +216,7 @@ void RocmProfiler::Stop(uint64_t)
 
 void RocmProfiler::addEventRecord(const roctracerRow &item, int64_t pstart, const std::initializer_list<std::pair<std::string, std::string>> &args, std::map<uint64_t, std::vector<EventRecord>> &event_map)
 {
-  EventRecord event{onnxruntime::profiling::KERNEL_EVENT,
+  EventRecord event{onnxruntime::profiling::API_EVENT,
       static_cast<int>(item.pid),
       static_cast<int>(item.tid),
       std::string(roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, item.cid, 0)),
@@ -221,7 +232,7 @@ void RocmProfiler::addEventRecord(const roctracerRow &item, int64_t pstart, cons
   else {
     event_map[extId].push_back(std::move(event));
   }
-  //fprintf(stderr, "EventRecord: %s %lld (duration %lld)  ext %ld\n", event.name.c_str(), event.ts, event.dur, extId);
+  fprintf(stderr, "EventRecord: %s %lld (duration %lld)  ext %ld\n", event.name.c_str(), event.ts, event.dur, extId);
 }
 
 }  // namespace profiling

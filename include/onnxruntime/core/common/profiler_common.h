@@ -13,6 +13,7 @@ enum EventCategory {
   SESSION_EVENT = 0,
   NODE_EVENT,
   KERNEL_EVENT,
+  API_EVENT,
   EVENT_CATEGORY_MAX
 };
 
@@ -20,7 +21,8 @@ enum EventCategory {
 static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
     "Session",
     "Node",
-    "Kernel"};
+    "Kernel",
+    "Api"};
 
 // Timing record for all events.
 struct EventRecord {

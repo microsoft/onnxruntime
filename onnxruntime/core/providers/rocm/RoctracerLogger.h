@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 #pragma once
 
 #include <functional>
@@ -30,17 +28,17 @@ public:
   // data must be allocated using malloc.
   // Ownership is transferred to this object.
   RoctracerActivityBuffer(uint8_t* data, size_t validSize)
-      : data(data), validSize(validSize) {}
+      : data_(data), validSize_(validSize) {}
 
   ~RoctracerActivityBuffer() {
-    free(data);
+    free(data_);
   }
 
   // Allocated by malloc
-  uint8_t* data{nullptr};
+  uint8_t* data_{nullptr};
 
   // Number of bytes used
-  size_t validSize;
+  size_t validSize_;
 };
 
 
@@ -50,8 +48,8 @@ public:
   ApiIdList();
   bool invertMode() { return invert_; }
   void setInvertMode(bool invert) { invert_ = invert; }
-  void add(std::string apiName);
-  void remove(std::string apiName);
+  void add(const std::string &apiName);
+  void remove(const std::string &apiName);
   bool loadUserPrefs();
   bool contains(uint32_t apiId);
   const std::unordered_map<uint32_t, uint32_t> &filterList() { return filter_; }
@@ -148,18 +146,6 @@ class RoctracerLogger {
   void stopLogging();
   void clearLogs();
 
-  //void enableActivities(
-  //  const std::set<ActivityType>& selected_activities);
-  //void disableActivities(
-  //  const std::set<ActivityType>& selected_activities);
-  //void clearActivities();
-
-  //int processActivities(ActivityLogger& logger);
-
-  //void setMaxBufferSize(int size);
-
-  //std::atomic_bool stopCollection{false};
-
  private:
   bool registered_{false};
   void endTracing();
@@ -168,12 +154,6 @@ class RoctracerLogger {
   static void api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg);
   static void activity_callback(const char* begin, const char* end, void* arg);
 
-  //Name cache
-  uint32_t nextStringId_{2};
-  std::map<uint32_t, std::string> strings_;
-  std::map<std::string, uint32_t> reverseStrings_;
-  std::map<activity_correlation_id_t, uint32_t> kernelNames_;
-
   ApiIdList loggedIds_;
 
   // Api callback data
@@ -181,13 +161,9 @@ class RoctracerLogger {
   std::deque<kernelRow> kernelRows_;
   std::deque<copyRow> copyRows_;
   std::deque<mallocRow> mallocRows_;
-  //std::map<activity_correlation_id_t, GenericTraceActivity> kernelLaunches_;
-  // FIXME: above
   std::map<uint64_t,uint64_t> externalCorrelations_[CorrelationDomain::size];	// tracer -> ext
 
-  int maxGpuBufferCount_{0};
   std::unique_ptr<std::list<RoctracerActivityBuffer>> gpuTraceBuffers_;
-  // FIXME: above
   bool externalCorrelationEnabled_{true};
 
   friend class onnxruntime::profiling::RocmProfiler;

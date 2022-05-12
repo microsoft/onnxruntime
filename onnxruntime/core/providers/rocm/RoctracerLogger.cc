@@ -4,8 +4,6 @@
 #include <chrono>
 #include <time.h>
 
-//#include "Demangle.h"
-//#include "output_base.h"
 #include "ThreadUtil.h"
 
 typedef uint64_t timestamp_t;
@@ -55,6 +53,9 @@ void RoctracerLogger::clearLogs() {
   kernelRows_.clear();
   copyRows_.clear();
   mallocRows_.clear();
+  for (int i = 0; i < CorrelationDomain::size; ++i) {
+    externalCorrelations_[i].clear();
+  }
 }
 
 void RoctracerLogger::api_callback(uint32_t domain, uint32_t cid, const void* callback_data, void* arg)
@@ -75,8 +76,6 @@ void RoctracerLogger::api_callback(uint32_t domain, uint32_t cid, const void* ca
       timespec endTime;
       timespec startTime { timestamp };
       clock_gettime(CLOCK_MONOTONIC, &endTime);  // record proper clock
-
-      //fprintf("cid: %d %s\n", cid, roctracer_op_string(domain, cid, 0));
 
       switch (cid) {
         case HIP_API_ID_hipLaunchKernel:
@@ -326,14 +325,14 @@ ApiIdList::ApiIdList()
 {
 }
 
-void ApiIdList::add(std::string apiName)
+void ApiIdList::add(const std::string &apiName)
 {
   uint32_t cid = 0;
   if (roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, apiName.c_str(), &cid, nullptr) == ROCTRACER_STATUS_SUCCESS) {
     filter_[cid] = 1;
   }
 }
-void ApiIdList::remove(std::string apiName)
+void ApiIdList::remove(const std::string &apiName)
 {
   uint32_t cid = 0;
   if (roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, apiName.c_str(), &cid, nullptr) == ROCTRACER_STATUS_SUCCESS) {
