@@ -55,7 +55,7 @@ stages:
             PythonVersion: '3.8'
             TorchVersion: '1.11.0'
             RocmVersion: '4.3.1'
-          Python39 Torch1100 Rocm431:
+          Python39 Torch1110 Rocm431:
             PythonVersion: '3.9'
             TorchVersion: '1.11.0'
             RocmVersion: '4.3.1'
