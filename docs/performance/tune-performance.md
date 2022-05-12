@@ -16,13 +16,6 @@ Along with this flexibility comes decisions for tuning and usage. For each model
 
 This document covers basic tools and troubleshooting checklists that can be leveraged to optimize your ONNX Runtime (ORT) model and hardware.
 
-Here is a simple demo of deploying and optimizing a distilled BERT model to inference on device in the browser:
-
-<div class="embed-responsive embed-responsive-4by3">
-
-<iframe class="embed-responsive-item table-wrapper py px" src="https://www.youtube.com/embed/v=W_lUGPMW_Eg?rel=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
-
-</div>
 
 {: .no_toc }
 
