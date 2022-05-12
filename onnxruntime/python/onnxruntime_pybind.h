@@ -3,7 +3,7 @@
 
 #pragma once
 
-// If performing a debug build with VS2019 (>=16.11.14) or VS2022 (_MSC_FULL_VER >= 192930145) 
+// If performing a debug build with VS2019 (>=16.11.14) or VS2022 (_MSC_FULL_VER >= 192930145)
 // we need to include corecrt.h before pybind so that the _STL_ASSERT macro is defined in a compatible way.
 //
 // pybind11/pybind11.h includes pybind11/detail/common.h, which undefines _DEBUG whilst including the Python headers
