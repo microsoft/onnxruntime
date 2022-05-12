@@ -14,7 +14,7 @@ ONNX Runtime works with different hardware acceleration libraries through its ex
 
 <p align="center"><strong>Onnx Runtime</strong></p>
 
-<img class="img-responsive" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP1.png" alt="Executing ONNX models across different HW environments">
+<p><img class="img-responsive" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP1.png" alt="Executing ONNX models across different HW environments"></p>
 
 <hr>
 </div>
@@ -26,7 +26,7 @@ ONNX Runtime works with the execution provider(s) using the `GetCapability()` in
 
 <p align="center"><strong>Onnx Model</strong></p>
 
-<img class="img-responsive" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP3.png" alt="ONNX Runtime GetCapability()">
+<p><img class="img-responsive" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP3.png" alt="ONNX Runtime GetCapability()"></p>
 
 <hr>
 </div>
