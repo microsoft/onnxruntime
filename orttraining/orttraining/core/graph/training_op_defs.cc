@@ -1272,10 +1272,10 @@ void RegisterTrainingOpSchemas() {
       .Input(3, "momentums_2", "Sequence of exponentially averaged historical squared gradients.", "S_MOMENT")
       .Input(4, "lr", "The initial learning rate.", "T1")
       .Input(5, "step", "The update count of \"X\". It should be a scalar.", "T2")
-      .Output(0, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT")
-      .Output(1, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT")
-      .Output(2, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT")
-      .Output(3, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
+      .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
+      .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Attr(
           "alpha",
           "Coefficient of previously accumulated gradient in running average.", AttributeProto::FLOAT, 0.9f)

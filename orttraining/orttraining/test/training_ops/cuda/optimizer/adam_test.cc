@@ -157,8 +157,9 @@ TEST(AdamTest, TorchAdamSingleWeightTest) {
   std::vector<TensorInfo> updated_momentum_2_tensor_infos{
       TensorInfo({2, 3}, {3.4822e-05, 1.1029e-03, 4.2755e-06, 6.2290e-04, 4.8859e-06, 6.9078e-06})};
   AdamTestInputOutput<float> data(lr, step,
-                                  weight_tensor_infos, gradient_tensor_infos, momentum_1_tensor_infos,
-                                  momentum_2_tensor_infos, updated_weight_tensor_infos, updated_momentum_1_tensor_infos,
+                                  weight_tensor_infos, gradient_tensor_infos,
+                                  momentum_1_tensor_infos, momentum_2_tensor_infos,
+                                  updated_weight_tensor_infos, updated_momentum_1_tensor_infos,
                                   updated_momentum_2_tensor_infos);
 
   // Default values for Torch AdamW.
@@ -179,10 +180,10 @@ TEST(AdamTest, TorchAdamSingleWeightTest) {
   // Verify AdamOptimizer outputs
   float rtol = 1e-5f;
   float atol = 1e-4f;
-  test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), rtol, atol);
-  test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), rtol, atol);
-  test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), rtol, atol);
   test.AddOutput<int64_t>("updated_flag", {1}, {1});
+  test.AddOptionalTypeSeqOutput("updated_weights", data.UpdatedWeightSeq(), rtol, atol);
+  test.AddOptionalTypeSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), rtol, atol);
+  test.AddOptionalTypeSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), rtol, atol);
 
   test.Run();
 }

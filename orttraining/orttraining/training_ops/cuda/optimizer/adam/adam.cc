@@ -127,10 +127,10 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
         const_cast<float*>(momentum_2_tensor.Data<float>())};
   }
 
-  TensorSeq* updated_weights = ctx->Output<TensorSeq>(0);
-  TensorSeq* updated_momentums_1 = ctx->Output<TensorSeq>(1);
-  TensorSeq* updated_momentums_2 = ctx->Output<TensorSeq>(2);
-  Tensor* updated_flag = ctx->Output(3, step_count->Shape());
+  Tensor* updated_flag = ctx->Output(0, step_count->Shape());
+  TensorSeq* updated_weights = ctx->Output<TensorSeq>(1);
+  TensorSeq* updated_momentums_1 = ctx->Output<TensorSeq>(2);
+  TensorSeq* updated_momentums_2 = ctx->Output<TensorSeq>(3);
 
   typedef typename ToCudaType<float>::MappedType CudaT_FLOAT;
   typedef AdamMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
@@ -151,10 +151,17 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
       Stream(), 2048 * 32, tensor_sizes, grouped_tensor_pointers, functor,
       alpha_, beta_, epsilon_, lr, weight_decay_, adam_mode_, correct_bias_, step);
 
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_1, updated_momentums_1, num_of_weights));
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_2, updated_momentums_2, num_of_weights));
+  if (updated_weights != nullptr) {
+    ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
+  }
 
+  if (updated_momentums_1 != nullptr) {
+    ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_1, updated_momentums_1, num_of_weights));
+  }
+
+  if (updated_momentums_2 != nullptr) {
+    ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_2, updated_momentums_2, num_of_weights));
+  }
   return Status::OK();
 }
 

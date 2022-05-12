@@ -450,8 +450,9 @@ class OpTester {
 
   template <typename T>
   void AddOptionalTypeSeqOutput(const char* name,
-                                const SeqTensors<T>* seq_tensors) {
-    AddSeqData<T>(output_data_, name, seq_tensors, true);
+                                const SeqTensors<T>* seq_tensors,
+                                float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddSeqData<T>(output_data_, name, seq_tensors, true, rel_error, abs_error);
   }
 
 #endif
