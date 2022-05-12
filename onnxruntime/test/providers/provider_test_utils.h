@@ -400,8 +400,8 @@ class OpTester {
   }
 
   template <typename T>
-  void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors) {
-    AddSeqData<T>(output_data_, name, &seq_tensors);
+  void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddSeqData<T>(output_data_, name, &seq_tensors, rel_error, abs_error);
   }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
@@ -945,7 +945,8 @@ class OpTester {
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name,
                   const SeqTensors<T>* seq_tensors,
-                  bool is_optional_sequence_tensor_type = false) {
+                  bool is_optional_sequence_tensor_type = false,
+                  float rel_error = 0.0f, float abs_error = 0.0f) {
 #if defined(DISABLE_OPTIONAL_TYPE)
     if (is_optional_sequence_tensor_type) {
       ORT_THROW("Optional type is not supported in this build");
@@ -998,7 +999,18 @@ class OpTester {
     auto node_arg = NodeArg(name, &sequence_tensor_proto.proto);
 #endif
 
-    data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>()));
+    optional<float> rel;
+    optional<float> abs;
+
+    if (rel_error != 0.0f) {
+      rel = rel_error;
+    }
+
+    if (abs_error != 0.0f) {
+      abs = abs_error;
+    }
+
+    data.push_back(Data(std::move(node_arg), std::move(value), std::move(rel), std::move(abs)));
   }
 
   std::vector<int64_t> GetDimsForProto(gsl::span<const int64_t> dims);

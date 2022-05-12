@@ -15,9 +15,10 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 4)
         .InputMemoryType(OrtMemTypeCPUInput, 5)
-        .Alias(0, 0) /* Return updated weights in-place */
-        .Alias(2, 1) /* Return updated moment-1 in-place */
-        .Alias(3, 2) /* Return updated moment-2 in-place */
+        .OutputMemoryType(OrtMemTypeCPUOutput, 3) /*  TODO: better removing this.*/
+        .Alias(0, 0)                              /* Return updated weights in-place */
+        .Alias(2, 1)                              /* Return updated moment-1 in-place */
+        .Alias(3, 2)                              /* Return updated moment-2 in-place */
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("S_WEIGHT", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
@@ -129,12 +130,7 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   TensorSeq* updated_weights = ctx->Output<TensorSeq>(0);
   TensorSeq* updated_momentums_1 = ctx->Output<TensorSeq>(1);
   TensorSeq* updated_momentums_2 = ctx->Output<TensorSeq>(2);
-  Tensor* is_updated = ctx->Output(3, step_count->Shape());
-
-  ORT_ENFORCE(is_updated);
-  ORT_ENFORCE(updated_weights);
-  ORT_ENFORCE(updated_momentums_1);
-  ORT_ENFORCE(updated_momentums_2);
+  Tensor* updated_flag = ctx->Output(3, step_count->Shape());
 
   typedef typename ToCudaType<float>::MappedType CudaT_FLOAT;
   typedef AdamMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
@@ -144,6 +140,9 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   const int64_t* step_ptr = step_count->template Data<int64_t>();
   const float lr = *lr_ptr;
   const int64_t step = *step_ptr;
+
+  int64_t* updated_flag_ptr = updated_flag->template MutableData<int64_t>();
+  *updated_flag_ptr = 1;
 
   ORT_UNUSED_PARAMETER(lr);
   ORT_UNUSED_PARAMETER(step);

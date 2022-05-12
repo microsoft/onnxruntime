@@ -23,6 +23,10 @@ class Adam final : public CudaKernel {
                 "The value of adam_mode is invalid.");
     ORT_ENFORCE(CheckIntAttributeValid(correct_bias_, {0, 1}),
                 "The value of adam_mode is invalid.");
+    if (adam_mode_ == 0) {
+      // For make sure to have torch adamw equivlance, correct_bias must be 1.
+      ORT_ENFORCE(correct_bias_ == 1, "The correct_bias should be 1 for adam_mode = 1.");
+    }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
