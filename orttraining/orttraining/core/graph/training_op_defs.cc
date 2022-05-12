@@ -1284,30 +1284,38 @@ void RegisterTrainingOpSchemas() {
           "Coefficient of previously accumulated squared-gradient in running average.", AttributeProto::FLOAT,
           0.999f)
       .Attr(
-          "lambda",
-          "Regularization coefficient of 0.5 * lambda * ||X||_2^2. Default to 0, "
-          "which means no regularization.",
-          AttributeProto::FLOAT,
-          0.0f)
-      .Attr(
           "epsilon",
           "Small scalar to avoid dividing by zero.",
           AttributeProto::FLOAT,
           1e-8f)
       .Attr(
           "weight_decay",
-          "weight decay coefficient (default 0).",
+          "weight decay coefficient.",
           AttributeProto::FLOAT,
-          0.0f)
+          1e-2f)
+      .Attr(
+          "correct_bias",
+          "Whether or not to correct bias, enabled by default.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
       .Attr(
           "adam_mode",
           "Modes for applying bias correction and weight decay (default 0) "
-          "0: bias correction is applied on m and v individually,"
-          "   weight decay is applied before weight is updated. (Torch AdamW equivalence)"
-          "1: bias correction is applied on learning rate, "
-          "   weight decay is applied after weight is updated. (Huggingface AdamW equivalence)",
+          "0 : Weight decay is applied before weight is updated."
+          "  compuatation aligned with Torch AdamW. In this mode, "
+          "  correct_bias should be set 1 to keep aligned with PyTorch."
+          "1 : Weight decay is applied after weight is updated."
+          "    Computation is aligned with Huggingface AdamW.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain learning rate to float")
+      .TypeConstraint(
+          "T2",
+          {"int64"},
+          "Constrain step count to 64-bit integer")
       .TypeConstraint(
           "S_WEIGHT",
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
@@ -1319,15 +1327,7 @@ void RegisterTrainingOpSchemas() {
       .TypeConstraint(
           "S_MOMENT",
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
-          "Constrain momentums' types.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float)"},
-          "Constrain learning rate to float")
-      .TypeConstraint(
-          "T2",
-          {"int64"},
-          "Constrain step count to 64-bit integer");
+          "Constrain momentums' types.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 

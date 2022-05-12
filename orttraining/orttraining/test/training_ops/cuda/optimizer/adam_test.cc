@@ -61,7 +61,9 @@ struct AdamTestInputOutput {
       const std::vector<TensorInfo>& updated_momentum_2_tensor_infos) {
     lr_vector.push_back(lr);
     step_vector.push_back(step);
+
     // Input Sequence tensors.
+
     for (const TensorInfo& ti : weight_tensor_infos) {
       weight_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
     }
@@ -79,6 +81,7 @@ struct AdamTestInputOutput {
     }
 
     // Update sequence tensors.
+
     for (const TensorInfo& ti : updated_weight_tensor_infos) {
       updated_weight_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
     }
@@ -134,9 +137,9 @@ struct AdamTestInputOutput {
   SeqTensors<T> updated_momentum_2_seq_tensors_;
 };
 
-TEST(AdamTest, SingleWeightTest) {
+TEST(AdamTest, TorchAdamSingleWeightTest) {
   OpTester test("Adam", 1, onnxruntime::kMSDomain);
-  float lr = 0.5f;
+  float lr = 1e-3f;
   int64_t step = 3;
   std::vector<TensorInfo> weight_tensor_infos{TensorInfo({3}, {1.0f, 2.0f, 3.0f})};
   std::vector<TensorInfo> gradient_tensor_infos{TensorInfo({3}, {4.0f, 5.0f, 6.0f})};
@@ -159,7 +162,6 @@ TEST(AdamTest, SingleWeightTest) {
   test.AddInput<int64_t>("step", {1}, data.step_vector);
 
   // Verify AdamOptimizer outputs
-
   test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq());
   test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq());
   test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq());
@@ -167,10 +169,10 @@ TEST(AdamTest, SingleWeightTest) {
 
   test.AddAttribute("alpha", static_cast<float>(0.9f));
   test.AddAttribute("beta", static_cast<float>(0.999f));
-  test.AddAttribute("lambda", static_cast<float>(0.0f));
   test.AddAttribute("epsilon", static_cast<float>(1e-8f));
-  test.AddAttribute("weight_decay", static_cast<float>(0.0f));
+  test.AddAttribute("weight_decay", static_cast<float>(1e-2f));
   test.AddAttribute("adam_mode", static_cast<int64_t>(0));
+  test.AddAttribute("correct_bias", static_cast<int64_t>(1));
 
   test.Run();
 }

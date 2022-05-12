@@ -150,7 +150,7 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
 
   launch_multi_tensor_functor<MTA_ADAM_GROUP_SIZE, TFunctor>(
       Stream(), 2048 * 32, tensor_sizes, grouped_tensor_pointers, functor,
-      alpha_, beta_, lambda_, epsilon_, lr, lr, adam_mode_, weight_decay_, step);
+      alpha_, beta_, epsilon_, lr, weight_decay_, adam_mode_, correct_bias_, step);
 
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_1, updated_momentums_1, num_of_weights));

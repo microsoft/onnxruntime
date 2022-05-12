@@ -19,12 +19,11 @@ struct AdamMTAFunctor {
                   ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,
                   const float alpha,
                   const float beta,
-                  const float lambda,
                   const float epsilon,
-                  float lr,
-                  float lr_corrected,
-                  int64_t adam_mode,
+                  const float lr,
                   const float decay,
+                  const int64_t adam_mode,
+                  const int64_t correct_bias,
                   const int64_t update_count);
 };
 
