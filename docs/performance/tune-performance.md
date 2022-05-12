@@ -4,6 +4,7 @@ parent: Performance
 nav_order: 1
 redirect_from: /docs/how-to/tune-performance
 ---
+<div class="container">
 
 # ONNX Runtime Performance Tuning
 
@@ -15,6 +16,13 @@ Along with this flexibility comes decisions for tuning and usage. For each model
 
 This document covers basic tools and troubleshooting checklists that can be leveraged to optimize your ONNX Runtime (ORT) model and hardware.
 
+Here is a simple demo of deploying and optimizing a distilled BERT model to inference on device in the browser:
+
+<div class="embed-responsive embed-responsive-4by3">
+
+<iframe class="embed-responsive-item" height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/v=W_lUGPMW_Eg?rel=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
+
+</div>
 
 {: .no_toc }
 
@@ -627,7 +635,7 @@ Here are some FAQs for the OnnxRuntime performance tuning.
 
 For some BERT models, ONNX Runtime cannot apply the best optimization due to framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions. The Transformer Model Optimization tool automatically applies the optimization while loading a model. 
 
-A set of [Jypyter notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) and [Onnx Runtime Inference Examples](https://github.com/microsoft/onnxruntime-inference-examples/) are available to help you optimize your BERT models in ORT.
+A set of [Jupyter notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) and [Onnx Runtime Inference Examples](https://github.com/microsoft/onnxruntime-inference-examples/) are available to help you optimize your BERT models in ORT. For [fine tuning a BERT model using Tensorflow](https://www.tensorflow.org/text/tutorials/fine_tune_bert), you can refer to additional tutorials.
 
 
 ### 2. Why is the ONNX model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
@@ -676,3 +684,4 @@ Over a period, threads in the pool are likely to be load balanced, thereby reduc
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
 
+</div>
