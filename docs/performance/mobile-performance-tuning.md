@@ -1,13 +1,17 @@
 ---
 title: Tune Mobile Performance
 parent: Performance
-nav_exclude: true
+nav_order: 6
+description: Onnx Runtime Mobile Performance Best Practices
+redirect_from: /docs/how-to/tune-performance
 ---
-{::options toc_levels="2" /}
+
+
+<div class="container">
 
 # **IMPORTANT: THIS INFORMATION ONLY APPLIES TO ONNX RUNTIME VERSION 1.10 AND EARLIER. PLEASE USE A NEWER VERSION.**
 
-# ONNX Runtime Mobile Performance Tuning
+## ONNX Runtime Mobile Performance Tuning
 
 Learn how different optimizations affect performance, and get suggestions for performance testing with ORT format models.
 
@@ -130,3 +134,5 @@ To create an NNAPI-aware ORT format model please follow these steps.
     The python package from your 'full' build with NNAPI enabled must be installed for `--use_nnapi` to be a valid option
 
     This ORT model created can be used with a minimal build that includes the NNAPI EP.
+
+</div>
