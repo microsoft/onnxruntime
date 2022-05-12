@@ -181,9 +181,9 @@ TEST(AdamTest, TorchAdamSingleWeightTest) {
   float rtol = 1e-5f;
   float atol = 1e-4f;
   test.AddOutput<int64_t>("updated_flag", {1}, {1});
-  test.AddOptionalTypeSeqOutput("updated_weights", data.UpdatedWeightSeq(), rtol, atol);
-  test.AddOptionalTypeSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), rtol, atol);
-  test.AddOptionalTypeSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), rtol, atol);
+  test.AddOptionalTypeSeqOutput("updated_weights", &data.UpdatedWeightSeq(), rtol, atol);
+  test.AddOptionalTypeSeqOutput("updated_momentums_1", &data.UpdatedMomentum_1_Seq(), rtol, atol);
+  test.AddOptionalTypeSeqOutput("updated_momentums_2", &data.UpdatedMomentum_2_Seq(), rtol, atol);
 
   test.Run();
 }

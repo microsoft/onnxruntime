@@ -15,10 +15,10 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 4)
         .InputMemoryType(OrtMemTypeCPUInput, 5)
-        .OutputMemoryType(OrtMemTypeCPUOutput, 3) /*  TODO: better removing this.*/
-        .Alias(0, 0)                              /* Return updated weights in-place */
-        .Alias(2, 1)                              /* Return updated moment-1 in-place */
-        .Alias(3, 2)                              /* Return updated moment-2 in-place */
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0) /*  TODO: better removing this.*/
+        .Alias(0, 1)                              /* Return updated weights in-place */
+        .Alias(2, 2)                              /* Return updated moment-1 in-place */
+        .Alias(3, 3)                              /* Return updated moment-2 in-place */
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("S_WEIGHT", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
