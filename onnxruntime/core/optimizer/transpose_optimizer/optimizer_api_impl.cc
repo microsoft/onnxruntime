@@ -882,7 +882,7 @@ Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecut
                                              layout_sensitive_ops);
     if (result.error_msg) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",
-                             result.error_msg.value());
+                             *result.error_msg);
     }
   }
 

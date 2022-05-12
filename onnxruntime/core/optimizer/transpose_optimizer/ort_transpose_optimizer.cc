@@ -21,7 +21,7 @@ Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_lev
   if (result.error_msg) {
     // currently onnx_layout_transformation::Optimize only fails if we hit an unsupported opset.
     // we don't want to fail loading the model just because we can't optimize Transpose ops, so just log a warning
-    LOGS(logger, WARNING) << "Transpose optimizer failed: " << result.error_msg.value();
+    LOGS(logger, WARNING) << "Transpose optimizer failed: " << *result.error_msg;
   }
 
   if (result.graph_modified) {

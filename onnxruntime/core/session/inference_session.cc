@@ -1284,7 +1284,7 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
         kernel_hash = utils::GetInternalNhwcOpHash(node);
       }
       if (kernel_hash.has_value()) {
-        ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), kernel_hash.value()));
+        ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), *kernel_hash));
       }
     }
   }
