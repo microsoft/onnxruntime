@@ -134,7 +134,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
     gemm_params[i].PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
 
-    requant_params[i].RequantRoundKind = MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven;
+    requant_params[i].RequantRoundKind = MLAS_ROUND_KIND::MlasRoundHalfEven;
     requant_params[i].Scale = output_scales.data() + helper.RightScaleOffsets()[i];
     requant_params[i].Size = output_scales.size();
     requant_params[i].ZeroPoint = output_offset;

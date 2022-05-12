@@ -494,11 +494,11 @@ MlasConvSym(
     bool PerChannelScale;
     int32_t OutputZeroPoint;
     const MLAS_REQUANT_PARAM* RequantParam = Params.RequantParam;
-    MLAS_REQUANT_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
+    MLAS_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
     OutputZeroPoint = RequantParam->ZeroPoint;
     PerChannelScale = RequantParam->Size > 1;
 
-    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+    if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
         KernelFlags |= MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE;
     }
 
@@ -534,7 +534,7 @@ MlasConvSym(
 
             PostProcessParams.Bias = Params.Bias + co;
 
-            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
+            if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfEven) {
                 PostProcessParams.Scale = RequantParam->Scale + (PerChannelScale ? co : 0);
             } else {
                 PostProcessParams.Multiplier = RequantParam->Multiplier + (PerChannelScale ? co : 0);
@@ -587,8 +587,8 @@ MlasConvSymDepthwise(
     bool PerChannelScale;
     int32_t OutputZeroPoint;
     const MLAS_REQUANT_PARAM* RequantParam = Params.RequantParam;
-    MLAS_REQUANT_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
-    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
+    MLAS_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
+    if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfEven) {
         OutputZeroPoint = RequantParam->ZeroPoint;
         PerChannelScale = RequantParam->Size > 1;
     } else {
@@ -606,7 +606,7 @@ MlasConvSymDepthwise(
 
     if ((Params.OutputChannels & 15) == 0) {
         PostProcessParams.Bias = Params.Bias;
-        if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
+        if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfEven) {
             PostProcessParams.Scale = RequantParam->Scale;
         } else {
             PostProcessParams.Multiplier = RequantParam->Multiplier;
@@ -647,7 +647,7 @@ MlasConvSymDepthwise(
             const size_t ChannelCount = std::min(OutputChannels - ChannelOffset, KernelChannelCount);
 
             PostProcessParams.Bias = Params.Bias + ChannelOffset;
-            if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven) {
+            if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfEven) {
                 PostProcessParams.Scale = RequantParam->Scale + (PerChannelScale ? ChannelOffset : 0);
             } else {
                 PostProcessParams.Multiplier = RequantParam->Multiplier + (PerChannelScale ? ChannelOffset : 0);

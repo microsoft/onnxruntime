@@ -829,16 +829,16 @@ MlasConvSymFixupInputZeroPoint(
     bool InputIsSigned
     );
 
-enum MLAS_REQUANT_ROUND_KIND {
-    MlasRequantRoundNearestEven,
-    MlasRequantRoundNearestUp,
+enum MLAS_ROUND_KIND {
+    MlasRoundHalfEven,
+    MlasRoundHalfUp,
 };
 
 
 /**
  * @brief Supply parameters to requantize a tensor. It supports 2 modes:
- **       RequantRoundKind == MlasRequantRoundNearestEven: Scale is used.
- **       RequantRoundKind == MlasRequantRoundNearestUp: Multiplier, PreShift and PostShift are used.
+ **       RequantRoundKind == MlasRoundHalfEven: Scale is used.
+ **       RequantRoundKind == MlasRoundHalfUp: Multiplier, PreShift and PostShift are used.
  *
 */
 struct MLAS_REQUANT_PARAM {
@@ -847,7 +847,7 @@ struct MLAS_REQUANT_PARAM {
     MLAS_REQUANT_PARAM(const float* Scale,
                        size_t Size,
                        int32_t ZeroPoint):
-        RequantRoundKind(MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven),
+        RequantRoundKind(MLAS_ROUND_KIND::MlasRoundHalfEven),
         Scale(Scale), Size(Size), ZeroPoint(ZeroPoint){}
 
     MLAS_REQUANT_PARAM(const int32_t* Multiplier,
@@ -855,11 +855,11 @@ struct MLAS_REQUANT_PARAM {
                        const int32_t* PostShift,
                        size_t Size,
                        int32_t ZeroPoint):
-        RequantRoundKind(MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp),
+        RequantRoundKind(MLAS_ROUND_KIND::MlasRoundHalfUp),
         Multiplier(Multiplier), PreShift(PreShift), PostShift(PostShift),
         Size(Size), ZeroPoint(ZeroPoint){}
 
-    MLAS_REQUANT_ROUND_KIND RequantRoundKind;
+    MLAS_ROUND_KIND RequantRoundKind;
     const float* Scale;
     const int32_t* Multiplier;
     const int32_t* PreShift;

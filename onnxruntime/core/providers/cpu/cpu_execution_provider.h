@@ -46,6 +46,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 
 #if defined(__aarch64__) || defined(_M_ARM64)
     use_fixed_point_requant_on_arm64_ = info.use_fixed_point_requant_on_arm64;
+    std::cout<<use_fixed_point_requant_on_arm64_<<std::endl;
 #else
     use_fixed_point_requant_on_arm64_ = false;
 #endif

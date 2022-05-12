@@ -405,7 +405,7 @@ MlasRequantizeOutput(
 {
 
 MlasRequantRoundKind RequantRoundKind = RequantParam->RequantRoundKind;
-    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+    if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
 #ifdef MLAS_NO_EXCEPTION
         abort();
 #else
@@ -1170,7 +1170,7 @@ MlasRequantizeOutput(
     size_t CountN
     )
 {
-    if(RequantParam->RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven)
+    if(RequantParam->RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfEven)
     {
         return MlasRequantizeOutputRoundNearestEven(Input, InputLeadingDimension, Output, OutputLeadingDimension, Bias,
                                                     RequantParam, StartM, StartN, CountM, CountN);
@@ -1199,7 +1199,7 @@ MlasRequantizeOutput(
     )
 {
     MlasRequantRoundKind RequantRoundKind = RequantParam->RequantRoundKind;
-    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+    if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
 #ifdef MLAS_NO_EXCEPTION
         abort();
 #else

@@ -318,24 +318,27 @@ class QLinearConvOpTester {
     float zero_point_;
   };
 
-  inline float RoundHalfToEven(float input) {
+  inline float Round(float input, MLAS_ROUND_KIND round_kind) {
     if (!std::isfinite(input)) {
       return input;
     }
+
+    if (round_kind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
+      // return std::round(input);
+      return input - std::remainderf(input, 1.f);
+    }
+
     // std::remainder returns x - n, where n is the integral value nearest to x. When |x - n| = 0.5, n is chosen to be even
     return input - std::remainderf(input, 1.f);
   }
 
   template <typename T>
-  T RequantizeOutput(int32_t sum, float scale, RequantizeValues<T>& requantize_values) {
+  T RequantizeOutput(int32_t sum, float scale, RequantizeValues<T>& requantize_values, bool round_up) {
     float f = static_cast<float>(sum) * scale;
     f = std::min(f, requantize_values.max_value_);
     f = std::max(f, requantize_values.min_value_);
-    // float f_r = RoundHalfToEven(f);
-    // if(std::abs(f - f_r) ==0.5){
-    //   std::cout<<"sum:"<<sum<<",scale:"<<scale<<",f:"<<f<<",fr:"<<f_r<<std::endl;
-    // }
-    return static_cast<T>(RoundHalfToEven(f) + requantize_values.zero_point_);
+    MLAS_ROUND_KIND round_kind = round_up ? MLAS_ROUND_KIND::MlasRoundHalfUp : MLAS_ROUND_KIND::MlasRoundHalfEven;
+    return static_cast<T>(Round(f, round_kind) + requantize_values.zero_point_);
   }
 
   static bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) {
@@ -355,7 +358,9 @@ class QLinearConvOpTester {
     return incremented;
   }
 
-  void ComputeExpectedOutput(std::vector<ActType>& Y_data, std::vector<int64_t>& Y_shape) {
+  void ComputeExpectedOutput(std::vector<ActType>& Y_data,
+                             std::vector<int64_t>& Y_shape,
+                             bool requant_with_fixed_point_on_arm64) {
     ORT_ENFORCE(W_.shape_.size() > 2);
     ORT_ENFORCE(X_.shape_.size() == W_.shape_.size());
 
@@ -448,7 +453,7 @@ class QLinearConvOpTester {
 
               input_image += input_image_size;
             }
-            *Ydata++ = RequantizeOutput<ActType>(sum, requantize_scale, requantize_values);
+            *Ydata++ = RequantizeOutput<ActType>(sum, requantize_scale, requantize_values, requant_with_fixed_point_on_arm64);
 
           } while (NextPosition(kernel_rank, output_shape, d_output.data()));
 
@@ -461,12 +466,12 @@ class QLinearConvOpTester {
     }
   }
 
-  void Run(bool all_input_initializer_except_x) {
+  void Run(bool all_input_initializer_except_x, bool requant_with_fixed_point_on_arm64) {
     OpTester test("QLinearConv", 10);
 
     std::vector<ActType> Y_data;
     std::vector<int64_t> Y_shape;
-    ComputeExpectedOutput(Y_data, Y_shape);
+    ComputeExpectedOutput(Y_data, Y_shape, requant_with_fixed_point_on_arm64);
 
     test.AddInput<ActType>("x", X_.shape_, X_.data_);
     test.AddInput<float>("x_scale", {}, X_.scale_, all_input_initializer_except_x);
@@ -485,7 +490,7 @@ class QLinearConvOpTester {
       test.AddInput<int32_t>("b", B_shape, B_, all_input_initializer_except_x);
     }
 
-    float abs_error = 1.0f;
+    float abs_error = 0.0f;
 
     // For quantized models, NNAPI's rounding is different than CPU provider
     // Sometimes the result is within +/-1 of result of CPU provider
@@ -517,6 +522,8 @@ class QLinearConvOpTester {
     }
 
     SessionOptions so;
+    so.config_options.AddConfigEntry("kOrtSessionOptionsConfigFixedPointRequantOnARM64",
+                                     requant_with_fixed_point_on_arm64 ? "1" : "1");
     so.intra_op_param.thread_pool_size = 1;
     test.Run(so, OpTester::ExpectResult::kExpectSuccess, "");
   }
@@ -575,11 +582,17 @@ class QLinearConvOpTester {
   }
 
   void Run() {
-    for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
-      Run(all_input_initializer_except_x);
+#if defined(_M_ARM64) || defined(__aarch64__)
+    for (bool requant_with_fixed_point_on_arm64 : std::initializer_list<bool>{false, true}) {
+#else
+    bool requant_with_fixed_point_on_arm64 = false;
+#endif
+      for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
+        Run(all_input_initializer_except_x, requant_with_fixed_point_on_arm64);
+      }
     }
   }
-};
+};  // namespace
 
 TEST(QLinearConvTest, Conv1D_U8S8) {
   QLinearConvOpTester<uint8_t, int8_t> test;
@@ -1045,7 +1058,6 @@ TEST(QLinearConvTest, Conv2D_S8S8_Sym_M64_C64) {
   test.SetOutputScaleAndZeroPoint(.55f, 54);
   test.Run();
 }
-
 
 TEST(QLinearConvTest, Conv2D_S8S8_Sym_M16_C4_Bias) {
   QLinearConvOpTester<int8_t, int8_t> test;
