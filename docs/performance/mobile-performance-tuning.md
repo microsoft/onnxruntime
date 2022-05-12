@@ -1,7 +1,7 @@
 ---
 title: Tune Mobile Performance
 parent: Performance
-nav_order: 6
+nav_order: 8
 description: Onnx Runtime Mobile Performance Best Practices
 redirect_from: /docs/how-to/tune-performance
 ---

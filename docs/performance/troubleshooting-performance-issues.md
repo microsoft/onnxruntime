@@ -7,10 +7,12 @@ redirect_from: /docs/how-to/tune-performance
 ---
 <div class="container">
 
+
 ## Troubleshooting Performance Issues
 
 Troubleshooting Onnx Runtime performance issues may vary depending on the model and usage scenario.
 
+{: .no_toc}
 ### ORT Performance Troubleshooting Checklist
 
 Here is a checklist to troubleshoot ORT performance.

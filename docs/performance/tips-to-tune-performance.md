@@ -16,6 +16,8 @@ Here are some tips for tuning the performance of ORT in terms of <a href="#memor
 
 Please refer to [Execution Provider](../execution-providers/index.md) specific performance tuning samples and tips for optimizing your OnnxRuntime performance.
 
+{: .no_toc}
+
 <h3 id="memory">Memory Consumption Reduction</h3>
 
 Here are some tips to reduce memory consumption and tune performance with ORT.

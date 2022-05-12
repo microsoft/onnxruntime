@@ -1,7 +1,7 @@
 ---
 title: Graph optimizations
 parent: Performance
-nav_order: 2
+nav_order: 6
 redirect_from: /docs/how-to/graph-optimizations
 ---
 
