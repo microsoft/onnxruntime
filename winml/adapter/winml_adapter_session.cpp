@@ -258,9 +258,17 @@ ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* s
 
 ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* session, _Out_ uint32_t* num_threads) {
   API_IMPL_BEGIN
-  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_options = inference_session->GetSessionOptions();
-  *num_threads = session_options.intra_op_param.thread_pool_size;
+
+  struct ThreadPoolSessionInspector : public ::onnxruntime::InferenceSession {
+   public:
+    onnxruntime::concurrency::ThreadPool* IntraOpThreadPool() const {
+      return GetIntraOpThreadPoolToUse();
+    }
+  };
+
+  auto inference_session = reinterpret_cast<ThreadPoolSessionInspector*>(session);
+  auto thread_pool = inference_session->IntraOpThreadPool();
+  *num_threads = ::onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(thread_pool);
   return nullptr;
   API_IMPL_END
 }

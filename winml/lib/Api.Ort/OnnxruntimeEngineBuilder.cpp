@@ -48,7 +48,9 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
     }
   }
 
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_), ort_api);
+  if (intra_op_num_threads_override_.has_value()) {
+    RETURN_HR_IF_NOT_OK_MSG(ort_api->SetIntraOpNumThreads(session_options.get(), intra_op_num_threads_override_.value()), ort_api);
+  }
 
   if (!allow_thread_spinning_) {
     ort_api->AddSessionConfigEntry(session_options.get(), "session.intra_op.allow_spinning", "0");
