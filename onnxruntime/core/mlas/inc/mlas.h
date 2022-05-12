@@ -535,7 +535,7 @@ private:
 /**
  * @brief Supply matrices shape and data type information to quantized gemm functions
  *
- ** NOTE: AIsSigned == true is not supported on non-ARM devices for now. 
+ ** NOTE: AIsSigned == true is not supported on non-ARM devices for now.
  **       AIsSigned == true is supported on ARM devices when BIsSigned is also true.
  *
 */
@@ -626,7 +626,7 @@ struct MLAS_SYMM_QGEMM_DATA_PARAMS {
  * @param [IN] DataParams   Array of data descriptors, one for each mutliplication
  *                          B must be prepacked
  * @param [IN] BatchN       Number of multiplications
- * @param [IN] ThreadPool 
+ * @param [IN] ThreadPool
 */
 void
 MLASCALL
@@ -683,8 +683,8 @@ MlasGemmPackB(
 
 /**
  * @brief For symmetric quantized GEMM, returns size of the
- *        packing buffer needed for right hand side        
- * @param N              Number of columns 
+ *        packing buffer needed for right hand side
+ * @param N              Number of columns
  * @param K              Number of rows
  * @param AIsSigned      Whether left hand size is signed int8_t
  * @return  size of the packing buffer,
@@ -694,7 +694,7 @@ size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
     size_t N,
-    size_t K, 
+    size_t K,
     bool AIsSigned
     );
 
