@@ -16,7 +16,6 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
-#include <Shlwapi.h>
 #include <Windows.h>
 
 #include <fstream>

@@ -8,205 +8,223 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void RunTest(std::initializer_list<T> input,
-             std::initializer_list<int64_t> input_dims,
-             std::initializer_list<int64_t> repeat,
-             std::initializer_list<int64_t> repeat_dims,
-             std::initializer_list<T> output,
-             std::initializer_list<int64_t> output_dims) {
+std::vector<T> InputData(size_t size) {
+  std::vector<T> result(size);
+  for (size_t i = 0; i < size; i++) {
+    result[i] = static_cast<T>(i);
+  }
+  return result;
+}
+
+template <>
+std::vector<MLFloat16> InputData<MLFloat16>(size_t size) {
+  std::vector<MLFloat16> result(size);
+  for (size_t i = 0; i < size; i++) {
+    result[i] = MLFloat16(static_cast<float>(i));
+  }
+  return result;
+}
+
+template <typename T>
+void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& repeats) {
+  size_t input_size =
+      static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
+  std::vector<T> input_data = InputData<T>(input_size);
+  size_t rank = input_dims.size();
+  std::vector<int64_t> repeats_dims(1);
+  repeats_dims[0] = static_cast<int64_t>(rank);
+  std::vector<int64_t> output_dims(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    output_dims[i] = input_dims[i] * repeats[i];
+  }
+  size_t output_size =
+      static_cast<size_t>(std::accumulate(output_dims.begin(), output_dims.end(), 1LL, std::multiplies<int64_t>()));
+  std::vector<T> output_data(output_size);
+  std::vector<int64_t> input_strides(rank);
+  std::vector<int64_t> output_strides(rank);
+  input_strides[rank - 1] = output_strides[rank - 1] = 1;
+  if (rank > 1) {
+    for (size_t i = rank - 2;; --i) {
+      input_strides[i] = input_dims[i + 1] * input_strides[i + 1];
+      output_strides[i] = output_dims[i + 1] * output_strides[i + 1];
+      if (i == 0) break;
+    }
+  }
+  for (size_t i = 0; i < output_size; ++i) {
+    int64_t index = 0;
+    int64_t remain = static_cast<int64_t>(i);
+    for (size_t j = 0; j < rank; ++j) {
+      index += (((remain / output_strides[j]) % input_dims[j]) * input_strides[j]);
+      remain = remain % output_strides[j];
+    }
+    output_data[i] = input_data[static_cast<size_t>(index)];
+  }
   OpTester test("Tile");
-  test.AddInput<T>("input", input_dims, input);
-  test.AddInput<int64_t>("repeats", repeat_dims, repeat);
-  test.AddOutput<T>("output", output_dims, output);
-  if (std::is_same<T, int8_t>::value)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
-  else
+  test.AddInput<T>("input", input_dims, input_data);
+  test.AddInput<int64_t>("repeats", repeats_dims, repeats);
+  test.AddOutput<T>("output", output_dims, output_data);
+  if (std::is_same<T, int8_t>::value) {
+    // TensorRT reports error: Assertion Error in makePaddedScale: 0 (regionRanges != nullptr)
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
     test.Run();
+  }
 }
 
 template <typename T>
 void RunTestWrapper() {
   // Tile1DWithZeroRepeats
-  RunTest<T>({1, 2, 3}, {3}, {0}, {1}, {}, {0});
+  RunTest<T>({3}, {0});
 
   // Tile2DWithZeroRepeats
-  RunTest<T>({11, 12, 21, 22}, {2, 2}, {2, 0}, {2}, {}, {4, 0});
+  RunTest<T>({2, 2}, {2, 0});
 
   // Tile1D
-  RunTest<T>({1, 2, 3}, {3}, {3}, {1}, {1, 2, 3, 1, 2, 3, 1, 2, 3}, {9});
+  RunTest<T>({3}, {3});
 
   // Tile2D_1Axis
-  RunTest<T>({11, 12, 21, 22}, {2, 2}, {2, 1}, {2}, {11, 12, 21, 22, 11, 12, 21, 22}, {4, 2});
+  RunTest<T>({2, 2}, {2, 1});
+  RunTest<T>({2, 3}, {2, 1});
 
   // Tile2D_2Axes
-  RunTest<T>({11, 12, 21, 22}, {2, 2}, {2, 2}, {2}, {11, 12, 11, 12, 21, 22, 21, 22, 11, 12, 11, 12, 21, 22, 21, 22}, {4, 4});
+  RunTest<T>({2, 2}, {2, 2});
+  RunTest<T>({2, 4}, {2, 2});
 
   // Tile3D
-  RunTest<T>({111, 112, 113, 122, 123, 124}, {2, 1, 3}, {1, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 122, 123, 124, 122, 123, 124}, {2, 2, 3});
+  RunTest<T>({2, 1, 3}, {1, 2, 1});
 
   // Tile4D
-  RunTest<T>(
-      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},  // input
-      {1, 2, 3, 4},                                                                            // input dims
-      {2, 1, 2, 1},                                                                            // repeat
-      {4},                                                                                     // repeat dims
-      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
-       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},  // output
-      {2, 2, 6, 4}                                                                                       // output dims
-  );
+  RunTest<T>({1, 2, 3, 4}, {2, 1, 2, 1});
 
   // Tile5D
-  RunTest<T>(
-      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-       18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
-       36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
-       54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71},  // input
-      {2, 3, 2, 3, 2},                                                           // input dims
-      {2, 1, 2, 1, 2},                                                           // repeat
-      {5},                                                                       // repeat dims
-      {0, 1, 0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7, 6, 7, 8, 9,
-       8, 9, 10, 11, 10, 11, 0, 1, 0, 1, 2, 3, 2, 3, 4, 5, 4, 5,
-       6, 7, 6, 7, 8, 9, 8, 9, 10, 11, 10, 11, 12, 13, 12, 13, 14, 15,
-       14, 15, 16, 17, 16, 17, 18, 19, 18, 19, 20, 21, 20, 21, 22, 23, 22, 23,
-       12, 13, 12, 13, 14, 15, 14, 15, 16, 17, 16, 17, 18, 19, 18, 19, 20, 21,
-       20, 21, 22, 23, 22, 23, 24, 25, 24, 25, 26, 27, 26, 27, 28, 29, 28, 29,
-       30, 31, 30, 31, 32, 33, 32, 33, 34, 35, 34, 35, 24, 25, 24, 25, 26, 27,
-       26, 27, 28, 29, 28, 29, 30, 31, 30, 31, 32, 33, 32, 33, 34, 35, 34, 35,
-       36, 37, 36, 37, 38, 39, 38, 39, 40, 41, 40, 41, 42, 43, 42, 43, 44, 45,
-       44, 45, 46, 47, 46, 47, 36, 37, 36, 37, 38, 39, 38, 39, 40, 41, 40, 41,
-       42, 43, 42, 43, 44, 45, 44, 45, 46, 47, 46, 47, 48, 49, 48, 49, 50, 51,
-       50, 51, 52, 53, 52, 53, 54, 55, 54, 55, 56, 57, 56, 57, 58, 59, 58, 59,
-       48, 49, 48, 49, 50, 51, 50, 51, 52, 53, 52, 53, 54, 55, 54, 55, 56, 57,
-       56, 57, 58, 59, 58, 59, 60, 61, 60, 61, 62, 63, 62, 63, 64, 65, 64, 65,
-       66, 67, 66, 67, 68, 69, 68, 69, 70, 71, 70, 71, 60, 61, 60, 61, 62, 63,
-       62, 63, 64, 65, 64, 65, 66, 67, 66, 67, 68, 69, 68, 69, 70, 71, 70, 71,
-       0, 1, 0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7, 6, 7, 8, 9,
-       8, 9, 10, 11, 10, 11, 0, 1, 0, 1, 2, 3, 2, 3, 4, 5, 4, 5,
-       6, 7, 6, 7, 8, 9, 8, 9, 10, 11, 10, 11, 12, 13, 12, 13, 14, 15,
-       14, 15, 16, 17, 16, 17, 18, 19, 18, 19, 20, 21, 20, 21, 22, 23, 22, 23,
-       12, 13, 12, 13, 14, 15, 14, 15, 16, 17, 16, 17, 18, 19, 18, 19, 20, 21,
-       20, 21, 22, 23, 22, 23, 24, 25, 24, 25, 26, 27, 26, 27, 28, 29, 28, 29,
-       30, 31, 30, 31, 32, 33, 32, 33, 34, 35, 34, 35, 24, 25, 24, 25, 26, 27,
-       26, 27, 28, 29, 28, 29, 30, 31, 30, 31, 32, 33, 32, 33, 34, 35, 34, 35,
-       36, 37, 36, 37, 38, 39, 38, 39, 40, 41, 40, 41, 42, 43, 42, 43, 44, 45,
-       44, 45, 46, 47, 46, 47, 36, 37, 36, 37, 38, 39, 38, 39, 40, 41, 40, 41,
-       42, 43, 42, 43, 44, 45, 44, 45, 46, 47, 46, 47, 48, 49, 48, 49, 50, 51,
-       50, 51, 52, 53, 52, 53, 54, 55, 54, 55, 56, 57, 56, 57, 58, 59, 58, 59,
-       48, 49, 48, 49, 50, 51, 50, 51, 52, 53, 52, 53, 54, 55, 54, 55, 56, 57,
-       56, 57, 58, 59, 58, 59, 60, 61, 60, 61, 62, 63, 62, 63, 64, 65, 64, 65,
-       66, 67, 66, 67, 68, 69, 68, 69, 70, 71, 70, 71, 60, 61, 60, 61, 62, 63,
-       62, 63, 64, 65, 64, 65, 66, 67, 66, 67, 68, 69, 68, 69, 70, 71, 70, 71},  // output
-      {4, 3, 4, 3, 4}                                                            // output dims
-  );
+  RunTest<T>({2, 3, 2, 3, 2}, {2, 1, 2, 1, 2});
 
   // Tile1DWithOneRepeats
-  RunTest<T>({111, 112, 113, 122, 123, 124}, {2, 1, 3}, {1, 1, 1}, {3}, {111, 112, 113, 122, 123, 124}, {2, 1, 3});
+  RunTest<T>({2, 1, 3}, {1, 1, 1});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 1
   // This will trigger the MemCpy optimization path
-  RunTest<T>({111, 112, 113}, {1, 1, 3}, {2, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 111, 112, 113, 111, 112, 113}, {2, 2, 3});
+  RunTest<T>({1, 1, 3}, {2, 2, 1});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 2
   // This will trigger the MemCpy optimization path
-  RunTest<T>({111, 112, 113}, {1, 1, 3}, {3, 1, 1}, {3}, {111, 112, 113, 111, 112, 113, 111, 112, 113}, {3, 1, 3});
+  RunTest<T>({1, 1, 3}, {3, 1, 1});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
   // This will trigger the (Batched) MemCpy optimization path
-  RunTest<T>({111, 112, 113, 11, 12, 13}, {2, 1, 3}, {1, 2, 1}, {3}, {111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13}, {2, 2, 3});
+  RunTest<T>({2, 1, 3}, {1, 2, 1});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
   // This will trigger the (Batched) MemCpy optimization path
-  RunTest<T>({111, 112, 113, 11, 12, 13}, {2, 1, 3}, {2, 2, 1}, {3},
-             {111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13, 111, 112, 113, 111, 112, 113, 11, 12, 13, 11, 12, 13}, {4, 2, 3});
+  RunTest<T>({2, 1, 3}, {2, 2, 1});
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  // _TileMemcpyKernelFromInput, vectorized 4
+  RunTest<T>({256, 512}, {3, 1});
+
+  // _TileMemcpyKernelFromInput, vectorized 2
+  RunTest<T>({258, 257}, {4, 1});
+
+  // _TileMemcpyKernelFromInput, non-vectorized
+  RunTest<T>({129, 257}, {5, 1});
+
+  // _TileBatchedMemcpyKernelFromInput, vectorized 4
+  RunTest<T>({512, 256}, {1, 3});
+
+  // _TileBatchedMemcpyKernelFromInput, vectorized 2
+  RunTest<T>({257, 258}, {2, 2});
+
+  // _TileBatchedMemcpyKernelFromInput, non-vectorized
+  RunTest<T>({129, 257}, {3, 2});
+#endif
 }
 
-template <>
-void RunTestWrapper<bool>() {
+// OpTester's AddInput and AddOutput do not support std::vector<bool>.
+void RunTestForBool(std::initializer_list<bool> input_data, std::initializer_list<int64_t> input_dims,
+                    std::initializer_list<int64_t> repeats, std::initializer_list<int64_t> repeats_dims,
+                    std::initializer_list<bool> output_data, std::initializer_list<int64_t> output_dims) {
+  OpTester test("Tile");
+  test.AddInput<bool>("input", input_dims, input_data);
+  test.AddInput<int64_t>("repeats", repeats_dims, repeats);
+  test.AddOutput<bool>("output", output_dims, output_data);
+  test.Run();
+}
+
+void RunTestWrapperForBool() {
   // Tile1DWithZeroRepeats
-  RunTest<bool>({true, false, true}, {3}, {0}, {1}, {}, {0});
+  RunTestForBool({true, false, true}, {3}, {0}, {1}, {}, {0});
 
   // Tile2DWithZeroRepeats
-  RunTest<bool>({true, false, true, false}, {2, 2}, {2, 0}, {2}, {}, {4, 0});
+  RunTestForBool({true, false, true, false}, {2, 2}, {2, 0}, {2}, {}, {4, 0});
 
   // Tile1D
-  RunTest<bool>({true, false, true}, {3}, {3}, {1}, {true, false, true, true, false, true, true, false, true}, {9});
+  RunTestForBool({true, false, true}, {3}, {3}, {1}, {true, false, true, true, false, true, true, false, true}, {9});
 
   // Tile2D_1Axis
-  RunTest<bool>({true, false, true, false}, {2, 2}, {2, 1}, {2}, {true, false, true, false, true, false, true, false}, {4, 2});
+  RunTestForBool({true, false, true, false}, {2, 2}, {2, 1}, {2}, {true, false, true, false, true, false, true, false},
+                 {4, 2});
 
   // Tile2D_2Axes
-  RunTest<bool>({true, false, true, false}, {2, 2}, {2, 2}, {2}, {true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false}, {4, 4});
+  RunTestForBool(
+      {true, false, true, false}, {2, 2}, {2, 2}, {2},
+      {true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false}, {4, 4});
 
   // Tile3D
-  RunTest<bool>({true, false, true, false, true, false}, {2, 1, 3}, {1, 2, 1}, {3}, {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3});
+  RunTestForBool({true, false, true, false, true, false}, {2, 1, 3}, {1, 2, 1}, {3},
+                 {true, false, true, true, false, true, false, true, false, false, true, false}, {2, 2, 3});
 
   // Tile1DWithOneRepeats
-  RunTest<bool>({true, false, true, false, true, true}, {2, 1, 3}, {1, 1, 1}, {3}, {true, false, true, false, true, true}, {2, 1, 3});
+  RunTestForBool({true, false, true, false, true, true}, {2, 1, 3}, {1, 1, 1}, {3},
+                 {true, false, true, false, true, true}, {2, 1, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 1
   // This will trigger the MemCpy optimization path
-  RunTest<bool>({true, false, true}, {1, 1, 3}, {2, 2, 1}, {3}, {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+  RunTestForBool({true, false, true}, {1, 1, 3}, {2, 2, 1}, {3},
+                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 2
   // This will trigger the MemCpy optimization path
-  RunTest<bool>({true, false, true}, {1, 1, 3}, {3, 1, 1}, {3}, {true, false, true, true, false, true, true, false, true}, {3, 1, 3});
+  RunTestForBool({true, false, true}, {1, 1, 3}, {3, 1, 1}, {3},
+                 {true, false, true, true, false, true, true, false, true}, {3, 1, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat == 1)
   // This will trigger the (Batched) MemCpy optimization path
-  RunTest<bool>({true, false, true, true, false, true}, {2, 1, 3}, {1, 2, 1}, {3},
-                {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
+  RunTestForBool({true, false, true, true, false, true}, {2, 1, 3}, {1, 2, 1}, {3},
+                 {true, false, true, true, false, true, true, false, true, true, false, true}, {2, 2, 3});
 
   // TileWhichIsBasicallyCopiesOfInputBuffer - 3 (batch > 1 and batch_repeat > 1)
   // This will trigger the (Batched) MemCpy optimization path
-  RunTest<bool>({true, false, true, true, false, true}, {2, 1, 3}, {2, 2, 1}, {3},
-                {true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true, true, false, true},
-                {4, 2, 3});
+  RunTestForBool({true, false, true, true, false, true}, {2, 1, 3}, {2, 2, 1}, {3},
+                 {true, false, true, true, false, true, true, false, true, true, false, true,
+                  true, false, true, true, false, true, true, false, true, true, false, true},
+                 {4, 2, 3});
 }
 
-TEST(TensorOpTest, TileFloatType) {
-  RunTestWrapper<float>();
-}
+TEST(TensorOpTest, TileFloatType) { RunTestWrapper<float>(); }
 
-TEST(TensorOpTest, TileDoubleType) {
-  RunTestWrapper<double>();
-}
+TEST(TensorOpTest, TileDoubleType) { RunTestWrapper<double>(); }
 
-TEST(TensorOpTest, TileInt8Type) {
-  RunTestWrapper<int8_t>();
-}
+TEST(TensorOpTest, TileInt8Type) { RunTestWrapper<int8_t>(); }
 
-TEST(TensorOpTest, TileUint8Type) {
-  RunTestWrapper<uint8_t>();
-}
+TEST(TensorOpTest, TileUint8Type) { RunTestWrapper<uint8_t>(); }
 
-TEST(TensorOpTest, TileInt16Type) {
-  RunTestWrapper<int16_t>();
-}
+TEST(TensorOpTest, TileInt16Type) { RunTestWrapper<int16_t>(); }
 
-TEST(TensorOpTest, TileUint16Type) {
-  RunTestWrapper<uint16_t>();
-}
+TEST(TensorOpTest, TileUint16Type) { RunTestWrapper<uint16_t>(); }
 
-TEST(TensorOpTest, TileInt32Type) {
-  RunTestWrapper<int32_t>();
-}
+TEST(TensorOpTest, TileInt32Type) { RunTestWrapper<int32_t>(); }
 
-TEST(TensorOpTest, TileUint32Type) {
-  RunTestWrapper<uint32_t>();
-}
+TEST(TensorOpTest, TileUint32Type) { RunTestWrapper<uint32_t>(); }
 
-TEST(TensorOpTest, TileInt64Type) {
-  RunTestWrapper<int64_t>();
-}
+TEST(TensorOpTest, TileInt64Type) { RunTestWrapper<int64_t>(); }
 
-TEST(TensorOpTest, TileUint64Type) {
-  RunTestWrapper<uint64_t>();
-}
+TEST(TensorOpTest, TileUint64Type) { RunTestWrapper<uint64_t>(); }
 
-TEST(TensorOpTest, TileBoolType) {
-  RunTestWrapper<bool>();
-}
+TEST(TensorOpTest, TileBoolType) { RunTestWrapperForBool(); }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(TensorOpTest, TileMLFloat16Type) { RunTestWrapper<MLFloat16>(); }
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

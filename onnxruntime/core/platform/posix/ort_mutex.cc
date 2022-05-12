@@ -5,7 +5,6 @@
 #include "core/platform/ort_mutex.h"
 #include <assert.h>
 #include <stdexcept>
-#include <system_error>
 #include <sstream>
 
 namespace onnxruntime {

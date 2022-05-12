@@ -7,10 +7,12 @@
 #include "core/framework/data_transfer.h"
 #include "tvm_common.h"
 
+
 namespace onnxruntime {
+namespace tvm {
 
 class XPUDataTransfer : public IDataTransfer {
- public:
+public:
   XPUDataTransfer();
   ~XPUDataTransfer();
 
@@ -23,7 +25,7 @@ class XPUDataTransfer : public IDataTransfer {
 };
 
 class TvmCPUDataTransfer : public IDataTransfer {
- public:
+public:
   TvmCPUDataTransfer() = default;
   // Dampen MSVC warning about not fully overriding CopyTensor
   using IDataTransfer::CopyTensor;
@@ -31,5 +33,7 @@ class TvmCPUDataTransfer : public IDataTransfer {
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 };
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime
+
 #endif // XPU_DATA_TRANSFER

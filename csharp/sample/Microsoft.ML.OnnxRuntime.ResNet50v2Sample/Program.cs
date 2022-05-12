@@ -33,16 +33,19 @@ namespace Microsoft.ML.OnnxRuntime.ResNet50v2Sample
             Tensor<float> input = new DenseTensor<float>(new[] { 1, 3, 224, 224 });
             var mean = new[] { 0.485f, 0.456f, 0.406f };
             var stddev = new[] { 0.229f, 0.224f, 0.225f };
-            for (int y = 0; y < image.Height; y++)
+            image.ProcessPixelRows(accessor =>
             {
-                Span<Rgb24> pixelSpan = image.GetPixelRowSpan(y);
-                for (int x = 0; x < image.Width; x++)
+                for (int y = 0; y < accessor.Height; y++)
                 {
-                    input[0, 0, y, x] = ((pixelSpan[x].R / 255f) - mean[0]) / stddev[0];
-                    input[0, 1, y, x] = ((pixelSpan[x].G / 255f) - mean[1]) / stddev[1];
-                    input[0, 2, y, x] = ((pixelSpan[x].B / 255f) - mean[2]) / stddev[2];
+                    Span<Rgb24> pixelSpan = accessor.GetRowSpan(y);
+                    for (int x = 0; x < accessor.Width; x++)
+                    {
+                        input[0, 0, y, x] = ((pixelSpan[x].R / 255f) - mean[0]) / stddev[0];
+                        input[0, 1, y, x] = ((pixelSpan[x].G / 255f) - mean[1]) / stddev[1];
+                        input[0, 2, y, x] = ((pixelSpan[x].B / 255f) - mean[2]) / stddev[2];
+                    }
                 }
-            }
+            });
 
             // Setup inputs
             var inputs = new List<NamedOnnxValue>

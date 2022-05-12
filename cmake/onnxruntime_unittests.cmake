@@ -348,7 +348,7 @@ if (onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_rknpu_src})
 endif()
 
-if (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
+if ((NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_USE_NUPHAR) OR onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_test_providers_internal_testing_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/internal_testing/*"
     )
@@ -464,11 +464,10 @@ if(onnxruntime_USE_COREML)
 endif()
 
 if(onnxruntime_USE_NUPHAR)
-  file(GLOB_RECURSE onnxruntime_test_nuphar_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/nuphar_tvm/*.h"
-    "${TEST_SRC_DIR}/nuphar_tvm/*.cc"
-  )
-
+  # the test case under nuphar_tvm is only to verify some basic tvm show case, which is already out of date
+  # it doesn't have relationship to nuphar directly. consider we have an official tvm execution provider now,
+  # keep those test cases doesn't bring any value now. 
+  
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
@@ -528,6 +527,13 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
 endif()
 
+if(onnxruntime_USE_MIGRAPHX)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/migraphx/*)
+  list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/migraphx/migraphx_execution_provider_utils.h")
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nnapi/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
@@ -553,15 +559,6 @@ if(onnxruntime_USE_COREML)
     list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml)
     list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml)
   endif()
-endif()
-
-if (onnxruntime_USE_TVM)
-  file (GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/tvm/*.h"
-    "${TEST_SRC_DIR}/tvm/*.cc"
-  )
-
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tvm)
 endif()
 
 if(WIN32)
@@ -866,6 +863,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/main.cc
       ${BENCHMARK_DIR}/modeltest.cc
       ${BENCHMARK_DIR}/pooling.cc
+      ${BENCHMARK_DIR}/resize.cc
       ${BENCHMARK_DIR}/batchnorm.cc
       ${BENCHMARK_DIR}/batchnorm2.cc
       ${BENCHMARK_DIR}/tptest.cc
@@ -1076,6 +1074,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+      target_sources(onnxruntime_shared_lib_test PRIVATE
+        "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc"
+        "${TEST_SRC_DIR}/platform/android/cxa_demangle_test.cc"
+      )
+      target_compile_definitions(onnxruntime_shared_lib_test PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+    endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
       add_custom_command(
         TARGET onnxruntime_shared_lib_test POST_BUILD
@@ -1264,8 +1269,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   )
 
   onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx absl::raw_hash_set)
-  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared absl::raw_hash_set)
+  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx ${ABSEIL_LIBS})
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS})
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})

@@ -107,6 +107,23 @@ struct ModelMetadata {
 
 class InferenceSession {
  public:
+#if !defined(ORT_MINIMAL_BUILD)
+
+  /**
+   * How minimal build graph optimizations should be handled in a full build.
+   * Note: These only apply to optimizations at the extended level or higher.
+   */
+  enum class MinimalBuildOptimizationHandling {
+    /** Run full build optimizations. The default behavior. */
+    ApplyFullBuildOptimizations,
+    /** Save minimal build optimizations as runtime optimizations in an ORT format model. */
+    SaveMinimalBuildRuntimeOptimizations,
+    /** Only run minimal build optimizations. */
+    OnlyApplyMinimalBuildOptimizations,
+  };
+
+#endif
+
   /**
     Create a new InferenceSession
     @param session_options Session options.
@@ -444,6 +461,7 @@ class InferenceSession {
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
+
   /**
    * Load an ONNX model.
    * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
@@ -583,9 +601,10 @@ class InferenceSession {
   void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                   TransformerLevel graph_optimization_level,
-                                                   bool saving_runtime_optimizations) const;
+  virtual common::Status AddPredefinedTransformers(
+      GraphTransformerManager& transformer_manager,
+      TransformerLevel graph_optimization_level,
+      MinimalBuildOptimizationHandling minimal_build_optimization_handling) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,

@@ -326,7 +326,7 @@ void ApiNode::CopyAttributes(const api::NodeRef& node) {
   const ApiNode& ort_node = static_cast<const ApiNode&>(node);
   const NodeAttributes& attributes = ort_node.node_.GetAttributes();
   for (const auto& pair : attributes) {
-    node_.AddAttribute(pair.first, pair.second);
+    node_.AddAttributeProto(pair.second);
   }
 }
 
@@ -816,7 +816,7 @@ Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecut
 
       auto domain = node->Domain();
       // Skip if domain is incorrect
-      if (domain != kOnnxDomain && domain != kOnnxDomainAlias && domain != kMSDomain) {
+      if (domain != kOnnxDomain && domain != kMSDomain) {
         continue;
       }
 
@@ -876,9 +876,14 @@ Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecut
   }
 
   if (modified) {
-    onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
-                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
-                                         layout_sensitive_ops);
+    OptimizeResult result =
+        onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
+                                             onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                             layout_sensitive_ops);
+    if (result.error_msg) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",
+                             result.error_msg.value());
+    }
   }
 
   return Status::OK();

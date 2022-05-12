@@ -74,6 +74,7 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto dx_dims = node.Output(OUT_DX).Dim();
   dnnl::memory::desc dx_md(dx_dims, node.Input(IN_DY).Type(), dnnl::memory::format_tag::any);
+  dnnl::memory::desc fwd_dx_md(dx_dims, node.Input(IN_DY).Type(), sp.GetDnnlFormat(dx_dims.size()));
 
   //Read the attributes
   auto kernel_shape = GetKernelShape(node);
@@ -92,7 +93,7 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   dnnl::pooling_forward::desc pool_forward_desc(dnnl::prop_kind::forward, algo,
-                                                dx_md, dy_md,
+                                                fwd_dx_md, dy_md,
                                                 strides, kernel_shape,
                                                 padding_left, padding_right);
   dnnl::pooling_forward::primitive_desc pool_forward_pd(pool_forward_desc, dnnl_engine);
@@ -110,9 +111,9 @@ void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   dnnl::memory dx_mem(pool_backward_pd.diff_src_desc(), dnnl_engine);
   if (maxpoolgrad_optype) {
-  sp.AddPrimitive(pool_backward_op, {{DNNL_ARG_DIFF_DST, dy_mem},
-                                     {DNNL_ARG_DIFF_SRC, dx_mem},
-                                     {DNNL_ARG_WORKSPACE, indices_mem}});
+    sp.AddPrimitive(pool_backward_op, {{DNNL_ARG_DIFF_DST, dy_mem},
+                                       {DNNL_ARG_DIFF_SRC, dx_mem},
+                                       {DNNL_ARG_WORKSPACE, indices_mem}});
   } else {
     sp.AddPrimitive(pool_backward_op, {{DNNL_ARG_DIFF_DST, dy_mem},
                                        {DNNL_ARG_DIFF_SRC, dx_mem}});

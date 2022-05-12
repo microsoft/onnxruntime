@@ -802,7 +802,7 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
       constant_attribute_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);  // float scalar
       *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;        // float scalar with value 1.0f
 
-      constant_node.AddAttribute("value", attr_proto);
+      constant_node.AddAttributeProto(std::move(attr_proto));
     }
 
     graph.SetInputs({&iter_num_in, &cond_in});
@@ -1169,11 +1169,9 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
     std::unordered_map<std::string, int> domain_to_version;
     domain_to_version.insert({"", 16});  // Opset 16 model
 
-    // Since this test is being written at a time when only opset 15  has been released, we pass in
-    // 'false' for `allow_released_opset_only` while instantiating Model to allow this test to run
     Model model("optional type in Loop subgraph carried dependency", false, ModelMetaData(), PathString(), {},
                 domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-                DefaultLoggingManager().DefaultLogger(), false);
+                DefaultLoggingManager().DefaultLogger());
 
     auto& graph = model.MainGraph();
 

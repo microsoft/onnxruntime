@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 
 # Since NNAPI EP handles Reshape and Flatten differently,
@@ -18,23 +17,28 @@ def GenerateModel(model_name):
     ]
 
     initializers = [
-        helper.make_tensor('Reshape_1_shape', TensorProto.INT64, [2], [3, 4]),
-        helper.make_tensor('Reshape_2_shape', TensorProto.INT64, [2], [1, 6]),
-        helper.make_tensor('Gemm_B', TensorProto.FLOAT, [4, 2], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
-        helper.make_tensor('MatMul_B', TensorProto.FLOAT, [2, 3], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+        helper.make_tensor("Reshape_1_shape", TensorProto.INT64, [2], [3, 4]),
+        helper.make_tensor("Reshape_2_shape", TensorProto.INT64, [2], [1, 6]),
+        helper.make_tensor(
+            "Gemm_B",
+            TensorProto.FLOAT,
+            [4, 2],
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+        ),
+        helper.make_tensor("MatMul_B", TensorProto.FLOAT, [2, 3], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
     ]
 
     inputs = [
-        helper.make_tensor_value_info('X', TensorProto.FLOAT, [2, 1, 2]),
-        helper.make_tensor_value_info('Y', TensorProto.FLOAT, [3, 2, 2])
+        helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 1, 2]),
+        helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 2, 2]),
     ]
 
     graph = helper.make_graph(
         nodes,
         "NNAPI_Reshape_Flatten_Test",
         inputs,
-        [helper.make_tensor_value_info('Z', TensorProto.FLOAT, [1, 6])],
-        initializers
+        [helper.make_tensor_value_info("Z", TensorProto.FLOAT, [1, 6])],
+        initializers,
     )
 
     model = helper.make_model(graph)
@@ -42,4 +46,4 @@ def GenerateModel(model_name):
 
 
 if __name__ == "__main__":
-    GenerateModel('nnapi_reshape_flatten_test.onnx')
+    GenerateModel("nnapi_reshape_flatten_test.onnx")

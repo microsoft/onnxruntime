@@ -17,7 +17,6 @@ Abstract:
 
 #include "asmmacro.h"
 
-        .equ    .LMLAS_CONV_SYM_FLAG_INPUT_DIRECT,      1
         .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
 
 //
@@ -46,24 +45,17 @@ Routine Description:
 
 Arguments:
 
-    Input (x0) - Supplies the address of the input buffer.
-
-        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then the input buffer points
-        directly at the input tensor.
-
-        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is clear, then the input buffer is an
-        indirection buffer. Every pointer in the indirection buffer points at a
-        InputChannels length vector (either from the input tensor or a vector of
-        padding values). These are grouped in batches of length KernelSize.
+    Input (x0) - Supplies the address of the indirect buffer. Every pointer in
+        the indirection buffer points at a InputChannels length vector (either
+        from the input tensor or a vector of padding values). These are grouped
+        in batches of length KernelSize.
         These batches are then repeated OutputCount times.
 
     Filter (x1) - Supplies the address of the filter buffer.
 
     Output (x2) - Supplies the address of the output buffer.
 
-    KernelSize (x3) - Supplies the size of the kernel.
-
-        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then kernel size should be 1.
+    KernelSize (x3) - Supplies the size of the kernel. Must be > 1
 
     InputChannels (x4) - Supplies the number of input channels.
 
@@ -90,7 +82,7 @@ Return Value:
 --*/
         FUNCTION_ENTRY MlasConvSymS8KernelNeon
 
-        stp     d8,d9,[sp,#-64]!
+        stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
         ldrb    w10,[sp,#.LConvSymFrame_KernelFlags]
         stp     d10,d11,[sp,#16]
@@ -139,28 +131,18 @@ Return Value:
 .LConvSym.KernelSizeLoop:
 
         # Load next 2 A pointers
-        tst     w10,#.LMLAS_CONV_SYM_FLAG_INPUT_DIRECT
-        ldr     d4,[x1]
-        ldr     d5,[x1,8]
-        beq     .LConvSym.InputIndirection
-
-.LConvSym.InputDirect:
-        mov     x13,x0                  // x13 -> A0
-        add     x15,x0,x16              // x15 -> A1 = A0 + input channels
-        b       .LConvSym.BlockLoopPrologue
-
-.LConvSym.InputIndirection:
         cmp     x7,2                    // test if OutputCount < 2
         ldr     x13,[x0]                // x13 -> A0
-        blo     .LConvSym.SkipLoadA1
+        bhs     .LConvSym.LoadA1
+        ldr     x15,[x0],#8             // x15 -> A0
+        b       .LConvSym.BlockLoopPrologue
+.LConvSym.LoadA1:
         ldr     x15,[x0,x3,lsl#3]       // x15 -> A1
-.LConvSym.SkipLoadA1:
-
-.LConvSym.BlockLoopPrologue:
-        cmp     x7,2                    // test if OutputCount < 2
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
-        csel    x15,x13,x15,lo          // if OutputCount < 2  x15 -> A0
+.LConvSym.BlockLoopPrologue:
+        ldr     d4,[x1]
         subs    x14,x4,16               // input channel - 16
+        ldr     d5,[x1,8]
         blo     .LConvSym.8InputChannels     // less than 16 deep, no unroll
 
         ldr     d0,[x13],8

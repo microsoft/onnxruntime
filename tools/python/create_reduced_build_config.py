@@ -3,18 +3,27 @@
 # Licensed under the MIT License.
 
 import argparse
-import os
-import onnx
 import pathlib
 import sys
+import typing
+
+import onnx
+from util.file_utils import files_from_file_or_dir, path_match_suffix_ignore_case
+
+
+def _get_suffix_match_predicate(suffix: str):
+    def predicate(file_path: pathlib.Path):
+        return path_match_suffix_ignore_case(file_path, suffix)
+
+    return predicate
 
 
 def _extract_ops_from_onnx_graph(graph, operators, domain_opset_map):
-    '''Extract ops from an ONNX graph and all subgraphs'''
+    """Extract ops from an ONNX graph and all subgraphs"""
 
     for operator in graph.node:
         # empty domain is used as an alias for 'ai.onnx'
-        domain = operator.domain if operator.domain else 'ai.onnx'
+        domain = operator.domain if operator.domain else "ai.onnx"
 
         if domain not in operators or domain not in domain_opset_map:
             continue
@@ -27,7 +36,7 @@ def _extract_ops_from_onnx_graph(graph, operators, domain_opset_map):
             elif attr.type == onnx.AttributeProto.GRAPHS:
                 # Currently no ONNX operators use GRAPHS.
                 # Fail noisily if we encounter this so we can implement support
-                raise RuntimeError('Unexpected attribute proto of GRAPHS')
+                raise RuntimeError("Unexpected attribute proto of GRAPHS")
 
 
 def _process_onnx_model(model_path, required_ops):
@@ -37,7 +46,7 @@ def _process_onnx_model(model_path, required_ops):
     domain_opset_map = {}
     for opset in model.opset_import:
         # empty domain == ai.onnx
-        domain = opset.domain if opset.domain else 'ai.onnx'
+        domain = opset.domain if opset.domain else "ai.onnx"
         domain_opset_map[domain] = opset.version
 
         if domain not in required_ops:
@@ -51,71 +60,74 @@ def _process_onnx_model(model_path, required_ops):
         _extract_ops_from_onnx_graph(model.graph, required_ops, domain_opset_map)
 
 
-def _extract_ops_from_onnx_model(model_path_or_dir):
-    '''Extract ops from a single ONNX model, or all ONNX models found by recursing model_path_or_dir'''
-
-    if not os.path.exists(model_path_or_dir):
-        raise ValueError('Path to model/s does not exist: {}'.format(model_path_or_dir))
+def _extract_ops_from_onnx_model(model_files: typing.Iterable[pathlib.Path]):
+    """Extract ops from ONNX models"""
 
     required_ops = {}
 
-    if os.path.isfile(model_path_or_dir):
-        _process_onnx_model(model_path_or_dir, required_ops)
-    else:
-        for root, _, files in os.walk(model_path_or_dir):
-            for file in files:
-                if file.lower().endswith('.onnx'):
-                    model_path = os.path.join(root, file)
-                    _process_onnx_model(model_path, required_ops)
+    for model_file in model_files:
+        if not model_file.is_file():
+            raise ValueError(f"Path is not a file: '{model_file}'")
+        _process_onnx_model(model_file, required_ops)
 
     return required_ops
 
 
-def create_config_from_onnx_models(model_path_or_dir: str, output_file: str):
+def create_config_from_onnx_models(model_files: typing.Iterable[pathlib.Path], output_file: pathlib.Path):
 
-    required_ops = _extract_ops_from_onnx_model(model_path_or_dir)
+    required_ops = _extract_ops_from_onnx_model(model_files)
 
-    directory, filename = os.path.split(output_file)
-    if not filename:
-        raise RuntimeError("Invalid output path for configuation: {}".format(output_file))
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
-    with open(output_file, 'w') as out:
-        out.write("# Generated from ONNX models path of {}\n".format(model_path_or_dir))
+    with open(output_file, "w") as out:
+        out.write("# Generated from ONNX model/s:\n")
+        for model_file in sorted(model_files):
+            out.write(f"# - {model_file}\n")
 
         for domain in sorted(required_ops.keys()):
             for opset in sorted(required_ops[domain].keys()):
                 ops = required_ops[domain][opset]
                 if ops:
-                    out.write("{};{};{}\n".format(domain, opset, ','.join(sorted(ops))))
+                    out.write("{};{};{}\n".format(domain, opset, ",".join(sorted(ops))))
 
 
 def main():
     argparser = argparse.ArgumentParser(
-        'Script to create a reduced build config file from either ONNX or ORT format model/s. '
-        'See /docs/Reduced_Operator_Kernel_build.md for more information on the configuration file format.',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        "Script to create a reduced build config file from either ONNX or ORT format model/s. "
+        "See /docs/Reduced_Operator_Kernel_build.md for more information on the configuration file format.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
-    argparser.add_argument('-f', '--format', choices=['ONNX', 'ORT'], default='ONNX',
-                           help='Format of model/s to process.')
-    argparser.add_argument('-t', '--enable_type_reduction', action='store_true',
-                           help='Enable tracking of the specific types that individual operators require. '
-                                'Operator implementations MAY support limiting the type support included in the build '
-                                'to these types. Only possible with ORT format models.')
-    argparser.add_argument('model_path_or_dir', type=pathlib.Path,
-                           help='Path to a single model, or a directory that will be recursively searched '
-                                'for models to process.')
+    argparser.add_argument(
+        "-f", "--format", choices=["ONNX", "ORT"], default="ONNX", help="Format of model/s to process."
+    )
+    argparser.add_argument(
+        "-t",
+        "--enable_type_reduction",
+        action="store_true",
+        help="Enable tracking of the specific types that individual operators require. "
+        "Operator implementations MAY support limiting the type support included in the build "
+        "to these types. Only possible with ORT format models.",
+    )
+    argparser.add_argument(
+        "model_path_or_dir",
+        type=pathlib.Path,
+        help="Path to a single model, or a directory that will be recursively searched " "for models to process.",
+    )
 
-    argparser.add_argument('config_path', nargs='?', type=pathlib.Path, default=None,
-                           help='Path to write configuration file to. Default is to write to required_operators.config '
-                                'or required_operators_and_types.config in the same directory as the models.')
+    argparser.add_argument(
+        "config_path",
+        nargs="?",
+        type=pathlib.Path,
+        default=None,
+        help="Path to write configuration file to. Default is to write to required_operators.config "
+        "or required_operators_and_types.config in the same directory as the models.",
+    )
 
     args = argparser.parse_args()
 
-    if args.enable_type_reduction and args.format == 'ONNX':
-        print('Type reduction requires model format to be ORT.', file=sys.stderr)
+    if args.enable_type_reduction and args.format == "ONNX":
+        print("Type reduction requires model format to be ORT.", file=sys.stderr)
         sys.exit(-1)
 
     model_path_or_dir = args.model_path_or_dir.resolve()
@@ -125,14 +137,17 @@ def main():
         config_path = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
 
     if config_path.is_dir():
-        filename = 'required_operators_and_types.config' if args.enable_type_reduction else 'required_operators.config'
+        filename = "required_operators_and_types.config" if args.enable_type_reduction else "required_operators.config"
         config_path = config_path.joinpath(filename)
 
-    if args.format == 'ONNX':
-        create_config_from_onnx_models(model_path_or_dir, config_path)
+    if args.format == "ONNX":
+        model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".onnx"))
+        create_config_from_onnx_models(model_files, config_path)
     else:
         from util.ort_format_model import create_config_from_models as create_config_from_ort_models
-        create_config_from_ort_models(model_path_or_dir, config_path, args.enable_type_reduction)
+
+        model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".ort"))
+        create_config_from_ort_models(model_files, config_path, args.enable_type_reduction)
 
         # Debug code to validate that the config parsing matches
         # from util import parse_config

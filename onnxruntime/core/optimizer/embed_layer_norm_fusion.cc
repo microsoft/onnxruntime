@@ -38,11 +38,7 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
                              kOnnxDomain);
 
   // Add attribute: "to" = 6
-  ONNX_NAMESPACE::AttributeProto to;
-  to.set_name("to");
-  to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-  node.AddAttribute("to", std::move(to));
+  node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
 
   node.SetExecutionProviderType(provider_type);
   return &cast32;
@@ -525,7 +521,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
   NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
   NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
   if (epsilon != ln_attrs.end()) {
-    embed_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+    embed_layer_norm_node.AddAttributeProto(epsilon->second);
   } else {
     embed_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
   }

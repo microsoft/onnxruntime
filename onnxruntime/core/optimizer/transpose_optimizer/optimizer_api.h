@@ -346,7 +346,7 @@ class GraphRef {
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                           size_t num_outputs, std::string_view domain = "") = 0;
+                                           size_t num_outputs, std::string_view domain = /*kOnnxDomain*/ "") = 0;
 
   /// <summary>
   /// Creates a copy of the provided node in the graph with the specified op type and domain.
@@ -428,7 +428,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 15;
+constexpr int64_t kMaxSupportedOpset = 16;
 
 enum class OptimizerMode {
   OPTIMIZE_TRANSPOSE,        // simple transpose optimization
@@ -440,6 +440,11 @@ enum class OptimizerMode {
 /// </summary>
 /// <returns>const reference to an unordered set of op_types which are layout sensitive</returns>
 const std::unordered_set<std::string_view>& GetLayoutSensitiveOps();
+
+struct OptimizeResult {
+  std::optional<std::string> error_msg;  // set if there was an error
+  bool graph_modified{false};
+};
 
 /// <summary>
 /// Performs transpose optimization on a graph. Returns true if the graph was modified.
@@ -453,15 +458,17 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps();
 /// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <param name="provider_type">Execution provider if applicable.</param>
-/// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during layout transformations.</param>
-/// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard as well as any runtime specific ops.
-/// These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM. If these ops are not provided, transpose optimizer may convert the
-/// layout for these ops </param>
-/// <returns>true if the graph was modified</returns>
-bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
-              const std::string& provider_type = "",
-              OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
-              const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
+/// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during
+/// layout transformations.</param>
+/// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard
+/// as well as any runtime specific ops. These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM.
+/// If these ops are not provided, transpose optimizer may convert the layout for these ops </param>
+/// <returns>OptimizeResult. If error_msg is set the Optimize failed. If not set, graph_modified indicates whether
+/// any changes were required during optimization.</returns>
+OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
+                        const std::string& provider_type = "",
+                        OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
+                        const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
 
 /* Layout Transformation Tools
  * These methods help change the channel ordering of layout sensitive ops (like Conv). ONNX currently only supports

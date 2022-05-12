@@ -364,8 +364,14 @@ file(GLOB onnxruntime_python_quantization_cal_table_flatbuffers_src CONFIGURE_DE
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
 )
-file(GLOB onnxruntime_python_transformers_longformer_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/tools/transformers/longformer/*.py"
+file(GLOB onnxruntime_python_transformers_models_gpt2_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/gpt2/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_longformer_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/longformer/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_t5_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/t5/*.py"
 )
 file(GLOB onnxruntime_python_datasets_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.py"
@@ -380,6 +386,7 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
 set(onnxruntime_mobile_util_srcs
     ${REPO_ROOT}/tools/python/util/check_onnx_model_mobile_usability.py
     ${REPO_ROOT}/tools/python/util/convert_onnx_models_to_ort.py
+    ${REPO_ROOT}/tools/python/util/file_utils.py
     ${REPO_ROOT}/tools/python/util/logger.py
     ${REPO_ROOT}/tools/python/util/make_dynamic_shape_fixed.py
     ${REPO_ROOT}/tools/python/util/onnx_model_utils.py
@@ -397,6 +404,9 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
     ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_ops.md
 )
+file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
+)
 
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -408,10 +418,14 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/gpt2
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
@@ -460,7 +474,17 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_mobile_util_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
-      COMMAND ${CMAKE_COMMAND} -E copy
+  # append the /tools/python/utils imports to the __init__.py that came from /onnxruntime/tools.
+  # we're aggregating scripts from two different locations, and only include selected functionality from
+  # /tools/python/util. due to that we take the full __init__.py from /onnxruntime/tools and append
+  # the required content from /tools/python/util/__init__append.py.
+  COMMAND ${CMAKE_COMMAND} -E cat
+      ${REPO_ROOT}/tools/python/util/__init__append.py >>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/__init__.py
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_qdq_helper_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_mobile_helpers_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -482,8 +506,14 @@ add_custom_command(
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_transformers_longformer_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer/
+      ${onnxruntime_python_transformers_models_gpt2_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/gpt2/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_longformer_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_t5_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${REPO_ROOT}/VERSION_NUMBER
       $<TARGET_FILE_DIR:${build_output_target}>

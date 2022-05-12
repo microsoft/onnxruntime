@@ -9,6 +9,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -258,7 +259,7 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
 }
 
 template <typename T>
-static inline void ComputeSoftmax(const gsl::span<T>& values) {
+static inline void ComputeSoftmax(gsl::span<T>& values) {
   // TODO: Replace this with usage of code in Softmax operator
 
   // compute exp with negative number to be numerically stable
@@ -276,15 +277,9 @@ static inline void ComputeSoftmax(const gsl::span<T>& values) {
     *it = static_cast<float>(*it) / this_sum;
 }
 
-template <typename T>
-static inline void ComputeSoftmax(std::vector<T>& values) {
-  auto span = gsl::make_span(values);
-  ComputeSoftmax(span);
-}
-
 //this function skips zero values (since exp(0) is non zero)
 template <typename T>
-static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
+static inline void ComputeSoftmaxZero(gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (auto it = values.cbegin(); it != values.cend(); ++it) {
@@ -298,21 +293,15 @@ static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
       *it = std::exp(static_cast<float>(*it) - v_max);
       this_sum += static_cast<float>(*it);
     } else {
-      *it = static_cast<float>(*it) * exp_neg_v_max;
+      *it = *it * exp_neg_v_max;
     }
   }
   for (auto it = values.begin(); it != values.end(); ++it)
     *it = *it / this_sum;
 }
 
-template <typename T>
-static inline void ComputeSoftmaxZero(std::vector<T>& values) {
-  auto span = gsl::make_span(values);
-  ComputeSoftmaxZero(span);
-}
-
 template <typename T, typename IT>
-static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
+static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
                          T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
@@ -324,16 +313,20 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
         for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
           *Z = static_cast<T>(ComputeLogistic(static_cast<float>(*it)));
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX:
-        ComputeSoftmax(scores);
+      case POST_EVAL_TRANSFORM::SOFTMAX: {
+        auto span = gsl::make_span(scores);
+        ComputeSoftmax(span);
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
           *Z = static_cast<T>(*it);
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
-        ComputeSoftmaxZero(scores);
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
+        auto span = gsl::make_span(scores);
+        ComputeSoftmaxZero(span);
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
           *Z = static_cast<T>(*it);
         break;
+      }
       default:
       case POST_EVAL_TRANSFORM::NONE:
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
@@ -342,21 +335,21 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = static_cast<T>(ComputeProbit(static_cast<float>(scores[0])));
-      *Z = scores[0];
+      scores[0] = ComputeProbit(static_cast<float>(scores[0]));
+      *Z = static_cast<T>(scores[0]);
     } else {
       switch (add_second_class) {
         case 0:  //0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 1:  //1 = all positive weights, winning class is negative
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 2:
         case 3:  //2 = mixed weights, winning class is positive
@@ -368,11 +361,11 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
             scores.push_back(scores[0]);
             scores[0] = -scores[0];
           }
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         default:
-          *Z = scores[0];
+          *Z = static_cast<T>(scores[0]);
           break;
       }
     }
@@ -380,7 +373,7 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
 }
 
 template <typename T>
-static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+static void write_scores(InlinedVector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
                          int add_second_class) {
   T* out_p = Z->template MutableData<T>() + write_index;
   size_t len;

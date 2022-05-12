@@ -9,7 +9,7 @@
   },
   "author": "fs-eire",
   "module": "./lib/index.js",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "onnx-proto": "^4.0.4",
@@ -49,7 +49,7 @@
     "base64-js": "^1.5.1",
     "chai": "^4.3.4",
     "dir-compare": "^3.3.0",
-    "electron": "^12.2.3",
+    "electron": "^13.6.6",
     "fs-extra": "^9.1.0",
     "globby": "^11.0.3",
     "jszip": "^3.7.1",
