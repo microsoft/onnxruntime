@@ -628,21 +628,6 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() override { return DataTypeImpl::GetSparseTensorType<MLFloat16>(); }
 #endif
 
-  MLDataType DataTypeImpl__GetSequenceTensorType_float() override { return DataTypeImpl::GetSequenceTensorType<float>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_double() override { return DataTypeImpl::GetSequenceTensorType<double>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_int8() override { return DataTypeImpl::GetSequenceTensorType<int8_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_uint8() override { return DataTypeImpl::GetSequenceTensorType<uint8_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_int16() override { return DataTypeImpl::GetSequenceTensorType<int16_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_uint16() override { return DataTypeImpl::GetSequenceTensorType<uint16_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_int32() override { return DataTypeImpl::GetSequenceTensorType<int32_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_uint32() override { return DataTypeImpl::GetSequenceTensorType<uint32_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_int64() override { return DataTypeImpl::GetSequenceTensorType<int64_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_uint64() override { return DataTypeImpl::GetSequenceTensorType<uint64_t>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_bool() override { return DataTypeImpl::GetSequenceTensorType<bool>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_string() override { return DataTypeImpl::GetSequenceTensorType<std::string>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_BFloat16() override { return DataTypeImpl::GetSequenceTensorType<BFloat16>(); }
-  MLDataType DataTypeImpl__GetSequenceTensorType_MLFloat16() override { return DataTypeImpl::GetSequenceTensorType<MLFloat16>(); }
-
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
   bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) override { return p->IsTensorType(); }
   bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) override { return p->IsTensorSequenceType(); }

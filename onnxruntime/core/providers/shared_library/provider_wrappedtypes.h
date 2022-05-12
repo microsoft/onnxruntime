@@ -520,8 +520,6 @@ class DataTypeImpl final {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
-  template <typename elemT>
-  static MLDataType GetSequenceTensorType();
 #if !defined(DISABLE_SPARSE_TENSORS)
   template <typename elemT>
   static MLDataType GetSparseTensorType();

@@ -550,21 +550,6 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() = 0;
 #endif
 
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_float() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_double() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int8() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint8() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int16() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint16() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int32() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint32() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int64() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint64() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_bool() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_string() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_BFloat16() = 0;
-  virtual MLDataType DataTypeImpl__GetSequenceTensorType_MLFloat16() = 0;
-
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
   virtual bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) = 0;
   virtual bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) = 0;
