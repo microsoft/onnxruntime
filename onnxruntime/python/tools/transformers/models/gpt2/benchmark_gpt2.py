@@ -93,6 +93,11 @@ def parse_arguments(argv=None):
     parser.set_defaults(use_gpu=False)
 
     parser.add_argument(
+        "--use_min_memory", required=False, action="store_true", help="use minimum memory for inference"
+    )
+    parser.set_defaults(use_min_memory=False)
+
+    parser.add_argument(
         "-p",
         "--precision",
         type=Precision,
@@ -312,13 +317,21 @@ def main(args):
             has_attention_mask=use_padding,
         )
 
+    # Update Arena strategy to use mininum GPU/CPU memory.
+    # Note that this need proper warmup (like use longest sequence to warmup), otherwise latency might be impacted.
+    min_memory_options = {
+        "CUDAExecutionProvider": {"arena_extend_strategy": "kSameAsRequested"},
+        "CPUExecutionProvider": {"arena_extend_strategy": "kSameAsRequested"},
+    }
     session = create_onnxruntime_session(
         onnx_model_path,
-        args.use_gpu,
-        enable_all_optimization=False,
+        use_gpu=args.use_gpu,
+        enable_all_optimization=True,
         num_threads=args.thread_num,
         verbose=args.verbose,
+        provider_options=min_memory_options if args.use_min_memory else {},
     )
+
     if session is None:
         return
 
