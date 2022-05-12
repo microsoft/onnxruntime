@@ -114,9 +114,9 @@ struct Node__EdgeIterator {
 // a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
-//Please do not new or delete this type(and subtypes).
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
+// Please do not new or delete this type(and subtypes).
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -545,6 +545,21 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() = 0;
 #endif
+
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_float() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_double() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int8() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint8() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int16() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint16() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int32() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint32() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_int64() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_uint64() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_bool() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_string() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_BFloat16() = 0;
+  virtual MLDataType DataTypeImpl__GetSequenceTensorType_MLFloat16() = 0;
 
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
   virtual bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) = 0;

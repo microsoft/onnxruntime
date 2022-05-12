@@ -513,6 +513,8 @@ class DataTypeImpl final {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
+  template <typename elemT>
+  static MLDataType GetSequenceTensorType();
 #if !defined(DISABLE_SPARSE_TENSORS)
   template <typename elemT>
   static MLDataType GetSparseTensorType();
@@ -1017,7 +1019,7 @@ struct SparseTensor final {
 };
 #endif
 
-//TensorSeq
+// TensorSeq
 struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }

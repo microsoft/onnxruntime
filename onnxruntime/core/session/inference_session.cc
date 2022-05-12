@@ -9,9 +9,9 @@
 #include <unordered_set>
 #include <list>
 #include <string>
-#include <thread>
+#include <thread>  ////
 
-#include "core/common/denormal.h"
+#include "core/common/denormal.h"  ///
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
@@ -1773,6 +1773,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
+  }
+
+  static int32_t i = 0;
+  if (i == 0) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, "test_op.onnx"));
+    i += 1;
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

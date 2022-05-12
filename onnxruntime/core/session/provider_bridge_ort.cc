@@ -339,7 +339,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::TensorShapeProto* TypeProto_Tensor__mutable_shape(ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->mutable_shape(); }
   int32_t TypeProto_Tensor__elem_type(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->elem_type(); }
 
-  //TypeProto_SparseTensor (wrapped)
+  // TypeProto_SparseTensor (wrapped)
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool TypeProto_SparseTensor__has_shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override { return p->has_shape(); }
   const ONNX_NAMESPACE::TensorShapeProto& TypeProto_SparseTensor__shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override {
@@ -626,6 +626,21 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetSparseTensorType_BFloat16() override { return DataTypeImpl::GetSparseTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetSparseTensorType_MLFloat16() override { return DataTypeImpl::GetSparseTensorType<MLFloat16>(); }
 #endif
+
+  MLDataType DataTypeImpl__GetSequenceTensorType_float() override { return DataTypeImpl::GetSequenceTensorType<float>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_double() override { return DataTypeImpl::GetSequenceTensorType<double>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_int8() override { return DataTypeImpl::GetSequenceTensorType<int8_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_uint8() override { return DataTypeImpl::GetSequenceTensorType<uint8_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_int16() override { return DataTypeImpl::GetSequenceTensorType<int16_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_uint16() override { return DataTypeImpl::GetSequenceTensorType<uint16_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_int32() override { return DataTypeImpl::GetSequenceTensorType<int32_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_uint32() override { return DataTypeImpl::GetSequenceTensorType<uint32_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_int64() override { return DataTypeImpl::GetSequenceTensorType<int64_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_uint64() override { return DataTypeImpl::GetSequenceTensorType<uint64_t>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_bool() override { return DataTypeImpl::GetSequenceTensorType<bool>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_string() override { return DataTypeImpl::GetSequenceTensorType<std::string>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_BFloat16() override { return DataTypeImpl::GetSequenceTensorType<BFloat16>(); }
+  MLDataType DataTypeImpl__GetSequenceTensorType_MLFloat16() override { return DataTypeImpl::GetSequenceTensorType<MLFloat16>(); }
 
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
   bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) override { return p->IsTensorType(); }

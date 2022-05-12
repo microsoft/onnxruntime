@@ -153,14 +153,13 @@ bool SCELossInternalFunBuilder(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
     FunctionProto& functionProto) {
-
   bool hasWeight = ctx.hasInput(2);
   bool hasIgnoreIndex = ctx.hasInput(3);
 
   FunctionBuilder builder(functionProto);
 
-  builder //
-      .Const("Shape3D", std::vector<int64_t>({0, 0, -1})) //
+  builder
+      .Const("Shape3D", std::vector<int64_t>({0, 0, -1}))
       .Add(R"(
         X_NCD = Reshape (scores, Shape3D)
         X_NDC = Transpose <perm = [0, 2, 1]> (X_NCD)
@@ -179,11 +178,10 @@ bool SCELossInternalFunBuilder(
       builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
     else
       builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights)");
+  else if (hasIgnoreIndex)
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
   else
-    if (hasIgnoreIndex)
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
-    else
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
 
   schema.BuildFunction(functionProto);
   return true;
@@ -363,7 +361,7 @@ bool BuildNllLossInternalFunctionHelper(
   std::vector<FunctionBodyHelper::AttributeProtoWrapper> axis_attr = {};
   if (opset_version <= 12)
     axis_attr.push_back(MakeAttribute("axes", std::vector<int64_t>({1})));
-  auto make_input = [opset_version](const char* arg) { 
+  auto make_input = [opset_version](const char* arg) {
     return (opset_version <= 12) ? std::vector<std::string>{arg} : std::vector<std::string>{arg, "const_one_64"};
   };
   body.push_back(
@@ -380,10 +378,10 @@ bool BuildNllLossInternalFunctionHelper(
 
   if (opset_version > 12)
     body.push_back(
-      {{"const_one_64"},
-       "Constant",
-       {},
-       {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
+        {{"const_one_64"},
+         "Constant",
+         {},
+         {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
 
   body.push_back(
       {{"expanded_target"},
@@ -1265,6 +1263,72 @@ void RegisterTrainingOpSchemas() {
           {"tensor(bool)"},
           "Constrain types to boolean tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Adam)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
+      .Input(1, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Input(2, "momentums_1", "Sequence of exponentially averaged historical gradients.", "S_MOMENT")
+      .Input(3, "momentums_2", "Sequence of exponentially averaged historical squared gradients.", "S_MOMENT")
+      .Input(4, "lr", "The initial learning rate.", "T1")
+      .Input(5, "step", "The update count of \"X\". It should be a scalar.", "T2")
+      .Output(0, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT")
+      .Output(1, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT")
+      .Output(2, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT")
+      .Output(3, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Attr(
+          "alpha",
+          "Coefficient of previously accumulated gradient in running average.", AttributeProto::FLOAT, 0.9f)
+      .Attr(
+          "beta",
+          "Coefficient of previously accumulated squared-gradient in running average.", AttributeProto::FLOAT,
+          0.999f)
+      .Attr(
+          "lambda",
+          "Regularization coefficient of 0.5 * lambda * ||X||_2^2. Default to 0, "
+          "which means no regularization.",
+          AttributeProto::FLOAT,
+          0.0f)
+      .Attr(
+          "epsilon",
+          "Small scalar to avoid dividing by zero.",
+          AttributeProto::FLOAT,
+          1e-8f)
+      .Attr(
+          "weight_decay",
+          "weight decay coefficient (default 0).",
+          AttributeProto::FLOAT,
+          0.0f)
+      .Attr(
+          "adam_mode",
+          "Modes for applying bias correction and weight decay (default 0) "
+          "0: bias correction is applied on m and v individually,"
+          "   weight decay is applied before weight is updated. (Torch AdamW equivalence)"
+          "1: bias correction is applied on learning rate, "
+          "   weight decay is applied after weight is updated. (Huggingface AdamW equivalence)",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .TypeConstraint(
+          "S_WEIGHT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain weights' types.")
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain gradients' types.")
+      .TypeConstraint(
+          "S_MOMENT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain momentums' types.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain learning rate to float")
+      .TypeConstraint(
+          "T2",
+          {"int64"},
+          "Constrain step count to 64-bit integer");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)
@@ -1666,9 +1730,9 @@ Example 4:
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
-        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-          return SCELossGradFunBuilder (true, ctx, schema, functionProto);
-        })
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(true, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
@@ -3631,7 +3695,6 @@ Return true if all elements are true and false otherwise.
       .SetContextDependentFunctionBodyBuilder(SCELossInternalFunBuilder)
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
 
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternalGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3657,9 +3720,9 @@ Return true if all elements are true and false otherwise.
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
-        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-          return SCELossGradFunBuilder  (false, ctx, schema, functionProto);
-        })
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(false, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternalGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal)
@@ -3688,7 +3751,7 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
 
-    ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
