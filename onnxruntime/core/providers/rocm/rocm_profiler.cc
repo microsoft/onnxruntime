@@ -232,7 +232,6 @@ void RocmProfiler::addEventRecord(const roctracerRow &item, int64_t pstart, cons
   else {
     event_map[extId].push_back(std::move(event));
   }
-  fprintf(stderr, "EventRecord: %s %lld (duration %lld)  ext %ld\n", event.name.c_str(), event.ts, event.dur, extId);
 }
 
 }  // namespace profiling
