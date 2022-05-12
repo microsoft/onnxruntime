@@ -310,7 +310,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
       alloc_plan_[input_idx_global].alloc_kind = AllocKind::kAllocate;
       alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*input_arg);
-      alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_idx_global, *node);
+      alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_index_local, *node);
     }
 
     const auto& output_defs = node->OutputDefs();
