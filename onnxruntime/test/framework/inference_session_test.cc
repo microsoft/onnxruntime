@@ -665,7 +665,8 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING))
+ || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
@@ -723,7 +724,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
     }
   }
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
   ASSERT_TRUE(has_api_info);
 #endif
 }
