@@ -196,6 +196,8 @@ class SessionState {
 
   ParallelExecutionPlan* GetParalllelExecutionPlan();
 
+  const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const;
+
   /**
   Get the logger for this session.
   Falls back to returning Logging::LoggingManager::DefaultLogger if SetLogger has not been called.
