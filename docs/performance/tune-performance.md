@@ -16,6 +16,8 @@ Along with this flexibility comes decisions for tuning and usage. For each model
 
 This document covers basic tools and troubleshooting checklists that can be leveraged to optimize your ONNX Runtime (ORT) model and hardware.
 
+Refer to a simple demo of [deploying and optimizing a distilled BERT model](https://www.youtube.com/embed/v=W_lUGPMW_Eg) to inference on device in the browser.
+
 
 {: .no_toc }
 
