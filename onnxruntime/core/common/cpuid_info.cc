@@ -165,7 +165,7 @@ void CPUIDInfo::ArmWindowsInit() {
   constexpr int MAX_CORES = 64;
   constexpr int MAX_VALUE_NAME = 4096;
 
-  TCHAR midrKey[MAX_VALUE_NAME] = "";  // buffer for processor registry name
+  CHAR midrKey[MAX_VALUE_NAME] = "";  // buffer for processor registry name
   uint32_t lastUarch = cpuinfo_uarch_unknown;
   for (int i = 0; i < MAX_CORES - 1; i++) {
     snprintf(midrKey, MAX_VALUE_NAME, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\%d", i);
@@ -185,7 +185,7 @@ void CPUIDInfo::ArmWindowsInit() {
      *
      * For the CP value of MIDR, op0 = 3 and the others are all = 0, so we come up with 0x4000,
      */
-    auto retCode = ::RegGetValue(HKEY_LOCAL_MACHINE, midrKey, "CP 4000", RRF_RT_REG_QWORD, nullptr, &midrVal, &midrSize);
+    auto retCode = ::RegGetValueA(HKEY_LOCAL_MACHINE, midrKey, "CP 4000", RRF_RT_REG_QWORD, nullptr, &midrVal, &midrSize);
     if (retCode != ERROR_SUCCESS) {
       break;
     }

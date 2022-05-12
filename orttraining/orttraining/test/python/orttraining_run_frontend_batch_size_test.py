@@ -11,7 +11,9 @@ Config = collections.namedtuple(
         "max_predictions_per_seq",
         "gelu_recompute",
         "attn_dropout_recompute",
-        "transformer_layer_recompute"])
+        "transformer_layer_recompute",
+    ],
+)
 
 configs = [
     Config(True, 128, 46, 20, False, False, False),
@@ -26,20 +28,28 @@ configs = [
     Config(True, 512, 15, 80, False, False, True),
 ]
 
+
 def run_with_config(config):
-    print("##### testing name - {}-{} #####".format("fp16" if config.enable_mixed_precision else "fp32",
-                                                        config.sequence_length))
+    print(
+        "##### testing name - {}-{} #####".format(
+            "fp16" if config.enable_mixed_precision else "fp32", config.sequence_length
+        )
+    )
     print("gelu_recompute: ", config.gelu_recompute)
     print("attn_dropout_recompute: ", config.attn_dropout_recompute)
     print("transformer_layer_recompute: ", config.transformer_layer_recompute)
 
     cmds = [
         sys.executable,
-        'orttraining_run_bert_pretrain.py',
+        "orttraining_run_bert_pretrain.py",
         "ORTBertPretrainTest.test_pretrain_throughput",
-        "--sequence_length", str(config.sequence_length),
-        "--max_batch_size", str(config.max_batch_size),
-        "--max_predictions_per_seq", str(config.max_predictions_per_seq)]
+        "--sequence_length",
+        str(config.sequence_length),
+        "--max_batch_size",
+        str(config.max_batch_size),
+        "--max_predictions_per_seq",
+        str(config.max_predictions_per_seq),
+    ]
     if config.enable_mixed_precision:
         cmds.append("--enable_mixed_precision")
     if config.gelu_recompute:
@@ -52,7 +62,6 @@ def run_with_config(config):
     # access to azure storage shared disk is much slower so we need a longer timeout.
     subprocess.run(cmds, timeout=1200).check_returncode()
 
+
 for config in configs:
     run_with_config(config)
-
-

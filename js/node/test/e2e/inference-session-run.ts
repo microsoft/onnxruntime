@@ -4,8 +4,7 @@
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
-import {SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT} from '../test-utils';
-import {assertTensorEqual} from '../test-utils';
+import {assertTensorEqual, SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT} from '../test-utils';
 
 describe('E2E Tests - InferenceSession.run()', async () => {
   let session: InferenceSession;
