@@ -30,7 +30,7 @@ fi
 # metadata
 FAIL_MODEL_FILE=".fail_model_map"
 LATENCY_FILE=".latency_map"
-METRICS_FILE=".metrics_map"
+OP_METRICS_FILE=".op_metrics_map"
 SESSION_FILE=".session_map"
 
 # files to download info
