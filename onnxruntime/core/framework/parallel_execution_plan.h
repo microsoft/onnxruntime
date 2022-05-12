@@ -9,6 +9,7 @@
 namespace onnxruntime {
 
 class SessionState;
+struct AllocPlanPerValue;
 struct ParallelExecutionPlanImpl;
 
 struct ParallelExecutionPlan : public IExecutor {
@@ -21,7 +22,7 @@ struct ParallelExecutionPlan : public IExecutor {
                          const logging::Logger& logger) override;
 
   Stream* GetComputeStreamForNode(NodeIndex index) const;
-
+  const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const;
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;
   //ParallelExecutionPlanImpl* impl_;
 };

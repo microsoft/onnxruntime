@@ -187,6 +187,26 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p
 
 ParallelExecutionPlan* SessionState::GetParalllelExecutionPlan() { return p_para_exec_plan_.get(); }
 
+void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_plans) {
+  std::cout << type << std::endl;
+  int i = 0;
+  for (const auto& alloc_plan : alloc_plans) {
+    std::cout << i << ": " << alloc_plan.alloc_kind << ", " << (long long)alloc_plan.value_type << ", " << alloc_plan.location.name << std::endl;
+    i++;
+  }
+  std::cout << std::endl;
+}
+
+const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const {
+  if (p_para_exec_plan_) {
+    // Print("seq plan", p_seq_exec_plan_->allocation_plan);
+    // Print("para plan", p_para_exec_plan_->GetAllocPlanPerValue());
+    return p_para_exec_plan_->GetAllocPlanPerValue();
+  } else {
+    return p_seq_exec_plan_->allocation_plan;
+  }
+}
+
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
                                           bool constant, bool sparse) {
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});

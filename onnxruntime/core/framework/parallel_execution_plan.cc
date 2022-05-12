@@ -5,6 +5,8 @@
 #include "core/framework/parallel_execution_plan.h"
 #include "core/framework/session_state.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/utils.h"
+#include "core/framework/mldata_type_utils.h"
 #include "core/graph/constants.h"
 #include <vector>
 
@@ -121,12 +123,17 @@ struct ParallelExecutionPlanImpl {
     return it == node_to_stream_map_.end() ? nullptr : it->second;
   }
 
+  const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const {
+    return alloc_plan_;
+  }
+
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
   const SessionState& session_state_;
   int num_logic_streams_{};
   // the stream where the notificaiton got created.
   std::vector<Stream*> notification_owners_;
   std::unordered_map<NodeIndex, Stream*> node_to_stream_map_;
+  std::vector<AllocPlanPerValue> alloc_plan_;
 };
 
 std::once_flag populate_command_handle_flag;
@@ -262,33 +269,118 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       }
     }
   }
+  //6. create per value alloc plan
+  // first, set all value AllocKind::kAllocate by default
+  const auto& value_map = session_state_.GetOrtValueNameIdxMap();
+  const auto& execution_providers = session_state_.GetExecutionProviders();
+  const auto& kernel_create_info_map = session_state_.GetKernelCreateInfoMap();
 
-  std::function<std::string(const std::string&)> shape_output = [&](const std::string& s) {
-    if (s.size() < 10) {
-      return "node_" + s + "_computation";
+  std::function<OrtMemoryInfo(size_t, const Node&)> GetLocationForNodeInput = [&](size_t input_index, const Node& node) {
+    auto* p_provider = execution_providers.Get(node);
+    ORT_ENFORCE(p_provider);
+    auto entry = kernel_create_info_map.find(node.Index());
+    const KernelCreateInfo& kernel_create_info = *entry->second;
+    if (utils::IsInputOnCpu(node, &kernel_create_info, input_index)) {
+      return execution_providers.GetDefaultCpuMemoryInfo();
     } else {
-      return s;
+      return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
     }
   };
 
-  std::cout << logic_streams_.size() << " logic stream created" << std::endl;
-  for (int i = 0; i < logic_streams_.size(); ++i) {
-    std::cout << " -------- logic stream " << i;
+  std::function<OrtMemoryInfo(size_t, const Node&)> GetLocationForNodeOutput = [&](size_t output_index, const Node& node) {
+    auto* p_provider = execution_providers.Get(node);
+    ORT_ENFORCE(p_provider);
+    auto entry = kernel_create_info_map.find(node.Index());
+    const KernelCreateInfo& kernel_create_info = *entry->second;
+    const auto* p_kernel_def = kernel_create_info.kernel_def.get();
+    auto allocator = p_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(output_index));
+    ORT_ENFORCE(allocator);
+    return allocator->Info();
+  };
+
+  int num_ml_values = value_map.MaxIdx() + 1;
+
+  alloc_plan_.resize(num_ml_values);
+  for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+    auto* node = graph_viewer.GetNode(node_index);
+    const auto& input_node_args = node->InputDefs();
+    for (size_t input_index_local = 0; input_index_local < input_node_args.size(); ++input_index_local) {
+      auto input_arg = input_node_args[input_index_local];
+      OrtValueIndex input_idx_global;
+      ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
+      alloc_plan_[input_idx_global].alloc_kind = AllocKind::kAllocate;
+      alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*input_arg);
+      alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_idx_global, *node);
+    }
+
+    const auto& output_defs = node->OutputDefs();
+    for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
+      const auto& node_output = output_defs[output_idx_local];
+      if (!node_output->Exists()) continue;
+      OrtValueIndex output_idx_global;
+      ORT_THROW_IF_ERROR(value_map.GetIdx(node_output->Name(), output_idx_global));
+      alloc_plan_[output_idx_global].alloc_kind = AllocKind::kAllocate;
+      alloc_plan_[output_idx_global].value_type = utils::GetMLDataType(*node_output);
+      alloc_plan_[output_idx_global].location = GetLocationForNodeOutput(output_idx_local, *node);
+    }
   }
-  std::cout << std::endl;
-  for (int i = 0;; ++i) {
-    bool has_out = false;
-    for (int j = 0; j < streams_stdout.size(); ++j) {
-      if (i < streams_stdout[j].size()) {
-        has_out = true;
-        std::cout << "      " << shape_output(streams_stdout[j][i]);
-      } else {
-        std::cout << "               ";
+  // next, set all graph inputs as AllocKind::kPreExisting
+  for (auto graph_input : graph_viewer.GetInputs()) {
+    OrtValueIndex input_idx_global;
+    ORT_THROW_IF_ERROR(value_map.GetIdx(graph_input->Name(), input_idx_global));
+    alloc_plan_[input_idx_global].alloc_kind = AllocKind::kPreExisting;
+    alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*graph_input);
+  }
+  // moving on, set all graph outputs as AllocKind::kAllocateOutput
+  for (auto graph_outout: graph_viewer.GetOutputs()) {
+    OrtValueIndex output_idx_global;
+    ORT_THROW_IF_ERROR(value_map.GetIdx(graph_outout->Name(), output_idx_global));
+    alloc_plan_[output_idx_global].alloc_kind = AllocKind::kAllocateOutput;
+    alloc_plan_[output_idx_global].value_type = utils::GetMLDataType(*graph_outout);
+  }
+  // finally, set all weights
+  const auto& weights = graph_viewer.GetAllInitializedTensors();
+
+  for (const auto& node : graph_viewer.Nodes()) {
+    const auto& input_node_args = node.InputDefs();
+    for (size_t input_index = 0; input_index < input_node_args.size(); ++input_index) {
+      auto input_arg = input_node_args[input_index];
+      if (input_arg->Exists() && weights.count(input_arg->Name())) {
+        OrtValueIndex input_idx_global;
+        ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
+        alloc_plan_[input_idx_global].alloc_kind = AllocKind::kAllocateStatically;
+        alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*input_arg);
+        alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_index, node);
       }
     }
-    std::cout << std::endl;
-    if (!has_out) break;
   }
+
+  //std::function<std::string(const std::string&)> shape_output = [&](const std::string& s) {
+  //  if (s.size() < 10) {
+  //    return "node_" + s + "_computation";
+  //  } else {
+  //    return s;
+  //  }
+  //};
+
+  //std::cout << logic_streams_.size() << " logic stream created" << std::endl;
+  //for (int i = 0; i < logic_streams_.size(); ++i) {
+  //  std::cout << " -------- logic stream " << i;
+  //}
+  //std::cout << std::endl;
+  //for (int i = 0;; ++i) {
+  //  bool has_out = false;
+  //  for (int j = 0; j < streams_stdout.size(); ++j) {
+  //    if (i < streams_stdout[j].size()) {
+  //      has_out = true;
+  //      std::cout << "      " << shape_output(streams_stdout[j][i]);
+  //    } else {
+  //      std::cout << "               ";
+  //    }
+  //  }
+  //  std::cout << std::endl;
+  //  if (!has_out) break;
+  //}
 }
 
 ParallelExecutionPlanImpl::~ParallelExecutionPlanImpl() {
@@ -342,6 +434,11 @@ common::Status ParallelExecutionPlan::Execute(const SessionState& session_state,
                                               const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                               const logging::Logger& logger) {
   return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);
+}
+
+
+const std::vector<AllocPlanPerValue>& ParallelExecutionPlan::GetAllocPlanPerValue() const {
+  return impl_->GetAllocPlanPerValue();
 }
 
 
