@@ -2,6 +2,7 @@
 title: Execution Providers
 has_children: true
 nav_order: 10
+redirect_from: /docs/reference/execution-provider
 ---
 
 # ONNX Runtime Execution Providers
