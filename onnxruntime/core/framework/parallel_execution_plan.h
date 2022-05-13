@@ -20,7 +20,7 @@ struct ParallelExecutionPlan : public IExecutor {
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
-
+  const std::vector<int>& ParallelExecutionPlan::GetRefCounts() const;
   Stream* GetComputeStreamForNode(NodeIndex index) const;
   const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const;
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;
