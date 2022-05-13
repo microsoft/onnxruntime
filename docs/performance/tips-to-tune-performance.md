@@ -7,7 +7,6 @@ redirect_from: /docs/how-to/tune-performance
 ---
 <div class="container">
 
-
 <p id="tips"></p>
 
 # Tips for Tuning Performance
@@ -37,7 +36,7 @@ OnnxRuntime supports overriding memory allocations using mimalloc allocator, whi
 - Depending on your model and usage mimalloc can deliver single- or double-digit improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios.
 - mimalloc is a submodule in the OnnxRuntime source tree. On Windows, one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to OnnxRuntime. This would redirect OnnxRuntime allocators and all new/delete calls to mimalloc. Currently, there are no special provisions to employ mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
  
-<p><a href="#tips">Performance Tuning Tips</a></p>
+<p><a href="#">Back to top</a></p>
 
 <p id="thread"></p>
 
@@ -51,6 +50,8 @@ ONNX Runtime allows different [threading implementation](https://github.com/micr
     - is used only when parallel execution is enabled
     - is not affected by OpenMP settings
     - should always be set using the ORT APIs
+
+<p><a href="#thread">Thread Management</a> > <a href="#">Back to top</a></p>
 
 ### 1. Thread Management: Custom threading callbacks
 
@@ -109,6 +110,9 @@ For ORT global thread pool in C++, here is a code sample:
 
 Note that the CreateThreadCustomized and JoinThreadCustomized settings will be applied to both the ORT IntraOp and the InterOp thread pools uniformly.
 
+
+<p><a href="#thread">Thread Management</a> > <a href="#">Back to top</a></p>
+
 ### 2. Thread Management: Default CPU Execution Provider (MLAS)
 
 Microsoft Linear Algebra Subprogram (MLAS), the default execution provider, uses different knobs to control the thread number.
@@ -133,6 +137,8 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 * sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](graph-optimizations.md).
 
+<p><a href="#thread">Thread Management</a> > <a href="#">Back to top</a></p>
+
 ### 3. Thread Management: MKL_DNN/nGraph Execution Provider
 
 Math Kernel Library for Deep Neural Networks (MKL_DNN) and nGraph (a C++ library for DNN) depend on OpenMp for parallelization. For those execution providers, we need to use the OpenMP environment variable to tune the performance. The most widely used environment variables are:
@@ -146,7 +152,7 @@ Math Kernel Library for Deep Neural Networks (MKL_DNN) and nGraph (a C++ library
   * ACTIVE will not yield CPU, instead it will have a while loop to check whether the next task is ready
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
-<p><a href="#tips">Performance Tuning Tips</a></p>
+<p><a href="#">Back to top</a></p>
 
 <p id="iobinding"></p>
 
@@ -192,7 +198,8 @@ You can refer to the Github issues that were resolved to optimize IO Binding.
 
 Refer to the [C# docs](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs)
 
-<p><a href="#tips">Performance Tuning Tips</a></p>
+<p><a href="#">Back to top</a></p>
+
 
 <p id="customCUDA"></p>
 
@@ -250,7 +257,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
-<p><a href="#customCUDA">CUDA EP</a> > <a href="#tips">Performance Tuning Tips</a> > <a href="#" id="back-to-top">Back to top</a></p>
+<p><a href="#customCUDA">CUDA EP</a> > <a href="#" id="back-to-top">Back to top</a></p>
 
 
 <p id="convolutioninput"></p>
@@ -302,7 +309,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
-<p><a href="#customCUDA">CUDA EP</a> > <a href="#tips">Performance Tuning Tips</a> > <a href="#" id="back-to-top">Back to top</a></p>
+<p><a href="#customCUDA">CUDA EP</a> > <a href="#" id="back-to-top">Back to top</a></p>
 
 <p id="cudagraphs"></p>
 
@@ -434,7 +441,6 @@ session.Run(Ort::RunOptions(), binding);
 
 Will be supported in future releases
 
-<p><a href="#customCUDA">CUDA EP</a> > <a href="#tips">Performance Tuning Tips</a> > <a href="#" id="back-to-top">Back to top</a></p>
-
+<p><a href="#customCUDA">CUDA EP</a> > <a href="#" id="back-to-top">Back to top</a></p>
 
 </div>

@@ -7,7 +7,7 @@ redirect_from: /docs/how-to/tune-performance
 ---
 <div class="container">
 
-# Choosing the Execution Provider for best performance
+# Choosing the Execution Provider for Best Performance
 
 Performance is dependent on the specific model you're trying to run, the session, the run options, and your specific hardware target. Here is some additional information for selecting the right Execution Provider for optimizing the ONNX Runtime performance.
 
