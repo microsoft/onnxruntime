@@ -174,5 +174,6 @@ sess.set_providers(['CPUExecutionProvider'])
 cpu_detection = sess.run(...)
 
 ```
+
 <p><a href="#" id="back-to-top">Back to top</a></p>
 
