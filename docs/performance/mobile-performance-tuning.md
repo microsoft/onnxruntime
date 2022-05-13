@@ -20,7 +20,7 @@ ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via th
 First, please review the introductory details in [using NNAPI with ONNX Runtime Mobile](../execution-providers/NNAPI-ExecutionProvider.md) and [using CoreML with ONNX Runtime](../execution-providers/CoreML-ExecutionProvider.md).
 
 **IMPORTANT NOTE:** The examples on this page refer to the NNAPI EP for brevity. The information equally applies to the CoreML EP, so any reference to 'NNAPI' below can be substituted with 'CoreML'.<br>
-Support for creating a CoreML-aware ORT format model, similar to [creating an NNAPI-aware ORT format model](#3-creating-an-nnapi-aware-ort-format-model), was added in ONNX Runtime version 1.9.
+Support for creating a CoreML-aware ORT format model, similar to [creating an NNAPI-aware ORT format model](#creating-an-nnapi-aware-ort-format-model), was added in ONNX Runtime version 1.9.
 
 ## Contents
 {: .no_toc}
@@ -78,6 +78,8 @@ The _extended_ level optimizations introduce the custom FusedConv nodes, which t
 
 ![Changes to nodes by NNAPI EP depending on the optimization level the model was created with](../../images/mnist_optimization_with_nnapi.png)
 
+<p><a href="#" id="back-to-top">Back to top</a></p>
+
 ## Initial Performance Testing
 
 The best optimization settings will differ by model. Some models may perform better with NNAPI, some models may not. As the performance will be model specific you must run performance tests to determine the best combination for your model.
@@ -90,6 +92,8 @@ It is suggested to run performance tests:
 For most scenarios it is expected that one of these two approaches will yield the best performance.
 
 If using an ORT format model with _basic_ level optimizations and NNAPI yields equivalent or better performance, it _may_ be possible to further improve performance by creating an NNAPI-aware ORT format model. The difference with this model is that the higher level optimizations are only applied to nodes that can not be executed using NNAPI. Whether any nodes fall into this category is model dependent.
+
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
 ## Creating an NNAPI-aware ORT format model
 
