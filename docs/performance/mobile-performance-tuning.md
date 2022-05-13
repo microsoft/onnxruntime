@@ -9,9 +9,9 @@ redirect_from: /docs/how-to/tune-performance
 
 <div class="container">
 
-# **IMPORTANT: THIS INFORMATION ONLY APPLIES TO ONNX RUNTIME VERSION 1.10 AND EARLIER. PLEASE USE A NEWER VERSION.**
+### **IMPORTANT: THIS INFORMATION ONLY APPLIES TO ONNX RUNTIME VERSION 1.10 AND EARLIER. PLEASE USE A NEWER VERSION.**
 
-## ONNX Runtime Mobile Performance Tuning
+# ONNX Runtime Mobile Performance Tuning
 
 Learn how different optimizations affect performance, and get suggestions for performance testing with ORT format models.
 

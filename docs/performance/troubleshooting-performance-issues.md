@@ -8,9 +8,9 @@ redirect_from: /docs/how-to/tune-performance
 <div class="container">
 
 
-## Troubleshooting Performance Issues
+# Troubleshooting Performance Issues
 
-Troubleshooting Onnx Runtime performance issues may vary depending on the model and usage scenario.
+Troubleshooting ONNX Runtime performance issues may vary depending on the model and usage scenario.
 
 ## Contents
 {: .no_toc }

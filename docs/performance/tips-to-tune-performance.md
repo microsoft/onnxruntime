@@ -10,7 +10,7 @@ redirect_from: /docs/how-to/tune-performance
 
 <p id="tips"></p>
 
-## Tips for Tuning Performance
+# Tips for Tuning Performance
 
 Here are some tips for tuning the performance of ORT in terms of <a href="#memory">reducing memory consumption</a>, <a href ="#thread">thread management</a>, <a href="#iobinding">IO Binding</a>, and <a href="#customCUDA">customizing CUDA Execution Provider</a>.
 
@@ -22,7 +22,9 @@ Please refer to [Execution Provider](../execution-providers/index.md) specific p
 * TOC placeholder
 {:toc}
 
-<h2 id="memory">Memory Consumption Reduction</h2>
+<p id="memory"></p>
+
+## Memory Consumption Reduction
 
 Here are some tips to reduce memory consumption and tune performance with ORT.
 
@@ -37,7 +39,9 @@ OnnxRuntime supports overriding memory allocations using mimalloc allocator, whi
  
 <p><a href="#tips">Performance Tuning Tips</a></p>
 
-<h2 id="thread">Thread Management</h2>
+<p id="thread"></p>
+
+## Thread Management
 
 ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP. Here are some best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to customize your ONNX Runtime environment:
 
@@ -144,7 +148,9 @@ Math Kernel Library for Deep Neural Networks (MKL_DNN) and nGraph (a C++ library
 
 <p><a href="#tips">Performance Tuning Tips</a></p>
 
-<h2 id="iobinding">IO Binding</h2>
+<p id="iobinding"></p>
+
+## IO Binding
 
 ONNX Runtime supports [Data-on-device](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device). ORT allows custom data structure to support all data formats and allows users to place the **data** backing these on a device, for example, on a CUDA supported device. In ONNX Runtime, this is called IOBinding.
 
@@ -188,7 +194,9 @@ Refer to the [C# docs](https://github.com/microsoft/onnxruntime/blob/master/csha
 
 <p><a href="#tips">Performance Tuning Tips</a></p>
 
-<h2 id="customCUDA">CUDA Execution Providers</h2>
+<p id="customCUDA"></p>
+
+## CUDA Execution Providers
 
 Tips to customize the CUDA Execution Provider are given in this article for <a href="#convolutionheavy">Convolution heavy models</a>, <a href="#convolutioninput">Convolution input padding</a>, and <a href="#cudagraphs">Using CUDA graphs</a>.
 
