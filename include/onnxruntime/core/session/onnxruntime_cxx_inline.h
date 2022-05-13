@@ -1218,7 +1218,7 @@ inline void CustomOpApi::ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr) {
   api_.ReleaseOpAttr(op_attr);
 }
 
-inline void CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
+inline void CustomOpApi::CreateOp(_In_ const OrtExecutionProvider* ep,
                                   _In_ const char* op_name,
                                   _In_ const char* domain,
                                   int version,
@@ -1228,7 +1228,7 @@ inline void CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
                                   _In_opt_ const OrtOpAttr* const* attr_values,
                                   int attr_count,
                                   _Outptr_ OrtOp** ort_op) {
-  ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, attr_values, attr_count, ort_op));
+  ThrowOnError(api_.CreateOp(ep, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, attr_values, attr_count, ort_op));
 }
 
 inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
@@ -1242,6 +1242,10 @@ inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
 
 inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
   api_.ReleaseOp(ort_op);
+}
+
+inline void CustomOpApi::GetExecutionProvider(_In_ const OrtKernelInfo* info, _Outptr_ OrtExecutionProvider** ep) {
+  api_.GetExecutionProvider(info, ep);
 }
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {

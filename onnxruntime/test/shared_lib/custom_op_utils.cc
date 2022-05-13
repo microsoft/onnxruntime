@@ -207,23 +207,22 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
   }
 }
 
-InstantCustomKernel::InstantCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
-  const char* add_type_constrait_names[1] = {"T"};
-  int add_type_constrait_values[1] = {1};
-  ort.CreateOp(info, "Add", "", 14,
-               (const char**)add_type_constrait_names,
-               (const ONNXTensorElementDataType*)add_type_constrait_values,
+StandaloneCustomKernel::StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
+  const char* add_type_constraint_names[1] = {"T"};
+  int add_type_constraint_values[1] = {1};
+  ort.GetExecutionProvider(info, &ep_);
+  ort.CreateOp(ep_, "Add", "", 14,
+               (const char**)add_type_constraint_names,
+               (const ONNXTensorElementDataType*)add_type_constraint_values,
                1, nullptr, 0, &op_add);
   ORT_ENFORCE(op_add, "op_add not initialzied");
-  InitTopK(ort, info);
+  InitTopK(ort, ep_);
   ORT_ENFORCE(op_topk, "op_add not initialzied");
-  InitGru(ort, info);
-  ORT_ENFORCE(op_gru, "op_add not initialzied");
 }
 
-void InstantCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* info) {
-  const char* type_constrait_names[2] = {"T", "I"};
-  int type_constrait_values[2] = {1, 7};
+void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtExecutionProvider* ep) {
+  const char* type_constraint_names[2] = {"T", "I"};
+  int type_constraint_values[2] = {1, 7};
 
   int axis_value = -1;
   OrtOpAttr* axis{};
@@ -242,9 +241,9 @@ void InstantCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* in
   }
 
   OrtOpAttr* top_attrs[3] = {axis, largest, sorted};
-  ort.CreateOp(info, "TopK", "", 14,
-                     (const char**)type_constrait_names,
-                     (const ONNXTensorElementDataType*)type_constrait_values,
+  ort.CreateOp(ep, "TopK", "", 14,
+                     (const char**)type_constraint_names,
+                     (const ONNXTensorElementDataType*)type_constraint_values,
                      2, top_attrs, 3, &op_topk);
 
   ort.ReleaseOpAttr(axis);
@@ -252,7 +251,7 @@ void InstantCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* in
   ort.ReleaseOpAttr(sorted);
 }
 
-void InstantCustomKernel::InvokeTopK(OrtKernelContext* context) {
+void StandaloneCustomKernel::InvokeTopK(OrtKernelContext* context) {
   auto mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeCPU);
 
   float raw_x[10] = {6., 3., 4., 8., 7., 1., 9., 0., 5., 2.};
@@ -283,9 +282,9 @@ void InstantCustomKernel::InvokeTopK(OrtKernelContext* context) {
   }
 }
 
-void InstantCustomKernel::InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* info) {
-  const char* type_constrait_names[2] = {"T", "T1"};
-  int type_constrait_values[2] = {1, 6};
+void StandaloneCustomKernel::InitGru(Ort::CustomOpApi ort, const OrtExecutionProvider* ep) {
+  const char* type_constraint_names[2] = {"T", "T1"};
+  int type_constraint_values[2] = {1, 6};
 
   const char* activition_names[4] = {"LeakyRelu", "Tanh", "Sigmoid", "ScaledTanh"};
   OrtOpAttr* activations{};
@@ -316,9 +315,9 @@ void InstantCustomKernel::InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* inf
   }
 
   OrtOpAttr* gru_attrs[6] = {activations, activation_alpha, activation_beta, direction, linear_before_reset, hidden_size};
-  ort.CreateOp(info, "GRU", "", 14,
-               (const char**)type_constrait_names,
-               (const ONNXTensorElementDataType*)type_constrait_values,
+  ort.CreateOp(ep, "GRU", "", 14,
+               (const char**)type_constraint_names,
+               (const ONNXTensorElementDataType*)type_constraint_values,
                2, gru_attrs, 6, &op_gru);
 
   ort.ReleaseOpAttr(activations);
@@ -329,7 +328,7 @@ void InstantCustomKernel::InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* inf
   ort.ReleaseOpAttr(hidden_size);
 }
 
-void InstantCustomKernel::InvokeGru(OrtKernelContext* context) {
+void StandaloneCustomKernel::InvokeGru(OrtKernelContext* context) {
   auto mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeCPU);
 
   float raw_x[2] = {1.0f, 2.0f};
@@ -406,7 +405,9 @@ void InstantCustomKernel::InvokeGru(OrtKernelContext* context) {
   }
 }
 
-void InstantCustomKernel::Compute(OrtKernelContext* context) {
+#include <iostream>
+
+void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
   const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
   OrtTensorDimensions dimensions(ort_, input_X);
@@ -415,10 +416,14 @@ void InstantCustomKernel::Compute(OrtKernelContext* context) {
   OrtValue* outputs[1] = {output};
   ort_.InvokeOp(context, op_add, inputs, 2, outputs, 1);
   InvokeTopK(context);
+  // Create GRU on the fly
+  InitGru(ort_, ep_);
+  ORT_ENFORCE(op_gru, "op_add not initialzied");
   InvokeGru(context);
+  std::cout << "gru invoked as standalone op" << std::endl;
 }
 
-InstantCustomKernel::~InstantCustomKernel() {
+StandaloneCustomKernel::~StandaloneCustomKernel() {
   ort_.ReleaseOp(op_add);
   ort_.ReleaseOp(op_topk);
   ort_.ReleaseOp(op_gru);

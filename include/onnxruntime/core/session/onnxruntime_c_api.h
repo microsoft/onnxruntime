@@ -329,6 +329,8 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
+struct OrtExecutionProvider;
+typedef struct OrtExecutionProvider OrtExecutionProvider;
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
@@ -3383,7 +3385,7 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOp,
-                  _In_ const OrtKernelInfo* info,
+                  _In_ const OrtExecutionProvider* ep,
                   _In_ const char* op_name,
                   _In_ const char* domain,
                   _In_ int version,
@@ -3421,6 +3423,12 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(Op);
+
+  /* tod: doc this
+  */
+  ORT_API2_STATUS(GetExecutionProvider,
+      _In_ const OrtKernelInfo* info,
+      _Outptr_ OrtExecutionProvider** ep);
 };
 
 /*

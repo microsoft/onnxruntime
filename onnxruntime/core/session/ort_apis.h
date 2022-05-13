@@ -354,7 +354,7 @@ ORT_API_STATUS_IMPL(CreateOpAttr,
 ORT_API(void, ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr);
 
 ORT_API_STATUS_IMPL(CreateOp,
-                    _In_ const OrtKernelInfo* info,
+                    _In_ const OrtExecutionProvider* ep,
                     _In_ const char* op_name,
                     _In_ const char* domain,
                     int version,
@@ -374,5 +374,9 @@ ORT_API_STATUS_IMPL(InvokeOp,
                     _In_ int output_count);
 
 ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
+
+ORT_API_STATUS_IMPL(GetExecutionProvider,
+      _In_ const OrtKernelInfo* info,
+      _Outptr_ OrtExecutionProvider** ep);
 
 }  // namespace OrtApis

@@ -981,7 +981,7 @@ struct CustomOpApi {
 
   void ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr);
 
-  void CreateOp(_In_ const OrtKernelInfo* info,
+  void CreateOp(_In_ const OrtExecutionProvider* ep,
                 _In_ const char* op_name,
                 _In_ const char* domain,
                 int version,
@@ -1000,6 +1000,8 @@ struct CustomOpApi {
                 _In_ int output_count);
 
   void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
+
+  void GetExecutionProvider(_In_ const OrtKernelInfo* info, _Outptr_ OrtExecutionProvider** ep);
 
  private:
   const OrtApi& api_;
