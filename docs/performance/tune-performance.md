@@ -22,11 +22,11 @@ Refer to a simple demo of [deploying and optimizing a distilled BERT model](http
 
 Here are some additional topics to explore for more information on performance tuning ONNX Runtime.
 
-- #### [Performance Tuning Tools](./performance-tuning-tools.md)
-- #### [Choosing the Execution Provider for best performance](./choosing-execution-providers.md)
-- #### [Tips for Tuning Performance](./tips-to-tune-performance.md)
-- #### [Troubleshooting Performance Issues](./troubleshooting-performance-issues.md)
-- #### [Mobile Performance Tuning](./mobile-performance-tuning.md)
+#### [1. Performance Tuning Tools](./performance-tuning-tools.md)
+#### [2. Choosing the Execution Provider for best performance](./choosing-execution-providers.md)
+#### [3. Tips for Tuning Performance](./tips-to-tune-performance.md)
+#### [4. Troubleshooting Performance Issues](./troubleshooting-performance-issues.md)
+#### [5. Mobile Performance Tuning](./mobile-performance-tuning.md)
 
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
