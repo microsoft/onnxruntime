@@ -88,17 +88,13 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
   if (enable_static_kernels_) {
 #if !defined(ORT_MINIMAL_BUILD)
     std::unordered_set<const Node*> nodes_with_static_kernels;
-    auto registry = GetKernelRegistry();
 
     // handle any supported nodes we have a static kernel for
     for (const Node* node : supported_static_nodes) {
       bool request_node = false;
       if (node->GetExecutionProviderType() == "") {
-        // unassigned node. check if we have a kernel registration for it.
-        if (KernelRegistry::HasImplementationOf(*registry, *node, Type())) {
-          // we have a kernel registration for the operator, and any type constraints that have been satisfied.
-          // if there are additional constraints such as checking values of attributes etc. those should
-          // be checked here.
+        // unassigned node. check if we can handle it.
+        if (node->Domain() == kOnnxDomain && node->OpType() == "Conv") {
           request_node = true;
         }
       } else if (node->GetExecutionProviderType() == Type()) {
@@ -245,11 +241,6 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 // the 'utils::' breaks the kernel registration macros
 constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
 
-// NCHW stubs
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(internal_testing_ep, kOnnxDomain, 1, 10, Conv);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kOnnxDomain, 11, Conv);
-
-// NHWC 'real' kernels
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 1, 10, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 11, Conv);
 
@@ -262,12 +253,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
-      // orig NCHW ops with dummy kernel
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(internal_testing_ep, kOnnxDomain, 1, 10, Conv)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kOnnxDomain, 11, Conv)>,
-      // 'real' NHWC kernels
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 1, 10, Conv)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 11, Conv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(internal_testing_ep,
+                                                                      kMSInternalNHWCDomain, 1, 10, Conv)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep,
+                                                            kMSInternalNHWCDomain, 11, Conv)>,
   };
 
   for (auto& function_table_entry : function_table) {

@@ -3,6 +3,8 @@
 
 #include "conv.h"
 #include "core/graph/constants.h"
+#include "core/graph/graph.h"
+#include "core/graph/graph_utils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
@@ -80,6 +82,89 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   return Status::OK();
 }
 }  // namespace
+
+// helper to check whether an ONNX Conv node is supported by the NHWC version
+// if this returns true, the layout transformer will be run by GraphPartitioner to convert the first input/output to
+// NHWC format, and move the node to the internal NHWC domain.
+bool Conv::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer& graph) {
+  bool supported = false;
+
+  // use do {} while(false) so it's easier to set a breakpoint on the return
+  do {
+    // Conv has at least 2 inputs.
+    auto input_defs = node.InputDefs();
+    const auto& x_arg = *input_defs[0];
+    const auto& weight_arg = *input_defs[1];
+
+    // we only support float currently
+    const auto* x_type = x_arg.TypeAsProto();
+    if (x_type == nullptr ||
+        x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      break;
+    }
+
+    // we only support 2D (4 dims with batch and channel)
+    const auto* x_shape = x_arg.Shape();
+    if (!x_shape || x_shape->dim_size() != 4) {
+      break;
+    }
+
+    // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute
+    if (!x_shape->dim(1).has_dim_value() ||
+        !x_shape->dim(2).has_dim_value() ||
+        !x_shape->dim(3).has_dim_value()) {
+      break;
+    }
+
+    // weight must be constant and also rank 4
+    const auto* weight = graph.GetConstantInitializer(weight_arg.Name(), true);
+    if (weight == nullptr || weight->dims_size() != 4) {
+      break;
+    }
+
+    // if there's a bias input it must be constant
+    if (input_defs.size() == 3) {
+      const auto& bias_arg = *input_defs[2];
+      if (bias_arg.Exists() && !graph.IsConstantInitializer(bias_arg.Name(), true)) {
+        break;
+      }
+    }
+
+    ProtoHelperNodeContext nc(node);
+    OpNodeProtoHelper info(&nc);
+
+    // 'group' value needs to be 1 or C.
+    // the second dim of weight is C/group, so if that == 1, group == C
+    int64_t group = 0;
+    info.GetAttrOrDefault<int64_t>("group", &group, 1);
+    if (group != 1 && weight->dims(1) != 1) {
+      break;
+    }
+
+    // if 'pads' is not specified we use 'auto_pad'
+    if (graph_utils::GetNodeAttribute(node, "pads") == nullptr) {
+      AutoPadType auto_pad = AutoPadType::NOTSET;
+
+      std::string auto_pad_str;
+      if (info.GetAttr<std::string>("auto_pad", &auto_pad_str).IsOK()) {
+        // auto_pad was set
+        //
+        // The "auto_pad_str" string must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID
+        // tf2onnx converter doesn't use SAME_LOWER.
+        // SAME_UPPER maps to TF SAME padding.
+        // TODO: What does PT converter use? We need to support models from PT in mobile.
+        auto_pad = StringToAutoPadType(auto_pad_str);
+        if (!IsPaddingTypeSupported(auto_pad)) {
+          break;
+        }
+      }
+    }
+
+    supported = true;
+  } while (false);
+
+  return supported;
+}
 
 Conv::Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_{info} {
   // get values from any fusion with an activation
@@ -215,16 +300,10 @@ Status Conv::Compute(OpKernelContext* context) const {
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   Conv);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kOnnxDomain, 1, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  utils::InvalidNchwKernel);
 
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Conv);
-ONNX_OPERATOR_KERNEL_EX(Conv, kOnnxDomain, 11, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        utils::InvalidNchwKernel);
 
 }  // namespace xnnpack
 }  // namespace onnxruntime

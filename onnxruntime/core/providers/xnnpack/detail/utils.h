@@ -7,6 +7,8 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/graph/indexed_sub_graph.h"
+#include "core/providers/common.h"
+
 #include "xnnpack.h"
 
 namespace onnxruntime {
@@ -26,6 +28,12 @@ struct XnnpackOperatorDeleter {
     }
   }
 };
+
+bool IsPaddingTypeSupported(AutoPadType auto_pad) {
+  return auto_pad == AutoPadType::NOTSET ||
+         auto_pad == AutoPadType::VALID ||
+         auto_pad == AutoPadType::SAME_UPPER;
+}
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 

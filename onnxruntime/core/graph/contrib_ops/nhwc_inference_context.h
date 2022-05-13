@@ -31,34 +31,6 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
     }
   }
 
-  // Propagate the inferred type/shape info to output 0, converting any inferred shape from NCHW to NHWC.
-  void PropagateOutputShape() {
-    auto& nhwc_tp = *ctx_.getOutputType(0);
-
-    // copy latest type/shape info.
-    nhwc_tp = output_type_;
-
-    // convert shape to NHWC
-    if (output_type_.tensor_type().has_shape()) {
-      const auto& nchw_shape = output_type_.tensor_type().shape();
-      const int rank = nchw_shape.dim_size();
-      // N and C dims are required. Some operators like AveragePool allow 1D input
-      if (rank < 3) {
-        fail_shape_inference("Output tensor must have at least 3 dimensions");
-      }
-
-      // Convert output shape from {N, C, H, W, ...} to {N, H, W, ..., C}.
-      auto& nhwc_shape = *nhwc_tp.mutable_tensor_type()->mutable_shape();
-      nhwc_shape.Clear();
-      *nhwc_shape.add_dim() = nchw_shape.dim(0);
-      for (int i = 2; i < rank; i++) {
-        *nhwc_shape.add_dim() = nchw_shape.dim(i);
-      }
-
-      *nhwc_shape.add_dim() = nchw_shape.dim(1);
-    }
-  }
-
   const ONNX_NAMESPACE::AttributeProto* getAttribute(const std::string& name) const override {
     return ctx_.getAttribute(name);
   }
@@ -73,7 +45,8 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
 
   const ONNX_NAMESPACE::TensorProto* getInputData(size_t index) const override {
     // we can't return the NHWC input data without transposing it, but wouldn't expect to be asked for it
-    // during shape inferencing given.
+    // during shape inferencing as getInputData is only used to retrieve things that may have small 
+	// constant initializers (e.g. something like the min and max values of a Clip operator).
     return index == 0 ? nullptr : ctx_.getInputData(index);
   }
 
@@ -95,6 +68,34 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
 
   const ONNX_NAMESPACE::SparseTensorProto* getInputSparseData(size_t index) const override {
     return ctx_.getInputSparseData(index);
+  }
+
+  // Propagate the inferred type/shape info to output 0, converting any inferred shape from NCHW to NHWC.
+  void PropagateOutputShape() {
+    auto& nhwc_tp = *ctx_.getOutputType(0);
+
+    // copy latest type/shape info.
+    nhwc_tp = output_type_;
+
+    // convert shape to channels last
+    if (output_type_.tensor_type().has_shape()) {
+      const auto& nchw_shape = output_type_.tensor_type().shape();
+      const int rank = nchw_shape.dim_size();
+      // N and C dims are required. Some operators like AveragePool allow 1D input
+      if (rank < 3) {
+        fail_shape_inference("Output tensor must have at least 3 dimensions");
+      }
+
+      // Convert output shape from N, C, H {, W, ...} to N, H {, W, ...}, C.
+      auto& nhwc_shape = *nhwc_tp.mutable_tensor_type()->mutable_shape();
+      nhwc_shape.Clear();
+      *nhwc_shape.add_dim() = nchw_shape.dim(0);
+      for (int i = 2; i < rank; i++) {
+        *nhwc_shape.add_dim() = nchw_shape.dim(i);
+      }
+
+      *nhwc_shape.add_dim() = nchw_shape.dim(1);
+    }
   }
 
  private:

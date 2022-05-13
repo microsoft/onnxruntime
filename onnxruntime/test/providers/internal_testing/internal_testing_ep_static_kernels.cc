@@ -14,26 +14,9 @@ namespace internal_testing_ep {
 // can't use 'utils::kInternalTestingExecutionProvider' in the macro so redefine here to a name without '::'
 constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
 
-// For each layout sensitive kernel, register the NHWC implementation (kMSInternalNHWCDomain)
-// and a stub NCHW (kOnnxDomain) version.
-//
-// The first call to GetCapability will match the NCHW version.
-// The layout transform will create a replacement node in the NHWC domain.
-// The kernel matching in SessionState finalization will use the NHWC kernel to run the node.
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kMSInternalNHWCDomain, 1, 10, internal_testing_ep,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  Conv);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Conv, kOnnxDomain, 1, 10, internal_testing_ep,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  utils::InvalidNchwKernel);
-
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, internal_testing_ep,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Conv);
-ONNX_OPERATOR_KERNEL_EX(Conv, kOnnxDomain, 11, internal_testing_ep,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        utils::InvalidNchwKernel);
 
 //
 // Kernel implementation example

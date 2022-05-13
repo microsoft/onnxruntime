@@ -145,7 +145,8 @@ class OpSet_Microsoft_ver1 {
 
 // Schemas for ops that are NHWC versions of ONNX operators. They are created by the layout transformer by converting
 // the relevant input/outputs of a node between NCHW and NHWC, and moving the node to the kMSInternalNHWCDomain domain.
-class OpSet_Internal_NHWC_ver1 {
+// The schemas are a copy of the ONNX versions, but input 0 and output 0 will be in NHWC format.
+class OpSet_Internal_NHWC {
  public:
   static void ForEachSchema(std::function<void(ONNX_NAMESPACE::OpSchema&&)> fn);
 };

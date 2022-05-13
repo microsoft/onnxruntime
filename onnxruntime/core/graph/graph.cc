@@ -598,6 +598,7 @@ Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const
 
 Status Node::InstantiateFunctionBody() {
   if (nullptr != func_body_) {
+    // already instantiated.
     return Status::OK();
   }
 

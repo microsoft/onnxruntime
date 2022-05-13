@@ -3,6 +3,7 @@
 
 #include "max_pool.h"
 
+#include "core/graph/graph.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 
@@ -11,6 +12,67 @@
 
 namespace onnxruntime {
 namespace xnnpack {
+bool MaxPool::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer& /*graph*/) {
+  bool supported = false;
+
+  // use do {} while(false) so it's easier to set a breakpoint on the return
+  do {
+    // MaxPool has 1 input.
+    auto input_defs = node.InputDefs();
+    const auto& x_arg = *input_defs[0];
+
+    // we only support float currently
+    const auto* x_type = x_arg.TypeAsProto();
+    if (x_type == nullptr ||
+        x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      break;
+    }
+
+    // we only support 2D (4 dims with batch and channel)
+    const auto* x_shape = x_arg.Shape();
+    if (!x_shape || x_shape->dim_size() != 4) {
+      break;
+    }
+
+    // require C, H, W to be known so we can construct the xnnpack kernel prior to Compute
+    if (!x_shape->dim(1).has_dim_value() ||
+        !x_shape->dim(2).has_dim_value() ||
+        !x_shape->dim(3).has_dim_value()) {
+      break;
+    }
+
+    // we don't support creating the optional 'I' output
+    const auto& output_defs = node.OutputDefs();
+    if (output_defs.size() == 2 && output_defs[1]->Exists()) {
+      break;
+    }
+
+    ProtoHelperNodeContext nc(node);
+    OpNodeProtoHelper info(&nc);
+    PoolAttributes pool_attrs(info, "MaxPool", node.SinceVersion());
+
+    // xnnpack doesn't appear to support using 'ceil' to calculate the output shape
+    // https://github.com/google/XNNPACK/blob/3caa8b9de973839afa1e2a1462ff356e6927a66b/src/operators/max-pooling-nhwc.c#L256
+    // calls compute_output_dimension but there's no ability to specify rounding that value up.
+    if (pool_attrs.ceil_mode != 0) {
+      break;
+    }
+
+    if (!IsPaddingTypeSupported(pool_attrs.auto_pad)) {
+      break;
+    }
+
+    if ((pool_attrs.kernel_shape.size() != 2) ||
+        (pool_attrs.kernel_shape[0] == 1 && pool_attrs.kernel_shape[1] == 1)) {
+      // XNNPack doesn't support 1x1 maxpool.
+      break;
+    }
+
+    supported = true;
+  } while (false);
+
+  return supported;
+}
 
 MaxPool::MaxPool(const OpKernelInfo& info)
     : OpKernel(info),
@@ -64,7 +126,7 @@ MaxPool::MaxPool(const OpKernelInfo& info)
   output_dims_ = {-1, nchw_output_dims[2], nchw_output_dims[3], nchw_output_dims[1]};
 
   // TEMPORARY sanity check. If C, H and W are known, the output shape should have been able to be inferred, with the
-  // exception of the batch size. Can be removed once we've run more models using xnnpack MaxPool. 
+  // exception of the batch size. Can be removed once we've run more models using xnnpack MaxPool.
   auto inferred_output_shape = utils::GetTensorShapeFromTensorShapeProto(*Node().OutputDefs()[0]->Shape());
   ORT_ENFORCE(inferred_output_shape[1] == output_dims_[1] &&
                   inferred_output_shape[2] == output_dims_[2] &&
@@ -119,25 +181,6 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-// NCHW ONNX kernels for initial matching in GetCapability pre-layout change
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kOnnxDomain, 1, 7, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  utils::InvalidNchwKernel);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kOnnxDomain, 8, 9, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  utils::InvalidNchwKernel);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kOnnxDomain, 10, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  utils::InvalidNchwKernel);
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kOnnxDomain, 11, 11, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                                  utils::InvalidNchwKernel);
-
-ONNX_OPERATOR_KERNEL_EX(MaxPool, kOnnxDomain, 12, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                        utils::InvalidNchwKernel);
-
-// NHWC 'real' kernels
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 1, 7, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   MaxPool);

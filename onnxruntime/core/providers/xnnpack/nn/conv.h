@@ -10,6 +10,8 @@
 #include "xnnpack.h"
 
 namespace onnxruntime {
+class GraphViewer;
+class Node;
 namespace xnnpack {
 
 class Conv : public OpKernel {
@@ -22,6 +24,10 @@ class Conv : public OpKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  // check to see if an ONNX NCHW Conv node is supported by this implementation. the first input and output will be
+  // converted to NHWC by ORT.
+  static bool IsOnnxNodeSupported(const onnxruntime::Node& nchw_node, const GraphViewer& graph);
 
  private:
   // due to other constraints of this kernel the value of group is either 1 or C, so we can infer that if it's not 1

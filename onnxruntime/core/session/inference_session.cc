@@ -509,7 +509,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
-  // TODO: Should the EP interface allow the EP to specify this so we don't have to hardcode it here?
+  // TODO: Consider updating the IExecutionProvider API so the EP can specify this directly.
   if (provider_type == kXnnpackExecutionProvider) {
     is_concurrent_run_supported_ = false;
   }

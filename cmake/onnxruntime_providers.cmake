@@ -1466,8 +1466,6 @@ if (onnxruntime_USE_XNNPACK)
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool
   )
 
-  # TODO: is the -L param required?
-  # target_link_libraries(onnxruntime_providers_xnnpack -L$ENV{LD_LIBRARY_PATH})
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
   # ??? is this handled already by onnxruntime_add_include_to_target processing the XNNPACK target?

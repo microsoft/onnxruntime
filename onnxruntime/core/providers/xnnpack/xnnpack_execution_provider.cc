@@ -20,52 +20,26 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-// define the class name for the NCHW stub and the 'real' NHWC kernel. same for the BuildKernelCreateInfo entries.
-//
-// NOTE: If KernelRegistry::HasImplementationOf supported overriding Node.Domain() we wouldn't need to have a dummy
-//       registration in the ONNX domain as we could call HasImplementationOf to match the kMSInternalNHWCDomain kernel
-//       in GetCapability. The NHWC schema is copied from the ONNX schema, so all the values relevant to kernel
-//       matching are the same.
-#define VERSIONED_KERNEL_CLASS_NAME(Start, End, Op)                                                        \
-  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, Start, End, Op); \
-  class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, End, Op)
+#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op) \
+  BuildKernelCreateInfo<                             \
+      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, End, Op)>
 
-#define KERNEL_CLASS_NAME(Start, Op)                                                        \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, Start, Op); \
-  class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)
+#define KERNEL_CREATE_INFO(Start, Op) \
+  BuildKernelCreateInfo<              \
+      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)>
 
-#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op)                                                      \
-  BuildKernelCreateInfo<                                                                                  \
-      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, Start, End, Op)>, \
-      BuildKernelCreateInfo<                                                                              \
-          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, End, Op)>
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, Conv);
 
-#define KERNEL_CREATE_INFO(Start, Op)                                                      \
-  BuildKernelCreateInfo<                                                                   \
-      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, Start, Op)>, \
-      BuildKernelCreateInfo<                                                               \
-          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)>
-
-VERSIONED_KERNEL_CLASS_NAME(1, 10, Conv);
-KERNEL_CLASS_NAME(11, Conv);
-
-VERSIONED_KERNEL_CLASS_NAME(1, 7, MaxPool);
-VERSIONED_KERNEL_CLASS_NAME(8, 9, MaxPool);
-VERSIONED_KERNEL_CLASS_NAME(10, 10, MaxPool);
-VERSIONED_KERNEL_CLASS_NAME(11, 11, MaxPool);
-KERNEL_CLASS_NAME(12, MaxPool);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
-      KERNEL_CREATE_INFO_VERSIONED(1, 10, Conv),
       KERNEL_CREATE_INFO(11, Conv),
 
-      KERNEL_CREATE_INFO_VERSIONED(1, 7, MaxPool),
-      KERNEL_CREATE_INFO_VERSIONED(8, 9, MaxPool),
-      KERNEL_CREATE_INFO_VERSIONED(10, 10, MaxPool),
       KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
       KERNEL_CREATE_INFO(12, MaxPool),
   };
@@ -86,9 +60,16 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  // TODO: Setup RegisterAllocator. Requires updates to InferenceSession so we make the RegisterAllocator calls after
-  // all EPs are registered, and do so in the reverse priority order. This will allow the CPU EP's allocator to be
-  // preferred. We will need to delay the call to xnn_initialize until after that happens.
+  // TODO:
+  //   - Create `struct xnn_allocator` instance that wraps the ORT allocator and provide in the call to xnn_initialize
+  //   - Override IExecutionProvider::RegisterAllocator to share the CPU EP's allocator/arena instead of creating a
+  //     new allocator/arena here.
+  //
+  // We need to updated InferenceSession so we make the RegisterAllocator calls after all EPs are registered,
+  // and do so in the reverse priority order as the CPU EP is registered last.
+  // We will also need to delay the call to xnn_initialize until after we have the allocator.
+  //
+  // Will make changes in a separate PR as they will primarily be about changing the allocator sharing infrastructure.
 
   xnn_status st = xnn_initialize(nullptr);
   if (st != xnn_status_success) {
@@ -138,11 +119,10 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
     bool request_node = false;
 
     if (node.GetExecutionProviderType() == "") {
-      // unassigned node. check if we have a kernel registration for it.
-      if (KernelRegistry::HasImplementationOf(*registry, node, Type())) {
-        // we have a kernel registration for the operator, and any type constraints have been satisfied.
-        // check other aspects of the node such as the attributes to make sure it is supported.
-        request_node = checker.IsNodeSupported(node);
+      // unassigned node.
+      // check if this is an ONNX operator that we have an NHWC xnnpack kernel for.
+      if (checker.IsNodeSupported(node)) {
+        request_node = true;
       } else {
         // see if it's an activation we can fuse with a node we support. note that we can only do this after
         // the layout transform as we need to fuse with the NWHC op that we have the real kernel for.
