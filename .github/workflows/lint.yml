@@ -59,7 +59,7 @@ jobs:
           filter_mode: file
           markdownlint_flags: ". --disable MD013 MD041 MD033 MD034"
       - name: pylint
-        uses: dciborow/action-pylint@v1
+        uses: dciborow/action-pylint@master
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
