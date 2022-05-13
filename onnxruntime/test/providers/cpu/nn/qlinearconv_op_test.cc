@@ -319,27 +319,49 @@ class QLinearConvOpTester {
     float zero_point_;
   };
 
-  inline float Round(float input, MLAS_ROUND_KIND round_kind) {
-    if (!std::isfinite(input)) {
-      return input;
-    }
-
-    if (round_kind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
-      return std::round(input);
-    }
-
-    // std::remainder returns x - n, where n is the integral value nearest to x. When |x - n| = 0.5, n is chosen to be even
-    return input - std::remainderf(input, 1.f);
-  }
+  template <typename T, MLAS_ROUND_KIND RoundKind>
+  struct RequantizeOutput {};
 
   template <typename T>
-  T RequantizeOutput(int32_t sum, float scale, RequantizeValues<T>& requantize_values, bool round_up) {
-    float f = static_cast<float>(sum) * scale;
-    f = std::min(f, requantize_values.max_value_);
-    f = std::max(f, requantize_values.min_value_);
-    MLAS_ROUND_KIND round_kind = round_up ? MLAS_ROUND_KIND::MlasRoundHalfUp : MLAS_ROUND_KIND::MlasRoundHalfEven;
-    return static_cast<T>(Round(f, round_kind) + requantize_values.zero_point_);
+  struct RequantizeOutput<T, MLAS_ROUND_KIND::MlasRoundHalfEven> {
+    T operator()(int32_t sum,
+                 float scale,
+                 RequantizeValues<T>& requantize_values) {
+      float f = static_cast<float>(sum) * scale;
+      f = std::min(f, requantize_values.max_value_);
+      f = std::max(f, requantize_values.min_value_);
+
+      if (std::isfinite(f)) {
+        f = f - std::remainderf(f, 1.f);  // std::remainder returns x - n, where n is the integral value nearest to x.
+                                          // When |x - n| = 0.5, n is chosen to be even
+    }
+
+      return static_cast<T>(f + requantize_values.zero_point_);
+    }
+  };
+
+  // Compute RoundUp with double float precision to avoid corner case like:
+  //     sum: 1140, scale: 0.00394736836.
+  // with single float precision, it is 4.50000000 and rounds to 5.
+  // with double float precision, it is 4.4999999303999996 and rounds to 4.
+  // Fixed point computation in arm64 is equivalent to double float precision,
+  // so use double float precision to get same result as fixed point.
+  template <typename T>
+  struct RequantizeOutput<T, MLAS_ROUND_KIND::MlasRoundHalfUp> {
+    T operator()(int32_t sum,
+                 float scale,
+                 RequantizeValues<T>& requantize_values) {
+      double d = static_cast<double>(sum) * static_cast<double>(scale);
+      d = std::min(d, static_cast<double>(requantize_values.max_value_));
+      d = std::max(d, static_cast<double>(requantize_values.min_value_));
+
+      if (std::isfinite(d)) {
+        d = std::round(d);
   }
+
+      return static_cast<T>(d + requantize_values.zero_point_);
+  }
+  };
 
   static bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) {
     // Loop over spatial axes in reverse order to choose an index, like counting.
@@ -453,7 +475,11 @@ class QLinearConvOpTester {
 
               input_image += input_image_size;
             }
-            *Ydata++ = RequantizeOutput<ActType>(sum, requantize_scale, requantize_values, requant_with_fixed_point_on_arm64);
+            if (requant_with_fixed_point_on_arm64) {
+              *Ydata++ = RequantizeOutput<ActType, MLAS_ROUND_KIND::MlasRoundHalfUp>()(sum, requantize_scale, requantize_values);
+            } else {
+              *Ydata++ = RequantizeOutput<ActType, MLAS_ROUND_KIND::MlasRoundHalfEven>()(sum, requantize_scale, requantize_values);
+            }
 
           } while (NextPosition(kernel_rank, output_shape, d_output.data()));
 
@@ -583,7 +609,7 @@ class QLinearConvOpTester {
 
   void Run() {
 #if defined(_M_ARM64) || defined(__aarch64__)
-    for (bool requant_with_fixed_point_on_arm64 : std::initializer_list<bool>{false, true}) {
+    for (bool requant_with_fixed_point_on_arm64 : std::initializer_list<bool>{false, true})
 #else
     bool requant_with_fixed_point_on_arm64 = false;
 #endif
@@ -591,7 +617,6 @@ class QLinearConvOpTester {
         Run(all_input_initializer_except_x, requant_with_fixed_point_on_arm64);
       }
     }
-  }
 };  // namespace
 
 TEST(QLinearConvTest, Conv1D_U8S8) {
