@@ -6,20 +6,56 @@ import logging
 import os
 import pprint
 import re
+import subprocess
 import sys
 import time
 import timeit
 from datetime import datetime
 
 import coloredlogs
-import numpy
 import numpy as np
-import pandas as pd
-from float16 import *
-from perf_utils import *
+
+from perf_utils import (
+    acl,
+    acl_ep,
+    avg_ending,
+    basic,
+    calculate_cuda_op_percentage,
+    calculate_trt_latency_percentage,
+    calculate_trt_op_percentage,
+    cpu,
+    cpu_ep,
+    cuda,
+    cuda_ep,
+    cuda_fp16,
+    disable,
+    enable_all,
+    extended,
+    get_output,
+    get_profile_metrics,
+    get_total_ops,
+    is_standalone,
+    memory_ending,
+    model_title,
+    ort_provider_list,
+    percentile_ending,
+    pretty_print,
+    provider_list,
+    second,
+    second_session_ending,
+    session_ending,
+    standalone_trt,
+    standalone_trt_fp16,
+    table_headers,
+    trt,
+    trt_ep,
+    trt_fp16,
+)
 
 import onnxruntime  # isort:skip
+import onnx  # isort:skip
 from onnx import numpy_helper  # isort:skip
+import pandas as pd  # isort:skip
 
 debug = False
 sys.path.append(".")
@@ -164,15 +200,15 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
 
 def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
-    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
+    latency_variance = np.var(runtimes, dtype=np.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
 
     result = {
         "test_times": len(runtimes),
         "latency_variance": "{:.2f}".format(latency_variance),
-        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
+        "latency_90_percentile": "{:.2f}".format(np.percentile(runtimes, 90) * 1000.0),
+        "latency_95_percentile": "{:.2f}".format(np.percentile(runtimes, 95) * 1000.0),
+        "latency_99_percentile": "{:.2f}".format(np.percentile(runtimes, 99) * 1000.0),
         "average_latency_ms": "{:.2f}".format(latency_ms),
         "QPS": "{:.2f}".format(throughput),
     }
