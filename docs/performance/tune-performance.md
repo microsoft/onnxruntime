@@ -20,12 +20,13 @@ Refer to a simple demo of [deploying and optimizing a distilled BERT model](http
 <iframe height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/W_lUGPMW_Eg?rel=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen=""></iframe>
 
 
-- ### [Performance Tuning Tools](./performance-tuning-tools.md)
-- ### [Choosing the Execution Provider for best performance](./choosing-execution-providers.md)
+Here are some additional topics to explore for more information on performance tuning ONNX Runtime.
 
-- ### [Tips for Tuning Performance](./tips-to-tune-performance.md)
-- ### [Troubleshooting Performance Issues](./troubleshooting-performance-issues.md)
-
+- #### [Performance Tuning Tools](./performance-tuning-tools.md)
+- #### [Choosing the Execution Provider for best performance](./choosing-execution-providers.md)
+- #### [Tips for Tuning Performance](./tips-to-tune-performance.md)
+- #### [Troubleshooting Performance Issues](./troubleshooting-performance-issues.md)
+- #### [Mobile Performance Tuning](./mobile-performance-tuning.md)
 
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
