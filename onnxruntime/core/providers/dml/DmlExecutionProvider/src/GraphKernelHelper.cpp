@@ -172,7 +172,8 @@ namespace GraphKernelHelper
             // initialization or execution). So just throw away the transferred initializer and skip this input.
             if (!inputsUsed[i])
             {
-                transferredInitializerMap.erase(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
+                const std::string& name = fusedNodeInputDefs[i]->Name();
+                transferredInitializerMap.erase(GetFusedNodeArgNameMatchingGraph(name));
 
                 if (inputRawData)
                 {
@@ -183,7 +184,8 @@ namespace GraphKernelHelper
             }
 
             // Look for the initializer among those transferred from the graph during partitioning
-            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
+            const std::string& name = fusedNodeInputDefs[i]->Name();
+            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(name));
             if (iter != transferredInitializerMap.end())
             {
                 std::byte* tensorPtr = nullptr;
