@@ -1327,7 +1327,22 @@ void RegisterTrainingOpSchemas() {
       .TypeConstraint(
           "S_MOMENT",
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
-          "Constrain momentums' types.");
+          "Constrain momentums' types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        if (ctx.getNumOutputs() >= 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+        }
+        if (ctx.getNumOutputs() >= 3) {
+          propagateElemTypeFromInputToOutput(ctx, 2, 2);
+          propagateShapeFromInputToOutput(ctx, 2, 2);
+        }
+
+        if (ctx.getNumOutputs() >= 4) {
+          propagateElemTypeFromInputToOutput(ctx, 3, 3);
+          propagateShapeFromInputToOutput(ctx, 3, 3);
+        }
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 

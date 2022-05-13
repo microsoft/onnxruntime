@@ -26,25 +26,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S_MOMENT", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
     Adam);
 
-template <typename T>
-bool IsSameBuffer(const TensorSeq& source_tensor, TensorSeq& target_tensor, size_t num_of_weights) {
-  if (source_tensor.Size() != target_tensor.Size()) {
-    return false;
-  }
-
-  for (size_t input_idx = 0; input_idx < num_of_weights; ++input_idx) {
-    const Tensor& t = target_tensor.Get(input_idx);
-    const Tensor& s = source_tensor.Get(input_idx);
-    const T* source = s.template Data<T>();
-    const T* target = t.template Data<T>();
-    if (source != target) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 AllocatorPtr CreateAllocatorPtr(OpKernelContext* ctx) {
   AllocatorPtr alloc;
   ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(),
@@ -60,8 +41,14 @@ AllocatorPtr& GetAllocatorPtr(OpKernelContext* ctx) {
 Status GenerateOutputs(OpKernelContext* ctx, cudaStream_t steam,
                        const TensorSeq* values, TensorSeq* updated_values,
                        size_t number_of_values) {
-  if (!IsSameBuffer<float>(*values, *updated_values, number_of_values)) {
-    updated_values->SetType(values->Get(0).DataType());
+  // Return if the output edge is not fetched.
+  if (updated_values == nullptr) {
+    return Status::OK();
+  }
+
+  bool is_same_buffer = const_cast<TensorSeq*>(values) == updated_values;
+  if (!is_same_buffer) {
+    updated_values->SetType(values->DataType());
     updated_values->Reserve(number_of_values);
     for (size_t input_idx = 0; input_idx < number_of_values; ++input_idx) {
       const Tensor& source_tensor = values->Get(input_idx);
@@ -144,24 +131,14 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   int64_t* updated_flag_ptr = updated_flag->template MutableData<int64_t>();
   *updated_flag_ptr = 1;
 
-  ORT_UNUSED_PARAMETER(lr);
-  ORT_UNUSED_PARAMETER(step);
-
   launch_multi_tensor_functor<MTA_ADAM_GROUP_SIZE, TFunctor>(
       Stream(), 2048 * 32, tensor_sizes, grouped_tensor_pointers, functor,
       alpha_, beta_, epsilon_, lr, weight_decay_, adam_mode_, correct_bias_, step);
 
-  if (updated_weights != nullptr) {
-    ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
-  }
+  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
+  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_1, updated_momentums_1, num_of_weights));
+  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_2, updated_momentums_2, num_of_weights));
 
-  if (updated_momentums_1 != nullptr) {
-    ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_1, updated_momentums_1, num_of_weights));
-  }
-
-  if (updated_momentums_2 != nullptr) {
-    ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_2, updated_momentums_2, num_of_weights));
-  }
   return Status::OK();
 }
 
