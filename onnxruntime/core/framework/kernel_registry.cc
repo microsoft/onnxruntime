@@ -53,158 +53,6 @@ bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
-// Traverses the node's formal parameters and calls TraverseFn with the formal
-// parameter and its associated TypeProto.
-//   node - the node to traverse
-//   param_filter_fn - called to determine whether to consider a given formal parameter:
-//     bool ParamFilterFn(const ONNX_NAMESPACE::OpSchema::FormalParameter& param)
-//       param - the formal parameter
-//       returns true if the formal parameter should be considered, false otherwise
-//   traverse_fn - called to process the formal parameter and its associated TypeProto:
-//     bool TraverseFn(const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
-//                     const ONNX_NAMESPACE::TypeProto* type)
-//       param - the formal parameter
-//       type - the associated TypeProto
-//       returns true if traversal should continue, false otherwise
-template <typename ParamFilterFn, typename TraverseFn>
-bool TraverseFormalParametersWithTypeProto(const Node& node,
-                                           ParamFilterFn param_filter_fn,
-                                           TraverseFn traverse_fn) {
-  const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
-
-  // was the param name matched in either inputs, outputs or type constraints.
-  // this validates the name was valid and that the type involved will be returned if available.
-  // if the name is invalid we do not return a type, and any applicable type constraint can not be applied
-  // in VerifyKernelDef.
-  bool matched = false;
-
-  // process inputs:
-  const size_t len = node.InputArgCount().size();
-  ORT_ENFORCE(len <= op_schema.inputs().size());
-  int actual_index = 0;
-  for (size_t formal_index = 0; formal_index != len; ++formal_index) {
-    const auto& param = op_schema.inputs()[formal_index];
-    if (param_filter_fn(param)) {
-      matched = true;
-      // get type of any corresponding actual parameter, if present
-      for (int i = 0, end = node.InputArgCount()[formal_index]; i < end; ++i) {
-        const NodeArg* arg = node.InputDefs()[static_cast<size_t>(actual_index) + i];
-        if (!arg->Exists()) continue;  // a missing optional argument
-        if (!traverse_fn(param, arg->TypeAsProto())) return matched;
-      }
-    }
-    actual_index += node.InputArgCount()[formal_index];
-  }
-
-  // process outputs:
-  auto actual_outputs = node.OutputDefs();
-  const auto num_actual_outputs = actual_outputs.size();
-  const auto& schema_outputs = op_schema.outputs();
-  const auto last_formal = schema_outputs.size() - 1;
-  size_t i = 0;
-  for (; i != num_actual_outputs; ++i) {
-    const auto& formal = schema_outputs[std::min(i, last_formal)];
-    if (!param_filter_fn(formal)) continue;
-    matched = true;
-    const NodeArg* arg = actual_outputs[i];
-    if (!arg->Exists()) continue;
-    if (!traverse_fn(formal, arg->TypeAsProto())) return matched;
-  }
-
-  // missing optional outputs. check if type constraint name was valid if we haven't matched anything yet.
-  if (!matched) {
-    while (i <= last_formal) {
-      if (param_filter_fn(schema_outputs[i])) {
-        matched = true;
-        break;
-      }
-
-      ++i;
-    }
-  }
-
-  return matched;
-}
-
-class TypeBindingResolver {
- public:
-  TypeBindingResolver(const Node& node, bool use_lookup_map)
-      : node_(node),
-        type_binding_map_() {
-    if (use_lookup_map) {
-      type_binding_map_ = std::make_unique<TypeBindingMap>();
-      TraverseFormalParametersWithTypeProto(
-          node_,
-          [](const ONNX_NAMESPACE::OpSchema::FormalParameter&) -> bool { return true; },
-          [this](const ONNX_NAMESPACE::OpSchema::FormalParameter& param,
-                 const ONNX_NAMESPACE::TypeProto* type) -> bool {
-            type_binding_map_->emplace(param.GetName(), type);
-            type_binding_map_->emplace(param.GetTypeStr(), type);
-            return true;
-          });
-    }
-  }
-
-  // Resolves a type constraint name to a TypeProto* for a given node. ONNX code checks that all usages of the type
-  // constraint name by the node are consistent, so we just need to match the first usage to see the actual type
-  // being used by the node. e.g. if type constraint 'T' allows float and double, any input or output for that node
-  // that has constraint 'T' must use the same type, be that float or double.
-  //
-  // Also can resolve an input/output name to a contraint when a type constraint name is not used.
-  // e.g. the 'shape' input of Reshape has a directly specified constraint of 'tensor(int64)'.
-  //
-  // Returns the resolved TypeProto* or nullptr if unable to resolve due to the
-  // constraint being for a missing optional output.
-  const ONNX_NAMESPACE::TypeProto* Resolve(const std::string& name_or_type_str) const {
-    const ONNX_NAMESPACE::TypeProto* result{};
-    bool matched = false;
-
-    // lookup if available
-    if (type_binding_map_) {
-      auto found_it = type_binding_map_->find(name_or_type_str);
-      matched = found_it != type_binding_map_->end();
-      if (matched) {
-        result = found_it->second;
-      }
-    }
-
-    if (!matched) {
-      // fall back to node parameter traversal
-      matched = TraverseFormalParametersWithTypeProto(
-          node_,
-          [&name_or_type_str](const ONNX_NAMESPACE::OpSchema::FormalParameter& param) -> bool {
-            return param.GetTypeStr() == name_or_type_str || param.GetName() == name_or_type_str;
-          },
-          [&result](const ONNX_NAMESPACE::OpSchema::FormalParameter&,
-                    const ONNX_NAMESPACE::TypeProto* type) -> bool {
-            result = type;
-            return false;
-          });
-    }
-
-// invalid kernel def with type constraints that don't match the schema. this means the type constraints are not
-// actually applied, making the kernel def misleading and potentially matching an unexpected/incorrect kernel.
-// warn in a release build as we do not have coverage of every single opset for every single operator
-// in the unit tests, so issues may be missed and the model may still work (e.g. matches the correct kernel by chance).
-// throw in a debug build so the issue is obvious and force it to be fixed.
-#ifdef NDEBUG
-    if (!matched) {
-      LOGS_DEFAULT(WARNING) << name_or_type_str << " constraint was not found for " << node_.OpType();
-    }
-#else
-    ORT_ENFORCE(matched, name_or_type_str, " constraint was not found for ", node_.OpType());
-#endif
-    return result;
-  }
-
- private:
-  // map from input/output name or type string to TypeProto pointer
-  using TypeBindingMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TypeProto*>;
-
-  const Node& node_;
-  std::unique_ptr<TypeBindingMap> type_binding_map_;
-};
-
 bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX_NAMESPACE::TypeProto& actual_type,
                            std::string& mismatch_reason) {
   const bool is_type_compatible = std::any_of(
@@ -229,41 +77,6 @@ bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX
 
   return true;
 }
-
-class OpSchemaKernelTypeMatcher final : public IKernelTypeMatcher {
- public:
-  bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const override {
-    // check if type matches
-    const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
-
-    // Note: The number of formal input/output parameters is N and the number of
-    // type constraints is M. We select between an O(N*M) and an O(N+M) approach.
-    // The O(N*M) approach has lower initial overhead.
-    // kTypeBindingResolverComplexityThreshold is the value of N*M above which we
-    // will use the O(N+M) approach.
-    constexpr int kTypeBindingResolverComplexityThreshold = 50 * 50;
-    const bool use_lookup_map = (kernel_type_constraints.size() * (node.Op()->inputs().size() + node.Op()->outputs().size()) >
-                                 kTypeBindingResolverComplexityThreshold);
-    TypeBindingResolver type_binding_resolver{node, use_lookup_map};
-
-    for (auto& constraint : kernel_type_constraints) {
-      const std::string& name = constraint.first;
-      const std::vector<MLDataType>& allowed_types = constraint.second;
-      const ONNX_NAMESPACE::TypeProto* actual_type = type_binding_resolver.Resolve(name);
-
-      // If actual_type is null, this represents a type-constraint on a
-      // missing optional parameter, which can be skipped.
-      // TODO: We should check that names specified in kernel_type_constraints are
-      // valid names (of types or parameters) at the time that kernels are registered.
-      if (nullptr != actual_type) {
-        if (!IsTypeProtoCompatible(allowed_types, *actual_type, mismatch_reason)) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-};
 
 bool MatchKernelDefTypes(const Node& node,
     const KernelDef& kernel_def,
@@ -304,7 +117,6 @@ bool MatchKernelDefTypes(const Node& node,
 
   return true;
 }
-
 }  // namespace
 
 bool KernelRegistry::VerifyKernelDef(const Node& node,
