@@ -23,7 +23,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+                      .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
     DFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -31,7 +32,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+                      .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
     IDFT);
 
 ONNX_OPERATOR_KERNEL_EX(
