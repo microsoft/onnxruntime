@@ -339,8 +339,40 @@ ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2*
                     size_t num_keys);
 ORT_API_STATUS_IMPL(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2*);
+
 ORT_API_STATUS_IMPL(AddExternalInitializers, _In_ OrtSessionOptions* options,
                     _In_reads_(initializers_num) const char* const* initializer_names,
                     _In_reads_(initializers_num) const OrtValue* const* initializers, size_t initializers_num);
+
+ORT_API_STATUS_IMPL(CreateOpAttr,
+                    _In_ const char* name,
+                    _In_ const void* data,
+                    _In_ int len,
+                    _In_ OrtOpAttrType type,
+                    _Outptr_ OrtOpAttr** op_attr);
+
+ORT_API(void, ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr);
+
+ORT_API_STATUS_IMPL(CreateOp,
+                    _In_ const OrtKernelInfo* info,
+                    _In_ const char* op_name,
+                    _In_ const char* domain,
+                    int version,
+                    _In_opt_ const char** type_constraint_names,
+                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                    int type_constraint_count,
+                    _In_opt_ const OrtOpAttr* const* attr_values,
+                    int attr_count,
+                    _Outptr_ OrtOp** ort_op);
+
+ORT_API_STATUS_IMPL(InvokeOp,
+                    _In_ const OrtKernelContext* context,
+                    _In_ const OrtOp* ort_op,
+                    _In_ const OrtValue* const* input_values,
+                    _In_ int input_count,
+                    _Inout_ OrtValue* const* output_values,
+                    _In_ int output_count);
+
+ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
 
 }  // namespace OrtApis

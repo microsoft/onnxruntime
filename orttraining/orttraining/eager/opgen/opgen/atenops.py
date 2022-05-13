@@ -1,15 +1,11 @@
 from copy import deepcopy
 
-from opgen.generator import (
-    ORTGen as ORTGen,
-    ONNXOp as ONNXOp,
-    SignatureOnly as SignatureOnly,
-    MakeTorchFallback as MakeTorchFallback,
-)
-
-from opgen.onnxops import *
-
 import torch
+from opgen.generator import MakeTorchFallback as MakeTorchFallback
+from opgen.generator import ONNXOp as ONNXOp
+from opgen.generator import ORTGen as ORTGen
+from opgen.generator import SignatureOnly as SignatureOnly
+from opgen.onnxops import *
 from packaging import version
 
 TORCH_API_CHANGE_VERSION = "1.11.1"
@@ -141,6 +137,7 @@ hand_implemented = {
     "aten::masked_select": MakeTorchFallback(),
     "aten::_local_scalar_dense": MakeTorchFallback(),
     "aten::gt.Scalar_out": MakeTorchFallback(),
+    "aten::equal": MakeTorchFallback(),
 }
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439

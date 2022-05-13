@@ -78,11 +78,11 @@ def create_onnxruntime_session(
     num_threads=-1,
     enable_profiling=False,
     verbose=False,
+    provider_options={},  # map execution provider name to its option
 ):
     session = None
     try:
         from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-        from onnxruntime import __version__ as onnxruntime_version
 
         sess_options = SessionOptions()
 
@@ -106,28 +106,32 @@ def create_onnxruntime_session(
         logger.debug(f"Create session for onnx model: {onnx_model_path}")
         if use_gpu:
             if provider == "dml":
-                execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+                providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
             elif provider == "rocm":
-                execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+                providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
             elif provider == "migraphx":
-                execution_providers = [
+                providers = [
                     "MIGraphXExecutionProvider",
                     "ROCMExecutionProvider",
                     "CPUExecutionProvider",
                 ]
             elif provider == "cuda":
-                execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             elif provider == "tensorrt":
-                execution_providers = [
+                providers = [
                     "TensorrtExecutionProvider",
                     "CUDAExecutionProvider",
                     "CPUExecutionProvider",
                 ]
             else:
-                execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         else:
-            execution_providers = ["CPUExecutionProvider"]
-        session = InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
+            providers = ["CPUExecutionProvider"]
+
+        if provider_options:
+            providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
+
+        session = InferenceSession(onnx_model_path, sess_options, providers=providers)
     except:
         logger.error(f"Exception", exc_info=True)
 

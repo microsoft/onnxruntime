@@ -79,6 +79,7 @@ class Node {
     Fused = 1,      ///< The node refers to a function.
   };
 
+  explicit Node() = default;
   ~Node() = default;
 
   /**
@@ -620,7 +621,7 @@ class Node {
   NodeAttributes attributes_;
 
   // Graph that contains this Node
-  Graph* graph_;
+  Graph* graph_ = nullptr;
 
   // Map of attribute name to the Graph instance created from the GraphProto attribute
   std::unordered_map<std::string, gsl::not_null<Graph*>> attr_to_subgraph_map_;
@@ -1255,6 +1256,10 @@ class Graph {
   common::Status Resolve() {
     ResolveOptions default_options;
     return Resolve(default_options);
+  }
+
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept{
+    return outer_scope_node_arg_names_;
   }
 
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
