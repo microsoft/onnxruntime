@@ -29,5 +29,4 @@ Here are some additional topics to explore for more information on performance t
 #### [5. Mobile Performance Tuning](./mobile-performance-tuning.md)
 
 
-<p><a href="#" id="back-to-top">Back to top</a></p>
 
