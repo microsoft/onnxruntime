@@ -2,7 +2,7 @@
 title: Releases
 description: ONNX Runtime roadmap and release plans
 parent: Reference
-nav_order: 7
+nav_order: 1
 ---
 
 # ONNX Runtime releases
