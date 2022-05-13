@@ -95,7 +95,7 @@ This flag is only supported from the V2 version of the provider options struct w
 Default value: 0
 
 ### enable_cuda_graph
-Check [using CUDA Graphs in the CUDA EP](#cudagraphs") for details on what this flag does.
+Check [using CUDA Graphs in the CUDA EP](#cudagraphs) for details on what this flag does.
 This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
 
 Default value: 0
@@ -176,9 +176,11 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
+<p><a href="#" id="back-to-top">Back to top</a></p>
+
 <p id="customCUDA"></p>
 
-## Performance Tuning CUDA Execution Providers
+## Performance Tuning
 
 Tips to customize the CUDA Execution Provider are given in this article for <a href="#convolutionheavy">Convolution heavy models</a>, <a href="#convolutioninput">Convolution input padding</a>, and <a href="#cudagraphs">Using CUDA graphs</a>.
 
