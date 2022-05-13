@@ -399,16 +399,6 @@
         },
         "comments": "git submodule at cmake/external/wil"
       }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "352281313fe1c4313bc222cb9de222afd50c822f",
-          "repositoryUrl": "https://github.com/gabime/spdlog.git"
-        },
-        "comments": "git submodule at server/external/spdlog"
-      }
     }
   ]
 }

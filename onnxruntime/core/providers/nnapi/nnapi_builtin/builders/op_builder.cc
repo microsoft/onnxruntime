@@ -624,7 +624,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else if (op_type == "PRelu") {
     add_activation = false;  // ANEURALNETWORKS_PRELU does not have activation
     op_code = ANEURALNETWORKS_PRELU;
-    } else {
+  } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
 
@@ -1479,6 +1479,45 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 #pragma endregion
 
+#pragma region op_depthtospace
+class DepthToSpaceOpBuilder : public BaseOpBuilder {
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
+  NodeAttrHelper helper(node_unit);
+
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
+  bool use_nchw = model_builder.UseNCHW();
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
+
+  int32_t blocksize = SafeInt<int32_t>(node_unit.GetNode().GetAttributes().at("blocksize").i());
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, blocksize);
+
+  if (use_nchw && android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    // optional input to use nchw is available starting NNAPI feature level 3
+    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
+  }
+
+  ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, use_nchw, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
+                                                 {output_operand_type}));
+  return Status::OK();
+}
+
+#pragma endregion
+
 #pragma region op_softmax
 
 class SoftMaxOpBuilder : public BaseOpBuilder {
@@ -1731,7 +1770,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                         "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
-        bias_dimen.push_back(dim);
+        bias_dimen.push_back(SafeInt<uint32_t>(dim));
       std::vector<uint8_t> unpacked_tensor;
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
@@ -2678,6 +2717,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DepthToSpace", DepthToSpaceOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
