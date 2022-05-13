@@ -9,6 +9,13 @@
 
 namespace onnxruntime {
 namespace xnnpack {
+
+bool IsPaddingTypeSupported(AutoPadType auto_pad) {
+  return auto_pad == AutoPadType::NOTSET ||
+         auto_pad == AutoPadType::VALID ||
+         auto_pad == AutoPadType::SAME_UPPER;
+}
+
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const Node& conv, const Node& activation,
                                                          const GraphViewer& graph) {
   std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();

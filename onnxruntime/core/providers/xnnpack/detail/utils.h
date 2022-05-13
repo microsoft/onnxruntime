@@ -29,11 +29,7 @@ struct XnnpackOperatorDeleter {
   }
 };
 
-bool IsPaddingTypeSupported(AutoPadType auto_pad) {
-  return auto_pad == AutoPadType::NOTSET ||
-         auto_pad == AutoPadType::VALID ||
-         auto_pad == AutoPadType::SAME_UPPER;
-}
+bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
 

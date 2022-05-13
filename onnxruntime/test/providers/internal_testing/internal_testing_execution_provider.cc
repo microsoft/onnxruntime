@@ -241,7 +241,6 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 // the 'utils::' breaks the kernel registration macros
 constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
 
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 1, 10, Conv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep, kMSInternalNHWCDomain, 11, Conv);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
@@ -253,8 +252,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
-      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(internal_testing_ep,
-                                                                      kMSInternalNHWCDomain, 1, 10, Conv)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(internal_testing_ep,
                                                             kMSInternalNHWCDomain, 11, Conv)>,
   };
