@@ -55,7 +55,9 @@ class Memcpy final : public OpKernel {
     ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
     Tensor* Y = ctx->Output(0, X->Shape());
     ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-    auto s = Info().GetDataTransferManager().CopyTensor(*X, *Y);
+    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+    ORT_ENFORCE(gpu_data_transfer != nullptr, "Memcpy: can't find gpu data transfer.");
+    auto s = gpu_data_transfer->CopyTensorAsync(*X, *Y, Info().GetComputeStream());
 
     if (s.IsOK()) {
       auto err = cudaGetLastError();
