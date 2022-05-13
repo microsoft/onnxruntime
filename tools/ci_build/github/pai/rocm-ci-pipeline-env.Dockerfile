@@ -1,13 +1,6 @@
-FROM rocm/pytorch:rocm4.3.1_ubuntu18.04_py3.6_pytorch_1.9.0
+FROM rocm/pytorch:rocm5.1.1_ubuntu20.04_py3.7_pytorch_1.10.0
 
 WORKDIR /stage
-
-# from rocm/pytorch's image, work around ucx's dlopen replacement conflicting with shared provider
-RUN cd /opt/mpi_install/ucx/build &&\
-      make clean &&\
-      ../contrib/configure-release --prefix=/opt/ucx --without-rocm &&\
-      make -j $(nproc) &&\
-      make install
 
 # rocm-ci branch contains instrumentation needed for loss curves and perf
 RUN git clone https://github.com/microsoft/huggingface-transformers.git &&\
@@ -32,4 +25,4 @@ RUN pip install \
       sentencepiece
 
 RUN pip install torch-ort --no-dependencies
-ENV ORTMODULE_ONNX_OPSET_VERSION=12
+ENV ORTMODULE_ONNX_OPSET_VERSION=14
