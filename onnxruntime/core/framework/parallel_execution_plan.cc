@@ -270,8 +270,8 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         OpKernelContext kernel_ctx(ctx.frame, p_kernel, intra_tp, *ctx.logger);
-        ExecutionContext* ctx_ptr = &ctx;
-        if (p_kernel->IsAsync()) {
+        if (p_kernel->IsAsync(&kernel_ctx)) {
+          ExecutionContext* ctx_ptr = &ctx;
           ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, [node_index, i, ctx_ptr]() {
                 std::cout << "Kernel for node index: " << node_index << " on logic stream: " << i << " execution is done. " << std::endl;
                 ctx_ptr->RecycleNodeInputs(node_index);
@@ -336,7 +336,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
       alloc_plan_[input_idx_global].alloc_kind = AllocKind::kAllocate;
       alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*input_arg);
-      alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_idx_global, *node);
+      alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_index_local, *node);
     }
 
     const auto& output_defs = node->OutputDefs();

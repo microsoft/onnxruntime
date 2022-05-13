@@ -216,7 +216,7 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
       py_sparse_tensor = std::make_unique<PySparseTensor>(ort_value);
     } else {
       auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.DenseShape(), GetAllocator());
-      auto status = src_sparse_tensor.Copy(*data_transfer_manager, 0, *dst_sparse_tensor);
+      auto status = src_sparse_tensor.Copy(*data_transfer_manager, *dst_sparse_tensor);
       OrtPybindThrowIfError(status);
       py_sparse_tensor = std::make_unique<PySparseTensor>(std::move(dst_sparse_tensor));
     }

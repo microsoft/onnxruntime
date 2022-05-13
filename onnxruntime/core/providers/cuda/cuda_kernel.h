@@ -11,13 +11,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-static void CUDART_CB cudaStreamCallback(cudaStream_t /*stream*/, cudaError_t /*status*/, void* userData) {
-  auto* p_done = static_cast<OpKernel::DoneCallback*>(userData);
-  (*p_done)();
-  // delete the callback context
-  delete p_done;
-}
-
 // -----------------------------------------------------------------------
 // Base class for CUDA kernels
 // -----------------------------------------------------------------------
@@ -29,7 +22,7 @@ class CudaKernel : public OpKernel {
         provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
   }
   // make all the cuda kernels async
-  bool IsAsync() const override {
+  bool IsAsync(OpKernelContext*) const override {
     return true;
   }
 

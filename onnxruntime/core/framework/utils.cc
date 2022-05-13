@@ -189,7 +189,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
     if (copy_tensor_pairs != nullptr) {
-      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, 0});
+      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor});
     } else {
       ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
@@ -220,7 +220,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
-        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
+        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter)});
       } else {
         ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
       }

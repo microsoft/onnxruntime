@@ -488,11 +488,9 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
 
   // DataTransferManager (wrapped)
-  Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) override { return p->CopyTensor(src, dst, exec_queue_id); }
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }
 #if !defined(DISABLE_SPARSE_TENSORS)
   Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) override { return p->CopySparseTensor(src, dst); }
-  Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) override { return p->CopySparseTensor(src, dst, exec_queue_id); }
   Status DataTransferManager__CopySparseTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) override { return p->CopySparseTensors(src_dst_pairs); };
 #endif
   const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) override { return p->GetDataTransfer(src_device, dst_device); }
@@ -907,7 +905,7 @@ struct ProviderHostImpl : ProviderHost {
   // SparseTensor(wrapped)
 #if !defined(DISABLE_SPARSE_TENSORS)
   const TensorShape& SparseTensor__DenseShape(const SparseTensor* p) override { return p->DenseShape(); }
-  Status SparseTensor__Copy(const SparseTensor* p, const DataTransferManager& dtm, int exec_q_id, SparseTensor& dst) override { return p->Copy(dtm, exec_q_id, dst); }
+  Status SparseTensor__Copy(const SparseTensor* p, const DataTransferManager& dtm, SparseTensor& dst) override { return p->Copy(dtm, dst); }
 #endif
 
   // TensorSeq(wrapped)
