@@ -1,5 +1,5 @@
 ---
-title: Tune Mobile Performance
+title: Tuning Mobile Performance
 parent: Performance
 nav_order: 8
 description: Onnx Runtime Mobile Performance Best Practices
@@ -134,5 +134,7 @@ To create an NNAPI-aware ORT format model please follow these steps.
     The python package from your 'full' build with NNAPI enabled must be installed for `--use_nnapi` to be a valid option
 
     This ORT model created can be used with a minimal build that includes the NNAPI EP.
+
+<p><a href="#" id="back-to-top">Back to top</a></p>
 
 </div>

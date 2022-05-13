@@ -1,5 +1,5 @@
 ---
-title: Tune performance > Tools
+title: Performance Tuning Tools
 parent: Performance
 nav_order: 2
 description: Tools for tuning ONNX Runtime inference models across different Execution Providers and programming languages including OLive tool.
@@ -11,9 +11,15 @@ redirect_from: /docs/how-to/tune-performance
 
 ## Performance Tuning Tools
 
-Here are the best practices, design considerations, and tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages.
+Here are the tools for tuning your ONNX Runtime inference models across different Execution Providers and programming languages.
 
-### 1. ONNX Go Live (OLive) Tool
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
+## 1. ONNX Go Live (OLive) Tool
 
 The [ONNX Go Live (OLive) tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime (ORT).
 
@@ -27,7 +33,7 @@ Users can run these two together through a single pipeline or run them independe
 As a quick start to using the Microsoft ONNX OLive tool, please refer to the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples.](https://github.com/microsoft/OLive/tree/master/cmd-example)
 
 
-### 2. onnxruntime_perf_test.exe tool
+## 2. onnxruntime_perf_test.exe tool
 
 The onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`.
 
@@ -76,7 +82,7 @@ If an operator called multiple kernels during execution, the performance numbers
 {"cat":"Kernel", "name":<name of the kernel called first>, ...}
 {"cat":"Kernel", "name":<name of the kernel called next>, ...}
 ```
-### 3. Ort_perf_view tool
+## 3. Ort_perf_view tool
 
 ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
 

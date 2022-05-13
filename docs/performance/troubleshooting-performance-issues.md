@@ -1,8 +1,8 @@
 ---
-title: Tune performance > Troubleshooting
+title: Troubleshooting Performance Issues
 parent: Performance
 nav_order: 5
-description: Checklist to troubleshoot Onnx Runtime performance tuning issues and Frequently Asked Questions.
+description: Checklist to troubleshoot ONNX Runtime performance tuning issues and Frequently Asked Questions.
 redirect_from: /docs/how-to/tune-performance
 ---
 <div class="container">
@@ -12,8 +12,13 @@ redirect_from: /docs/how-to/tune-performance
 
 Troubleshooting Onnx Runtime performance issues may vary depending on the model and usage scenario.
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
 {:toc}
-### ORT Performance Troubleshooting Checklist
+
+## ORT Performance Troubleshooting Checklist
 
 Here is a checklist to troubleshoot ORT performance.
 
@@ -25,7 +30,7 @@ Here is a checklist to troubleshoot ORT performance.
 
 <p><a href="#" id="back-to-top">Back to top</a></p>
 
-### ORT Performance Tuning FAQs
+## ORT Performance Tuning FAQs
 
 Here are some FAQs for the OnnxRuntime performance tuning.
 

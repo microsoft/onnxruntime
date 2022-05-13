@@ -1,8 +1,8 @@
 ---
-title: Tune performance > Tips
+title: Performance Tuning Tips
 parent: Performance
 nav_order: 4
-description: Tips to tune Onnx Runtime performance in terms of reducing memory consumption, thread management, IO Binding, and customizing CUDA Execution Provider.
+description: Tips to tune ONNX Runtime performance in terms of reducing memory consumption, thread management, IO Binding, and customizing CUDA Execution Provider.
 redirect_from: /docs/how-to/tune-performance
 ---
 <div class="container">
@@ -16,9 +16,13 @@ Here are some tips for tuning the performance of ORT in terms of <a href="#memor
 
 Please refer to [Execution Provider](../execution-providers/index.md) specific performance tuning samples and tips for optimizing your OnnxRuntime performance.
 
+## Contents
+{: .no_toc }
+
+* TOC placeholder
 {:toc}
 
-<h3 id="memory">Memory Consumption Reduction</h3>
+<h2 id="memory">Memory Consumption Reduction</h2>
 
 Here are some tips to reduce memory consumption and tune performance with ORT.
 
@@ -33,7 +37,7 @@ OnnxRuntime supports overriding memory allocations using mimalloc allocator, whi
  
 <p><a href="#tips">Performance Tuning Tips</a></p>
 
-<h3 id="thread">Thread Management</h3>
+<h2 id="thread">Thread Management</h2>
 
 ONNX Runtime allows different [threading implementation](https://github.com/microsoft/onnxruntime/blob/master/docs/NotesOnThreading.md) choices for OpenMP or non-OpenMP. Here are some best practices for [thread management](https://github.com/microsoft/onnxruntime/blob/master/docs/FAQ.md#how-do-i-force-single-threaded-execution-mode-in-ort-by-default-sessionrun-uses-all-the-computers-cores) to customize your ONNX Runtime environment:
 
@@ -140,7 +144,7 @@ Math Kernel Library for Deep Neural Networks (MKL_DNN) and nGraph (a C++ library
 
 <p><a href="#tips">Performance Tuning Tips</a></p>
 
-<h3 id="iobinding">IO Binding</h3>
+<h2 id="iobinding">IO Binding</h2>
 
 ONNX Runtime supports [Data-on-device](https://onnxruntime.ai/docs/api/python/api_summary.html#data-on-device). ORT allows custom data structure to support all data formats and allows users to place the **data** backing these on a device, for example, on a CUDA supported device. In ONNX Runtime, this is called IOBinding.
 
@@ -184,7 +188,7 @@ Refer to the [C# docs](https://github.com/microsoft/onnxruntime/blob/master/csha
 
 <p><a href="#tips">Performance Tuning Tips</a></p>
 
-<h3 id="customCUDA">CUDA Execution Providers</h3>
+<h2 id="customCUDA">CUDA Execution Providers</h2>
 
 Tips to customize the CUDA Execution Provider are given in this article for <a href="#convolutionheavy">Convolution heavy models</a>, <a href="#convolutioninput">Convolution input padding</a>, and <a href="#cudagraphs">Using CUDA graphs</a>.
 
