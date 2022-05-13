@@ -21,7 +21,7 @@ print("When running with parallel executor: ", output[0][0])
 
 sess_opt2 = ort.SessionOptions()
 #sess_opt.inter_op_num_threads = 2
-sess_opt.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+sess_opt2.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 model2 = ort.InferenceSession(onnx_path, sess_opt2, providers=['CPUExecutionProvider'])
 input_name = model2.get_inputs()[0].name
 output_name = model2.get_outputs()[0].name
