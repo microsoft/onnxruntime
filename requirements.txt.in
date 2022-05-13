@@ -1,3 +1,4 @@
+coloredlogs
 numpy >= @Python_NumPy_VERSION@
 protobuf
 flatbuffers
