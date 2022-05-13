@@ -204,6 +204,9 @@ Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
   }
 
   auto* output_tensor = context->Output(0, input_shape);
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
 
   float input_scale = *(context->Input<Tensor>(1)->Data<float>());
   float bias_scale = *(context->Input<Tensor>(3)->Data<float>());
@@ -219,8 +222,8 @@ Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  fast_divmod batch_size(static_cast<int>(rows) * static_cast<int>(cols));
-  fast_divmod rows_times_thirty_two(static_cast<int>(rows) * 32);
+  //fast_divmod batch_size(static_cast<int>(rows) * static_cast<int>(cols));
+  //fast_divmod rows_times_thirty_two(static_cast<int>(rows) * 32);
 
   QOrdered_Col32OrderImpl_BiasGelu(
       Stream(),
@@ -230,10 +233,9 @@ Status QOrderedBiasGelu::ComputeInternal(OpKernelContext* context) const {
       bias_scale,
       output_tensor->MutableData<int8_t>(),
       output_scale,
-      batch_size,
-      rows_times_thirty_two,
-      input_shape.Size());
-
+      batches,
+      rows,
+      cols);
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   return Status::OK();

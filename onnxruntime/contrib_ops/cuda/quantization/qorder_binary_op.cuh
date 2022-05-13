@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
-using onnxruntime::cuda::TArray;
 using onnxruntime::cuda::fast_divmod;
+using onnxruntime::cuda::TArray;
 
 namespace onnxruntime {
 namespace contrib {
@@ -42,11 +42,11 @@ namespace cuda {
       int8_t* output_data,                            \
       size_t count)
 
-
 // QORDERED_BINARY_TWO_SCALE_DECLARATION(Add);
 
 // QORDERED_BINARY_THREE_SCALE_DECLARATION(BiasGelu);
 
+/*
   void QOrdered_Col32OrderImpl_BiasGelu(
     cudaStream_t stream,
     const int8_t* input_tensor,
@@ -58,18 +58,31 @@ namespace cuda {
     const fast_divmod& batch_size,
     const fast_divmod& rows_times_thirty_two,
     size_t count);
+    */
 
-  void QOrdered_Col32OrderImpl_Add(
-      cudaStream_t stream,
-      const int8_t* input_tensor,
-      float input_scale,
-      const int8_t* bias_tensor,
-      float bias_scale,
-      int8_t* output_tensor,
-      float output_scale,
-      const fast_divmod& batch_size,
-      const fast_divmod& rows_times_thirty_two,
-      size_t count);
+void QOrdered_Col32OrderImpl_BiasGelu(
+    cudaStream_t stream,
+    const int8_t* input_tensor,
+    float input_scale,
+    const int8_t* bias_tensor,
+    float bias_scale,
+    int8_t* output_tensor,
+    float output_scale,
+    const int64_t batches,
+    const int64_t rows,
+    const int64_t cols);
+
+void QOrdered_Col32OrderImpl_Add(
+    cudaStream_t stream,
+    const int8_t* input_tensor,
+    float input_scale,
+    const int8_t* bias_tensor,
+    float bias_scale,
+    int8_t* output_tensor,
+    float output_scale,
+    const fast_divmod& batch_size,
+    const fast_divmod& rows_times_thirty_two,
+    size_t count);
 
 }  // namespace cuda
 }  // namespace contrib

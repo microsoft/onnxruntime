@@ -729,7 +729,7 @@ static void RunQOrdered_BiasGelu_Test(std::vector<int64_t> const& shape, float i
 
 TEST(QOrderedTest, BiasGelu_3x11x64) {
   RunQOrdered_BiasGelu_Test(
-      {1, 1, 64}, 1.0f / 32.0f, {64}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_COL32);
+      {3, 11, 64}, 1.0f / 32.0f, {64}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_COL32);
 }
 }  // namespace test
 }  // namespace onnxruntime
