@@ -14,7 +14,6 @@ from datetime import datetime
 
 import coloredlogs
 import numpy as np
-
 from perf_utils import (
     acl,
     acl_ep,
