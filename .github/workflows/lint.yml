@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: reviewdog/action-black@v3
+      - name: black
+        uses: reviewdog/action-black@v3
         with:
           github_token: ${{ secrets.github_token }}
           # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
@@ -22,7 +23,8 @@ jobs:
           # GitHub Status Check won't become failure with a warning.
           level: error
           filter_mode: file
-      - uses: reviewdog/action-flake8@v3
+      - name: flake8
+        uses: reviewdog/action-flake8@v3
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -58,13 +60,6 @@ jobs:
           level: info
           filter_mode: file
           markdownlint_flags: ". --disable MD013 MD041 MD033 MD034"
-      - name: pylint
-        uses: dciborow/action-pylint@master
-        with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
-          level: warning
-          filter_mode: file
       - name: pyright
         uses: jordemort/action-pyright@v1
         with:

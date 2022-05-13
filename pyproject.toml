@@ -18,3 +18,7 @@ convention = "google"
 
 [tool.pylint.'MESSAGES CONTROL']
 disable = ["format", "line-too-long"]
+
+[tool.pyright]
+exclude = ["onnxruntime/core/flatbuffers/*"]
+reportMissingImports = false
