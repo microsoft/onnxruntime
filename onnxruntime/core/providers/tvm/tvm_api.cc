@@ -180,8 +180,7 @@ void TVMSetInputs(TvmModule& mod,
 {
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
   TvmPackedFunc set_input_zero_copy = mod.GetFunction("set_input_zero_copy", false);
-  for (size_t i = 0; i < inds.size(); ++i)
-  {
+  for (size_t i = 0; i < inds.size(); ++i) {
     if (reinterpret_cast<size_t>(inputs[i].data) % tvm_rt::kAllocAlignment == 0) {
       set_input_zero_copy(inds[i], &inputs[i]);
     } else {
@@ -195,8 +194,7 @@ void TVM_VM_SetInputs(TvmModule& mod,
                       std::vector<DLTensor>& inputs)
 {
   TvmPackedFunc set_input = mod.GetFunction("set_one_input", false);
-  for (size_t i = 0; i < inds.size(); ++i)
-  {
+  for (size_t i = 0; i < inds.size(); ++i) {
     set_input("main", inds[i], &inputs[i]);
   }
 }
@@ -205,8 +203,7 @@ void TVMGetOutputs(TvmModule& mod,
                    std::vector<DLTensor>& outputs)
 {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
-  for (size_t i = 0; i < outputs.size(); ++i)
-  {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     get_output(i, &outputs[i]);
   }
 }
@@ -215,8 +212,7 @@ void TVM_VM_GetOutputs(TvmModule& mod,
                        std::vector<DLTensor>& outputs)
 {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
-  for (size_t i = 0; i < outputs.size(); ++i)
-  {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     // TODO(vvchernov): think about improvement of memory management
     tvm_rt::NDArray output_array = get_output(i);
     output_array.CopyTo(&outputs[i]);
