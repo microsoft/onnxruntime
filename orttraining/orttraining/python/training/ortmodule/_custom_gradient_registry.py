@@ -99,7 +99,7 @@ def embedding_gradient():
         ),
     ]
 
-@register_gradient('org.pytorch.aten', 'ATen', 'aten::_embedding_bag', '')
+@register_gradient("org.pytorch.aten", "ATen", "aten::_embedding_bag", "")
 def embedding_bag_gradient():
     # name: _embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, 
     #                      int mode=0, bool sparse=False, Tensor? per_sample_weights=None, 
@@ -118,7 +118,7 @@ def embedding_bag_gradient():
          {'operator': {'value': 'aten::_embedding_bag_backward', 'dtype': 'string'}})
     ]
 
-@register_gradient('org.pytorch.aten', 'ATen', 'aten::diagonal', '')
+@register_gradient("org.pytorch.aten", "ATen", "aten::diagonal", "")
 def diagonal_gradient():
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),

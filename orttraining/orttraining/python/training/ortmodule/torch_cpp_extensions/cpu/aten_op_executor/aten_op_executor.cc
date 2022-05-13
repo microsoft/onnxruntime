@@ -49,20 +49,13 @@ static at::Device getATenDevice(const DLDevice& ctx) {
   switch (ctx.device_type) {
     case DLDeviceType::kDLCPU:
       return at::Device(at::DeviceType::CPU);
-#ifndef USE_ROCM
-    // if we are compiled under HIP, we cannot do cuda
     case DLDeviceType::kDLCUDA:
       return at::Device(at::DeviceType::CUDA, ctx.device_id);
-#endif
     case DLDeviceType::kDLOpenCL:
       return at::Device(at::DeviceType::OPENCL, ctx.device_id);
-    case DLDeviceType::kDLROCM:
-#ifdef USE_ROCM
-      // this looks funny, we need to return CUDA here to masquerade
+    case DLDeviceType::kDLROCM: 
+      // since the original function maps both kDLROCM and kDLCUDA to CUDA device
       return at::Device(at::DeviceType::CUDA, ctx.device_id);
-#else
-      return at::Device(at::DeviceType::HIP, ctx.device_id);
-#endif
     default:
       TORCH_CHECK(
           false, "Unsupported device_type: " + c10::to_string(ctx.device_type));
