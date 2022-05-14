@@ -137,7 +137,7 @@ struct AdamTestInputOutput {
   SeqTensors<T> updated_momentum_2_seq_tensors_;
 };
 
-TEST(AdamTest, TorchAdamSingleWeightTest_Loop10Steps) {
+TEST(AdamTest, TorchAdamWSingleWeightTest_Loop10Steps) {
   size_t total_step = 10;
   float lr = 1e-03;
 
@@ -253,7 +253,7 @@ TEST(AdamTest, TorchAdamSingleWeightTest_Loop10Steps) {
   }
 }
 
-TEST(AdamTest, TorchAdamMultipleWeightsTest_Loop10Steps) {
+TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
   size_t total_step = 10;
   float lr = 1e-03;
 
@@ -629,7 +629,497 @@ TEST(AdamTest, TorchAdamMultipleWeightsTest_Loop10Steps) {
   }
 }
 
-// TODO: adding more test cases.
+TEST(AdamTest, HFAdamWSingleWeightTest_Loop10Steps) {
+  size_t total_step = 10;
+  float lr = 1e-03;
+
+  // 11 steps of weight values before applying optimization.
+  std::vector<std::vector<float>> weights_per_step{
+      {-0.18330415, 0.6739549, 0.3117089, 0.42830977, -0.39579117, 0.07424858},
+      {-0.18230432, 0.6729549, 0.3127084, 0.4273098, -0.39479163, 0.07324896},
+      {-0.18132173, 0.67254347, 0.31352982, 0.42675862, -0.3951839, 0.07235443},
+      {-0.18060243, 0.6721953, 0.31336504, 0.42616716, -0.39526412, 0.071780846},
+      {-0.17978439, 0.67173433, 0.31390327, 0.42547306, -0.39564267, 0.07182653},
+      {-0.17980579, 0.6710924, 0.3139063, 0.4246846, -0.39523974, 0.07234102},
+      {-0.17990471, 0.67033243, 0.3141835, 0.4244765, -0.3947254, 0.072943345},
+      {-0.17998517, 0.66960216, 0.3144741, 0.42425588, -0.3940671, 0.07337138},
+      {-0.17966875, 0.6688048, 0.31471828, 0.42398554, -0.39330435, 0.0732299},
+      {-0.17923719, 0.66809684, 0.31515577, 0.4237177, -0.39246938, 0.073099114},
+      {-0.17888436, 0.6673463, 0.31526533, 0.42344636, -0.39184403, 0.072780155},
+  };
+
+  // 10 steps of gradient values used to apply optimization.
+  std::vector<std::vector<float>> gradients_per_step{
+      {-0.18660535, 1.0501877, -0.06538727, 0.78924006, -0.06989894, 0.08311288},
+      {-0.14019372, -0.33581784, -0.0152721405, -0.11933225, 0.15028848, 0.3035296},
+      {0.014210129, 0.05260541, 0.097171515, 0.23888281, -0.056654252, -0.053932384},
+      {-0.31330115, 0.3852994, -0.53358376, 0.41899636, 0.11755433, -0.29190654},
+      {0.5206307, 0.90298563, 0.45159638, 1.2402637, -0.57814527, -0.9771225},
+      {0.10178496, 1.272584, -0.4388461, -1.229053, -0.2420594, -0.41463128},
+      {-0.007730415, 0.28626472, -0.082126565, 0.15444252, -0.46201625, 0.20600216},
+      {-0.71351, 0.98043907, 0.020160869, 0.3170406, -0.64007777, 1.4057107},
+      {-0.35445014, 0.0007170309, -0.5025207, 0.11615195, -0.77056587, 0.01938322},
+      {0.06728999, 0.71267974, 0.53454334, 0.13664238, 0.27906644, 0.8989229},
+  };
+
+  // 11 steps of momentum1 values before applying optimization.
+  std::vector<std::vector<float>> momentums_1_per_step{
+      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+      {-0.018660536, 0.10501877, -0.0065387273, 0.07892401, -0.0069898935, 0.008311288},
+      {-0.030813852, 0.06093511, -0.007412069, 0.05909838, 0.008737944, 0.03783312},
+      {-0.026311453, 0.06010214, 0.0030462903, 0.07707683, 0.0021987236, 0.02865657},
+      {-0.055010427, 0.09262186, -0.050616715, 0.11126879, 0.013734283, -0.003399741},
+      {0.0025536926, 0.17365824, -0.0003954024, 0.22416827, -0.04545367, -0.100772016},
+      {0.01247682, 0.2835508, -0.04424047, 0.078846134, -0.065114245, -0.13215794},
+      {0.010456095, 0.28382218, -0.04802908, 0.08640577, -0.10480444, -0.09834193},
+      {-0.061940514, 0.3534839, -0.041210085, 0.10946925, -0.15833177, 0.05206334},
+      {-0.09119148, 0.3182072, -0.087341145, 0.11013751, -0.21955517, 0.048795324},
+      {-0.075343326, 0.35765445, -0.025152696, 0.11278799, -0.16969301, 0.13380808},
+  };
+
+  // 11 steps of momentum2 values before applying optimization.
+  std::vector<std::vector<float>> momentums_2_per_step{
+      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+      {3.48216e-05, 0.0011028942, 4.2755e-06, 0.0006228999, 4.8859e-06, 6.9078e-06},
+      {5.4441e-05, 0.0012145649, 4.5045e-06, 0.0006365172, 2.74676e-05, 9.90311e-05},
+      {5.45885e-05, 0.0012161176, 1.39423e-05, 0.0006929458, 3.06498e-05, 0.0001018407},
+      {0.0001526915, 0.0013633572, 0.00029864, 0.0008678107, 4.44382e-05, 0.0001869483},
+      {0.0004235952, 0.002177377, 0.0005022806, 0.0024051971, 0.0003786457, 0.0011415298},
+      {0.0004335318, 0.0037946696, 0.0006943642, 0.0039133634, 0.0004368598, 0.0013123073},
+      {0.000433158, 0.0038728225, 0.0007004146, 0.0039333026, 0.000649882, 0.001353432},
+      {0.0009418214, 0.0048302105, 0.0007001207, 0.004029884, 0.0010589317, 0.0033281012},
+      {0.0010665145, 0.0048253806, 0.0009519476, 0.0040393453, 0.0016516446, 0.003325149},
+      {0.001069976, 0.005328468, 0.0012367324, 0.0040539773, 0.0017278712, 0.004129886},
+  };
+
+  ASSERT_TRUE(weights_per_step.size() == total_step + 1);
+  ASSERT_TRUE(gradients_per_step.size() == total_step);
+  ASSERT_TRUE(momentums_1_per_step.size() == total_step + 1);
+  ASSERT_TRUE(momentums_2_per_step.size() == total_step + 1);
+
+  for (size_t step = 0; step < total_step; ++step) {
+    OpTester test("Adam", 1, onnxruntime::kMSDomain);
+    std::vector<TensorInfo> weight_tensor_infos{TensorInfo({2, 3}, weights_per_step[step])};
+    std::vector<TensorInfo> gradient_tensor_infos{TensorInfo({2, 3}, gradients_per_step[step])};
+    std::vector<TensorInfo> momentum_1_tensor_infos{TensorInfo({2, 3}, momentums_1_per_step[step])};
+    std::vector<TensorInfo> momentum_2_tensor_infos{TensorInfo({2, 3}, momentums_2_per_step[step])};
+
+    std::vector<TensorInfo> updated_weight_tensor_infos{TensorInfo({2, 3}, weights_per_step[step + 1])};
+    std::vector<TensorInfo> updated_momentum_1_tensor_infos{TensorInfo({2, 3}, momentums_1_per_step[step + 1])};
+    std::vector<TensorInfo> updated_momentum_2_tensor_infos{TensorInfo({2, 3}, momentums_2_per_step[step + 1])};
+    AdamTestInputOutput<float> data(
+        lr, step, weight_tensor_infos, gradient_tensor_infos, momentum_1_tensor_infos, momentum_2_tensor_infos,
+        updated_weight_tensor_infos, updated_momentum_1_tensor_infos, updated_momentum_2_tensor_infos);
+
+    // Default values for HF AdamW.
+    test.AddAttribute("alpha", static_cast<float>(0.9f));
+    test.AddAttribute("beta", static_cast<float>(0.999f));
+    test.AddAttribute("epsilon", static_cast<float>(1e-6f));
+    test.AddAttribute("weight_decay", static_cast<float>(0.0f));
+    test.AddAttribute("adam_mode", static_cast<int64_t>(0));
+    test.AddAttribute("correct_bias", static_cast<int64_t>(1));
+
+    // Add test inputs.
+    test.AddInput<float>("lr", {}, data.lr_vector);
+    test.AddInput<int64_t>("step", {}, data.step_vector);
+    test.AddSeqInput("weights", data.WeightSeq());
+    test.AddSeqInput("gradients", data.GradientSeq());
+    test.AddSeqInput("momentums_1", data.Momentum_1_Seq());
+    test.AddSeqInput("momentums_2", data.Momentum_2_Seq());
+
+    // Add test outputs as baseline.
+    float param_rtol = 1e-5f;
+    float param_atol = 1e-4f;
+    test.AddOutput<int64_t>("updated_flag", {}, {1});
+    test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), param_rtol, param_atol);
+
+    float momentum1_rtol = 1e-3f;
+    float momentum1_atol = 1e-6f;
+    test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum1_rtol, momentum1_atol);
+
+    float momentum2_rtol = 1e-3f;
+    float momentum2_atol = 1e-7f;
+    test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum2_rtol, momentum2_atol);
+
+    test.Run();
+  }
+}
+
+TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
+  size_t total_step = 10;
+  float lr = 1e-03;
+
+  // 11 steps of weight values before applying optimization.
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_weights_per_step{
+      {
+          "fc1.weight",
+          {
+              {0.039699044, -0.1405438, 0.6361624, 0.3636222, -0.21526536, 0.3459897},
+              {0.040698715, -0.14154363, 0.6361624, 0.3636222, -0.21426547, 0.3449905},
+              {0.040812083, -0.14246951, 0.6369058, 0.36288416, -0.21389234, 0.34414068},
+              {0.040369906, -0.14334475, 0.63775635, 0.36349458, -0.21362267, 0.3434334},
+              {0.040422853, -0.14391455, 0.63845307, 0.3639946, -0.21340178, 0.34285408},
+              {0.040131994, -0.14459613, 0.63904196, 0.36441723, -0.21321507, 0.3423644},
+              {0.040489312, -0.1445436, 0.6387083, 0.36404616, -0.21313372, 0.34181213},
+              {0.040669657, -0.14446883, 0.6384169, 0.36372212, -0.21296401, 0.3412484},
+              {0.040862735, -0.14450029, 0.63879496, 0.36319363, -0.21279131, 0.3405561},
+              {0.041090745, -0.14456306, 0.6391306, 0.36272448, -0.21263799, 0.3399415},
+              {0.041278224, -0.14465518, 0.6394301, 0.36230576, -0.21250115, 0.339393},
+          },
+      },
+      {
+          "fc1.bias",
+          {
+              {0.5179555, -0.43510795, -0.12118204},
+              {0.5169556, -0.43510795, -0.12218197},
+              {0.5160166, -0.43436474, -0.123182595},
+              {0.5151102, -0.43357942, -0.12397698},
+              {0.5141677, -0.43293613, -0.1246277},
+              {0.5137603, -0.4323924, -0.12517771},
+              {0.5133432, -0.4326506, -0.1256984},
+              {0.5133251, -0.43287608, -0.12629665},
+              {0.51318634, -0.432489, -0.12695934},
+              {0.5130984, -0.43214542, -0.12754764},
+              {0.512943, -0.43183872, -0.12807268},
+          },
+      },
+      {
+          "fc2.weight",
+          {
+              {-0.5107945, 0.045720927, 0.21493156, -0.03950736, -0.35901335, 0.30300942},
+              {-0.5097946, 0.045720927, 0.21593124, -0.04050732, -0.35901335, 0.30200958},
+              {-0.5088292, 0.04646326, 0.21665226, -0.041504018, -0.35975638, 0.30124596},
+              {-0.5079111, 0.047161248, 0.21733399, -0.04231338, -0.3605556, 0.30058664},
+              {-0.50696176, 0.047732998, 0.21789241, -0.043109298, -0.36121026, 0.30004656},
+              {-0.50654715, 0.048216257, 0.21836439, -0.043951426, -0.3617636, 0.29959008},
+              {-0.5060264, 0.047795646, 0.2183422, -0.04463814, -0.36136106, 0.2993132},
+              {-0.50582683, 0.047428325, 0.21827532, -0.04537316, -0.3610095, 0.29904476},
+              {-0.50551087, 0.04711111, 0.21850857, -0.046184022, -0.36098182, 0.29853436},
+              {-0.50524634, 0.046829507, 0.21871562, -0.04700344, -0.36095726, 0.29808128},
+              {-0.5049375, 0.046578184, 0.2189004, -0.047778137, -0.36093533, 0.29767692},
+          },
+      },
+      {
+          "fc2.bias",
+          {
+              {0.023823332, 0.53758854},
+              {0.02482329, 0.53658855},
+              {0.025781307, 0.53559124},
+              {0.026681963, 0.5347738},
+              {0.027620444, 0.5339826},
+              {0.028186643, 0.53311956},
+              {0.028723473, 0.5324403},
+              {0.028897049, 0.5316961},
+              {0.029226314, 0.5308753},
+              {0.029510176, 0.5300653},
+              {0.029835783, 0.52934104},
+          },
+      },
+  };
+
+  // 10 steps of gradient values used to apply optimization.
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_gradients_per_step{
+      {
+          "fc1.weight",
+          {
+              {-0.09586181, 0.17629345, 0.0, 0.0, -0.32529348, 0.04030715},
+              {0.06834118, 0.08454809, -0.03257603, 0.003821307, 0.11912338, 0.22665249},
+              {0.14587241, 0.061909888, -0.048467256, -0.08001699, 0.01010122, 0.019008288},
+              {-0.13795517, -0.046709955, 0.0, 0.0, 0.0, 0.0},
+              {0.17391214, 0.5486637, 0.0, 0.0, 0.0, 0.0},
+              {-0.5883157, -0.7570428, 0.17399102, 0.22668226, 0.05208155, 0.06785387},
+              {0.1634007, -0.054908697, 0.0, 0.0, -0.07045339, 0.042855613},
+              {-0.04708763, 0.18948916, -0.50407434, 0.18441166, -0.01673333, 0.1734673},
+              {-0.08061128, 0.06998594, 0.0, 0.0, 0.0, 0.0},
+              {0.022378631, 0.07342364, 0.0, 0.0, 0.0, 0.0},
+          },
+      },
+      {
+          "fc1.bias",
+          {
+              {0.30900255, 0.0, 0.36434337},
+              {0.16206324, -0.025315944, 0.37580276},
+              {0.13361552, -0.077632844, 0.01748341},
+              {0.30953294, 0.0, 0.0},
+              {-0.287035, 0.0, 0.0},
+              {0.075108826, 0.16361739, 0.04897636},
+              {-0.38378465, 0.0, 0.18684858},
+              {0.17582831, -0.4588748, 0.19721851},
+              {-0.050648615, 0.0, 0.0},
+              {0.11546661, 0.0, 0.0},
+          },
+      },
+      {
+          "fc2.weight",
+          {
+              {-0.31826627, 0.0, -0.10227942, 0.7872374, 0.0, 0.2039589},
+              {-0.2035816, -0.012988876, -0.0072859353, 0.72063875, 0.021517584, 0.02756824},
+              {-0.13538884, -0.11738108, -0.022565873, 0.06767718, 0.057625376, 0.023622716},
+              {-0.34125668, 0.0, 0.0, 0.3015144, 0.0, 0.0},
+              {0.30986175, 0.0, 0.0, 1.4481032, 0.0, 0.0},
+              {-0.2343559, 0.5371115, 0.087428816, -0.1303899, -0.26854572, -0.04371277},
+              {0.30305678, 0.0, 0.01286526, 0.6520397, 0.0, 0.011255648},
+              {-0.22533442, -0.007282924, -0.09457447, 1.1683875, 0.15443821, 0.19560373},
+              {0.02437459, 0.0, 0.0, 0.5862967, 0.0, 0.0},
+              {-0.11917039, 0.0, 0.0, 0.22678037, 0.0, 0.0},
+          },
+      },
+      {
+          "fc2.bias",
+          {
+              {-0.73845947, 1.7262223},
+              {-0.44501105, 1.5997354},
+              {-0.2772748, 0.17998222},
+              {-0.65890837, 0.5939946},
+              {0.39519566, 2.0108397},
+              {-0.11681646, -0.36257744},
+              {0.6392148, 1.3514249},
+              {-0.55234224, 2.2824335},
+              {0.025046706, 0.8225188},
+              {-0.22959742, 0.0114171505},
+          },
+      },
+  };
+
+  // 11 steps of momentum1 values before applying optimization.
+  std::unordered_map<std::string, std::vector<std::vector<float>>>
+      named_momentums_1_per_step{
+          {
+              "fc1.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {-0.009586181, 0.017629346, 0.0, 0.0, -0.03252935, 0.004030715},
+                  {-0.0017934436, 0.024321219, -0.003257603, 0.0003821307, -0.017364075, 0.026292892},
+                  {0.012973143, 0.028080087, -0.007778568, -0.0076577817, -0.0146175455, 0.025564432},
+                  {-0.0021196895, 0.02060108, -0.0070007113, -0.006892003, -0.013155791, 0.023007989},
+                  {0.015483495, 0.073407345, -0.00630064, -0.006202803, -0.011840211, 0.02070719},
+                  {-0.044896428, -0.009637676, 0.011728527, 0.017085703, -0.005448035, 0.025421858},
+                  {-0.024066713, -0.0141647775, 0.010555674, 0.015377133, -0.011948571, 0.027165232},
+                  {-0.026368804, 0.0062006167, -0.040907327, 0.032280587, -0.012427047, 0.041795436},
+                  {-0.03179305, 0.012579149, -0.036816593, 0.029052528, -0.011184342, 0.03761589},
+                  {-0.02637588, 0.018663598, -0.033134934, 0.026147274, -0.010065908, 0.033854302},
+              },
+          },
+          {
+              "fc1.bias",
+              {
+                  {0.0, 0.0, 0.0},
+                  {0.030900257, 0.0, 0.036434337},
+                  {0.044016555, -0.0025315944, 0.07037118},
+                  {0.052976448, -0.010041719, 0.0650824},
+                  {0.078632094, -0.009037547, 0.058574155},
+                  {0.042065386, -0.008133792, 0.052716743},
+                  {0.04536973, 0.009041326, 0.0523427},
+                  {0.0024542885, 0.0081371935, 0.06579329},
+                  {0.01979169, -0.038564004, 0.07893581},
+                  {0.012747658, -0.034707602, 0.071042225},
+                  {0.023019554, -0.031236842, 0.063938},
+              },
+          },
+          {
+              "fc2.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {-0.031826627, 0.0, -0.010227942, 0.07872374, 0.0, 0.02039589},
+                  {-0.049002126, -0.0012988875, -0.009933741, 0.14291525, 0.0021517584, 0.021113126},
+                  {-0.057640795, -0.012907107, -0.011196953, 0.13539144, 0.00769912, 0.021364084},
+                  {-0.08600238, -0.011616397, -0.010077258, 0.15200374, 0.006929208, 0.019227674},
+                  {-0.046415962, -0.010454757, -0.009069531, 0.28161368, 0.0062362873, 0.017304907},
+                  {-0.065209955, 0.04430187, 0.000580304, 0.24041331, -0.021241914, 0.011203138},
+                  {-0.02838328, 0.03987168, 0.0018087996, 0.28157595, -0.019117722, 0.011208389},
+                  {-0.048078395, 0.035156216, -0.007829527, 0.3702571, -0.0017621284, 0.029647924},
+                  {-0.040833097, 0.031640593, -0.0070465743, 0.39186105, -0.0015859156, 0.02668313},
+                  {-0.048666827, 0.02847653, -0.0063419165, 0.37535298, -0.001427324, 0.024014816},
+              },
+          },
+          {
+              "fc2.bias",
+              {
+                  {0.0, 0.0},
+                  {-0.073845945, 0.17262223},
+                  {-0.11096244, 0.31533355},
+                  {-0.12759368, 0.3017984},
+                  {-0.18072514, 0.331018},
+                  {-0.12313307, 0.49900016},
+                  {-0.1225014, 0.41284242},
+                  {-0.04632978, 0.50670063},
+                  {-0.096931025, 0.6842739},
+                  {-0.08473325, 0.6980984},
+                  {-0.09921966, 0.6294303},
+              },
+          },
+      };
+
+  // 11 steps of momentum2 values before applying optimization.
+  std::unordered_map<std::string, std::vector<std::vector<float>>>
+      named_momentums_2_per_step{
+          {
+              "fc1.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {9.1895e-06, 3.10794e-05, 0.0, 0.0, 0.0001058158, 1.6247e-06},
+                  {1.38508e-05, 3.81967e-05, 1.0612e-06, 1.46e-08, 0.0001199004, 5.29944e-05},
+                  {3.51157e-05, 4.19913e-05, 3.4092e-06, 6.4173e-06, 0.0001198826, 5.33027e-05},
+                  {5.41122e-05, 4.41312e-05, 3.4058e-06, 6.4109e-06, 0.0001197627, 5.32494e-05},
+                  {8.43036e-05, 0.0003451189, 3.4024e-06, 6.4045e-06, 0.0001196429, 5.31962e-05},
+                  {0.0004303346, 0.0009178877, 3.36719e-05, 5.77829e-05, 0.0001222358, 5.77471e-05},
+                  {0.0004566041, 0.0009199848, 3.36382e-05, 5.77251e-05, 0.0001270772, 5.9526e-05},
+                  {0.0004583648, 0.000954971, 0.0002876955, 9.16751e-05, 0.0001272302, 8.95574e-05},
+                  {0.0004644046, 0.0009589141, 0.0002874078, 9.15834e-05, 0.0001271029, 8.94678e-05},
+                  {0.000464441, 0.0009633462, 0.0002871204, 9.14918e-05, 0.0001269758, 8.93783e-05},
+              },
+          },
+          {
+              "fc1.bias",
+              {
+                  {0.0, 0.0, 0.0},
+                  {9.54826e-05, 0.0, 0.0001327461},
+                  {0.0001216516, 6.409e-07, 0.0002738411},
+                  {0.0001393831, 6.6671e-06, 0.0002738729},
+                  {0.0002350543, 6.6604e-06, 0.000273599},
+                  {0.0003172084, 6.6538e-06, 0.0002733254},
+                  {0.0003225325, 3.34178e-05, 0.0002754508},
+                  {0.0004695006, 3.33844e-05, 0.0003100878},
+                  {0.0004999468, 0.0002439171, 0.0003486728},
+                  {0.0005020121, 0.0002436732, 0.0003483242},
+                  {0.0005148426, 0.0002434295, 0.0003479759},
+              },
+          },
+          {
+              "fc2.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {0.0001012934, 0.0, 1.04611e-05, 0.0006197428, 0.0, 4.15992e-05},
+                  {0.0001426376, 1.687e-07, 1.05037e-05, 0.0011384432, 4.63e-07, 4.23176e-05},
+                  {0.0001608251, 1.39469e-05, 1.10024e-05, 0.0011418851, 3.7832e-06, 4.28334e-05},
+                  {0.0002771204, 1.39329e-05, 1.09914e-05, 0.0012316541, 3.7794e-06, 4.27905e-05},
+                  {0.0003728576, 1.3919e-05, 1.09804e-05, 0.0033274253, 3.7757e-06, 4.27477e-05},
+                  {0.0004274074, 0.0003023939, 1.86132e-05, 0.0033410995, 7.58887e-05, 4.46158e-05},
+                  {0.0005188234, 0.0003020915, 1.87601e-05, 0.003762914, 7.58128e-05, 4.46979e-05},
+                  {0.0005690802, 0.0003018424, 2.76857e-05, 0.0051242807, 9.95882e-05, 8.2914e-05},
+                  {0.0005691052, 0.0003015406, 2.7658e-05, 0.0054629003, 9.94886e-05, 8.28311e-05},
+                  {0.0005827378, 0.000301239, 2.76304e-05, 0.005508867, 9.93891e-05, 8.27482e-05},
+              },
+          },
+          {
+              "fc2.bias",
+              {
+                  {0.0, 0.0},
+                  {0.0005453224, 0.0029798434},
+                  {0.000742812, 0.005536017},
+                  {0.0008189504, 0.005562875},
+                  {0.0012522918, 0.005910142},
+                  {0.0014072192, 0.009947708},
+                  {0.0014194581, 0.010069223},
+                  {0.0018266342, 0.011885503},
+                  {0.0021298896, 0.017083121},
+                  {0.0021283869, 0.017742576},
+                  {0.0021789735, 0.017724965},
+              },
+          },
+      };
+
+  ASSERT_TRUE(named_weights_per_step.size() == 4);
+  ASSERT_TRUE(named_gradients_per_step.size() == 4);
+  ASSERT_TRUE(named_momentums_1_per_step.size() == 4);
+  ASSERT_TRUE(named_momentums_2_per_step.size() == 4);
+
+  ASSERT_TRUE(named_weights_per_step["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_gradients_per_step["fc1.weight"].size() == total_step);
+  ASSERT_TRUE(named_momentums_1_per_step["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_momentums_2_per_step["fc1.weight"].size() == total_step + 1);
+
+  for (size_t step = 0; step < total_step; ++step) {
+    OpTester test("Adam", 1, onnxruntime::kMSDomain);
+
+    // Weights/momentums before applying optimization.
+    std::vector<TensorInfo> weight_tensor_infos{
+        TensorInfo({2, 3}, named_weights_per_step["fc1.weight"][step]),
+        TensorInfo({3}, named_weights_per_step["fc1.bias"][step]),
+        TensorInfo({3, 2}, named_weights_per_step["fc2.weight"][step]),
+        TensorInfo({2}, named_weights_per_step["fc2.bias"][step]),
+    };
+
+    std::vector<TensorInfo> gradient_tensor_infos{
+        TensorInfo({2, 3}, named_gradients_per_step["fc1.weight"][step]),
+        TensorInfo({3}, named_gradients_per_step["fc1.bias"][step]),
+        TensorInfo({3, 2}, named_gradients_per_step["fc2.weight"][step]),
+        TensorInfo({2}, named_gradients_per_step["fc2.bias"][step]),
+    };
+
+    std::vector<TensorInfo> momentum_1_tensor_infos{
+        TensorInfo({2, 3}, named_momentums_1_per_step["fc1.weight"][step]),
+        TensorInfo({3}, named_momentums_1_per_step["fc1.bias"][step]),
+        TensorInfo({3, 2}, named_momentums_1_per_step["fc2.weight"][step]),
+        TensorInfo({2}, named_momentums_1_per_step["fc2.bias"][step]),
+    };
+
+    std::vector<TensorInfo> momentum_2_tensor_infos{
+        TensorInfo({2, 3}, named_momentums_2_per_step["fc1.weight"][step]),
+        TensorInfo({3}, named_momentums_2_per_step["fc1.bias"][step]),
+        TensorInfo({3, 2}, named_momentums_2_per_step["fc2.weight"][step]),
+        TensorInfo({2}, named_momentums_2_per_step["fc2.bias"][step]),
+    };
+
+    // Updated weights/momentums values for validation.
+    std::vector<TensorInfo> updated_weight_tensor_infos{
+        TensorInfo({2, 3}, named_weights_per_step["fc1.weight"][step + 1]),
+        TensorInfo({3}, named_weights_per_step["fc1.bias"][step + 1]),
+        TensorInfo({3, 2}, named_weights_per_step["fc2.weight"][step + 1]),
+        TensorInfo({2}, named_weights_per_step["fc2.bias"][step + 1]),
+    };
+
+    std::vector<TensorInfo> updated_momentum_1_tensor_infos{
+        TensorInfo({2, 3}, named_momentums_1_per_step["fc1.weight"][step + 1]),
+        TensorInfo({3}, named_momentums_1_per_step["fc1.bias"][step + 1]),
+        TensorInfo({3, 2}, named_momentums_1_per_step["fc2.weight"][step + 1]),
+        TensorInfo({2}, named_momentums_1_per_step["fc2.bias"][step + 1]),
+    };
+
+    std::vector<TensorInfo> updated_momentum_2_tensor_infos{
+        TensorInfo({2, 3}, named_momentums_2_per_step["fc1.weight"][step + 1]),
+        TensorInfo({3}, named_momentums_2_per_step["fc1.bias"][step + 1]),
+        TensorInfo({3, 2}, named_momentums_2_per_step["fc2.weight"][step + 1]),
+        TensorInfo({2}, named_momentums_2_per_step["fc2.bias"][step + 1]),
+    };
+
+    AdamTestInputOutput<float> data(
+        lr, step, weight_tensor_infos, gradient_tensor_infos, momentum_1_tensor_infos, momentum_2_tensor_infos,
+        updated_weight_tensor_infos, updated_momentum_1_tensor_infos, updated_momentum_2_tensor_infos);
+
+    // Default values for HF AdamW.
+    test.AddAttribute("alpha", static_cast<float>(0.9f));
+    test.AddAttribute("beta", static_cast<float>(0.999f));
+    test.AddAttribute("epsilon", static_cast<float>(1e-6f));
+    test.AddAttribute("weight_decay", static_cast<float>(0.0f));
+    test.AddAttribute("adam_mode", static_cast<int64_t>(0));
+    test.AddAttribute("correct_bias", static_cast<int64_t>(1));
+
+    // Add test inputs.
+    test.AddInput<float>("lr", {}, data.lr_vector);
+    test.AddInput<int64_t>("step", {}, data.step_vector);
+    test.AddSeqInput("weights", data.WeightSeq());
+    test.AddSeqInput("gradients", data.GradientSeq());
+    test.AddSeqInput("momentums_1", data.Momentum_1_Seq());
+    test.AddSeqInput("momentums_2", data.Momentum_2_Seq());
+
+    // Add test outputs as baseline.
+    float param_rtol = 1e-5f;
+    float param_atol = 1e-4f;
+    test.AddOutput<int64_t>("updated_flag", {}, {1});
+    test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), param_rtol, param_atol);
+
+    float momentum1_rtol = 1e-3f;
+    float momentum1_atol = 1e-6f;
+    test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum1_rtol, momentum1_atol);
+
+    float momentum2_rtol = 1e-3f;
+    float momentum2_atol = 1e-7f;
+    test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum2_rtol, momentum2_atol);
+
+    test.Run();
+  }
+}
 
 }  // namespace
 }  // namespace test

@@ -31,10 +31,18 @@ class MultipleParamtersModule(torch.nn.Module):
         out = self.fc2(out)
         return out
 
-def GenerateAdamWTestData(seed, model_setup_func, data_func, train_step_count):
+def GenerateAdamWTestData(seed, model_setup_func, data_func, train_step_count, adam_mode):
     torch.manual_seed(seed)
     pt_model = model_setup_func()
-    adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
+
+    assert adam_mode in [0, 1]
+    adamw_optimizer = None
+    if adam_mode == 0:
+        adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
+    elif adam_mode == 1:
+        from transformers import AdamW
+        adamw_optimizer = AdamW(pt_model.parameters(), lr=1e-3)
+
 
     def run_step(model, x, target):
         prediction = model(x)
@@ -121,8 +129,8 @@ def GenerateAdamWTestData(seed, model_setup_func, data_func, train_step_count):
     for name, val in m2_list.items():
         print("{{ \"{}\", {{ {} }}, }},".format(name, str_list_to_str(val)))
 
-
-def TorchAdamSingleWeightTests():
+adam_mode = 1
+def TorchAdamSingleWeightTests(adam_mode):
     def gen(run_step_count):
         seed=8888
         device = "cuda"
@@ -137,14 +145,14 @@ def TorchAdamSingleWeightTests():
             target = torch.randn(BATCH, DIM_HIDDEN, device=device, dtype=torch.float32)
             return x1, target
 
-        GenerateAdamWTestData(seed, model_setup_func, data_func, run_step_count)
+        GenerateAdamWTestData(seed, model_setup_func, data_func, run_step_count, adam_mode)
 
     # Generate data for TorchAdamSingleWeightTest_Loop10Steps.
     gen(11)
 
-TorchAdamSingleWeightTests()
+TorchAdamSingleWeightTests(adam_mode)
 
-def TorchAdamMultipleWeightTests():
+def TorchAdamMultipleWeightTests(adam_mode):
     def gen(run_step_count):
         seed=6666
         device = "cuda"
@@ -159,9 +167,9 @@ def TorchAdamMultipleWeightTests():
             target = torch.randn(BATCH, DIM_OUT, device=device, dtype=torch.float32)
             return x1, target
 
-        GenerateAdamWTestData(seed, model_setup_func, data_func, run_step_count)
+        GenerateAdamWTestData(seed, model_setup_func, data_func, run_step_count, adam_mode)
 
     # Generate data for TorchAdamMultipleWeightsTest_Loop10Steps.
     gen(11)
 
-TorchAdamMultipleWeightTests()
+TorchAdamMultipleWeightTests(adam_mode)
