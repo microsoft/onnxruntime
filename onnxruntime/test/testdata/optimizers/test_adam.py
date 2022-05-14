@@ -42,8 +42,9 @@ def GenerateAdamWTestData(seed, model_setup_func, data_func, train_step_count):
         loss = criterion(prediction, target)
         loss.backward()
 
-    def torch_tensor_to_list(t):
-        return t.detach().cpu().tolist()
+    def torch_tensor_to_str(t):
+        # return str(t.detach().cpu().tolist()).replace("[", "{").replace("]", "}")
+        return str(t.detach().cpu().numpy().round(10).astype(str).tolist()).replace("'", "")
 
     pt_model.zero_grad()
 
@@ -73,10 +74,10 @@ def GenerateAdamWTestData(seed, model_setup_func, data_func, train_step_count):
                 m1_list[name] = []
                 m2_list[name] = []
 
-            p_list[name].append(torch_tensor_to_list(pt_param.view(-1)))
+            p_list[name].append(torch_tensor_to_str(pt_param.view(-1)))
             if step != train_step_count -1:
                 # skip collecting the last step's gradients.
-                g_list[name].append(torch_tensor_to_list(pt_param.grad.view(-1)))
+                g_list[name].append(torch_tensor_to_str(pt_param.grad.view(-1)))
 
         torch.cuda.synchronize()
 
@@ -86,35 +87,39 @@ def GenerateAdamWTestData(seed, model_setup_func, data_func, train_step_count):
                 state = adamw_optimizer.state[p]
                 name = id_to_name[p_index]
                 if len(state) == 0:
-                    m1_list[name].append(torch_tensor_to_list(torch.zeros_like(p).view(-1)))
-                    m2_list[name].append(torch_tensor_to_list(torch.zeros_like(p).view(-1)))
+                    m1_list[name].append(torch_tensor_to_str(torch.zeros_like(p).view(-1)))
+                    m2_list[name].append(torch_tensor_to_str(torch.zeros_like(p).view(-1)))
                 else:
-                    m1_list[name].append(torch_tensor_to_list(state['exp_avg'].view(-1)))
-                    m2_list[name].append(torch_tensor_to_list(state['exp_avg_sq'].view(-1)))
+                    m1_list[name].append(torch_tensor_to_str(state['exp_avg'].view(-1)))
+                    m2_list[name].append(torch_tensor_to_str(state['exp_avg_sq'].view(-1)))
                 p_index += 1
 
         adamw_optimizer.step()
         adamw_optimizer.zero_grad()
         torch.cuda.synchronize()
 
-    def val_to_str(val):
-        return str(val).replace("[", "{").replace("]", "}")
+    def str_list_to_str(val_list):
+        ss = ""
+        for val in val_list:
+            ss += val.replace("[", "{").replace("]", "},")
+        return ss
+
 
     print("Parameters:==================")
     for name, val in p_list.items():
-        print("name: ", name, "value: ", val_to_str(val))
+        print("{{ \"{}\", {{ {} }}, }},".format(name, str_list_to_str(val)))
 
     print("Gradients:==================")
     for name, val in g_list.items():
-        print("name: ", name, "value: ", val_to_str(val))
+        print("{{ \"{}\", {{ {} }}, }},".format(name, str_list_to_str(val)))
 
     print("Momentums1:==================")
     for name, val in m1_list.items():
-        print("name: ", name, "value: ", val_to_str(val))
+        print("{{ \"{}\", {{ {} }}, }},".format(name, str_list_to_str(val)))
 
     print("Momentums2:==================")
     for name, val in m2_list.items():
-        print("name: ", name, "value: ", val_to_str(val))
+        print("{{ \"{}\", {{ {} }}, }},".format(name, str_list_to_str(val)))
 
 
 def TorchAdamSingleWeightTests():
@@ -136,6 +141,8 @@ def TorchAdamSingleWeightTests():
 
     # Generate data for TorchAdamSingleWeightTest_Loop10Steps.
     gen(11)
+
+TorchAdamSingleWeightTests()
 
 def TorchAdamMultipleWeightTests():
     def gen(run_step_count):
