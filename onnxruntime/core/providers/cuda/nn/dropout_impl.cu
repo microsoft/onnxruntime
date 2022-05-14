@@ -29,7 +29,7 @@ constexpr int kBlockSize = 256;
 constexpr int kNumUnroll = 4;
 
 template <typename T, bool UseBitmask>
-__global__ void DropoutKernel(const int64_t N, const fast_divmod gpu_warp_size_fdm, const float ratio,
+__global__ void DropoutKernel(const int64_t N, const fast_divmod fdm_bits_per_element, const float ratio,
                               const std::pair<uint64_t, uint64_t> seeds, const T* X_data, T* Y_data, void* mask_data) {
   const float p = 1.0f - ratio;
   const float scale = 1.0f / p;
@@ -68,7 +68,7 @@ __global__ void DropoutKernel(const int64_t N, const fast_divmod gpu_warp_size_f
     }
 
     if (UseBitmask) {
-      SetBitmask<kNumUnroll>(id, gpu_warp_size_fdm, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
+      SetBitmask<kNumUnroll>(id, fdm_bits_per_element, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
     }
 
     __syncthreads();
@@ -76,7 +76,7 @@ __global__ void DropoutKernel(const int64_t N, const fast_divmod gpu_warp_size_f
 }
 
 template <typename T, bool UseBitmask>
-__global__ void DropoutVectorizedKernel(const int64_t N, const fast_divmod gpu_warp_size_fdm, const float ratio,
+__global__ void DropoutVectorizedKernel(const int64_t N, const fast_divmod fdm_bits_per_element, const float ratio,
                                         const std::pair<uint64_t, uint64_t> seeds, const T* X_data, T* Y_data,
                                         void* mask_data) {
   const float p = 1.0f - ratio;
@@ -122,7 +122,7 @@ __global__ void DropoutVectorizedKernel(const int64_t N, const fast_divmod gpu_w
     *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
 
     if (UseBitmask) {
-      SetBitmask<kNumUnroll>(id, gpu_warp_size_fdm, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
+      SetBitmask<kNumUnroll>(id, fdm_bits_per_element, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
     } else {
       *(reinterpret_cast<MaskLoadT*>(&reinterpret_cast<bool*>(mask_data)[id])) =
           *reinterpret_cast<MaskLoadT*>(&masks[0]);
@@ -145,13 +145,13 @@ void DropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const in
       static_cast<uint64_t>(((N - 1) / (kBlockSize * grid_size * kNumUnroll) + 1) * kNumUnroll);
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
 
-  fast_divmod gpu_warp_size_fdm(GPU_WARP_SIZE);
+  fast_divmod fdm_bits_per_element(kNumBitPerElement);
   if (N % kNumUnroll != 0) {
     DropoutKernel<T, UseBitmask>
-        <<<grid_size, kBlockSize, 0, stream>>>(N, gpu_warp_size_fdm, ratio, seeds, X_data, Y_data, mask_data);
+        <<<grid_size, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
   } else {
     DropoutVectorizedKernel<T, UseBitmask>
-        <<<grid_size, kBlockSize, 0, stream>>>(N, gpu_warp_size_fdm, ratio, seeds, X_data, Y_data, mask_data);
+        <<<grid_size, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
   }
 }
 

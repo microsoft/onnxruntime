@@ -26,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(Dropout, kOnnxDomain, 13, kCudaExecutionProvider,
                             .InputMemoryType(OrtMemTypeCPUInput, 2),
                         Dropout<false>);
 
-constexpr int kGpuWarpSize = 32;
+constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
 
 template <typename T>
 struct DropoutComputeImpl {
@@ -65,7 +65,7 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   Tensor* mask = nullptr;
   int64_t mask_element_count = N;
   if (UseBitmask) {
-    mask_element_count = (N + kGpuWarpSize - 1) / kGpuWarpSize;
+    mask_element_count = (N + kNumBitsPerElement - 1) / kNumBitsPerElement;
     mask = context->Output(1, {mask_element_count});
   } else {
     mask = context->Output(1, shape);

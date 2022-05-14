@@ -29,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(BitmaskDropoutGrad, kMSDomain, 1, kCudaExecutionProvider
                             .InputMemoryType(OrtMemTypeCPUInput, 3),
                         DropoutGrad<true>);
 
-constexpr int kGpuWarpSize = 32;
+constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
 
 template <typename T>
 struct DropoutGradComputeImpl {
@@ -55,7 +55,7 @@ Status DropoutGrad<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
 
   auto mask = context->Input<Tensor>(1);
   if (UseBitmask) {
-    ORT_ENFORCE(mask->Shape().Size() == (N + kGpuWarpSize - 1) / kGpuWarpSize);
+    ORT_ENFORCE(mask->Shape().Size() == (N + kNumBitsPerElement - 1) / kNumBitsPerElement);
   } else {
     ORT_ENFORCE(mask->Shape().Size() == N);
   }

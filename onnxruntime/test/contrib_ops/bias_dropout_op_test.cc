@@ -28,13 +28,13 @@ enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
 #if defined(USE_CUDA) || defined(USE_ROCM)
 namespace {
 
-constexpr size_t kGpuWarpSize = 32;
+constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
 
 std::vector<uint32_t> MasksToBitmasks(size_t size, const bool* mask_data) {
   std::vector<uint32_t> result;
   for (size_t i = 0; i < size; i++) {
-    size_t bitmask_idx = i / kGpuWarpSize;
-    size_t bitmask_shift = i % kGpuWarpSize;
+    size_t bitmask_idx = i / kNumBitsPerElement;
+    size_t bitmask_shift = i % kNumBitsPerElement;
     if (bitmask_idx >= result.size()) {
       result.push_back(0);
     }

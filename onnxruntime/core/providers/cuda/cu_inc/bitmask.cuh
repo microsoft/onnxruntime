@@ -49,11 +49,13 @@
 namespace onnxruntime {
 namespace cuda {
 
+constexpr int kNumBitPerElement = static_cast<int>(sizeof(uint32_t) * CHAR_BIT);
+
 template <int NumUnroll>
-__device__ __forceinline__ void SetBitmask(CUDA_LONG id, const fast_divmod gpu_warp_size_fdm, uint32_t thread_bitmask,
-                                           uint32_t* mask_data) {
+__device__ __forceinline__ void SetBitmask(CUDA_LONG id, const fast_divmod fdm_bits_per_element,
+                                           uint32_t thread_bitmask, uint32_t* mask_data) {
   int bitmask_idx, bitmask_shift;
-  gpu_warp_size_fdm.divmod(id, bitmask_idx, bitmask_shift);
+  fdm_bits_per_element.divmod(id, bitmask_idx, bitmask_shift);
   uint32_t bitmask = (thread_bitmask << bitmask_shift);
 #if defined(USE_CUDA) && __CUDA_ARCH__ >= 800
   // All thread which intend to write to the same output index will have the same thread mask.
@@ -63,7 +65,7 @@ __device__ __forceinline__ void SetBitmask(CUDA_LONG id, const fast_divmod gpu_w
   bitmask = __reduce_or_sync(thread_mask, bitmask);
 #else
 #pragma unroll
-  for (int stride = GPU_WARP_SIZE / (NumUnroll * 2); stride > 0; stride /= 2) {
+  for (int stride = kNumBitPerElement / (NumUnroll * 2); stride > 0; stride /= 2) {
     bitmask |= WARP_SHFL_DOWN(bitmask, stride);
   }
 #endif
@@ -75,10 +77,10 @@ __device__ __forceinline__ void SetBitmask(CUDA_LONG id, const fast_divmod gpu_w
 }
 
 template <int NumUnroll>
-__device__ __forceinline__ void GetMasks(CUDA_LONG id, const fast_divmod gpu_warp_size_fdm, const uint32_t* mask_data,
-                                         bool* mask_result) {
+__device__ __forceinline__ void GetMasks(CUDA_LONG id, const fast_divmod fdm_bits_per_element,
+                                         const uint32_t* mask_data, bool* mask_result) {
   int bitmask_idx, bitmask_shift;
-  gpu_warp_size_fdm.divmod(id, bitmask_idx, bitmask_shift);
+  fdm_bits_per_element.divmod(id, bitmask_idx, bitmask_shift);
   uint32_t shifted_mask = mask_data[bitmask_idx] >> bitmask_shift;
 #pragma unroll
   for (int i = 0; i < NumUnroll; i++) {

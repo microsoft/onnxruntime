@@ -30,7 +30,7 @@ constexpr int kBlockSize = 256;
 constexpr int kNumUnroll = 4;
 
 template <typename T, bool HasSameShapeBias, bool HasResidual, bool UseBitmask>
-__global__ void BiasDropoutKernel(const int64_t N, const fast_divmod fdm_gpu_warp_size, const fast_divmod fdm_dim,
+__global__ void BiasDropoutKernel(const int64_t N, const fast_divmod fdm_bits_per_element, const fast_divmod fdm_dim,
                                   const float ratio, const std::pair<uint64_t, uint64_t> seeds, const T* X_data,
                                   const T* bias_data, const T* residual_data, T* Y_data, void* mask_data) {
   const float p = 1.0f - ratio;
@@ -83,7 +83,7 @@ __global__ void BiasDropoutKernel(const int64_t N, const fast_divmod fdm_gpu_war
     }
 
     if (UseBitmask) {
-      SetBitmask<kNumUnroll>(id, fdm_gpu_warp_size, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
+      SetBitmask<kNumUnroll>(id, fdm_bits_per_element, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
     }
 
     __syncthreads();
@@ -91,7 +91,7 @@ __global__ void BiasDropoutKernel(const int64_t N, const fast_divmod fdm_gpu_war
 }
 
 template <typename T, bool HasSameShapeBias, bool HasResidual, bool UseBitmask>
-__global__ void BiasDropoutVectorizedKernel(const int64_t N, const fast_divmod fdm_gpu_warp_size,
+__global__ void BiasDropoutVectorizedKernel(const int64_t N, const fast_divmod fdm_bits_per_element,
                                             const fast_divmod fdm_dim, const float ratio,
                                             const std::pair<uint64_t, uint64_t> seeds, const T* X_data,
                                             const T* bias_data, const T* residual_data, T* Y_data, void* mask_data) {
@@ -163,7 +163,7 @@ __global__ void BiasDropoutVectorizedKernel(const int64_t N, const fast_divmod f
     // Vectorized writes for mask_data & Y_data
     *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
     if (UseBitmask) {
-      SetBitmask<kNumUnroll>(id, fdm_gpu_warp_size, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
+      SetBitmask<kNumUnroll>(id, fdm_bits_per_element, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
     } else {
       *(reinterpret_cast<MaskLoadT*>(&reinterpret_cast<bool*>(mask_data)[id])) =
           *reinterpret_cast<MaskLoadT*>(&masks[0]);
@@ -175,7 +175,7 @@ __global__ void BiasDropoutVectorizedKernel(const int64_t N, const fast_divmod f
 
 #define LAUNCH_BIAS_DROPOUT_KERNEL(FuncName, HasSameShapeBias, HasResidual)                     \
   FuncName<T, HasSameShapeBias, HasResidual, UseBitmask><<<grid_size, kBlockSize, 0, stream>>>( \
-      N, fdm_gpu_warp_size, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data)
+      N, fdm_bits_per_element, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data)
 
 template <typename T, bool UseBitmask>
 void BiasDropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const fast_divmod fdm_dim,
@@ -190,7 +190,7 @@ void BiasDropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, cons
   const uint64_t counter_offset =
       static_cast<uint64_t>(((N - 1) / (kBlockSize * grid_size * kNumUnroll) + 1) * kNumUnroll);
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
-  fast_divmod fdm_gpu_warp_size(GPU_WARP_SIZE);
+  fast_divmod fdm_bits_per_element(kNumBitPerElement);
   if (N % kNumUnroll != 0) {
     if (has_same_shape_bias) {
       if (!residual_data) {

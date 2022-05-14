@@ -29,12 +29,12 @@ constexpr int kBlockSize = 256;
 constexpr int kNumUnroll = 4;
 
 template <typename T, bool UseBitmask>
-__global__ void DropoutGradientKernel(const int64_t N, const fast_divmod gpu_warp_size_fdm, const T* dY_data,
+__global__ void DropoutGradientKernel(const int64_t N, const fast_divmod fdm_bits_per_element, const T* dY_data,
                                       const void* mask_data, const float scale, T* dX_data) {
   CUDA_LONG id = (blockDim.x * blockIdx.x + threadIdx.x) * kNumUnroll;
   bool masks[kNumUnroll];
   if (UseBitmask && id < N) {
-    GetMasks<kNumUnroll>(id, gpu_warp_size_fdm, reinterpret_cast<const uint32_t*>(mask_data), masks);
+    GetMasks<kNumUnroll>(id, fdm_bits_per_element, reinterpret_cast<const uint32_t*>(mask_data), masks);
   }
 
 #pragma unroll
@@ -48,8 +48,9 @@ __global__ void DropoutGradientKernel(const int64_t N, const fast_divmod gpu_war
 }
 
 template <typename T, bool UseBitmask>
-__global__ void DropoutGradientVectorizedKernel(const int64_t N, const fast_divmod gpu_warp_size_fdm, const T* dY_data,
-                                                const void* mask_data, const float scale, T* dX_data) {
+__global__ void DropoutGradientVectorizedKernel(const int64_t N, const fast_divmod fdm_bits_per_element,
+                                                const T* dY_data, const void* mask_data, const float scale,
+                                                T* dX_data) {
   // using vectorized data load/store approach when N % 4 == 0
   // since this is typical case for input shape size
   using LoadT = aligned_vector<T, kNumUnroll>;
@@ -65,7 +66,7 @@ __global__ void DropoutGradientVectorizedKernel(const int64_t N, const fast_divm
 
     bool masks[kNumUnroll];
     if (UseBitmask) {
-      GetMasks<kNumUnroll>(id, gpu_warp_size_fdm, reinterpret_cast<const uint32_t*>(mask_data), masks);
+      GetMasks<kNumUnroll>(id, fdm_bits_per_element, reinterpret_cast<const uint32_t*>(mask_data), masks);
     } else {
       MaskLoadT* value2 = reinterpret_cast<MaskLoadT*>(&masks);
       *value2 = *reinterpret_cast<const MaskLoadT*>(&reinterpret_cast<const bool*>(mask_data)[id]);
@@ -94,13 +95,13 @@ void DropoutGradientKernelImpl(cudaStream_t stream, const int64_t N, const T* dY
   } else {
     const float scale = 1.f / (1.f - ratio);
     const int blocksPerGrid = static_cast<int>(CeilDiv(N, kBlockSize * kNumUnroll));
-    fast_divmod gpu_warp_size_fdm(GPU_WARP_SIZE);
+    fast_divmod fdm_bits_per_element(kNumBitPerElement);
     if (N % kNumUnroll != 0) {
       DropoutGradientKernel<T, UseBitmask>
-          <<<blocksPerGrid, kBlockSize, 0, stream>>>(N, gpu_warp_size_fdm, dY_data, mask_data, scale, dX_data);
+          <<<blocksPerGrid, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, dY_data, mask_data, scale, dX_data);
     } else {
       DropoutGradientVectorizedKernel<T, UseBitmask>
-          <<<blocksPerGrid, kBlockSize, 0, stream>>>(N, gpu_warp_size_fdm, dY_data, mask_data, scale, dX_data);
+          <<<blocksPerGrid, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, dY_data, mask_data, scale, dX_data);
     }
   }
 }

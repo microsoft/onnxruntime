@@ -17,7 +17,7 @@ namespace test {
 namespace {
 
 constexpr std::initializer_list<float> kRatios = {0.00f, 0.25f, 0.50f, 0.75f, 0.99f};
-constexpr size_t kGpuWarpSize = 32;
+constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
 
 void GenerateMaskData(size_t size, bool* mask_data, float ratio) {
   int threshold = static_cast<int>(ratio * 100);
@@ -37,8 +37,8 @@ int64_t GetDropoutGradBitmaskAndOutput(size_t size, const std::vector<T>& input_
   output_data.resize(size);
   for (size_t i = 0; i < size; ++i) {
     output_data[i] = T(static_cast<float>(input_data[i]) * static_cast<float>(masks[i]) * scale);
-    size_t bitmask_idx = i / kGpuWarpSize;
-    size_t bitmask_shift = i % kGpuWarpSize;
+    size_t bitmask_idx = i / kNumBitsPerElement;
+    size_t bitmask_shift = i % kNumBitsPerElement;
     if (bitmask_idx >= bitmask_data.size()) {
       bitmask_data.push_back(0);
     }

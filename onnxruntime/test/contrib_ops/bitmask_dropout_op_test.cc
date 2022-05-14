@@ -16,7 +16,7 @@ namespace {
 constexpr int64_t kMaskSeed = 42;
 // If ratio is 0, it will go to inference mode even the training_mode is true.
 constexpr std::initializer_list<float> kRatios = {0.25f, 0.50f, 0.75f, 0.99f};
-constexpr size_t kGpuWarpSize = 32;
+constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
 
 template <typename T>
 void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio = false, bool has_training_mode = false,
@@ -39,7 +39,7 @@ void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio 
 
   test.AddOutput<T>("output", input_dims, input_data);
   if (has_mask) {
-    size_t mask_size = (input_size + kGpuWarpSize - 1) / kGpuWarpSize;
+    size_t mask_size = (input_size + kNumBitsPerElement - 1) / kNumBitsPerElement;
     std::vector<uint32_t> mask_data(mask_size, 0xFFFFFFFF);
     test.AddOutput<uint32_t>("mask", {static_cast<int64_t>(mask_size)}, mask_data);
   }
@@ -65,8 +65,8 @@ void RunTestForInferenceWrapper() {
 std::vector<uint32_t> MasksToBitmasks(size_t size, const bool* mask_data) {
   std::vector<uint32_t> result;
   for (size_t i = 0; i < size; ++i) {
-    size_t bitmask_idx = i / kGpuWarpSize;
-    size_t bitmask_shift = i % kGpuWarpSize;
+    size_t bitmask_idx = i / kNumBitsPerElement;
+    size_t bitmask_shift = i % kNumBitsPerElement;
     if (bitmask_idx >= result.size()) {
       result.push_back(0);
     }
