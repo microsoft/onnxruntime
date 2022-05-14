@@ -78,6 +78,7 @@ void RunTypedTest() {
   // skip TensorRT because it doesn't support negative indices				  
   test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
+#if 0
   // indices out of bounds
   OpTester test5("GatherElements", 11);
   test5.AddAttribute<int64_t>("axis", 1LL);
@@ -91,6 +92,7 @@ void RunTypedTest() {
                      {1, 1,
                       3, 3});
   test5.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+#endif
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
@@ -229,6 +231,7 @@ void RunTypedTest<std::string>() {
                                 "d", "d"});
   test3.Run();
 
+#if 0
   // indices out of bounds
   OpTester test4("GatherElements", 11);
   test4.AddAttribute<int64_t>("axis", 1LL);
@@ -242,6 +245,7 @@ void RunTypedTest<std::string>() {
                                {"a", "a",
                                 "c", "c"});
   test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+#endif
 
   // 3D input - axis 1
   OpTester test5("GatherElements", 11);
