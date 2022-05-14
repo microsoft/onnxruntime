@@ -6,6 +6,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/bias_dropout_fusion.h"
+#include "core/optimizer/bitmask_dropout_replacement.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
@@ -18,9 +19,7 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
-#include "core/optimizer/dropout_bitmask_rewrite.h"
 #include "core/optimizer/dropout_elimination.h"
-#include "core/optimizer/dropout_grad_bitmask_rewrite.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/fast_gelu_fusion.h"
@@ -86,8 +85,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DropoutBitmaskRewrite>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DropoutGradBitmaskRewrite>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmSumFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
@@ -202,6 +199,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
+      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, excluded_initializers));

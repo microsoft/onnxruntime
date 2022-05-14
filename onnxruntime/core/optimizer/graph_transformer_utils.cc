@@ -28,9 +28,8 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
-#include "core/optimizer/dropout_bitmask_rewrite.h"
+#include "core/optimizer/bitmask_dropout_replacement.h"
 #include "core/optimizer/dropout_elimination.h"
-#include "core/optimizer/dropout_grad_bitmask_rewrite.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
@@ -99,8 +98,6 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<CastElimination>());
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
-      rules.push_back(std::make_unique<DropoutBitmaskRewrite>());
-      rules.push_back(std::make_unique<DropoutGradBitmaskRewrite>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<GemmSumFusion>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
@@ -239,6 +236,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));

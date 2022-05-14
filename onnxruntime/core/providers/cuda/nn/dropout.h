@@ -4,31 +4,18 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cuda/nn/dropout_impl.h"
 #include "core/providers/common.h"
+#include "core/framework/random_generator.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-struct DropoutComputeImpl {
-  void operator()(const cudaDeviceProp& prop,
-                  cudaStream_t stream,
-                  const int64_t N,
-                  const float ratio_data,
-                  PhiloxGenerator& generator,
-                  const Tensor& X,
-                  Tensor& Y,
-                  bool* mask_data) const {
-    typedef typename ToCudaType<T>::MappedType CudaT;
-
-    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
-
-    DropoutKernelImpl<CudaT>(prop, stream, N, ratio_data, generator, X_data, Y_data, mask_data);
-  }
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const;
 };
 
+template <bool UseBitmask>
 class Dropout final : public CudaKernel {
  public:
   Dropout(const OpKernelInfo& info) : CudaKernel(info) {

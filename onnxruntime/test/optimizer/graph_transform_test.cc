@@ -20,6 +20,7 @@
 #include "core/graph/model.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
+#include "core/optimizer/bitmask_dropout_replacement.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
@@ -33,7 +34,6 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
-#include "core/optimizer/dropout_bitmask_rewrite.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -688,249 +688,6 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Where"] == 5);
   ASSERT_TRUE(op_to_count["Not"] == 1);  // can't remove Not if it is graph output/ has consumer that's not where
-}
-
-TEST_F(GraphTransformationTests, BitmaskDropoutRewriteBasic) {
-  auto model_uri = MODEL_FOLDER "fusion/bitmask_dropout_basic.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  // EP must be kCudaExecutionProvider for this rewrite rule to function.
-  for (auto& node : graph.Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
-  }
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 1);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<DropoutBitmaskRewrite>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropout"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 1);
-
-  auto& node = *graph.Nodes().begin();
-  ASSERT_TRUE(node.OpType() == "BitmaskDropout");
-  auto new_input_defs = node.InputDefs();
-  ASSERT_EQ(new_input_defs.size(), 1u);
-  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
-  auto new_output_defs = node.OutputDefs();
-  ASSERT_EQ(new_output_defs.size(), 1u);
-  ASSERT_TRUE(new_output_defs[0]->Name() == "B");
-}
-
-TEST_F(GraphTransformationTests, BitmaskDropoutRewriteUnsupportedEP) {
-  auto model_uri = MODEL_FOLDER "fusion/bitmask_dropout_basic.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  // Rewrite rule should not go into effect, as it does not support kCPUExecutionProvider.
-  //
-  // If the DropoutBitmaskRewrite rule begins to support kCPUExecutionProvider (for instance),
-  // because because we implement BitmaskDropout for the kCPUExecutionProvider, then change
-  // the following line to any other unsupported EP.
-  for (auto& node : graph.Nodes()) {
-    node.SetExecutionProviderType(kCpuExecutionProvider);
-  }
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 1);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<DropoutBitmaskRewrite>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 1);
-
-  auto& node = *graph.Nodes().begin();
-  ASSERT_TRUE(node.OpType() == "Dropout");
-  auto new_input_defs = node.InputDefs();
-  ASSERT_EQ(new_input_defs.size(), 1u);
-  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
-  auto new_output_defs = node.OutputDefs();
-  ASSERT_EQ(new_output_defs.size(), 1u);
-  ASSERT_TRUE(new_output_defs[0]->Name() == "B");
-}
-
-TEST_F(GraphTransformationTests, BitmaskDropoutRewriteUsedOutput) {
-  auto model_uri = MODEL_FOLDER "fusion/bitmask_dropout_used_output.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  // EP must be kCudaExecutionProvider for this rewrite rule to function.
-  for (auto& node : graph.Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
-  }
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(op_to_count["Identity"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 2);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<DropoutBitmaskRewrite>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropout"], 1);
-  ASSERT_EQ(op_to_count["Identity"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 2);
-
-  {
-    auto dropout_it = std::find_if(graph.Nodes().begin(),
-                                graph.Nodes().end(),
-                                [](const Node& node) -> bool {
-                                  return node.OpType() == "BitmaskDropout";
-                                });
-
-    ASSERT_NE(dropout_it, graph.Nodes().end());
-
-    const Node &dropout_node = *dropout_it;
-    ASSERT_TRUE(dropout_node.OpType() == "BitmaskDropout");
-    auto new_input_defs = dropout_node.InputDefs();
-    ASSERT_EQ(new_input_defs.size(), 1u);
-    ASSERT_TRUE(new_input_defs[0]->Name() == "A");
-    auto new_output_defs = dropout_node.OutputDefs();
-    ASSERT_EQ(new_output_defs.size(), 1u);
-    ASSERT_TRUE(new_output_defs[0]->Name() == "tp0");
-  }
-
-  {
-    auto identity_it = std::find_if(graph.Nodes().begin(),
-                                graph.Nodes().end(),
-                                [](const Node& node) -> bool {
-                                  return node.OpType() == "Identity";
-                                });
-
-    ASSERT_NE(identity_it, graph.Nodes().end());
-
-    const Node &identity_node = *identity_it;
-    ASSERT_TRUE(identity_node.OpType() == "Identity");
-    auto new_input_defs = identity_node.InputDefs();
-    ASSERT_EQ(new_input_defs.size(), 1u);
-    ASSERT_TRUE(new_input_defs[0]->Name() == "tp0");
-    auto new_output_defs = identity_node.OutputDefs();
-    ASSERT_EQ(new_output_defs.size(), 1u);
-    ASSERT_TRUE(new_output_defs[0]->Name() == "B");
-  }
-}
-
-TEST_F(GraphTransformationTests, BitmaskDropoutRewriteUsedMaskModelOutput) {
-  auto model_uri = MODEL_FOLDER "fusion/bitmask_dropout_used_mask_model_output.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  // EP must be kCudaExecutionProvider for this rewrite rule to function.
-  for (auto& node : graph.Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
-  }
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 1);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<DropoutBitmaskRewrite>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 1);
-
-  const Node &dropout_node = *graph.Nodes().begin();
-  ASSERT_TRUE(dropout_node.OpType() == "Dropout");
-  auto new_input_defs = dropout_node.InputDefs();
-  ASSERT_EQ(new_input_defs.size(), 1u);
-  ASSERT_TRUE(new_input_defs[0]->Name() == "A");
-  auto new_output_defs = dropout_node.OutputDefs();
-  ASSERT_EQ(new_output_defs.size(), 2u);
-  ASSERT_TRUE(new_output_defs[0]->Name() == "B");
-  ASSERT_TRUE(new_output_defs[1]->Name() == "C");
-}
-
-TEST_F(GraphTransformationTests, BitmaskDropoutRewriteUsedMaskOtherOp) {
-  auto model_uri = MODEL_FOLDER "fusion/bitmask_dropout_used_mask_other_op.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  // EP must be kCudaExecutionProvider for this rewrite rule to function.
-  for (auto& node : graph.Nodes()) {
-    node.SetExecutionProviderType(kCudaExecutionProvider);
-  }
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(op_to_count["Identity"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 2);
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<DropoutBitmaskRewrite>()));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_to_count["Dropout"], 1);
-  ASSERT_EQ(op_to_count["Identity"], 1);
-  ASSERT_EQ(graph.NumberOfNodes(), 2);
-
-  {
-    auto dropout_it = std::find_if(graph.Nodes().begin(),
-                                graph.Nodes().end(),
-                                [](const Node& node) -> bool {
-                                  return node.OpType() == "Dropout";
-                                });
-
-    ASSERT_NE(dropout_it, graph.Nodes().end());
-
-    const Node &dropout_node = *dropout_it;
-    ASSERT_TRUE(dropout_node.OpType() == "Dropout");
-    auto new_input_defs = dropout_node.InputDefs();
-    ASSERT_EQ(new_input_defs.size(), 1u);
-    ASSERT_TRUE(new_input_defs[0]->Name() == "A");
-    auto new_output_defs = dropout_node.OutputDefs();
-    ASSERT_EQ(new_output_defs.size(), 2u);
-    ASSERT_TRUE(new_output_defs[0]->Name() == "B");
-    ASSERT_TRUE(new_output_defs[1]->Name() == "tp0");
-  }
-
-  {
-    auto identity_it = std::find_if(graph.Nodes().begin(),
-                                graph.Nodes().end(),
-                                [](const Node& node) -> bool {
-                                  return node.OpType() == "Identity";
-                                });
-
-    ASSERT_NE(identity_it, graph.Nodes().end());
-
-    const Node &identity_node = *identity_it;
-    ASSERT_TRUE(identity_node.OpType() == "Identity");
-    auto new_input_defs = identity_node.InputDefs();
-    ASSERT_EQ(new_input_defs.size(), 1u);
-    ASSERT_TRUE(new_input_defs[0]->Name() == "tp0");
-    auto new_output_defs = identity_node.OutputDefs();
-    ASSERT_EQ(new_output_defs.size(), 1u);
-    ASSERT_TRUE(new_output_defs[0]->Name() == "C");
-  }
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
@@ -3872,6 +3629,53 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_fusion_dim_is_param.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_same_shape_fusion_dim_is_param.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
+}
+
+static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
+                                     const int add_count, const int dropout_count, const int bitmask_dropout_count,
+                                     const int bias_dropout_count, const int bitmask_bias_dropout_count,
+                                     const int dropout_grad_count, const int bitmask_dropout_grad_count) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  if (is_bias_dropout) {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2));
+  } else {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BitmaskDropoutReplacement>(), TransformerLevel::Level2));
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Add"], add_count);
+  ASSERT_EQ(op_to_count["Dropout"], dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropout"], bitmask_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskBiasDropout"], bitmask_bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.DropoutGrad"], dropout_grad_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropoutGrad"], bitmask_dropout_grad_count);
+}
+
+TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_grad_basic.onnx", false, *logger_, 0, 0, 1, 0, 0, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_grad_multiple_mask_uses.onnx", false, *logger_, 0, 1, 0,
+                           0, 0, 1, 0);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_basic.onnx", true, *logger_, 0, 0, 0, 0, 1, 0,
+                           1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_basic_2.onnx", true, *logger_, 0, 0, 0, 0, 1,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_multiple_mask_uses.onnx", true, *logger_, 0,
+                           0, 0, 1, 0, 1, 0);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_residual.onnx", true, *logger_, 0, 0, 0, 0, 1,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_residual_2.onnx", true, *logger_, 0, 0, 0, 0,
+                           1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_residual_multiple_consumers.onnx", true,
+                           *logger_, 1, 0, 0, 0, 1, 0, 1);
 }
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
