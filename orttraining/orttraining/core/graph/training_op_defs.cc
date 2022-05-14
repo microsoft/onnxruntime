@@ -1266,22 +1266,25 @@ void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(Adam)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
-      .Input(1, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
-      .Input(2, "momentums_1", "Sequence of exponentially averaged historical gradients.", "S_MOMENT")
-      .Input(3, "momentums_2", "Sequence of exponentially averaged historical squared gradients.", "S_MOMENT")
-      .Input(4, "lr", "The initial learning rate.", "T1")
-      .Input(5, "step", "The update count of \"X\". It should be a scalar.", "T2")
+      .Input(0, "lr", "The initial learning rate.", "T1")
+      .Input(1, "step", "The update count of \"X\". It should be a scalar.", "T2")
+      .Input(2, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
+      .Input(3, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Input(4, "momentums_1", "Sequence of exponentially averaged historical gradients.", "S_MOMENT")
+      .Input(5, "momentums_2", "Sequence of exponentially averaged historical squared gradients.", "S_MOMENT")
       .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
       .Attr(
           "alpha",
-          "Coefficient of previously accumulated gradient in running average.", AttributeProto::FLOAT, 0.9f)
+          "Coefficient of previously accumulated gradient in running average.",
+          AttributeProto::FLOAT,
+          0.9f)
       .Attr(
           "beta",
-          "Coefficient of previously accumulated squared-gradient in running average.", AttributeProto::FLOAT,
+          "Coefficient of previously accumulated squared-gradient in running average.",
+          AttributeProto::FLOAT,
           0.999f)
       .Attr(
           "epsilon",
@@ -1330,17 +1333,17 @@ void RegisterTrainingOpSchemas() {
           "Constrain momentums' types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         if (ctx.getNumOutputs() >= 2) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 1);
-          propagateShapeFromInputToOutput(ctx, 0, 1);
+          propagateElemTypeFromInputToOutput(ctx, 2, 1);
+          propagateShapeFromInputToOutput(ctx, 2, 1);
         }
         if (ctx.getNumOutputs() >= 3) {
-          propagateElemTypeFromInputToOutput(ctx, 2, 2);
-          propagateShapeFromInputToOutput(ctx, 2, 2);
+          propagateElemTypeFromInputToOutput(ctx, 4, 2);
+          propagateShapeFromInputToOutput(ctx, 4, 2);
         }
 
         if (ctx.getNumOutputs() >= 4) {
-          propagateElemTypeFromInputToOutput(ctx, 3, 3);
-          propagateShapeFromInputToOutput(ctx, 3, 3);
+          propagateElemTypeFromInputToOutput(ctx, 5, 3);
+          propagateShapeFromInputToOutput(ctx, 5, 3);
         }
       });
 

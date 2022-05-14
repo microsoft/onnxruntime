@@ -154,7 +154,7 @@ void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<MTA_ADAM_GROUP_SIZE>::thread_count_per_block;
 
-  // Update the steps for each param group update
+  // Update the steps for each param group update.
   int64_t increased_update_count = update_count + 1;
 
   float alpha_correction = 1.0, beta_correction = 1.0;

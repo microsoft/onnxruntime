@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+#include <utility>
+
 #include "orttraining/training_ops/cuda/optimizer/adam/adam.h"
 #include "orttraining/training_ops/cuda/optimizer/adam/adam_impl.h"
 
@@ -13,12 +16,12 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .InputMemoryType(OrtMemTypeCPUInput, 4)
-        .InputMemoryType(OrtMemTypeCPUInput, 5)
-        .OutputMemoryType(OrtMemTypeCPUOutput, 0) /*  TODO: better removing this.*/
-        .Alias(0, 1)                              /* Return updated weights in-place */
-        .Alias(2, 2)                              /* Return updated moment-1 in-place */
-        .Alias(3, 3)                              /* Return updated moment-2 in-place */
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+        .Alias(2, 1) /* Return updated weights in-place */
+        .Alias(4, 2) /* Return updated moment-1 in-place */
+        .Alias(5, 3) /* Return updated moment-2 in-place */
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("S_WEIGHT", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
@@ -66,12 +69,12 @@ Status GenerateOutputs(OpKernelContext* ctx, cudaStream_t steam,
 }
 
 Status Adam::ComputeInternal(OpKernelContext* ctx) const {
-  const TensorSeq* weights = ctx->Input<TensorSeq>(0);
-  const TensorSeq* gradients = ctx->Input<TensorSeq>(1);
-  const TensorSeq* momentums_1 = ctx->Input<TensorSeq>(2);
-  const TensorSeq* momentums_2 = ctx->Input<TensorSeq>(3);
-  const Tensor& learning_rate = *ctx->Input<Tensor>(4);
-  const Tensor* step_count = ctx->Input<Tensor>(5);
+  const Tensor* learning_rate = ctx->Input<Tensor>(0);
+  const Tensor* step = ctx->Input<Tensor>(1);
+  const TensorSeq* weights = ctx->Input<TensorSeq>(2);
+  const TensorSeq* gradients = ctx->Input<TensorSeq>(3);
+  const TensorSeq* momentums_1 = ctx->Input<TensorSeq>(4);
+  const TensorSeq* momentums_2 = ctx->Input<TensorSeq>(5);
 
   size_t num_of_weights = weights->Size();
   size_t num_of_gradients = gradients->Size();
@@ -82,7 +85,7 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(num_of_weights > 0, "invalid count of tensors in Seq<Tensor>.");
   ORT_ENFORCE(num_of_weights == num_of_gradients, "number of weights and gradients mismatch.");
   ORT_ENFORCE(num_of_gradients == num_of_momentums_1, "number of gradients and momentums_1 mismatch.");
-  ORT_ENFORCE(num_of_momentums_1 == num_of_momentums_2, "number of momentus_1 and momentums_2 mismatch.");
+  ORT_ENFORCE(num_of_momentums_1 == num_of_momentums_2, "number of momentums_1 and momentums_2 mismatch.");
 
   std::vector<int> tensor_sizes(num_of_weights);
   std::vector<std::vector<void*>> grouped_tensor_pointers(num_of_weights);
@@ -114,7 +117,7 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
         const_cast<float*>(momentum_2_tensor.Data<float>())};
   }
 
-  Tensor* updated_flag = ctx->Output(0, step_count->Shape());
+  Tensor* updated_flag = ctx->Output(0, step->Shape());
   TensorSeq* updated_weights = ctx->Output<TensorSeq>(1);
   TensorSeq* updated_momentums_1 = ctx->Output<TensorSeq>(2);
   TensorSeq* updated_momentums_2 = ctx->Output<TensorSeq>(3);
@@ -123,17 +126,16 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   typedef AdamMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
   TFunctor functor;
 
-  const float* lr_ptr = learning_rate.template Data<float>();
-  const int64_t* step_ptr = step_count->template Data<int64_t>();
-  const float lr = *lr_ptr;
-  const int64_t step = *step_ptr;
+  const float* lr_ptr = learning_rate->template Data<float>();
+  const int64_t* step_ptr = step->template Data<int64_t>();
+  ORT_ENFORCE(lr_ptr && step_ptr);
 
   int64_t* updated_flag_ptr = updated_flag->template MutableData<int64_t>();
   *updated_flag_ptr = 1;
 
   launch_multi_tensor_functor<MTA_ADAM_GROUP_SIZE, TFunctor>(
       Stream(), 2048 * 32, tensor_sizes, grouped_tensor_pointers, functor,
-      alpha_, beta_, epsilon_, lr, weight_decay_, adam_mode_, correct_bias_, step);
+      alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
 
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_1, updated_momentums_1, num_of_weights));

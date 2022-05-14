@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <vector>
+
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
@@ -23,10 +26,9 @@ class Adam final : public CudaKernel {
                 "The value of adam_mode is invalid.");
     ORT_ENFORCE(CheckIntAttributeValid(correct_bias_, {0, 1}),
                 "The value of adam_mode is invalid.");
-    if (adam_mode_ == 0) {
-      // For make sure to have torch adamw equivlance, correct_bias must be 1.
-      ORT_ENFORCE(correct_bias_ == 1, "The correct_bias should be 1 for adam_mode = 1.");
-    }
+
+    // For make sure to have torch adamw equivlance, correct_bias must be 1 for adam_mode=0.
+    ORT_ENFORCE(adam_mode_ != 0 || correct_bias_ == 1, "The correct_bias should be 1 for adam_mode = 0.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
