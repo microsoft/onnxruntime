@@ -75,7 +75,7 @@ jobs:
           reporter: github-pr-check
           level: warning
           filter_mode: file
-          pylint_args: "$(git ls-files '*.py')"
+          pylint_args: "$(/usr/bin/git ls-files '*.py')"
 
   lint-python-format:
     # Separated black/isort from other Python linters because we want this job to
