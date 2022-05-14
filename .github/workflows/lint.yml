@@ -13,61 +13,61 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-#       - name: black
-#         uses: reviewdog/action-black@v3
-#         with:
-#           github_token: ${{ secrets.github_token }}
-#           # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
-#           reporter: github-pr-check
-#           # Change reporter level if you need.
-#           # GitHub Status Check won't become failure with a warning.
-#           level: error
-#           filter_mode: file
-#       - name: flake8
-#         uses: reviewdog/action-flake8@v3
-#         with:
-#           github_token: ${{ secrets.github_token }}
-#           reporter: github-pr-check
-#           level: error
-#           filter_mode: file
-#       - name: pyflakes
-#         uses: reviewdog/action-pyflakes@v1
-#         with:
-#           github_token: ${{ secrets.github_token }}
-#           reporter: github-pr-check
-#           level: warning
-#           filter_mode: file
-#       - name: misspell # Check spellings as well
-#         uses: reviewdog/action-misspell@v1
-#         with:
-#           github_token: ${{ secrets.github_token }}
-#           locale: "US"
-#           reporter: github-pr-check
-#           level: info
-#           filter_mode: diff_context
-#       - name: shellcheck # Static check shell scripts
-#         uses: reviewdog/action-shellcheck@v1
-#         with:
-#           github_token: ${{ secrets.github_token }}
-#           reporter: github-pr-check
-#           level: info
-#           filter_mode: file
-#       - name: markdownlint
-#         uses: reviewdog/action-markdownlint@v0.7
-#         with:
-#           github_token: ${{ secrets.github_token }}
-#           reporter: github-pr-check
-#           level: info
-#           filter_mode: file
-#           markdownlint_flags: ". --disable MD013 MD041 MD033 MD034"
-#       - name: pyright
-#         uses: jordemort/action-pyright@v1
-#         with:
-#           github_token: ${{ secrets.github_token }}
-#           reporter: github-pr-check
-#           level: warning
-#           filter_mode: file
-#           lib: true
+      - name: black
+        uses: reviewdog/action-black@v3
+        with:
+          github_token: ${{ secrets.github_token }}
+          # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
+          reporter: github-pr-check
+          # Change reporter level if you need.
+          # GitHub Status Check won't become failure with a warning.
+          level: error
+          filter_mode: file
+      - name: flake8
+        uses: reviewdog/action-flake8@v3
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: error
+          filter_mode: file
+      - name: pyflakes
+        uses: reviewdog/action-pyflakes@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          filter_mode: file
+      - name: misspell # Check spellings as well
+        uses: reviewdog/action-misspell@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          locale: "US"
+          reporter: github-pr-check
+          level: info
+          filter_mode: diff_context
+      - name: shellcheck # Static check shell scripts
+        uses: reviewdog/action-shellcheck@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: info
+          filter_mode: file
+      - name: markdownlint
+        uses: reviewdog/action-markdownlint@v0.7
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: info
+          filter_mode: file
+          markdownlint_flags: ". --disable MD013 MD041 MD033 MD034"
+      - name: pyright
+        uses: jordemort/action-pyright@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          filter_mode: file
+          lib: true
       - name: pylint
         uses: justinchuby/action-pylint@master
         with:
