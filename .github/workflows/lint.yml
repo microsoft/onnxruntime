@@ -68,6 +68,14 @@ jobs:
           level: warning
           filter_mode: file
           lib: true
+      - name: pylint
+        uses: justinchuby/action-pylint@master
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          filter_mode: file
+          pylint_args: "$(git ls-files '*.py')"
 
   lint-python-format:
     # Separated black/isort from other Python linters because we want this job to
