@@ -21,8 +21,12 @@ Abstract:
 // Stack frame layout for the depthwise conv kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters,       (4 * 8)
+        .equ    .LConvSymDepthwiseKernelFrame_backup_d8_d9,         0
+        .equ    .LConvSymDepthwiseKernelFrame_backup_d10_d11,       16
+        .equ    .LConvSymDepthwiseKernelFrame_backup_d12_d13,       32
+        .equ    .LConvSymDepthwiseKernelFrame_backup_d14_d15,       48
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters,       64
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_Neg,   -64
         .equ    .LConvSymDepthwiseKernelFrame_PostProcessParams,    0 + .LConvSymDepthwiseKernelFrame_SavedRegisters
         .equ    .LConvSymDepthwiseKernelFrame_KernelFlags,          8 + .LConvSymDepthwiseKernelFrame_SavedRegisters
 
@@ -31,9 +35,9 @@ Abstract:
         .equ    .LConvSymDepthwisePostProcessParams_Min,            16
         .equ    .LConvSymDepthwisePostProcessParams_Max,            20
         .equ    .LConvSymDepthwisePostProcessParams_ZeroPoint,      24
-        .equ    .LConvSymDepthwisePostProcessParams_Multiplier,              32
-        .equ    .LConvSymDepthwisePostProcessParams_PreShift,                40
-        .equ    .LConvSymDepthwisePostProcessParams_PostShift,               48
+        .equ    .LConvSymDepthwisePostProcessParams_Multiplier,     32
+        .equ    .LConvSymDepthwisePostProcessParams_PreShift,       40
+        .equ    .LConvSymDepthwisePostProcessParams_PostShift,      48
 
         .equ    MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE,               2
         .equ    MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE,               4
@@ -82,9 +86,11 @@ Return Value:
 
         FUNCTION_ENTRY MlasConvSymDepthwiseS8KernelNeon
 
-        stp     d12,d13,[sp,#-.LConvSymDepthwiseKernelFrame_SavedRegisters]!
+        stp     d8,d9,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_Neg]!
+        stp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_backup_d10_d11]
+        stp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_backup_d12_d13]
+        stp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_backup_d14_d15]
         ldr     x8,[sp,#.LConvSymDepthwiseKernelFrame_PostProcessParams]
-        stp     d14,d15,[sp,#16]
         cmp     x7,2
         add     x9,x0,x3,lsl#3              // x9 -> &A1
         add     x14,x0,x3,lsl#4             // x14 -> &A2
@@ -239,7 +245,7 @@ Return Value:
         smlal2  v13.8h,v1.16b,v2.16b
         smlal   v14.8h,v1.8b,v3.8b
         smlal2  v15.8h,v1.16b,v3.16b
-        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        tst     w9,#MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
         saddw   v16.4s,v16.4s,v12.4h
         saddw2  v17.4s,v17.4s,v12.8h
         saddw   v18.4s,v18.4s,v13.4h
@@ -543,8 +549,10 @@ Return Value:
         str     q20,[x2]
 
 .LExitKernel:
-        ldp     d14,d15,[sp,#16]
-        ldp     d12,d13,[sp],#.LConvSymDepthwiseKernelFrame_SavedRegisters
+        ldp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_backup_d14_d15]
+        ldp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_backup_d12_d13]
+        ldp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_backup_d10_d11]
+        ldp     d8,d9,[sp,#.LConvSymDepthwiseKernelFrame_backup_d8_d9], LConvSymDepthwiseKernelFrame_SavedRegisters
         ret
 
 .LProcess8Channels:
