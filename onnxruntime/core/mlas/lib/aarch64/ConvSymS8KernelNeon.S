@@ -24,10 +24,18 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedNeonRegisters, (12 * 8)
-        .equ    .LConvSymFrame_SavedRegisters, .LConvSymFrame_SavedNeonRegisters
-        .equ    .LConvSymFrame_PostProcessParams, 0 + .LConvSymFrame_SavedRegisters
-        .equ    .LConvSymFrame_KernelFlags, 8 + .LConvSymFrame_SavedRegisters
+
+        .equ    .LConvSymFrame_d8_d9,                 0
+        .equ    .LConvSymFrame_d10_d11,               16
+        .equ    .LConvSymFrame_d12_d13,               32
+        .equ    .LConvSymFrame_d14_d15,               48
+        .equ    .LConvSymFrame_SavedNeonRegisters,    64
+        .equ    .LConvSymFrame_x19_x20,               64
+        .equ    .LConvSymFrame_x21_x22,               80
+        .equ    .LConvSymFrame_SavedRegisters,        96
+        .equ    .LConvSymFrame_SavedRegisters_Neg,    -96
+        .equ    .LConvSymFrame_PostProcessParams,     0 + .LConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_KernelFlags,           8 + .LConvSymFrame_SavedRegisters
 
         .equ    .LConvSymPostProcessParams_Bias,      0
         .equ    .LConvSymPostProcessParams_Scale,     8
@@ -86,14 +94,14 @@ Return Value:
 --*/
         FUNCTION_ENTRY MlasConvSymS8KernelNeon
 
-        stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
+        stp     d8,d9,[sp,#.LConvSymFrame_SavedRegisters_Neg]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
         ldrb    w10,[sp,#.LConvSymFrame_KernelFlags]
-        stp     d10,d11,[sp,#16]
-        stp     d12,d13,[sp,#32]
-        stp     d14,d15,[sp,#48]
-        stp     x19,x20,[sp,#64]
-        stp     x21,x22,[sp,#80]
+        stp     d10,d11,[sp,#.LConvSymFrame_d10_d11]
+        stp     d12,d13,[sp,#.LConvSymFrame_d12_d13]
+        stp     d14,d15,[sp,#.LConvSymFrame_d14_d15]
+        stp     x19,x20,[sp,#.LConvSymFrame_x19_x20]
+        stp     x21,x22,[sp,#.LConvSymFrame_x21_x22]
 
         mov     x9,x3                   // save kernel size
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
@@ -405,12 +413,12 @@ Return Value:
         st1     {v0.8b},[x2]
 
 .LConvSym.ExitKernel:
-        ldp     x21,x22,[sp,#80]
-        ldp     x19,x20,[sp,#64]
-        ldp     d14,d15,[sp,#48]
-        ldp     d12,d13,[sp,#32]
-        ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp], #96
+        ldp     x21,x22,[sp,#.LConvSymFrame_x21_x22]
+        ldp     x19,x20,[sp,#.LConvSymFrame_x19_x20]
+        ldp     d14,d15,[sp,#.LConvSymFrame_d14_d15]
+        ldp     d12,d13,[sp,#.LConvSymFrame_d12_d13]
+        ldp     d10,d11,[sp,#.LConvSymFrame_d10_d11]
+        ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
         ret
 
 .LConvSym.8InputChannels:

@@ -552,7 +552,7 @@ Return Value:
         ldp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_backup_d14_d15]
         ldp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_backup_d12_d13]
         ldp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_backup_d10_d11]
-        ldp     d8,d9,[sp,#.LConvSymDepthwiseKernelFrame_backup_d8_d9], LConvSymDepthwiseKernelFrame_SavedRegisters
+        ldp     d8,d9,[sp], #.LConvSymDepthwiseKernelFrame_SavedRegisters
         ret
 
 .LProcess8Channels:
