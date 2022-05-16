@@ -69,10 +69,8 @@ struct Module {
          const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
 
   // Return the trainable/nontrainable parameters
-  std::vector<std::shared_ptr<Parameter>> parameters() const {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return {};
-  }
+  std::vector<std::shared_ptr<Parameter>> parameters() const;
+
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters() const {
     return parameters_;
   }
@@ -86,10 +84,7 @@ struct Module {
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
-  Status EvalStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return Status::OK();
-  }
+  Status EvalStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
 
   // Return the states of the module as a map.
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
@@ -98,8 +93,10 @@ struct Module {
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_;
   std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;
-  std::vector<std::string> input_names_;
-  std::vector<std::string> output_names_;
+  std::vector<std::string> train_input_names_;
+  std::vector<std::string> train_output_names_;
+  std::vector<std::string> eval_input_names_;
+  std::vector<std::string> eval_output_names_;
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
 };

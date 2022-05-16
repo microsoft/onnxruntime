@@ -50,19 +50,25 @@ Module::Module(const std::string& train_model_path_or_bytes,
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
   if (eval_model_path_or_bytes.has_value()) {
+    std::shared_ptr<onnxruntime::Model> eval_model;
+    ORT_THROW_IF_ERROR(onnxruntime::Model::Load(eval_model_path_or_bytes.value(), eval_model,
+                                                nullptr, env->GetLoggingManager()->DefaultLogger()));
+    GetGraphInputOutputNames(eval_model->MainGraph(), eval_input_names_, eval_output_names_);
+    // TODO:: do validation on eval inputs and outputs: eg order of user inputs, weights
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     ORT_THROW_IF_ERROR(eval_sess_->Initialize());
   }
   auto& train_sess_state = train_sess_->GetSessionState();
 
-  std::shared_ptr<onnxruntime::Model> model;
-  ORT_THROW_IF_ERROR(onnxruntime::Model::Load(train_model_path_or_bytes, model, nullptr, env->GetLoggingManager()->DefaultLogger()));
-  GetGraphInputOutputNames(model->MainGraph(), input_names_, output_names_);
+  std::shared_ptr<onnxruntime::Model> train_model;
+  ORT_THROW_IF_ERROR(onnxruntime::Model::Load(train_model_path_or_bytes, train_model,
+                                              nullptr, env->GetLoggingManager()->DefaultLogger()));
+  GetGraphInputOutputNames(train_model->MainGraph(), train_input_names_, train_output_names_);
 
   std::vector<std::string> param_input_names, grad_input_names, user_input_names;
   std::string param_name;
-  for (auto input_name : input_names_) {
+  for (auto input_name : train_input_names_) {
     auto it = parameters_.find(input_name);
     if (it != parameters_.end()) {
       param_input_names.emplace_back(input_name);
@@ -82,9 +88,17 @@ Module::Module(const std::string& train_model_path_or_bytes,
       user_input_names.emplace_back(input_name);
     }
   }
-  input_names_ = user_input_names;
-  input_names_.insert(input_names_.end(), param_input_names.begin(), param_input_names.end());
-  input_names_.insert(input_names_.end(), grad_input_names.begin(), grad_input_names.end());
+  train_input_names_ = user_input_names;
+  train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
+  train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
+}
+
+std::vector<std::shared_ptr<Parameter>> Module::parameters() const {
+  std::vector<std::shared_ptr<Parameter>> params;
+  for (auto& it : parameters_) {
+    params.push_back(it.second);
+  }
+  return params;
 }
 
 Status Module::ResetGrad() {
@@ -100,7 +114,15 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
 
   // TODO: need to filter out the grads from the output ortvalues
-  auto status = train_sess_->Run(RunOptions(), input_names_, feeds, output_names_, &outputs);
+  auto status = train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs);
+  ORT_THROW_IF_ERROR(status);
+  return status;
+}
+
+Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  std::vector<OrtValue> feeds{inputs};
+  feeds.insert(feeds.end(), weights_.begin(), weights_.end());
+  auto status = eval_sess_->Run(RunOptions(), eval_input_names_, feeds, eval_output_names_, &outputs);
   ORT_THROW_IF_ERROR(status);
   return status;
 }
