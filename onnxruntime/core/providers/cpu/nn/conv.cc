@@ -153,7 +153,8 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 }
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
-  size_t num_inputs = OpKernel::Node().InputDefs().size();
+  //size_t num_inputs = OpKernel::Node().InputDefs().size();
+  size_t num_inputs = context->InputCount();
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* W = context->Input<Tensor>(1);
   const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
