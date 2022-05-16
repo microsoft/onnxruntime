@@ -56,6 +56,11 @@ Module::Module(const std::string& train_model_path_or_bytes,
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
   if (eval_model_path_or_bytes.has_value()) {
+    std::shared_ptr<onnxruntime::Model> eval_model;
+    ORT_THROW_IF_ERROR(onnxruntime::Model::Load(eval_model_path_or_bytes.value(), eval_model,
+                                                nullptr, env->GetLoggingManager()->DefaultLogger()));
+    GetGraphInputOutputNames(eval_model->MainGraph(), eval_input_names_, eval_output_names_);
+    // TODO:: do validation on eval inputs and outputs: eg order of user inputs, weights
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     ORT_THROW_IF_ERROR(eval_sess_->Initialize());
