@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
 #include "gather_elements.h"
 #include "onnxruntime_config.h"
 
@@ -43,7 +44,8 @@ static int64_t CalculateInnerDimCount(const TensorShape& dims) {
 // The calculation is fairly straightforward, starting with the second to innermost axis we muldiv the inner_dim
 // by the indices shape size. We also skip this calculation on the skip_axis as that's handled elsewhere.
 //
-static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& input_shape_pitches, size_t skip_axis, const TensorShape& indices_shape) {
+static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& input_shape_pitches, size_t skip_axis,
+                                     const TensorShape& indices_shape) {
   // in this context, rank can never be < 1, so saving checking overhead
   size_t rank = input_shape_pitches.size();
 
@@ -88,7 +90,8 @@ FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
 #endif
 
 template <typename Tin>
-static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, Tensor* output_tensor, int64_t axis, concurrency::ThreadPool* ttp) {
+static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, Tensor* output_tensor, int64_t axis,
+                      concurrency::ThreadPool* ttp) {
   // Get input & output pointers
   const int8_t* input_data = reinterpret_cast<const int8_t*>(input_tensor->DataRaw());
   int8_t* output_data = reinterpret_cast<int8_t*>(output_tensor->MutableDataRaw());
