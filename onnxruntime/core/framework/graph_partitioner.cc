@@ -491,7 +491,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
   return Status::OK();
 }
 
-Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
+Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, FuncManager& func_mgr,
                                                   KernelRegistry& fused_kernel_registry, Mode mode,
                                                   int& fused_node_unique_id,
                                                   TransformLayoutFunction transform_layout_function) const {
