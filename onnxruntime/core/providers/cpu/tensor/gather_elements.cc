@@ -39,12 +39,11 @@ static int64_t CalculateInnerDimCount(const TensorShape& dims) {
 // If the input indices tensor matched the input tensor this would simply just be inner_dim_size * inner_dim
 // But since the indices tensor can be smaller we need to do the math based on the smaller size, as the
 // output tensor size matches the input indices tensor size.
-// 
+//
 // The calculation is fairly straightforward, starting with the second to innermost axis we muldiv the inner_dim
 // by the indices shape size. We also skip this calculation on the skip_axis as that's handled elsewhere.
 //
 static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& input_shape_pitches, size_t skip_axis, const TensorShape& indices_shape) {
-
   // in this context, rank can never be < 1, so saving checking overhead
   size_t rank = input_shape_pitches.size();
 
@@ -55,11 +54,11 @@ static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& inpu
 
   size_t base_offset = 0;
 
-  for(size_t axis=rank-1;axis-->0;) {
+  for (size_t axis = rank - 1; axis-- > 0;) {
     auto dim = indices_shape[axis];
     if (axis != skip_axis)
       base_offset += (inner_dim % dim) * input_shape_pitches[axis];
-    inner_dim/=dim;
+    inner_dim /= dim;
   }
 
   return base_offset;
@@ -74,10 +73,10 @@ static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& inpu
 template <typename T>
 FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
   int64_t index = indices[i];
-  if (index < 0) // Handle negative indices
+  if (index < 0)  // Handle negative indices
     index += axis_size;
   if (std::make_unsigned_t<T>(index) >= std::make_unsigned_t<T>(axis_size))
-    return 0;
+    throw std::out_of_range{"Index out of range"};
   return index;
 };
 
@@ -107,20 +106,25 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
   int64_t axis_pitch = input_shape_pitches[axis];
   int64_t axis_size = input_tensor->Shape()[axis];
 
-  bool innermost_axis = axis == input_rank-1;
+  bool innermost_axis = axis == input_rank - 1;
+  bool index_error = false;
 
   auto MainLoop = [&](auto* output_data, auto* input_data) {
     auto BatchWork = [&](size_t inner_dim) {
-      auto output = output_data + inner_dim_size * inner_dim;
-      auto input = input_data + CalculateOffset(inner_dim, input_shape_pitches, axis, indices_shape);
-      auto indices = indices_data + inner_dim_size * inner_dim;
+      try {
+        auto output = output_data + inner_dim_size * inner_dim;
+        auto input = input_data + CalculateOffset(inner_dim, input_shape_pitches, axis, indices_shape);
+        auto indices = indices_data + inner_dim_size * inner_dim;
 
-      if (innermost_axis) {
-        for (size_t i = 0; i < inner_dim_size; i++)
-          output[i] = input[GetIndex(i, indices, axis_size)];
-      } else {
-        for (size_t i = 0; i < inner_dim_size; i++)
-          output[i] = input[GetIndex(i, indices, axis_size) * axis_pitch + i];
+        if (innermost_axis) {
+          for (size_t i = 0; i < inner_dim_size; i++)
+            output[i] = input[GetIndex(i, indices, axis_size)];
+        } else {
+          for (size_t i = 0; i < inner_dim_size; i++)
+            output[i] = input[GetIndex(i, indices, axis_size) * axis_pitch + i];
+        }
+      } catch (const std::out_of_range&) {
+        index_error = true;
       }
     };
 
@@ -141,6 +145,9 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
     MainLoop(reinterpret_cast<uint64_t*>(output_data), reinterpret_cast<const uint64_t*>(input_data));
   else
     ORT_THROW("GatherElements op: Unsupported tensor type, size:", element_size);
+
+  if (index_error)
+    ORT_THROW("GatherElements op: Out of range value in index tensor");
 }
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
