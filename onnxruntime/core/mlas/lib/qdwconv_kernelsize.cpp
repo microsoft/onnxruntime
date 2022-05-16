@@ -69,6 +69,7 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
     const bool is_per_channel = ((KernelFlags & MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE) != 0);
     // Init them anyway due to some compiler will generate uninitialized warnings.
     if constexpr (IsFixedPoint) {
+
         vpreshift_0123 = vpreshift_4567 = vpreshift_89AB = vpreshift_CDEF = vld1q_dup_s32(PostProcessParams->PreShift);
         vmultiplier_0123 = vmultiplier_4567 = vmultiplier_89AB = vmultiplier_CDEF = vld1q_dup_s32(PostProcessParams->Multiplier);
         vpostshift_0123 = vpostshift_4567 = vpostshift_89AB = vpostshift_CDEF = vld1q_dup_s32(PostProcessParams->PostShift);
@@ -77,7 +78,9 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
         MLAS_UNREFERENCED_PARAMETER(vscale_4567);
         MLAS_UNREFERENCED_PARAMETER(vscale_89AB);
         MLAS_UNREFERENCED_PARAMETER(vscale_CDEF);
+
     } else {
+
         vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
 
         MLAS_UNREFERENCED_PARAMETER(vpreshift_0123);
@@ -92,9 +95,11 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
         MLAS_UNREFERENCED_PARAMETER(vpostshift_4567);
         MLAS_UNREFERENCED_PARAMETER(vpostshift_89AB);
         MLAS_UNREFERENCED_PARAMETER(vpostshift_CDEF);
+
     }
 
     while (OutputCount-- > 0) {
+
         const int8_t* i00 = IndirectBuf[0];
         const int8_t* i01 = IndirectBuf[1];
         const int8_t* i02 = IndirectBuf[2];
@@ -130,6 +135,7 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
         const int32_t* multiplier = PostProcessParams->Multiplier;
         const int32_t* postshift = PostProcessParams->PostShift;
         for (size_t c = 0; c < Channels; c += 16) {
+
             int8_t const* w = Filter + c;
             int32x4_t vacc_0123 = vld1q_s32(bias); bias += 4;
             int32x4_t vacc_4567 = vld1q_s32(bias); bias += 4;
@@ -340,7 +346,9 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
             vacc_CDEF = vaddw_s16(vacc_CDEF, vget_high_s16(vprod_89ABCDEF));
 
             if constexpr (IsFixedPoint) {
+
                 if (is_per_channel) {
+
                     vpreshift_0123 = vld1q_s32(preshift); preshift += 4;
                     vpreshift_4567 = vld1q_s32(preshift); preshift += 4;
                     vpreshift_89AB = vld1q_s32(preshift); preshift += 4;
@@ -355,6 +363,7 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
                     vpostshift_4567 = vld1q_s32(postshift); postshift += 4;
                     vpostshift_89AB = vld1q_s32(postshift); postshift += 4;
                     vpostshift_CDEF = vld1q_s32(postshift); postshift += 4;
+
                 }
 
                 vacc_0123 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_0123, vpreshift_0123), vmultiplier_0123), vpostshift_0123);
@@ -365,10 +374,12 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
             } else {
 
                 if (is_per_channel) {
+
                     vscale_0123 = vld1q_f32(scale); scale += 4;
                     vscale_4567 = vld1q_f32(scale); scale += 4;
                     vscale_89AB = vld1q_f32(scale); scale += 4;
                     vscale_CDEF = vld1q_f32(scale); scale += 4;
+
                 }
 
                 // requantize
@@ -376,6 +387,7 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
                 vacc_4567 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_4567), vscale_4567));
                 vacc_89AB = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_89AB), vscale_89AB));
                 vacc_CDEF = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_CDEF), vscale_CDEF));
+
             }
 
             const int16x8_t vacc_01234567 = vqaddq_s16(vqmovn_high_s32(vqmovn_s32(vacc_0123), vacc_4567), voutput_zero_point);
@@ -443,6 +455,7 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
     }
 
     while (OutputCount-- > 0) {
+
         const uint8_t* i00 = IndirectBuf[0];
         const uint8_t* i01 = IndirectBuf[1];
         const uint8_t* i02 = IndirectBuf[2];
@@ -478,6 +491,7 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
         int32_t const* multiplier = PostProcessParams->Multiplier;
         int32_t const* postshift = PostProcessParams->PostShift;
         for (size_t c = 0; c < Channels; c += 16) {
+
             int8_t const* w = Filter + c;
             int32x4_t vacc_0123 = vld1q_s32(bias); bias += 4;
             int32x4_t vacc_4567 = vld1q_s32(bias); bias += 4;
@@ -690,6 +704,7 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
             if constexpr (IsFixedPoint) {
 
                 if (is_per_channel) {
+
                     vpreshift_0123 = vld1q_s32(preshift); preshift += 4;
                     vpreshift_4567 = vld1q_s32(preshift); preshift += 4;
                     vpreshift_89AB = vld1q_s32(preshift); preshift += 4;
@@ -704,6 +719,7 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
                     vpostshift_4567 = vld1q_s32(postshift); postshift += 4;
                     vpostshift_89AB = vld1q_s32(postshift); postshift += 4;
                     vpostshift_CDEF = vld1q_s32(postshift); postshift += 4;
+
                 }
 
                 vacc_0123 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_0123, vpreshift_0123), vmultiplier_0123), vpostshift_0123);

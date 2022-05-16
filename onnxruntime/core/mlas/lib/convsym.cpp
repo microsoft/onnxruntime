@@ -490,13 +490,10 @@ MlasConvSym(
 #endif
 
     int32_t KernelFlags = 0;
-
-    bool PerChannelScale;
-    int32_t OutputZeroPoint;
     const MLAS_REQUANT_PARAM* RequantParam = Params.RequantParam;
+    bool PerChannelScale = RequantParam->Size > 1;
+    int32_t OutputZeroPoint = RequantParam->ZeroPoint;
     MLAS_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
-    OutputZeroPoint = RequantParam->ZeroPoint;
-    PerChannelScale = RequantParam->Size > 1;
 
     if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
         KernelFlags |= MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE;
@@ -584,16 +581,11 @@ MlasConvSymDepthwise(
 
     unsigned KernelFlags = 0;
 
-    bool PerChannelScale;
-    int32_t OutputZeroPoint;
     const MLAS_REQUANT_PARAM* RequantParam = Params.RequantParam;
+    bool PerChannelScale = RequantParam->Size > 1;
+    int32_t OutputZeroPoint = RequantParam->ZeroPoint;
     MLAS_ROUND_KIND RequantRoundKind = RequantParam->RequantRoundKind;
-    if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfEven) {
-        OutputZeroPoint = RequantParam->ZeroPoint;
-        PerChannelScale = RequantParam->Size > 1;
-    } else {
-        OutputZeroPoint = RequantParam->ZeroPoint;
-        PerChannelScale = RequantParam->Size > 1;
+    if(RequantRoundKind == MLAS_ROUND_KIND::MlasRoundHalfUp) {
         KernelFlags |= MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE;
     }
 

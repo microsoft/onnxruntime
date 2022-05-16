@@ -117,27 +117,27 @@ struct TensorCheck<T, typename std::enable_if<utils::IsByteType<T>::value>::type
 
     // For int8_t/uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
     // For any other EPs, we still expect an exact match for the results
-    // if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
-    double threshold = has_abs_err
-                           ? *(params.absolute_error_)
-                           : 0.0;
+    if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
+      double threshold = has_abs_err
+                             ? *(params.absolute_error_)
+                             : 0.0;
 
-    for (int i = 0; i < size; ++i) {
-      if (has_rel_err) {
-        EXPECT_NEAR(expected[i], output[i],
-                    *(params.relative_error_) * expected[i])  // expected[i] is unsigned, can't be negative
-            << "i:" << i << ", provider_type: " << provider_type;
-      } else {  // has_abs_err
-        EXPECT_NEAR(expected[i], output[i], threshold)
-            << "i:" << i << ", provider_type: " << provider_type;
+      for (int i = 0; i < size; ++i) {
+        if (has_rel_err) {
+          EXPECT_NEAR(expected[i], output[i],
+                      *(params.relative_error_) * expected[i])  // expected[i] is unsigned, can't be negative
+              << "i:" << i << ", provider_type: " << provider_type;
+        } else {  // has_abs_err
+          EXPECT_NEAR(expected[i], output[i], threshold)
+              << "i:" << i << ", provider_type: " << provider_type;
+        }
+      }
+    } else {
+      for (int i = 0; i < size; ++i) {
+        EXPECT_EQ(expected[i], output[i]) << "i:" << i
+                                          << ", provider_type: " << provider_type;
       }
     }
-    // } else {
-    //   for (int i = 0; i < size; ++i) {
-    //     EXPECT_EQ(expected[i], output[i]) << "i:" << i
-    //                                       << ", provider_type: " << provider_type;
-    //   }
-    // }
   }
 };
 

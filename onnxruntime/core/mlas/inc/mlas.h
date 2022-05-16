@@ -1174,7 +1174,7 @@ MlasQuantizeLinear(
  * @param OutputLeadingDimension    Output matrix leading dimension
  * @param Bias                      Optional bias vector, to be added
                                     to the input before quantization
- * @param MLAS_REQUANT_PARAM  Requantization parameters
+ * @param MLAS_REQUANT_PARAM        Requantization parameters
  * @param StartM
  * @param StartN
  * @param CountM

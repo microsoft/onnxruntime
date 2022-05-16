@@ -672,9 +672,11 @@ MlasRequantizeOutputRoundNearestUp(
         Bias += StartN;
     }
     if (PerColumnScale) {
+
         Multiplier += StartN;
         PreShift += StartN;
         PostShift += StartN;
+
     }
 
     Input += StartM * InputLeadingDimension + StartN;
@@ -714,6 +716,7 @@ MlasRequantizeOutputRoundNearestUp(
             RowInput += 16;
 
             if (bias != nullptr) {
+
                 IntegerVector.val[0] = vaddq_s32(IntegerVector.val[0], vld1q_s32(&bias[0]));
                 IntegerVector.val[1] = vaddq_s32(IntegerVector.val[1], vld1q_s32(&bias[4]));
                 IntegerVector.val[2] = vaddq_s32(IntegerVector.val[2], vld1q_s32(&bias[8]));
@@ -722,6 +725,7 @@ MlasRequantizeOutputRoundNearestUp(
             }
 
             if (PerColumnScale) {
+
                 int32x4x4_t PerColumnPreShiftVector;
                 PerColumnPreShiftVector.val[0] = vld1q_s32(&preShift[0]);
                 PerColumnPreShiftVector.val[1] = vld1q_s32(&preShift[4]);
@@ -759,6 +763,7 @@ MlasRequantizeOutputRoundNearestUp(
                 IntegerVector.val[2] = vrshlq_s32(IntegerVector.val[2], PerColumnPostShiftVector.val[2]);
                 IntegerVector.val[3] = vrshlq_s32(IntegerVector.val[3], PerColumnPostShiftVector.val[3]);
             } else {
+
                 IntegerVector.val[0] = vqshlq_s32(IntegerVector.val[0], PerTensorPreShiftVector);
                 IntegerVector.val[1] = vqshlq_s32(IntegerVector.val[1], PerTensorPreShiftVector);
                 IntegerVector.val[2] = vqshlq_s32(IntegerVector.val[2], PerTensorPreShiftVector);
@@ -818,6 +823,7 @@ MlasRequantizeOutputRoundNearestUp(
                 RowInput += 4;
 
                 if (bias != nullptr) {
+
                     IntegerVector = vaddq_s32(IntegerVector, vld1q_s32(&bias[0]));
                     bias += 4;
                 }
@@ -828,6 +834,7 @@ MlasRequantizeOutputRoundNearestUp(
                 RowInput += 1;
 
                 if (bias != nullptr) {
+
                     IntegerVector = vaddq_s32(IntegerVector, vld1q_dup_s32(bias));
                     bias += 1;
                 }
@@ -845,6 +852,7 @@ MlasRequantizeOutputRoundNearestUp(
             if (PerColumnScale) {
 
                 if (n >= 4) {
+
                     MultiplierVector = vld1q_s32(multiplier);
                     PreShiftVector = vld1q_s32(preShift);
                     PostShiftVector = vld1q_s32(postShift);
@@ -852,6 +860,7 @@ MlasRequantizeOutputRoundNearestUp(
                     preShift += 4;
                     postShift += 4;
                 } else {
+
                     MultiplierVector = vld1q_dup_s32(multiplier);
                     PreShiftVector = vld1q_dup_s32(preShift);
                     PostShiftVector = vld1q_dup_s32(postShift);
