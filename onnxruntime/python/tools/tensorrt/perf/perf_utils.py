@@ -100,6 +100,71 @@ def pretty_print(pp, json_object):
     sys.stdout.flush()
 
 
+def parse_next_model_run(data, start_index):
+    provider_op_map = {}  # ep -> map of operator to duration
+    num_entries = len(data)
+    index = -1
+
+    # Parse until the beginning of a model run.
+    for idx, row in enumerate(data[start_index:]):
+        if row["cat"] == "Session" and row["name"] == "model_run":
+            index = idx + 1
+            break
+
+    # Exit if did not find a model run.
+    if index < 0:
+        return (provider_op_map, num_entries)
+
+    prev_node = None
+
+    # Parse nodes in the model run
+    while index < num_entries:
+        entry = data[index]
+
+        # Stop once we encounter the next model run.
+        if entry["cat"] == "Session" and entry["name"] == "model_run":
+            break
+
+        if (not "cat" in entry) or (not "name" in entry) or (not "args" in entry) or (not "op_name" in entry["args"]):
+            prev_node = None
+            index += 1
+            continue
+
+        # Parse a graph node that is assigned to some EP. The node's duration includes only CPU execution time.
+        if entry["cat"] == "Node":
+            prev_node = None
+
+            if re.search(".*kernel_time", entry["name"]) and ("provider" in entry["args"]):
+                args = entry["args"]
+                provider = args["provider"]
+
+                if provider not in provider_op_map:
+                    provider_op_map[provider] = {}
+
+                op_map = provider_op_map[provider]
+                op_map[entry["name"]] = {"ts": entry["ts"], "dur": entry["dur"], "op_name": args["op_name"]}
+                prev_node = op_map[entry["name"]]
+
+        # Parse a CUDA kernel spawned by a previous node. The kernel's duration corresponds to GPU exec time.
+        elif entry["cat"] == "Kernel" and prev_node and entry["args"]["op_name"] == prev_node["op_name"]:
+            prev_node_end = prev_node["ts"] + prev_node["dur"]
+            kernel_start = entry["ts"]
+            kernel_end = kernel_start + entry["dur"]
+
+            # The node runs in the CPU and the kernel runs in the GPU. So, only add the portion of the
+            # kernel's duration that does not overlap with the corresponding CPU operation.
+            if kernel_end > prev_node_end:
+                overlap = prev_node_end - kernel_start
+                prev_node["dur"] += entry["dur"] if overlap <= 0 else entry["dur"] - overlap
+        else:
+            prev_node = None
+
+        index += 1
+
+    # Return the parsed model run info and the index to the end of the run.
+    return (provider_op_map, index)
+
+
 def parse_single_file(f):
 
     try:
@@ -107,67 +172,17 @@ def parse_single_file(f):
     except Exception:
         return None
 
-    model_run_flag = False
-    first_run_flag = True
-    provider_op_map = {}  # ep -> map of operator to duration
-    provider_op_map_first_run = {}  # ep -> map of operator to duration
+    # Parse first model run
+    (provider_op_map, index) = parse_next_model_run(data, 0)
 
-    for row in data:
-        if not "cat" in row:
-            continue
+    # Parse and keep the second model run (if available).
+    if index < len(data):
+        (op_map, index) = parse_next_model_run(data, index)
 
-        if row["cat"] == "Session":
-            if "name" in row and row["name"] == "model_run":
-                if not first_run_flag:
-                    break
+        if op_map:
+            provider_op_map = op_map
 
-                model_run_flag = True
-                first_run_flag = False
-
-        elif row["cat"] == "Node":
-            if "name" in row and "args" in row and re.search(".*kernel_time", row["name"]):
-                args = row["args"]
-
-                if not "op_name" in args or not "provider" in args:
-                    continue
-
-                provider = args["provider"]
-
-                op_map = None
-
-                if first_run_flag:
-                    if provider not in provider_op_map_first_run:
-                        provider_op_map_first_run[provider] = {}
-
-                    op_map = provider_op_map_first_run[provider]
-                else:
-                    if provider not in provider_op_map:
-                        provider_op_map[provider] = {}
-
-                    op_map = provider_op_map[provider]
-
-                op_map[row["name"]] = {"dur": row["dur"], "op_name": args["op_name"]}
-
-    if debug_verbose:
-        pprint._sorted = lambda x: x
-        pprint.sorted = lambda x, key=None: x
-        pp = pprint.PrettyPrinter(indent=4)
-        print("------First run ops map (START)------")
-        for key, map in provider_op_map_first_run.items():
-            print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1]["dur"], reverse=True)})
-
-        print("------First run ops map (END) ------")
-        print("------Second run ops map (START)------")
-        for key, map in provider_op_map.items():
-            print(key)
-            pp.pprint({k: v for k, v in sorted(map.items(), key=lambda item: item[1]["dur"], reverse=True)})
-        print("------Second run ops map (END) ------")
-
-    if model_run_flag:
-        return provider_op_map
-
-    return None
+    return provider_op_map
 
 
 def get_ep_operator_metrics(ep, ep_nodes):
