@@ -49,13 +49,14 @@ static at::Device getATenDevice(const DLDevice& ctx) {
   switch (ctx.device_type) {
     case DLDeviceType::kDLCPU:
       return at::Device(at::DeviceType::CPU);
+#ifdef USE_CUDA
     case DLDeviceType::kDLCUDA:
       return at::Device(at::DeviceType::CUDA, ctx.device_id);
-    case DLDeviceType::kDLOpenCL:
-      return at::Device(at::DeviceType::OPENCL, ctx.device_id);
-    case DLDeviceType::kDLROCM: 
+#elif USE_ROCM
+    case DLDeviceType::kDLROCM:
       // since the original function maps both kDLROCM and kDLCUDA to CUDA device
       return at::Device(at::DeviceType::CUDA, ctx.device_id);
+#endif
     default:
       TORCH_CHECK(
           false, "Unsupported device_type: " + c10::to_string(ctx.device_type));
@@ -89,17 +90,17 @@ struct ATenOperator {
     // Create the torch tensor from this DLPack no matter we need it or not below,
     // so that the dlpack's deleter will be triggered when torch tensor is out of scope.
     at::Tensor tensor;
-    if (dlpack->dl_tensor.data){
+    if (dlpack->dl_tensor.data) {
       tensor = at::fromDLPack(dlpack);
     } else {
-      // sometimes the tensor does not contain any data. eg: the maxindices output 
+      // sometimes the tensor does not contain any data. eg: the maxindices output
       // for embedding_bag_backward cuda kernel. In such cases, fromDLPack() errors out
-      // while trying to make a tensor while trying to match the data's device with 
+      // while trying to make a tensor while trying to match the data's device with
       // the device specified in dlpack.
       // so skipping using fromDLPack in such cases to create empty tensor.
       at::Device device = getATenDevice(dlpack->dl_tensor.device);
       at::ScalarType stype = at::toScalarType(dlpack->dl_tensor.dtype);
-      tensor = at::empty(at::IntArrayRef(dlpack->dl_tensor.shape, dlpack->dl_tensor.ndim), 
+      tensor = at::empty(at::IntArrayRef(dlpack->dl_tensor.shape, dlpack->dl_tensor.ndim),
                          at::device(device).dtype(stype));
     }
     switch (elem_kinds[index]) {
@@ -130,7 +131,7 @@ struct ATenOperator {
       default:  // TODO: will add more type support if needed.
         TORCH_INTERNAL_ASSERT(false);
     }
-    if(!dlpack->dl_tensor.data){
+    if (!dlpack->dl_tensor.data) {
       // dlpack was not used to create the tensor, so explicitely calling the deleter
       dlpack->deleter(const_cast<DLManagedTensor*>(dlpack));
     }
@@ -218,9 +219,9 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const cha
   }
 
 #ifndef TORCH_VERSION_PREEQ
-#define TORCH_VERSION_PREEQ(x, y) \
+#define TORCH_VERSION_PREEQ(x, y)                                \
   ((TORCH_VERSION_MAJOR == (x) && TORCH_VERSION_MINOR >= (y)) || \
-     (TORCH_VERSION_MAJOR > (x)))
+   (TORCH_VERSION_MAJOR > (x)))
 #endif
 
 // pull request https://github.com/pytorch/pytorch/pull/63414 introduced
