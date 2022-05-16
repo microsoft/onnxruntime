@@ -17,9 +17,7 @@ namespace api {
   module.eval_sess.RegisterExecutionProvider(provider);
   optimizer.optim_sess.RegisterExecutionProvider(provider);
 */
-void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/) {
-  ORT_NOT_IMPLEMENTED("Not implemented.");
-}
+void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/);
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

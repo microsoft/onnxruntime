@@ -74,7 +74,7 @@ struct Optimizer {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
   std::map<std::string, std::shared_ptr<Parameter>> parameters_;
-  OptimizerState optimizer_state_;
+  GroupOptimizerState optimizer_state_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> weights_;

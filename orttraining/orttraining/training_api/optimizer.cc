@@ -5,6 +5,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
+#include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/optimizer.h"
 
 namespace onnxruntime {
@@ -42,6 +43,39 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
   ORT_ENFORCE(optim_sess_->Load(optim_path_or_bytes).IsOK());
   ORT_ENFORCE(optim_sess_->Initialize().IsOK());
+
+  std::shared_ptr<onnxruntime::Model> model;
+  ORT_THROW_IF_ERROR(onnxruntime::Model::Load(optim_path_or_bytes, model, nullptr, env->GetLoggingManager()->DefaultLogger()));
+  GetGraphInputOutputNames(model->MainGraph(), input_names_, output_names_);
+  ORT_ENFORCE(input_names_[0] == "learning_rate");  // TODO: make this better
+  ORT_ENFORCE(input_names_[1] == "step");           // TODO: make this better
+
+  std::vector<std::string> param_names, grad_names, moment1_names, moment2_names, empty_names;
+  std::string param_name;
+  for (size_t i = 2; i < input_names_.size(); i++) {
+    std::string& name = input_names_[i];
+    auto it = parameters_.find(name);
+    if (it != parameters_.end()) {  // is param
+      param_names.push_back(name);
+      weights_.push_back(it->second->Data());
+    } else if (GetParamNameFromGradient(name, param_name)) {
+      grad_names.emplace_back(name);
+      // create gradient buffer
+      // assert param_name is valid.
+      auto it = parameters_.find(param_name);
+      if (it != parameters_.end()) {
+        gradients_.push_back(it->second->Gradient());
+      } else {
+        // raise error here.
+      }
+    } else if (GetParamNameFromSuffix(name, MOMENT_1, param_name)) {
+      moment1_names.push_back(name);
+    } else if (GetParamNameFromSuffix(name, MOMENT_2, param_name)) {
+      moment1_names.push_back(name);
+    } else {
+      empty_names.push_back(name);
+    }
+  }
 
   // TODO: don't hard code the state names, should get the state names according to the optimizer types.
   std::vector<std::string> state_names{"momentum0", "momentum1"};

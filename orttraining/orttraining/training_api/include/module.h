@@ -65,7 +65,7 @@ struct Module {
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
   Module(const std::string& train_model_path_or_bytes,
-         std::map<std::string, std::shared_ptr<Parameter>>& parameters,
+         std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
          const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
 
   // Return the trainable/nontrainable parameters
@@ -74,8 +74,7 @@ struct Module {
     return {};
   }
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters() const {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return {};
+    return parameters_;
   }
 
   // Reset and release the gradient buffer of all trainable params
@@ -98,7 +97,7 @@ struct Module {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_;
-  std::map<std::string, std::shared_ptr<Parameter>> parameters_;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> weights_;

@@ -2,11 +2,108 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session.h"
+#include "core/session/environment.h"
+
 #include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/utils.h"
+
+using namespace onnxruntime;
 
 namespace onnxruntime {
 namespace training {
 namespace api {
+
+Status Parameter::AllocateGrad(const std::string& gradient_name, const SessionState& sess_state) {
+  // assert param is allocated
+  ORT_ENFORCE(data_.IsAllocated());
+  ORT_ENFORCE(requires_grad_);
+  gradient_name_ = gradient_name;
+  ORT_ENFORCE(OrtValueLike(sess_state, data_, gradient_).IsOK());
+  return Status::OK();
+}
+
+Status Parameter::ResetGrad() {
+  Tensor* p_tensor = gradient_.GetMutable<Tensor>();
+  const auto& device = p_tensor->Location().device;
+  if (device.Type() == OrtDevice::CPU) {
+    memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
+  }
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  else if (device.Type() == OrtDevice::GPU) {
+    ORT_NOT_IMPLEMENTED("Not implemented.");
+  }
+#endif
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unknown device type ", device.Type(), " for param:", name_);
+  }
+  return Status::OK();
+}
+Module::Module(const std::string& train_model_path_or_bytes,
+               std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+               const std::optional<std::string>& eval_model_path_or_bytes) {
+  parameters_ = std::move(parameters);
+
+  auto so = onnxruntime::SessionOptions();
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  train_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
+  ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
+  ORT_THROW_IF_ERROR(train_sess_->Initialize());
+  if (eval_model_path_or_bytes.has_value()) {
+    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
+    ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
+    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
+  }
+  auto& train_sess_state = train_sess_->GetSessionState();
+
+  std::shared_ptr<onnxruntime::Model> model;
+  ORT_THROW_IF_ERROR(onnxruntime::Model::Load(train_model_path_or_bytes, model, nullptr, env->GetLoggingManager()->DefaultLogger()));
+  GetGraphInputOutputNames(model->MainGraph(), input_names_, output_names_);
+
+  std::vector<std::string> param_input_names, grad_input_names, user_input_names;
+  std::string param_name;
+  for (auto input_name : input_names_) {
+    auto it = parameters_.find(input_name);
+    if (it != parameters_.end()) {
+      param_input_names.emplace_back(input_name);
+      weights_.push_back(it->second->Data());
+    } else if (GetParamNameFromGradient(input_name, param_name)) {
+      grad_input_names.emplace_back(input_name);
+      // create gradient buffer
+      // assert param_name is valid.
+      auto it = parameters_.find(param_name);
+      if (it != parameters_.end()) {
+        ORT_THROW_IF_ERROR(it->second->AllocateGrad(input_name, train_sess_state));
+        gradients_.push_back(it->second->Gradient());
+      } else {
+        // raise error here.
+      }
+    } else {
+      user_input_names.emplace_back(input_name);
+    }
+  }
+  input_names_ = user_input_names;
+  input_names_.insert(input_names_.end(), param_input_names.begin(), param_input_names.end());
+  input_names_.insert(input_names_.end(), grad_input_names.begin(), grad_input_names.end());
+}
+
+Status Module::ResetGrad() {
+  for (auto& it : parameters_) {
+    ORT_ENFORCE(it.second->ResetGrad().IsOK());
+  }
+  return Status::OK();
+}
+
+Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  std::vector<OrtValue> feeds{inputs};
+  feeds.insert(feeds.end(), weights_.begin(), weights_.end());
+  feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
+
+  // TODO: need to filter out the grads from the output ortvalues
+  auto status = train_sess_->Run(RunOptions(), input_names_, feeds, output_names_, &outputs);
+  ORT_THROW_IF_ERROR(status);
+  return status;
+}
 
 Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {
   module_checkpoint_state.named_parameters = named_parameters();
