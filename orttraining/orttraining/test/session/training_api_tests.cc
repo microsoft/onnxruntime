@@ -13,18 +13,13 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/models/runner/training_runner.h"
 // #include "orttraining/test/session/training_session_test_utils.h"
-#include "orttraining/training_api/interfaces.h"
+#include "orttraining/training_api/include/interfaces.h"
 #include "core/framework/tensorprotoutils.h"
 
-// includes to load parameters.of
-#include "orttraining/onnxflow/csrc/load_parameters.h"
-#include <filesystem>
-#include <iostream>
-#include <onnx/onnx_pb.h>
 
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
-using namespace onnxruntime::training::api_test;
+using namespace onnxruntime::training::api;
 using namespace google::protobuf::util;
 using namespace onnxruntime::path_utils;
 
@@ -99,7 +94,7 @@ static void OrtValueToVec(OrtValue& val, std::vector<T>& output) {
 TEST(TrainingApiTest, ModuleTrainStep) {
   auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
 
-  std::map<std::string, std::shared_ptr<Parameter>> named_parameters;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
 
   std::map<std::string, std::vector<int64_t>> param_names_shapes{{"_original_module.fc1.weight", {500, 784}},
                                                                  {"_original_module.fc1.bias", {500}},
@@ -163,7 +158,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   std::vector<float> before_train_vec, single_bias_grad_vec, current_bias_grad_vec, single_grad_vec, accumulated_grad_vec;
   std::string param_name = "_original_module.fc2.weight";
   std::shared_ptr<Parameter> bias_param = module_sess->named_parameters()[param_name];
-  OrtValue& bias_grad = bias_param->gradient();
+  OrtValue& bias_grad = bias_param->Gradient();
   OrtValueToVec(bias_grad, before_train_vec);
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
@@ -175,7 +170,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     OrtValueToVec(fetches[1], single_grad_vec);
     OrtValueToVec(fetches[5], accumulated_grad_vec);
 
-    bias_grad = bias_param->gradient();
+    bias_grad = bias_param->Gradient();
 
     if (step > 1) {
       OrtValueToVec(bias_grad, current_bias_grad_vec);

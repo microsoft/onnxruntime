@@ -102,9 +102,9 @@ Module::Module(const std::string& train_model_path_or_bytes,
         // it is a parameter
         continue;
       } else {
-        // It is a user input. We handle user inputs separately in eval 
-        // because eval graph might have different user inputs. 
-        // Eg if loss is not a part of eval graph, it won't have 
+        // It is a user input. We handle user inputs separately in eval
+        // because eval graph might have different user inputs.
+        // Eg if loss is not a part of eval graph, it won't have
         // certain inputs like targets
         eval_user_input_names.emplace_back(input_name);
       }

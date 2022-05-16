@@ -30,7 +30,7 @@ struct ParameterOptimizerState {
  */
 struct GroupOptimizerState {
   int64_t step = 0;
-  float learning_rate = 0.001; // default value used in torch AdamW
+  float learning_rate = 0.001;  // default value used in torch AdamW
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
@@ -67,7 +67,7 @@ struct Optimizer {
   int64_t GetStep() const {
     return optimizer_state_.step;
   }
-  
+
   Status SetLearningRate(float lr) {
     optimizer_state_.learning_rate = lr;
     return Status::OK();
