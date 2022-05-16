@@ -69,7 +69,7 @@ jobs:
           filter_mode: file
           lib: true
       - name: pylint
-        uses: dciborow/action-pylint@master
+        uses: dciborow/action-pylint@main
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
