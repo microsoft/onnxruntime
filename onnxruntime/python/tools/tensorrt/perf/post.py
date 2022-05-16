@@ -142,7 +142,7 @@ def write_table(ingest_client, table, table_name, upload_time, identifier):
 
 
 def get_identifier(commit_datetime, commit_id, trt_version, branch):
-    date = commit_datetime.isoformat().split("T")[0]  # extract date only
+    date = str(commit_datetime.date())  # extract date only
     return date + "_" + commit_id + "_" + trt_version + "_" + branch
 
 
