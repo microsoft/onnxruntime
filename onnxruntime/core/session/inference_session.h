@@ -132,8 +132,20 @@ class InferenceSession {
   explicit InferenceSession(const SessionOptions& session_options,
                             const Environment& session_env);
 
-#if !defined(ORT_MINIMAL_BUILD)
+  /**
+    Create a new InferenceSession that accepts thread pools for intra and inter op thread execution.
+    Used by WinML only!
+    @param session_options Session options.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
+    @param external_intra_op_thread_pool This represents the intra op threadpool.
+    @param external_inter_op_thread_pool This represents the inter op threadpool.
+    */
+  explicit InferenceSession(const SessionOptions& session_options,
+                            const Environment& session_env,
+                            onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
+                            onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool);
 
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     Create a new InferenceSession
     @param session_options Session options.
@@ -489,11 +501,27 @@ class InferenceSession {
   // specific flags in session options
   // These methods assume that session options have been finalized before the call.
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
-    return session_options_.use_per_session_threads ? thread_pool_.get() : intra_op_thread_pool_from_env_;
+    if (session_options_.use_per_session_threads) {
+      if (external_intra_op_thread_pool_) {
+        return external_intra_op_thread_pool_;
+      } else {
+        return thread_pool_.get();
+      }
+    } else {
+      return intra_op_thread_pool_from_env_;
+    }
   }
 
   onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
-    return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
+    if (session_options_.use_per_session_threads) {
+      if (external_inter_op_thread_pool_) {
+        return external_inter_op_thread_pool_;
+      } else {
+        return inter_op_thread_pool_.get();
+      }
+    } else {
+      return inter_op_thread_pool_from_env_;
+    }
   }
 
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
@@ -648,6 +676,10 @@ class InferenceSession {
   // the environment is created with create_global_thread_pools = true.
   onnxruntime::concurrency::ThreadPool* intra_op_thread_pool_from_env_{};
   onnxruntime::concurrency::ThreadPool* inter_op_thread_pool_from_env_{};
+
+  // External threadpools.
+  onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool_{};
+  onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool_{};
 
   // initialized from session options
   // Determines which threadpools will be intialized and used for the duration of this session.
