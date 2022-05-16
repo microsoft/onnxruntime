@@ -6,6 +6,7 @@ import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+
 import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
 import {calculateIm2ColDims} from './im2col';
 

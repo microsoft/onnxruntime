@@ -13,9 +13,11 @@ std::optional<HashValue> GetHashValueFromStaticKernelHashMap(const std::string& 
   // Since layout transformation can happen in an extended build, if these nodes are not picked up and compiled by
   // NNAPI or other compiling EPs then we need a way to get the hashes for these nodes. Since the infrastructure
   // as well as op_schema required to generate these hashes is not available in an extended minimal build,
-  // we maintain a static map of nodes to hash value. This hash value can then be used to retireive the
+  // we maintain a static map of nodes to hash value. This hash value can then be used to retrieve the
   // kernel for the given op.
-  static std::unordered_map<std::string, HashValue> static_kernel_hashes{
+  static const std::unordered_map<std::string, HashValue> static_kernel_hashes{
+      // Note: these region_begin/end markers are used by tools/ci_build/reduce_op_kernels.py
+      // @@region_begin(layout_transformation_required_kernels)@@
       {"Transpose_1", 4324835766923221184ULL},
       {"Transpose_13", 17267477159887372848ULL},
       {"Squeeze_1", 12889825108950034784ULL},
@@ -31,6 +33,7 @@ std::optional<HashValue> GetHashValueFromStaticKernelHashMap(const std::string& 
       {"Identity_13", 16879814636194901248ULL},
       {"Identity_14", 16515685968327103576ULL},
       {"Identity_16", 17661628575887109792ULL},
+      // @@region_end(layout_transformation_required_kernels)@@
   };
 
   auto key = op_type + "_" + std::to_string(since_version);
@@ -71,20 +74,24 @@ void UpdateHashForBackwardsCompatibility(HashValue& hash) {
   // onnxruntime/test/providers/kernel_def_hash_test.cc regarding how/when hashes might change and the best way to
   // address that.
   static const std::unordered_map<HashValue, HashValue> hashes{
-      // old                   new                          domain, operator, opset[, type]
-      {2832535737534577496ULL, 16708009824840936392ULL},    // kOnnxDomain, Dropout, 7
-      {12198479371038564912ULL, 1718418059112844640ULL},    // kOnnxDomain, Scan, 9
-      {2560955351529676608ULL, 3668627007850399040ULL},     // kOnnxDomain, Scan, 11
-      {10232409728231027688ULL, 5212043150202938416ULL},    // kOnnxDomain, Not, 1
-      {11912523891622051440ULL, 10225383741733918632ULL},   // kOnnxDomain, RoiAlign, 10, float
-      {18084231515768318048ULL, 17022700455473327752ULL},   // kOnnxDomain, RoiAlign, 10, double
-      {14033689580222898712ULL, 634727773751317256ULL},     // kOnnxDomain, GatherND, 11
-      {646512416908411600ULL, 3064028185911332496ULL},      // kOnnxDomain, GatherND, 12
-      {15019893097608892000ULL, 11311962292460032936ULL},   // kOnnxDomain, GatherND, 13
-      {14259324427750852648ULL, 7767393334034626736ULL},    // kOnnxDomain, StringNormalizer, 10
-                                                            // contrib ops
-      {7642430665819070720ULL, 8620498355864235632ULL},     // kMSDomain, CropAndResize, 1
-      {15019666093341768288ULL, 11924582339825775592ULL}};  // kMSDomain, GridSample, 1
+      // old                   new                            domain, operator, opset[, type]
+      {2832535737534577496ULL, 16708009824840936392ULL},   // kOnnxDomain, Dropout, 7
+      {12198479371038564912ULL, 1718418059112844640ULL},   // kOnnxDomain, Scan, 9
+      {2560955351529676608ULL, 3668627007850399040ULL},    // kOnnxDomain, Scan, 11
+      {10232409728231027688ULL, 5212043150202938416ULL},   // kOnnxDomain, Not, 1
+      {11912523891622051440ULL, 10225383741733918632ULL},  // kOnnxDomain, RoiAlign, 10, float
+      {18084231515768318048ULL, 17022700455473327752ULL},  // kOnnxDomain, RoiAlign, 10, double
+      {14033689580222898712ULL, 634727773751317256ULL},    // kOnnxDomain, GatherND, 11
+      {646512416908411600ULL, 3064028185911332496ULL},     // kOnnxDomain, GatherND, 12
+      {15019893097608892000ULL, 11311962292460032936ULL},  // kOnnxDomain, GatherND, 13
+      {14259324427750852648ULL, 7767393334034626736ULL},   // kOnnxDomain, StringNormalizer, 10
+                                                           // contrib ops
+      {7642430665819070720ULL, 8620498355864235632ULL},    // kMSDomain, CropAndResize, 1
+      {15019666093341768288ULL, 11924582339825775592ULL},  // kMSDomain, GridSample, 1
+      {8466416990072218056ULL, 18418354579469131656ULL},   // kOnnxDomain, LayerNormalization, 1, float
+      {4058615579523172864ULL, 4827261308628792072ULL},    // kOnnxDomain, LayerNormalization, 1, double
+      {16349480652468900704ULL, 4809288790945391544ULL},   // kOnnxDomain, SimplifiedLayerNormalization, 1, float
+      {418129161279605176ULL, 13556035637124174064ULL}};   // kOnnxDomain, SimplifiedLayerNormalization, 1, double
 
   auto iter = hashes.find(hash);
   if (iter != hashes.cend()) {

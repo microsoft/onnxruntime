@@ -108,7 +108,9 @@ if (onnxruntime_USE_MIMALLOC)
     endif()
 endif()
 
-include(external/abseil-cpp.cmake)
+if(NOT onnxruntime_DISABLE_ABSEIL)
+  include(external/abseil-cpp.cmake)
+endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
 target_include_directories(onnxruntime_common
@@ -210,12 +212,21 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows
   else()
-    # Link cpuinfo
+    # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
 
-    target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
-    target_link_libraries(onnxruntime_common cpuinfo)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
+    if (CPUINFO_SUPPORTED)
+      target_link_libraries(onnxruntime_common cpuinfo)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
+    endif()
   endif()
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_common
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

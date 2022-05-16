@@ -10,9 +10,7 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .debug_options import DebugOptions
-from ._fallback import (_FallbackManager,
-                        _FallbackPolicy,
-                        ORTModuleFallbackException)
+from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
@@ -22,7 +20,7 @@ from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
 
 # Needed to override PyTorch methods
-T = TypeVar('T', bound='Module')
+T = TypeVar("T", bound="Module")
 
 
 class ORTModule(torch.nn.Module):
@@ -56,9 +54,9 @@ class ORTModule(torch.nn.Module):
             debug_options = DebugOptions()
 
         # Fallback settings
-        self._fallback_manager = _FallbackManager(pytorch_module=module,
-                                                  policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
-                                                  retry=ortmodule.ORTMODULE_FALLBACK_RETRY)
+        self._fallback_manager = _FallbackManager(
+            pytorch_module=module, policy=ortmodule.ORTMODULE_FALLBACK_POLICY, retry=ortmodule.ORTMODULE_FALLBACK_RETRY
+        )
 
         try:
             # Read ORTModule module initialization status
@@ -87,17 +85,18 @@ class ORTModule(torch.nn.Module):
             _utils.switch_backend_to_pytorch(self, module)
 
             # Exceptions subject to fallback are handled here
-            self._fallback_manager.handle_exception(exception=e,
-                                                    log_level=debug_options.logging.log_level)
+            self._fallback_manager.handle_exception(exception=e, log_level=debug_options.logging.log_level)
         except Exception as e:
             # Although backend is switched to PyTorch here,
             # it is up to _FallbackManager to actually terminate execution or fallback
             _utils.switch_backend_to_pytorch(self, module)
 
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
-            self._fallback_manager.handle_exception(exception=e,
-                                                    log_level=debug_options.logging.log_level,
-                                                    override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
+            self._fallback_manager.handle_exception(
+                exception=e,
+                log_level=debug_options.logging.log_level,
+                override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD,
+            )
 
         # Finally, ORTModule initialization is complete.
         # Assign self._is_initialized to True after all the ORTModule class attributes have been assigned
@@ -108,7 +107,7 @@ class ORTModule(torch.nn.Module):
     # This declaration is for automatic document generation purposes only
     # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        '''Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to
+        """Delegate the :meth:`~torch.nn.Module.forward` pass of PyTorch training to
         ONNX Runtime.
 
         The first call to forward performs setup and checking steps. During this call,
@@ -125,7 +124,7 @@ class ORTModule(torch.nn.Module):
             The output as expected from the forward method defined by the user's
             PyTorch module. Output values supported include tensors, nested sequences
             of tensors and nested dictionaries of tensor values.
-        '''
+        """
 
     def _replicate_for_data_parallel(self):
         """Raises a NotImplementedError exception since ORTModule is not compatible with torch.nn.DataParallel
@@ -145,7 +144,7 @@ class ORTModule(torch.nn.Module):
 
         return self._torch_module._replicate_for_data_parallel()
 
-    def add_module(self, name: str, module: Optional['Module']) -> None:
+    def add_module(self, name: str, module: Optional["Module"]) -> None:
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
         self._torch_module.add_module(name, module)
@@ -176,7 +175,7 @@ class ORTModule(torch.nn.Module):
         self._torch_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[['Module'], None]) -> T:
+    def apply(self: T, fn: Callable[["Module"], None]) -> T:
         """Override :meth:`~torch.nn.Module.apply` to delegate execution to ONNX Runtime"""
 
         self._torch_module.apply(fn)
@@ -198,14 +197,12 @@ class ORTModule(torch.nn.Module):
         self._torch_module.train(mode)
         return self
 
-    def state_dict(self, destination=None, prefix='', keep_vars=False):
+    def state_dict(self, destination=None, prefix="", keep_vars=False):
         """Override :meth:`~torch.nn.Module.state_dict` to delegate execution to ONNX Runtime"""
 
-        return self._torch_module.state_dict(
-            destination=destination, prefix=prefix, keep_vars=keep_vars)
+        return self._torch_module.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
-                        strict: bool = True):
+    def load_state_dict(self, state_dict: "OrderedDict[str, Tensor]", strict: bool = True):
         """Override :meth:`~torch.nn.Module.load_state_dict` to delegate execution to ONNX Runtime"""
 
         return self._torch_module.load_state_dict(state_dict, strict=strict)
@@ -235,7 +232,7 @@ class ORTModule(torch.nn.Module):
 
         yield from self._torch_module.parameters(recurse=recurse)
 
-    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
         """Override :meth:`~torch.nn.Module.named_parameters`"""
 
         yield from self._torch_module.named_parameters(prefix=prefix, recurse=recurse)
@@ -245,24 +242,26 @@ class ORTModule(torch.nn.Module):
 
         yield from self._torch_module.buffers(recurse=recurse)
 
-    def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+    def named_buffers(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
         """Override :meth:`~torch.nn.Module.named_buffers`"""
 
         yield from self._torch_module.named_buffers(prefix=prefix, recurse=recurse)
 
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
-                              missing_keys, unexpected_keys, error_msgs):
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
         """Override original method to delegate execution to the original PyTorch user module"""
 
-        self._torch_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
-                                                 missing_keys, unexpected_keys, error_msgs)
+        self._torch_module._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
-    def named_children(self) -> Iterator[Tuple[str, 'Module']]:
+    def named_children(self) -> Iterator[Tuple[str, "Module"]]:
         """Override :meth:`~torch.nn.Module.named_children`"""
 
         yield from self._torch_module.named_children()
 
-    def modules(self) -> Iterator['Module']:
+    def modules(self) -> Iterator["Module"]:
         """Override :meth:`~torch.nn.Module.modules`"""
 
         yield from self._torch_module.modules()
@@ -273,11 +272,11 @@ class ORTModule(torch.nn.Module):
         yield from self._torch_module.named_modules(*args, **kwargs)
 
     def __getattr__(self, name: str):
-        if '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
+        if "_is_initialized" in self.__dict__ and self.__dict__["_is_initialized"] is True:
             # If ORTModule is initialized and attribute is not found in ORTModule,
             # it must be present in the user's torch.nn.Module. Forward the call to
             # the user's model.
-            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
+            assert "_torch_module" in self.__dict__, "ORTModule does not have a reference to the user's model"
             return getattr(self.module, name)
         else:
             return super(ORTModule, self).__getattr__(name)
@@ -288,9 +287,9 @@ class ORTModule(torch.nn.Module):
             # If the name is an attribute of ORTModule, update only ORTModule
             self.__dict__[name] = value
 
-        elif '_is_initialized' in self.__dict__ and self.__dict__['_is_initialized'] is True:
+        elif "_is_initialized" in self.__dict__ and self.__dict__["_is_initialized"] is True:
 
-            assert '_torch_module' in self.__dict__, "ORTModule does not have a reference to the user's model"
+            assert "_torch_module" in self.__dict__, "ORTModule does not have a reference to the user's model"
 
             # If the name is an attribute of user model, or is a new attribute, update there.
             # Set the attribute on the user's original module

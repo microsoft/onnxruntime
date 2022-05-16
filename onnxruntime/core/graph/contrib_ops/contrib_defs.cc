@@ -1982,22 +1982,25 @@ void RegisterContribSchemas() {
             AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "Scale", "Scale tensor.", "T")
-      .Input(2, "B", "Bias tensor.", "T", OpSchema::Optional)
-      .Output(0, "Y", "Output data tensor.", "T")
+      .Input(1, "Scale", "Scale tensor.", "V")
+      .Input(2, "B", "Bias tensor.", "V", OpSchema::Optional)
+      .Output(0, "Y", "Output data tensor.", "V")
       .Output(1, "Mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
       .Output(2, "InvStdDev", "Saved inverse standard deviation used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input types and output Y type to float tensors.")
+          "Constrain input X type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)", "tensor(bfloat16)"},
+          {"tensor(float)", "tensor(double)"},
           "Type of Mean and InvStdDev tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale and bias type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
         auto type = ctx.getAttribute("stash_type")->i();
         if (ctx.getNumOutputs() > 1) {
           auto output_type = ctx.getOutputType(1);
@@ -2010,6 +2013,7 @@ void RegisterContribSchemas() {
         if (!hasNInputShapes(ctx, 1)) {
           return;
         }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
         auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
         int64_t input_ndim = input_shape.dim_size();
         int64_t axis = -1;
@@ -2039,14 +2043,14 @@ void RegisterContribSchemas() {
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)
 
-            auto* tp = ctx.getInputType(0);
+            auto* tp = ctx.getInputType(1);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
-            int64_t T = tp->tensor_type().elem_type();
+            int64_t V = tp->tensor_type().elem_type();
 
             auto type_attr = ctx.getAttribute("stash_type");
             int64_t U = (type_attr != nullptr) ? type_attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-            if ((U != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) && (U != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
+            if ((U != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) && (U != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE))
               return false;  // Error
 
             auto* axis_attr = ctx.getAttribute("axis");
@@ -2092,9 +2096,9 @@ void RegisterContribSchemas() {
                 .Add("StdDev = Sqrt (VarPlusEpsilon)")
                 .Add("Deviation = Sub (XU, Mean2D)")
                 .Add("Normalized = Div (Deviation, StdDev)")
-                .Add("NormalizedT = Cast (Normalized)", "to", T)
+                .Add("NormalizedV = Cast (Normalized)", "to", V)
                 .Add("Scale2D = Flatten <axis = 0> (Scale)")
-                .Add("Scaled = Mul (NormalizedT, Scale2D)");
+                .Add("Scaled = Mul (NormalizedV, Scale2D)");
             if (ctx.hasInput(2)) {
               builder.Add("B2D = Flatten <axis=0> (B)");
               builder.Add("Biased = Add (Scaled, B2D)");
@@ -2123,25 +2127,37 @@ void RegisterContribSchemas() {
       .Attr("epsilon",
             "The epsilon value to use to avoid division by zero.",
             AttributeProto::FLOAT, 1e-5f)
+      .Attr("stash_type",
+            "type used for stash mean/inv_std_var",
+            AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "scale", "Scale tensor.", "T")
-      .Output(0, "Y", "Output data tensor.", "T")
+      .Input(1, "scale", "Scale tensor.", "V")
+      .Output(0, "Y", "Output data tensor.", "V")
       .Output(1, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain mean and inv_std_var to be float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y and scale type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        auto type = ctx.getAttribute("stash_type")->i();
+        if (ctx.getNumOutputs() > 1) {
+          auto output_type = ctx.getOutputType(1);
+          output_type->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(type));
+        }
         if (!hasNInputShapes(ctx, 1)) {
           return;
         }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
         auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
         int64_t input_ndim = input_shape.dim_size();
         int64_t axis = -1;
@@ -2321,6 +2337,46 @@ void RegisterContribSchemas() {
         output_shape.add_dim()->set_dim_value(pooled_size);
         output_shape.add_dim()->set_dim_value(pooled_size);
         updateOutputShape(ctx, 0, output_shape);
+      });
+
+  static const char* DisentangledAttention_TRT_ver1_doc =
+      R"DOC(Disentangled Attention TensorRT Plugin.)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DisentangledAttention_TRT)
+      .SetDomain(kOnnxDomain)
+      .SinceVersion(1)
+      .SetDoc(DisentangledAttention_TRT_ver1_doc)
+      .Input(0, "c2c_attention", "content-to-content attention tensor, QcKc^T.", "T") 
+      .Input(1, "c2p_attention", "content-to-position attention tensor, QcKr^T.", "T")
+      .Input(2, "p2c_attention", "position-to-content attention tensor, KcQr^T.", "T")
+      .Output(0, "disentangled_attention", "The disentangled attention output tensor.", "T")
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+      .Attr("span", "Maximum relative distance, k.", AttributeProto::INT)
+      .Attr("factor", "Scaling factor applied to attention values, 1/sqrt(3d). d is hidden size per head = H/N. H is hidden size, N is number of heads.", AttributeProto::FLOAT)
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0); 
+
+        // Shape Inference
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+
+        auto& input0_shape = getInputShape(ctx, 0);
+        auto& input0_dims = input0_shape.dim();
+        if (input0_dims.size() != 3) {
+          fail_shape_inference("Input 0 shall be 3 dimensions");
+        }
+
+        // output dims is same as input[0] dims, i.e., regular c2c attention dims
+        // ONNX_NAMESPACE::TensorShapeProto disentangled_attention_shape;
+        // for (auto& dim : input0_dims) {
+        //   *disentangled_attention_shape.add_dim() = dim;
+        // }
+        // updateOutputShape(ctx, 0, disentangled_attention_shape);
+        propagateShapeFromInputToOutput(ctx, 0, 0); 
+
       });
 
 #ifndef _OPSCHEMA_LIB_

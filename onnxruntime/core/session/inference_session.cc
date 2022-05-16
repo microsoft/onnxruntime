@@ -102,68 +102,6 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 
-using NodePlacementMap = std::unordered_map<std::string, std::vector<std::string>>;
-
-Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
-                                          NodePlacementMap& node_placements) {
-  for (const auto& node : graph.Nodes()) {
-    const auto& node_provider = node.GetExecutionProviderType();
-    if (node_provider.empty()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Could not find an implementation for ",
-                             node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'");
-    }
-
-#if !defined(ORT_MINIMAL_BUILD)
-    if (is_verbose) {  // TODO: should we disable this if the number of nodes is above a certain threshold?
-      const std::string node_str = node.OpType() + " (" + node.Name() + ")";
-      node_placements[node_provider].push_back(node_str);
-    }
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-    // recurse into subgraphs
-    if (node.ContainsSubgraph()) {
-      const auto subgraphs = node.GetSubgraphs();
-      for (const auto& subgraph : subgraphs) {
-        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger) {
-  NodePlacementMap node_placements{};
-#if !defined(ORT_MINIMAL_BUILD)
-  const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
-#else
-  ORT_UNUSED_PARAMETER(logger);
-  const bool is_verbose_mode = false;
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-  const auto status = VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements);
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // print placement info
-  if (is_verbose_mode) {
-    LOGS(logger, VERBOSE) << "Node placements";
-    if (node_placements.size() == 1) {
-      LOGS(logger, VERBOSE) << "All nodes have been placed on [" << node_placements.begin()->first << "].";
-    } else {
-      for (const auto& pr : node_placements) {
-        std::ostringstream all_nodes_str;
-        std::copy(pr.second.begin(), pr.second.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
-        LOGS(logger, VERBOSE) << " Provider: [" << pr.first << "]"
-                              << ": [" << all_nodes_str.str() << "]";
-      }
-    }
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-  return status;
-}
-
 #if !defined(ORT_MINIMAL_BUILD)
 
 bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
@@ -330,69 +268,75 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
-      bool allow_intra_op_spinning =
-          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
-      OrtThreadPoolParams to = session_options_.intra_op_param;
-      std::basic_stringstream<ORTCHAR_T> ss;
-      if (to.name) {
-        ss << to.name << ORT_TSTR("-");
-      }
-      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
-      thread_pool_name_ = ss.str();
-      to.name = thread_pool_name_.c_str();
-      to.set_denormal_as_zero = set_denormal_as_zero;
-      // If the thread pool can use all the processors, then
-      // we set affinity of each thread to each processor.
-      to.auto_set_affinity = to.thread_pool_size == 0 &&
-                             session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                             to.affinity_vec_len == 0;
-      to.allow_spinning = allow_intra_op_spinning;
-      to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
-      LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
+      if (!external_intra_op_thread_pool_)
+      {
+        bool allow_intra_op_spinning =
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
+        OrtThreadPoolParams to = session_options_.intra_op_param;
+        std::basic_stringstream<ORTCHAR_T> ss;
+        if (to.name) {
+          ss << to.name << ORT_TSTR("-");
+        }
+        ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-intra-op");
+        thread_pool_name_ = ss.str();
+        to.name = thread_pool_name_.c_str();
+        to.set_denormal_as_zero = set_denormal_as_zero;
+        // If the thread pool can use all the processors, then
+        // we set affinity of each thread to each processor.
+        to.auto_set_affinity = to.thread_pool_size == 0 &&
+                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+                              to.affinity_vec_len == 0;
+        to.allow_spinning = allow_intra_op_spinning;
+        to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
+        LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
 
-      // Set custom threading functions
-      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
-      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
-      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+        // Set custom threading functions
+        to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+        to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+        to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
 
-      if (to.custom_create_thread_fn) {
-        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
+        if (to.custom_create_thread_fn) {
+          ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
+        }
+        thread_pool_ =
+            concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
       }
-      thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      bool allow_inter_op_spinning =
-          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
-      OrtThreadPoolParams to = session_options_.inter_op_param;
-      // If the thread pool can use all the processors, then
-      // we set thread affinity.
-      to.auto_set_affinity =
-          to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-      std::basic_stringstream<ORTCHAR_T> ss;
-      if (to.name) {
-        ss << to.name << ORT_TSTR("-");
-      }
-      ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
-      inter_thread_pool_name_ = ss.str();
-      to.name = inter_thread_pool_name_.c_str();
-      to.set_denormal_as_zero = set_denormal_as_zero;
-      to.allow_spinning = allow_inter_op_spinning;
-      to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
+      if (!external_inter_op_thread_pool_)
+      {
+        bool allow_inter_op_spinning =
+            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
+        OrtThreadPoolParams to = session_options_.inter_op_param;
+        // If the thread pool can use all the processors, then
+        // we set thread affinity.
+        to.auto_set_affinity =
+            to.thread_pool_size == 0 && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
+        std::basic_stringstream<ORTCHAR_T> ss;
+        if (to.name) {
+          ss << to.name << ORT_TSTR("-");
+        }
+        ss << ORT_TSTR("session-") << session_id_ << ORT_TSTR("-inter-op");
+        inter_thread_pool_name_ = ss.str();
+        to.name = inter_thread_pool_name_.c_str();
+        to.set_denormal_as_zero = set_denormal_as_zero;
+        to.allow_spinning = allow_inter_op_spinning;
+        to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
 
-      // Set custom threading functions
-      to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
-      to.custom_thread_creation_options = session_options.custom_thread_creation_options;
-      to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
+        // Set custom threading functions
+        to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
+        to.custom_thread_creation_options = session_options.custom_thread_creation_options;
+        to.custom_join_thread_fn = session_options_.custom_join_thread_fn;
 
-      if (to.custom_create_thread_fn) {
-        ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
-      }
-      inter_op_thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
-      if (inter_op_thread_pool_ == nullptr) {
-        LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
-        session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+        if (to.custom_create_thread_fn) {
+          ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for inter op thread pool");
+        }
+        inter_op_thread_pool_ =
+            concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+        if (inter_op_thread_pool_ == nullptr) {
+          LOGS(*session_logger_, INFO) << "Failed to create the inter-op thread pool for the parallel executor, setting ExecutionMode to SEQUENTIAL";
+          session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+        }
       }
     }
   } else {
@@ -421,6 +365,24 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 #endif
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
+  // Initialize assets of this session instance
+  ConstructorCommon(session_options, session_env);
+}
+
+InferenceSession::InferenceSession(const SessionOptions& session_options,
+                                   const Environment& session_env,
+                                   onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
+                                   onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool)
+    :
+#if !defined(ORT_MINIMAL_BUILD)
+      graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
+      insert_cast_transformer_("CastFloat16Transformer"),
+#endif
+      logging_manager_(session_env.GetLoggingManager()),
+      external_intra_op_thread_pool_(external_intra_op_thread_pool),
+      external_inter_op_thread_pool_(external_inter_op_thread_pool),
+      environment_(session_env)
+{
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -725,8 +687,11 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    *session_logger_);
+                                    *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   common::Status st = Load(loader, "model_loading_uri");
@@ -825,8 +790,11 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #endif
 
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_array");
@@ -851,9 +819,12 @@ common::Status InferenceSession::Load(const ModelProto& model_proto) {
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     // This call will create a copy of model_proto and the constructed model instance will own the copy thereafter
     return onnxruntime::Model::Load(model_proto, PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_proto");
@@ -873,8 +844,11 @@ common::Status InferenceSession::Load(std::unique_ptr<ModelProto> p_model_proto)
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     return onnxruntime::Model::Load(std::move(*p_model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                                    ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_proto");
@@ -899,9 +873,13 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    ModelOptions model_opts(allow_released_opsets_only,
+                            strict_shape_type_inference);
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    *session_logger_, allow_released_opsets_only);
+                                    *session_logger_, model_opts);
   };
 
   return Load(loader, "model_loading_istream");
@@ -921,9 +899,12 @@ common::Status InferenceSession::Load() {
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
+    const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
-                       HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+                       HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
+                       ModelOptions(true, strict_shape_type_inference));
   };
 
   return Load(loader, "model_loading_from_saved_proto");
@@ -973,7 +954,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
                                                        session_state.GetMutableFuncMgr(),
                                                        layout_transformer::TransformLayoutForCompilingEP, mode));
 
@@ -987,8 +968,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   bool modified = false;
   // Insert cast node/s.
   ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
-
-  ORT_RETURN_IF_ERROR_SESSIONID_(VerifyEachNodeIsAssignedToAnEp(graph, *session_logger_));
 
   std::vector<std::string> provider_types;
   for (auto& provider_ptr : providers) {
@@ -1198,7 +1177,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
+  ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             layout_transformer::TransformLayoutForCompilingEP,
                                             GraphPartitioner::Mode::kOrtFormatLoad,
@@ -1231,75 +1210,6 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
-                                      const KernelRegistryManager& kernel_registry_manager) {
-  using fbs::utils::FbsSessionStateViewer;
-  const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
-  ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
-
-  for (auto& node : graph.Nodes()) {
-    for (auto& [attribute, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
-      const fbs::SessionState* fbs_subgraph_session_state;
-      ORT_RETURN_IF_ERROR(fbs_session_state_viewer.GetSubgraphSessionState(node.Index(), attribute,
-                                                                           fbs_subgraph_session_state));
-
-      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(*subgraph, *fbs_subgraph_session_state,
-                                                         kernel_registry_manager));
-    }
-  }
-
-  const auto set_node_ep = [&](NodeIndex node_idx, HashValue kernel_def_hash) -> Status {
-    Node* node = graph.GetNode(node_idx);
-    if (!node || !node->GetExecutionProviderType().empty()) {
-      return Status::OK();
-    }
-
-    const KernelCreateInfo* kci = nullptr;
-    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(kernel_def_hash, &kci),
-                      "Failed to find kernel def hash (", kernel_def_hash, ") in kernel registries for ",
-                      node->OpType(), "(", node->SinceVersion(), ") node with name '", node->Name(), "'.");
-    node->SetExecutionProviderType(kci->kernel_def->Provider());
-
-    return Status::OK();
-  };
-
-  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
-    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
-    ORT_RETURN_IF_ERROR(set_node_ep(node_kernel_info.node_index, node_kernel_info.kernel_def_hash));
-  }
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  for (const auto& [node_index, kernel_def_hash] :
-       graph.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
-    ORT_RETURN_IF_ERROR(set_node_ep(node_index, kernel_def_hash));
-  }
-
-  // layout transformer which is enabled in extended minimal build can add new nodes.
-  // The following loop fetches the hash values for these nodes.
-  for (const auto& node : graph.Nodes()) {
-    if (node.GetExecutionProviderType().empty()) {
-      auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
-      if (!kernel_hash.has_value()) {
-        kernel_hash = utils::GetInternalNhwcOpHash(node);
-      }
-      if (kernel_hash.has_value()) {
-        ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), kernel_hash.value()));
-      }
-    }
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  return Status::OK();
-}
-
-Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_session_state,
-                                  const KernelRegistryManager& kernel_registry_manager,
-                                  const logging::Logger& logger) {
-  ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(graph, fbs_session_state, kernel_registry_manager));
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph, logger));
-  return Status::OK();
-}
 }  // namespace
 
 static void ResolveMemoryPatternFlags(SessionState& session_state) {
@@ -1369,6 +1279,13 @@ common::Status InferenceSession::Initialize() {
 
     // re-acquire mutex
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+    if (!session_options_.external_initializers.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializedTensors(session_options_.external_initializers));
+      InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
+    }
+#endif
 
     // At this time we know all the providers that will be part of this session.
     // Read shared allocators from the environment and update them in the respective providers.
@@ -1518,9 +1435,6 @@ common::Status InferenceSession::Initialize() {
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
                                                   cpu_ep));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state, kernel_registry_manager_,
-                                                     *session_logger_));
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
