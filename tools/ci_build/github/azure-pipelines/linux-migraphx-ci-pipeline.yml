@@ -1,0 +1,47 @@
+trigger: none
+
+name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
+jobs:
+- job: AMDMIGraphX_CI
+  pool: 'AMD-GPU'
+  timeoutInMinutes: 60
+
+  # gid of video and render group on gcr-openpai-35 and -36
+  variables:
+    - name: video
+      value: 44
+    - name: render
+      value: 109
+
+  # generated from tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
+  container:
+    image: onnxruntimecibuildenvironment.azurecr.io/migraphx-ci-pipeline-env
+    endpoint: onnxruntimecibuildenvironmentformigraphx
+    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
+
+  steps:
+  - checkout: self
+    clean: true
+
+  - script: |-
+      echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
+    displayName: 'Initialize environment'
+
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        export ROCM_HOME=/opt/rocm
+        python tools/ci_build/build.py \
+        --config Release \
+        --mpi_home /opt/ompi \
+        --use_migraphx \
+        --rocm_version=4.3.1 \
+        --rocm_home /opt/rocm \
+        --nccl_home /opt/rocm \
+        --update \
+        --build_dir ./build \
+        --build \
+        --parallel 8 \
+        --build_wheel \
+        --skip_tests
+    displayName: 'Build onnxruntime'
