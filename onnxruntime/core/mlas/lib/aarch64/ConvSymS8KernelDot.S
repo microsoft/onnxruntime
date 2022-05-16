@@ -25,18 +25,37 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedRegisters,       (8 * 8)
-        .equ    .LConvSymFrame_PostProcessParams,    0 + .LConvSymFrame_SavedRegisters
-        .equ    .LConvSymFrame_KernelFlags,          8 + .LConvSymFrame_SavedRegisters
 
-        .equ    .LConvSymPostProcessParams_Bias,      0
-        .equ    .LConvSymPostProcessParams_Scale,     8
-        .equ    .LConvSymPostProcessParams_Min,       16
-        .equ    .LConvSymPostProcessParams_Max,       20
-        .equ    .LConvSymPostProcessParams_ZeroPoint, 24
-        .equ    .LConvSymPostProcessParams_Multiplier,32
-        .equ    .LConvSymPostProcessParams_PreShift,  40
-        .equ    .LConvSymPostProcessParams_PostShift, 48
+        .equ    .LConvSymFrame_SavedRegisters_d8_d9,       0
+        .equ    .LConvSymFrame_SavedRegisters_d10_d11,     16
+        .equ    .LConvSymFrame_SavedRegisters_x19_x20,     32
+        .equ    .LConvSymFrame_SavedRegisters_x21_x22,     48
+        .equ    .LConvSymFrame_SavedRegisters,             64
+        .equ    .LConvSymFrame_SavedRegisters_Neg,         -64
+        .equ    .LConvSymFrame_PostProcessParams,          0 + .LConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_KernelFlags,                8 + .LConvSymFrame_SavedRegisters
+
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
+        .equ    .LConvSymPostProcessParams_Bias,           0
+        .equ    .LConvSymPostProcessParams_Scale,          8
+        .equ    .LConvSymPostProcessParams_Min,            16
+        .equ    .LConvSymPostProcessParams_Max,            20
+        .equ    .LConvSymPostProcessParams_ZeroPoint,      24
+        .equ    .LConvSymPostProcessParams_Multiplier,     32
+        .equ    .LConvSymPostProcessParams_PreShift,       40
+        .equ    .LConvSymPostProcessParams_PostShift,      48
 
         .text
 
@@ -82,15 +101,13 @@ Return Value:
 --*/
         FUNCTION_ENTRY MlasConvSymS8KernelDot
 
-        stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
+        stp     d8,d9,[sp,#.LConvSymFrame_SavedRegisters_Neg]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
-        str     d10,[sp,#16]
-        stp     x19,x20,[sp,#32]
-        stp     x21,x22,[sp,#48]
-
         cmp     x7,2                    // OutputCount < 2 ?
-        str     d11,[sp,#24]
         add     x16,x2,x5               // x16 -> C1
+        stp     d10,d11,[sp,#.LConvSymFrame_SavedRegisters_d10_d11]
+        stp     x19,x20,[sp,#.LConvSymFrame_SavedRegisters_x19_x20]
+        stp     x21,x22,[sp,#.LConvSymFrame_SavedRegisters_x21_x22]
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
         csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
         add     x4,x4,3                 // InputChannels align to 4
@@ -546,9 +563,9 @@ Quantize:
         b.hi    OutputChannelLoop
 
 ExitKernel:
-        ldp     x21,x22,[sp,#48]
-        ldp     x19,x20,[sp,#32]
-        ldp     d10,d11,[sp,#16]
+        ldp     x21,x22,[sp,#.LConvSymFrame_SavedRegisters_x21_x22]
+        ldp     x19,x20,[sp,#.LConvSymFrame_SavedRegisters_x19_x20]
+        ldp     d10,d11,[sp,#.LConvSymFrame_SavedRegisters_d10_d11]
         ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
         ret
 

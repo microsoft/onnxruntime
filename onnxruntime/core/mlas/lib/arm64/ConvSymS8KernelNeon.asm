@@ -25,26 +25,38 @@ Abstract:
 // d8-d15, x19-x30 need to be preserved if used
 //
 
-#define     ConvSymFrame_d8_d9                  0
-#define     ConvSymFrame_d10_d11                16
-#define     ConvSymFrame_d12_d13                32
-#define     ConvSymFrame_d14_d15                48
-#define     ConvSymFrame_SavedNeonRegisters     64
-#define     ConvSymFrame_x19_x20                64
-#define     ConvSymFrame_x21_x22                80
-#define     ConvSymFrame_SavedRegisters         96
-#define     ConvSymFrame_SavedRegisters_Neg     -96
-#define     ConvSymFrame_PostProcessParams      0 + ConvSymFrame_SavedRegisters
-#define     ConvSymFrame_KernelFlags            8 + ConvSymFrame_SavedRegisters
+#define    ConvSymFrame_SavedRegisters_d8_d9      0
+#define    ConvSymFrame_SavedRegisters_d10_d11    16
+#define    ConvSymFrame_SavedRegisters_d12_d13    32
+#define    ConvSymFrame_SavedRegisters_d14_d15    48
+#define    ConvSymFrame_SavedRegisters_x19_x20    64
+#define    ConvSymFrame_SavedRegisters_x21_x22    80
+#define    ConvSymFrame_SavedRegisters            96
+#define    ConvSymFrame_SavedRegisters_Neg        -96
+#define    ConvSymFrame_PostProcessParams         0 + ConvSymFrame_SavedRegisters
+#define    ConvSymFrame_KernelFlags               8 + ConvSymFrame_SavedRegisters
 
-#define     ConvSymPostProcessParams_Bias       0
-#define     ConvSymPostProcessParams_Scale      8
-#define     ConvSymPostProcessParams_Min        16
-#define     ConvSymPostProcessParams_Max        20
-#define     ConvSymPostProcessParams_ZeroPoint  24
-#define     ConvSymPostProcessParams_Multiplier 32
-#define     ConvSymPostProcessParams_PreShift   40
-#define     ConvSymPostProcessParams_PostShift  48
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
+#define    ConvSymPostProcessParams_Bias       0
+#define    ConvSymPostProcessParams_Scale      8
+#define    ConvSymPostProcessParams_Min        16
+#define    ConvSymPostProcessParams_Max        20
+#define    ConvSymPostProcessParams_ZeroPoint  24
+#define    ConvSymPostProcessParams_Multiplier 32
+#define    ConvSymPostProcessParams_PreShift   40
+#define    ConvSymPostProcessParams_PostShift  48
 
         TEXTAREA
 
@@ -97,11 +109,11 @@ Return Value:
         PROLOG_SAVE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters_Neg!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
         PROLOG_NOP    ldrb    w10,[sp,#ConvSymFrame_KernelFlags]
-        PROLOG_SAVE_REG_PAIR  d10,d11,#ConvSymFrame_d10_d11
-        PROLOG_SAVE_REG_PAIR  d12,d13,#ConvSymFrame_d12_d13
-        PROLOG_SAVE_REG_PAIR  d14,d15,#ConvSymFrame_d14_d15
-        PROLOG_SAVE_REG_PAIR  x19,x20,#ConvSymFrame_x19_x20
-        PROLOG_SAVE_REG_PAIR  x21,x22,#ConvSymFrame_x21_x22
+        PROLOG_SAVE_REG_PAIR  d10,d11,#ConvSymFrame_SavedRegisters_d10_d11
+        PROLOG_SAVE_REG_PAIR  d12,d13,#ConvSymFrame_SavedRegisters_d12_d13
+        PROLOG_SAVE_REG_PAIR  d14,d15,#ConvSymFrame_SavedRegisters_d14_d15
+        PROLOG_SAVE_REG_PAIR  x19,x20,#ConvSymFrame_SavedRegisters_x19_x20
+        PROLOG_SAVE_REG_PAIR  x21,x22,#ConvSymFrame_SavedRegisters_x21_x22
         mov     x9,x3                   // save kernel size
         ldr     x11,[x8,#ConvSymPostProcessParams_Bias]
         mov     x16,x4                  // save input channels
@@ -408,11 +420,11 @@ Quantize
         st1     {v0.8b},[x2]
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR  x21,x22,#ConvSymFrame_x21_x22
-        EPILOG_RESTORE_REG_PAIR  x19,x20,#ConvSymFrame_x19_x20
-        EPILOG_RESTORE_REG_PAIR  d14,d15,#ConvSymFrame_d14_d15
-        EPILOG_RESTORE_REG_PAIR  d12,d13,#ConvSymFrame_d12_d13
-        EPILOG_RESTORE_REG_PAIR  d10,d11,#ConvSymFrame_d10_d11
+        EPILOG_RESTORE_REG_PAIR  x21,x22,#ConvSymFrame_SavedRegisters_x21_x22
+        EPILOG_RESTORE_REG_PAIR  x19,x20,#ConvSymFrame_SavedRegisters_x19_x20
+        EPILOG_RESTORE_REG_PAIR  d14,d15,#ConvSymFrame_SavedRegisters_d14_d15
+        EPILOG_RESTORE_REG_PAIR  d12,d13,#ConvSymFrame_SavedRegisters_d12_d13
+        EPILOG_RESTORE_REG_PAIR  d10,d11,#ConvSymFrame_SavedRegisters_d10_d11
         EPILOG_RESTORE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters!
         EPILOG_RETURN
 

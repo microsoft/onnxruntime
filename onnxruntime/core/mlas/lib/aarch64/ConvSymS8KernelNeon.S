@@ -25,18 +25,31 @@ Abstract:
 // d8-d15, x19-x30 need to be preserved if used
 //
 
-        .equ    .LConvSymFrame_d8_d9,                 0
-        .equ    .LConvSymFrame_d10_d11,               16
-        .equ    .LConvSymFrame_d12_d13,               32
-        .equ    .LConvSymFrame_d14_d15,               48
-        .equ    .LConvSymFrame_SavedNeonRegisters,    64
-        .equ    .LConvSymFrame_x19_x20,               64
-        .equ    .LConvSymFrame_x21_x22,               80
-        .equ    .LConvSymFrame_SavedRegisters,        96
-        .equ    .LConvSymFrame_SavedRegisters_Neg,    -96
-        .equ    .LConvSymFrame_PostProcessParams,     0 + .LConvSymFrame_SavedRegisters
-        .equ    .LConvSymFrame_KernelFlags,           8 + .LConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_SavedRegisters_d8_d9,      0
+        .equ    .LConvSymFrame_SavedRegisters_d10_d11,    16
+        .equ    .LConvSymFrame_SavedRegisters_d12_d13,    32
+        .equ    .LConvSymFrame_SavedRegisters_d14_d15,    48
+        .equ    .LConvSymFrame_SavedNeonRegisters,        64
+        .equ    .LConvSymFrame_SavedRegisters_x19_x20,    64
+        .equ    .LConvSymFrame_SavedRegisters_x21_x22,    80
+        .equ    .LConvSymFrame_SavedRegisters,            96
+        .equ    .LConvSymFrame_SavedRegisters_Neg,        -96
+        .equ    .LConvSymFrame_PostProcessParams,         0 + .LConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_KernelFlags,               8 + .LConvSymFrame_SavedRegisters
 
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
         .equ    .LConvSymPostProcessParams_Bias,      0
         .equ    .LConvSymPostProcessParams_Scale,     8
         .equ    .LConvSymPostProcessParams_Min,       16
@@ -97,11 +110,11 @@ Return Value:
         stp     d8,d9,[sp,#.LConvSymFrame_SavedRegisters_Neg]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
         ldrb    w10,[sp,#.LConvSymFrame_KernelFlags]
-        stp     d10,d11,[sp,#.LConvSymFrame_d10_d11]
-        stp     d12,d13,[sp,#.LConvSymFrame_d12_d13]
-        stp     d14,d15,[sp,#.LConvSymFrame_d14_d15]
-        stp     x19,x20,[sp,#.LConvSymFrame_x19_x20]
-        stp     x21,x22,[sp,#.LConvSymFrame_x21_x22]
+        stp     d10,d11,[sp,#.LConvSymFrame_SavedRegisters_d10_d11]
+        stp     d12,d13,[sp,#.LConvSymFrame_SavedRegisters_d12_d13]
+        stp     d14,d15,[sp,#.LConvSymFrame_SavedRegisters_d14_d15]
+        stp     x19,x20,[sp,#.LConvSymFrame_SavedRegisters_x19_x20]
+        stp     x21,x22,[sp,#.LConvSymFrame_SavedRegisters_x21_x22]
 
         mov     x9,x3                   // save kernel size
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
@@ -413,11 +426,11 @@ Return Value:
         st1     {v0.8b},[x2]
 
 .LConvSym.ExitKernel:
-        ldp     x21,x22,[sp,#.LConvSymFrame_x21_x22]
-        ldp     x19,x20,[sp,#.LConvSymFrame_x19_x20]
-        ldp     d14,d15,[sp,#.LConvSymFrame_d14_d15]
-        ldp     d12,d13,[sp,#.LConvSymFrame_d12_d13]
-        ldp     d10,d11,[sp,#.LConvSymFrame_d10_d11]
+        ldp     x21,x22,[sp,#.LConvSymFrame_SavedRegisters_x21_x22]
+        ldp     x19,x20,[sp,#.LConvSymFrame_SavedRegisters_x19_x20]
+        ldp     d14,d15,[sp,#.LConvSymFrame_SavedRegisters_d14_d15]
+        ldp     d12,d13,[sp,#.LConvSymFrame_SavedRegisters_d12_d13]
+        ldp     d10,d11,[sp,#.LConvSymFrame_SavedRegisters_d10_d11]
         ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
         ret
 

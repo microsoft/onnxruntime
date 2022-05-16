@@ -25,18 +25,44 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-#define     ConvSymFrame_SavedRegisters         (12 * 8)
-#define     ConvSymFrame_PostProcessParams      (0 + ConvSymFrame_SavedRegisters)
-#define     ConvSymFrame_KernelFlags            (8 + ConvSymFrame_SavedRegisters)
+#define    ConvSymFrame_SavedRegisters_d8     0
+#define    ConvSymFrame_SavedRegisters_d9     8
+#define    ConvSymFrame_SavedRegisters_d10    16
+#define    ConvSymFrame_SavedRegisters_d11    24
+#define    ConvSymFrame_SavedRegisters_x19    32
+#define    ConvSymFrame_SavedRegisters_x20    40
+#define    ConvSymFrame_SavedRegisters_x21    48
+#define    ConvSymFrame_SavedRegisters_x22    56
+#define    ConvSymFrame_SavedRegisters_x23    64
+#define    ConvSymFrame_SavedRegisters_x24    72
+#define    ConvSymFrame_SavedRegisters_x25    80
+#define    ConvSymFrame_SavedRegisters_x26    88
+#define    ConvSymFrame_SavedRegisters        96
+#define    ConvSymFrame_SavedRegisters_Neg    -96
+#define    ConvSymFrame_PostProcessParams     0 + ConvSymFrame_SavedRegisters
+#define    ConvSymFrame_KernelFlags           8 + ConvSymFrame_SavedRegisters
 
-#define     ConvSymPostProcessParams_Bias       0
-#define     ConvSymPostProcessParams_Scale      8
-#define     ConvSymPostProcessParams_Min        16
-#define     ConvSymPostProcessParams_Max        20
-#define     ConvSymPostProcessParams_ZeroPoint  24
-#define     ConvSymPostProcessParams_Multiplier 32
-#define     ConvSymPostProcessParams_PreShift   40
-#define     ConvSymPostProcessParams_PostShift  48
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
+#define    ConvSymPostProcessParams_Bias       0
+#define    ConvSymPostProcessParams_Scale      8
+#define    ConvSymPostProcessParams_Min        16
+#define    ConvSymPostProcessParams_Max        20
+#define    ConvSymPostProcessParams_ZeroPoint  24
+#define    ConvSymPostProcessParams_Multiplier 32
+#define    ConvSymPostProcessParams_PreShift   40
+#define    ConvSymPostProcessParams_PostShift  48
 
         TEXTAREA
 
@@ -82,27 +108,27 @@ Return Value:
 --*/
         NESTED_ENTRY MlasConvSymS8KernelDotLd64
 
-        PROLOG_SAVE_REG_PAIR     d8,d9,#-ConvSymFrame_SavedRegisters!
+        PROLOG_SAVE_REG_PAIR     d8,d9,#ConvSymFrame_SavedRegisters_Neg!
         PROLOG_NOP       ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
-        PROLOG_SAVE_REG          d10,#16
+        PROLOG_SAVE_REG          d10,#ConvSymFrame_SavedRegisters_d10
         PROLOG_NOP       cmp     x7,2                    // OutputCount < 2 ?
-        PROLOG_SAVE_REG          d11,#24
+        PROLOG_SAVE_REG          d11,#ConvSymFrame_SavedRegisters_d11
         PROLOG_NOP       add     x16,x2,x5               // x16 -> C1
-        PROLOG_SAVE_REG          x19,#32
+        PROLOG_SAVE_REG          x19,#ConvSymFrame_SavedRegisters_x19
         PROLOG_NOP       lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
-        PROLOG_SAVE_REG          x20,#40
+        PROLOG_SAVE_REG          x20,#ConvSymFrame_SavedRegisters_x20
         PROLOG_NOP       csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
-        PROLOG_SAVE_REG          x21,#48
+        PROLOG_SAVE_REG          x21,#ConvSymFrame_SavedRegisters_x21
         PROLOG_NOP       add     x4,x4,3                 // InputChannels align to 4
-        PROLOG_SAVE_REG          x22,#56
+        PROLOG_SAVE_REG          x22,#ConvSymFrame_SavedRegisters_x22
         PROLOG_NOP       add     x17,x16,x5              // x17 -> C2
-        PROLOG_SAVE_REG          x23,#64
+        PROLOG_SAVE_REG          x23,#ConvSymFrame_SavedRegisters_x23
         ldr     x11,[x8,#ConvSymPostProcessParams_Bias]
-        PROLOG_SAVE_REG          x24,#72
+        PROLOG_SAVE_REG          x24,#ConvSymFrame_SavedRegisters_x24
         csel    x17,x16,x17,ls          // if OutputCount <= 2  x17/C2 -> C1
-        PROLOG_SAVE_REG          x25,#80
+        PROLOG_SAVE_REG          x25,#ConvSymFrame_SavedRegisters_x25
         bic     x4,x4,3
-        PROLOG_SAVE_REG          x26,#88
+        PROLOG_SAVE_REG          x26,#ConvSymFrame_SavedRegisters_x26
         cmp     x7,4                    // OutputCount < 4 ?
         ldr     w10,[sp,#ConvSymFrame_KernelFlags]
         add     x5,x17,x5               // x5 -> C3
@@ -615,11 +641,11 @@ Quantize
         b.hi    OutputChannelLoop
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR     x25,x26,#80
-        EPILOG_RESTORE_REG_PAIR     x23,x24,#64
-        EPILOG_RESTORE_REG_PAIR     x21,x22,#48
-        EPILOG_RESTORE_REG_PAIR     x19,x20,#32
-        EPILOG_RESTORE_REG_PAIR     d10,d11,#16
+        EPILOG_RESTORE_REG_PAIR     x25,x26,#ConvSymFrame_SavedRegisters_x25
+        EPILOG_RESTORE_REG_PAIR     x23,x24,#ConvSymFrame_SavedRegisters_x23
+        EPILOG_RESTORE_REG_PAIR     x21,x22,#ConvSymFrame_SavedRegisters_x21
+        EPILOG_RESTORE_REG_PAIR     x19,x20,#ConvSymFrame_SavedRegisters_x19
+        EPILOG_RESTORE_REG_PAIR     d10,d11,#ConvSymFrame_SavedRegisters_d10
         EPILOG_RESTORE_REG_PAIR     d8,d9,#ConvSymFrame_SavedRegisters!
         EPILOG_RETURN
 

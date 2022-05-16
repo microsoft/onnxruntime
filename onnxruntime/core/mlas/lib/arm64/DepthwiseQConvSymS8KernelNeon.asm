@@ -17,31 +17,45 @@ Abstract:
 
 #include "kxarm64.h"
 
+#define    MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE    2
+#define    MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE    4
+
 //
 // Stack frame layout for the depthwise conv kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
 
-#define  ConvSymDepthwiseKernelFrame_backup_d8_d9,         0
-#define  ConvSymDepthwiseKernelFrame_backup_d10_d11,       16
-#define  ConvSymDepthwiseKernelFrame_backup_d12_d13,       32
-#define  ConvSymDepthwiseKernelFrame_backup_d14_d15,       48
-#define  ConvSymDepthwiseKernelFrame_SavedRegisters,       64
-#define  ConvSymDepthwiseKernelFrame_SavedRegisters_Neg,   -64
-#define  ConvSymDepthwiseKernelFrame_PostProcessParams     0 + ConvSymDepthwiseKernelFrame_SavedRegisters
-#define  ConvSymDepthwiseKernelFrame_KernelFlags           8 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9,      0
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11,    16
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13,    32
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15,    48
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters,            64
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_Neg,        -64
+#define    ConvSymDepthwiseKernelFrame_PostProcessParams          0 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_KernelFlags                8 + ConvSymDepthwiseKernelFrame_SavedRegisters
 
-#define  ConvSymDepthwisePostProcessParams_Bias            0
-#define  ConvSymDepthwisePostProcessParams_Scale           8
-#define  ConvSymDepthwisePostProcessParams_Min             16
-#define  ConvSymDepthwisePostProcessParams_Max             20
-#define  ConvSymDepthwisePostProcessParams_ZeroPoint       24
-#define  ConvSymDepthwisePostProcessParams_Multiplier      32
-#define  ConvSymDepthwisePostProcessParams_PreShift        40
-#define  ConvSymDepthwisePostProcessParams_PostShift       48
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
+#define    ConvSymDepthwisePostProcessParams_Bias          0
+#define    ConvSymDepthwisePostProcessParams_Scale         8
+#define    ConvSymDepthwisePostProcessParams_Min           16
+#define    ConvSymDepthwisePostProcessParams_Max           20
+#define    ConvSymDepthwisePostProcessParams_ZeroPoint     24
+#define    ConvSymDepthwisePostProcessParams_Multiplier    32
+#define    ConvSymDepthwisePostProcessParams_PreShift      40
+#define    ConvSymDepthwisePostProcessParams_PostShift     48
 
-#define  MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE              2
-#define  MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE              4
 
         TEXTAREA
 
@@ -89,9 +103,9 @@ Return Value:
 
         PROLOG_SAVE_REG_PAIR      d8,d9,#ConvSymDepthwiseKernelFrame_SavedRegisters_Neg!
         PROLOG_NOP       ldr      x8,[sp,#ConvSymDepthwiseKernelFrame_PostProcessParams]
-        PROLOG_SAVE_REG_PAIR      d10,d11,#ConvSymDepthwiseKernelFrame_backup_d10_d11
-        PROLOG_SAVE_REG_PAIR      d12,d13,#ConvSymDepthwiseKernelFrame_backup_d12_d13
-        PROLOG_SAVE_REG_PAIR      d14,d15,#ConvSymDepthwiseKernelFrame_backup_d14_d15
+        PROLOG_SAVE_REG_PAIR      d10,d11,#ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11
+        PROLOG_SAVE_REG_PAIR      d12,d13,#ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13
+        PROLOG_SAVE_REG_PAIR      d14,d15,#ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15
         cmp     x7,2
         add     x9,x0,x3,lsl#3              // x9 -> &A1
         add     x14,x0,x3,lsl#4             // x14 -> &A2
@@ -550,9 +564,9 @@ Quantize
         str     q20,[x2]
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR d14,d15,#ConvSymDepthwiseKernelFrame_backup_d14_d15
-        EPILOG_RESTORE_REG_PAIR d12,d13,#ConvSymDepthwiseKernelFrame_backup_d12_d13
-        EPILOG_RESTORE_REG_PAIR d10,d11,#LConvSymDepthwiseKernelFrame_backup_d10_d11
+        EPILOG_RESTORE_REG_PAIR d14,d15,#ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15
+        EPILOG_RESTORE_REG_PAIR d12,d13,#ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13
+        EPILOG_RESTORE_REG_PAIR d10,d11,#LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11
         EPILOG_RESTORE_REG_PAIR d8,d9,#ConvSymDepthwiseKernelFrame_SavedRegisters!
         EPILOG_RETURN
 

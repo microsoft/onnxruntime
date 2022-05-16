@@ -17,31 +17,45 @@ Abstract:
 
 #include "kxarm64.h"
 
+#define  MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE              2
+#define  MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE              4
+
 //
 // Stack frame layout for the depthwise conv kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
 
-#define  ConvSymDepthwiseKernelFrame_backup_d8_d9,         0
-#define  ConvSymDepthwiseKernelFrame_backup_d10_d11,       16
-#define  ConvSymDepthwiseKernelFrame_backup_d12_d13,       32
-#define  ConvSymDepthwiseKernelFrame_backup_d14_d15,       48
-#define  ConvSymDepthwiseKernelFrame_SavedRegisters,       64
-#define  ConvSymDepthwiseKernelFrame_SavedRegisters_Neg,   -64
-#define  ConvSymDepthwiseKernelFrame_PostProcessParams     0 + ConvSymDepthwiseKernelFrame_SavedRegisters
-#define  ConvSymDepthwiseKernelFrame_KernelFlags           8 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9,      0
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11,    16
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13,    32
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15,    48
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters,            64
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_Neg,        -64
+#define    ConvSymDepthwiseKernelFrame_PostProcessParams          0 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_KernelFlags                8 + ConvSymDepthwiseKernelFrame_SavedRegisters
 
-#define  ConvSymDepthwisePostProcessParams_Bias            0
-#define  ConvSymDepthwisePostProcessParams_Scale           8
-#define  ConvSymDepthwisePostProcessParams_Min             16
-#define  ConvSymDepthwisePostProcessParams_Max             20
-#define  ConvSymDepthwisePostProcessParams_ZeroPoint       24
-#define  ConvSymDepthwisePostProcessParams_Multiplier      32
-#define  ConvSymDepthwisePostProcessParams_PreShift        40
-#define  ConvSymDepthwisePostProcessParams_PostShift       48
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
+#define    ConvSymPostProcessParams_Bias          0
+#define    ConvSymPostProcessParams_Scale         8
+#define    ConvSymPostProcessParams_Min           16
+#define    ConvSymPostProcessParams_Max           20
+#define    ConvSymPostProcessParams_ZeroPoint     24
+#define    ConvSymPostProcessParams_Multiplier    32
+#define    ConvSymPostProcessParams_PreShift      40
+#define    ConvSymPostProcessParams_PostShift     48
 
-#define  MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE              2
-#define  MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE              4
 
         TEXTAREA
 
@@ -90,11 +104,11 @@ Return Value:
         PROLOG_SAVE_REG_PAIR      d8,d9,#ConvSymDepthwiseKernelFrame_SavedRegisters_Neg!
         PROLOG_NOP        ldr     x8,[sp,#ConvSymDepthwiseKernelFrame_PostProcessParams]
         PROLOG_NOP        mov     w10,#0x80808080
-        PROLOG_SAVE_REG_PAIR      d10,d11,#ConvSymDepthwiseKernelFrame_backup_d10_d11
-        PROLOG_SAVE_REG_PAIR      d12,d13,#ConvSymDepthwiseKernelFrame_backup_d12_d13
-        PROLOG_SAVE_REG_PAIR      d14,d15,#ConvSymDepthwiseKernelFrame_backup_d14_d15
+        PROLOG_SAVE_REG_PAIR      d10,d11,#ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11
+        PROLOG_SAVE_REG_PAIR      d12,d13,#ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13
+        PROLOG_SAVE_REG_PAIR      d14,d15,#ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15
         dup     v8.4s,w10                   // bit flip vector
-        ldr     x16,[x8,#ConvSymDepthwisePostProcessParams_Bias]
+        ldr     x16,[x8,#ConvSymPostProcessParams_Bias]
         cmp     x7,2
         add     x9,x0,x3,lsl#3              // x9 -> &A1
         add     x14,x0,x3,lsl#4             // x14 -> &A2
@@ -251,11 +265,11 @@ EpilogueC16P2
         saddw2  v31.4s,v31.4s,v15.8h
         ldr     w9,[sp,#ConvSymDepthwiseKernelFrame_KernelFlags]
         eor     v4.16b,v4.16b,v8.16b
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
+        ldr     x12,[x8,#ConvSymPostProcessParams_Scale]
         smull   v12.8h,v0.8b,v4.8b
         smull2  v13.8h,v0.16b,v4.16b
         eor     v6.16b,v6.16b,v8.16b
-        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#ConvSymPostProcessParams_ZeroPoint]
         smull   v14.8h,v0.8b,v6.8b
         smull2  v15.8h,v0.16b,v6.16b
         eor     v2.16b,v2.16b,v8.16b
@@ -386,9 +400,9 @@ EpilogueC16P1
 Requantization
         b.ne    FixedPointScale
 FloatingPointScale
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
+        ldr     x12,[x8,#ConvSymPostProcessParams_Scale]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#ConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValue
         ldp     q4,q5,[x12],#32             // load scale vector if per channel
         ldp     q6,q3,[x12]
@@ -452,11 +466,11 @@ ScaleWithFloatPoint
         b Quantize
 
 FixedPointScale
-        ldr     x10,[x8,#ConvSymDepthwisePostProcessParams_PreShift]
-        ldr     x11,[x8,#ConvSymDepthwisePostProcessParams_Multiplier]
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_PostShift]
+        ldr     x10,[x8,#ConvSymPostProcessParams_PreShift]
+        ldr     x11,[x8,#ConvSymPostProcessParams_Multiplier]
+        ldr     x12,[x8,#ConvSymPostProcessParams_PostShift]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#ConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastFixedPointValue
         ldp     q0,q1,[x10],32          // load preshift vector
         ldp     q2,q3,[x10],32
@@ -577,9 +591,9 @@ Quantize
         str     q20,[x2]
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR d14,d15,#ConvSymDepthwiseKernelFrame_backup_d14_d15
-        EPILOG_RESTORE_REG_PAIR d12,d13,#ConvSymDepthwiseKernelFrame_backup_d12_d13
-        EPILOG_RESTORE_REG_PAIR d10,d11,#ConvSymDepthwiseKernelFrame_backup_d10_d11
+        EPILOG_RESTORE_REG_PAIR d14,d15,#ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15
+        EPILOG_RESTORE_REG_PAIR d12,d13,#ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13
+        EPILOG_RESTORE_REG_PAIR d10,d11,#ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11
         EPILOG_RESTORE_REG_PAIR d8,d9,#ConvSymDepthwiseKernelFrame_SavedRegisters!
         EPILOG_RETURN
 
@@ -679,9 +693,9 @@ EpilogueC8P2
         eor     v4.8b,v4.8b,v8.8b
         eor     v6.8b,v6.8b,v8.8b
         smull   v12.8h,v0.8b,v4.8b
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
+        ldr     x12,[x8,#ConvSymPostProcessParams_Scale]
         smull   v14.8h,v0.8b,v6.8b
-        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#ConvSymPostProcessParams_ZeroPoint]
         eor     v2.8b,v2.8b,v8.8b
         eor     v3.8b,v3.8b,v8.8b
         smlal   v12.8h,v1.8b,v2.8b
@@ -750,9 +764,9 @@ EpilogueC8P1
         ldr     w9,[sp,#ConvSymDepthwiseKernelFrame_KernelFlags]
         eor     v4.8b,v4.8b,v8.8b
         eor     v6.8b,v6.8b,v8.8b
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
+        ldr     x12,[x8,#ConvSymPostProcessParams_Scale]
         smull   v12.8h,v0.8b,v4.8b
-        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#ConvSymPostProcessParams_ZeroPoint]
         smull   v14.8h,v0.8b,v6.8b
         saddw   v24.4s,v24.4s,v12.4h
         saddw2  v25.4s,v25.4s,v12.8h
@@ -771,9 +785,9 @@ EpilogueC8P1
 RequantizationC8
         b.ne    FixedPointScaleC8
 FloatingPointScaleC8
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_Scale]
+        ldr     x12,[x8,#ConvSymPostProcessParams_Scale]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#ConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValueC8
         ldp     q4,q5,[x12]                // load scale vector if per channel
         b       ScaleWithFloatPointC8
@@ -810,11 +824,11 @@ ScaleWithFloatPointC8
         b       QuantizeC8
 
 FixedPointScaleC8
-        ldr     x10,[x8,#ConvSymDepthwisePostProcessParams_PreShift]
-        ldr     x11,[x8,#ConvSymDepthwisePostProcessParams_Multiplier]
-        ldr     x12,[x8,#ConvSymDepthwisePostProcessParams_PostShift]
+        ldr     x10,[x8,#ConvSymPostProcessParams_PreShift]
+        ldr     x11,[x8,#ConvSymPostProcessParams_Multiplier]
+        ldr     x12,[x8,#ConvSymPostProcessParams_PostShift]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#ConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#ConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastFixedPointValueC8
         ldp     q0,q1,[x10],32          // load preshift vector
         ldp     q4,q5,[x11],32          // load multiplier vector

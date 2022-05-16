@@ -17,30 +17,43 @@ Abstract:
 
 #include "asmmacro.h"
 
+        .equ    MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE,               2
+        .equ    MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE,               4
+
 //
 // Stack frame layout for the depthwise conv kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymDepthwiseKernelFrame_backup_d8_d9,         0
-        .equ    .LConvSymDepthwiseKernelFrame_backup_d10_d11,       16
-        .equ    .LConvSymDepthwiseKernelFrame_backup_d12_d13,       32
-        .equ    .LConvSymDepthwiseKernelFrame_backup_d14_d15,       48
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters,       64
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_Neg,   -64
-        .equ    .LConvSymDepthwiseKernelFrame_PostProcessParams,    0 + .LConvSymDepthwiseKernelFrame_SavedRegisters
-        .equ    .LConvSymDepthwiseKernelFrame_KernelFlags,          8 + .LConvSymDepthwiseKernelFrame_SavedRegisters
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9,      0
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11,    16
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13,    32
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15,    48
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters,            64
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_Neg,        -64
+        .equ    .LConvSymDepthwiseKernelFrame_PostProcessParams,         0 + .LConvSymDepthwiseKernelFrame_SavedRegisters
+        .equ    .LConvSymDepthwiseKernelFrame_KernelFlags,               8 + .LConvSymDepthwiseKernelFrame_SavedRegisters
 
-        .equ    .LConvSymDepthwisePostProcessParams_Bias,           0
-        .equ    .LConvSymDepthwisePostProcessParams_Scale,          8
-        .equ    .LConvSymDepthwisePostProcessParams_Min,            16
-        .equ    .LConvSymDepthwisePostProcessParams_Max,            20
-        .equ    .LConvSymDepthwisePostProcessParams_ZeroPoint,      24
-        .equ    .LConvSymDepthwisePostProcessParams_Multiplier,     32
-        .equ    .LConvSymDepthwisePostProcessParams_PreShift,       40
-        .equ    .LConvSymDepthwisePostProcessParams_PostShift,      48
-
-        .equ    MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE,               2
-        .equ    MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE,               4
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
+        .equ    .LConvSymPostProcessParams_Bias,           0
+        .equ    .LConvSymPostProcessParams_Scale,          8
+        .equ    .LConvSymPostProcessParams_Min,            16
+        .equ    .LConvSymPostProcessParams_Max,            20
+        .equ    .LConvSymPostProcessParams_ZeroPoint,      24
+        .equ    .LConvSymPostProcessParams_Multiplier,     32
+        .equ    .LConvSymPostProcessParams_PreShift,       40
+        .equ    .LConvSymPostProcessParams_PostShift,      48
 
         .text
 
@@ -88,11 +101,11 @@ Return Value:
         stp     d8,d9,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_Neg]!
         ldr     x8,[sp,#.LConvSymDepthwiseKernelFrame_PostProcessParams]
         mov     w10,#0x80808080
-        stp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_backup_d10_d11]
-        stp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_backup_d12_d13]
-        stp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_backup_d14_d15]
+        stp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11]
+        stp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13]
+        stp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15]
         dup     v8.4s,w10                   // bit flip vector
-        ldr     x16,[x8,#.LConvSymDepthwisePostProcessParams_Bias]
+        ldr     x16,[x8,#.LConvSymPostProcessParams_Bias]
         cmp     x7,2
         add     x9,x0,x3,lsl#3              // x9 -> &A1
         add     x14,x0,x3,lsl#4             // x14 -> &A2
@@ -382,9 +395,9 @@ Return Value:
 .LRequantization:
         b.ne    .LFixedPointScale
 .LFloatingPointScale:
-        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     .LBroadcastScaleValue
         ldp     q4,q5,[x12],#32             // load scale vector if per channel
         ldp     q6,q3,[x12]
@@ -448,11 +461,11 @@ Return Value:
         b .LQuantize
 
 .LFixedPointScale:
-        ldr     x10,[x8,#.LConvSymDepthwisePostProcessParams_PreShift]
-        ldr     x11,[x8,#.LConvSymDepthwisePostProcessParams_Multiplier]
-        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_PostShift]
+        ldr     x10,[x8,#.LConvSymPostProcessParams_PreShift]
+        ldr     x11,[x8,#.LConvSymPostProcessParams_Multiplier]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_PostShift]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     .LBroadcastFixedPointValue
         ldp     q0,q1,[x10],32          // load preshift vector
         ldp     q2,q3,[x10],32
@@ -573,9 +586,9 @@ Return Value:
         str     q20,[x2]
 
 .LExitKernel:
-        ldp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_backup_d14_d15]
-        ldp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_backup_d12_d13]
-        ldp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_backup_d10_d11]
+        ldp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15]
+        ldp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13]
+        ldp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11]
         ldp     d8,d9,[sp], #.LConvSymDepthwiseKernelFrame_SavedRegisters
         ret
 
@@ -763,9 +776,9 @@ Return Value:
 .LRequantizationC8:
         b.ne    .LFixedPointScaleC8
 .LFloatingPointScaleC8:
-        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     .LBroadcastScaleValueC8
         ldp     q4,q5,[x12]                // load scale vector if per channel
         b       .LScaleWithFloatPointC8
@@ -802,11 +815,11 @@ Return Value:
         b       .LQuantizeC8
 
 .LFixedPointScaleC8:
-        ldr     x10,[x8,#.LConvSymDepthwisePostProcessParams_PreShift]
-        ldr     x11,[x8,#.LConvSymDepthwisePostProcessParams_Multiplier]
-        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_PostShift]
+        ldr     x10,[x8,#.LConvSymPostProcessParams_PreShift]
+        ldr     x11,[x8,#.LConvSymPostProcessParams_Multiplier]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_PostShift]
         tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
+        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     .LBroadcastFixedPointValueC8
         ldp     q0,q1,[x10],32          // load preshift vector
         ldp     q4,q5,[x11],32          // load multiplier vector

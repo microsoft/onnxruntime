@@ -25,10 +25,29 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-#define     ConvSymFrame_SavedRegisters       (8 * 8)
-#define     ConvSymFrame_PostProcessParams    0 + ConvSymFrame_SavedRegisters
-#define     ConvSymFrame_KernelFlags          8 + ConvSymFrame_SavedRegisters
 
+#define     ConvSymFrame_SavedRegisters_d8_d9      0
+#define     ConvSymFrame_SavedRegisters_d10_d11    16
+#define     ConvSymFrame_SavedRegisters_x19_x20    32
+#define     ConvSymFrame_SavedRegisters_x21_x22    48
+#define     ConvSymFrame_SavedRegisters            64
+#define     ConvSymFrame_SavedRegisters_Neg        -64
+#define     ConvSymFrame_PostProcessParams         0 + ConvSymFrame_SavedRegisters
+#define     ConvSymFrame_KernelFlags               8 + ConvSymFrame_SavedRegisters
+
+/*
+struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
+    const int32_t* Bias{nullptr};
+    const float* Scale{nullptr};
+    float MinimumValue;
+    float MaximumValue;
+    int32_t OutputZeroPoint;
+    int32_t Padding;
+    const int32_t* Multiplier{nullptr};
+    const int32_t* PreShift{nullptr};
+    const int32_t* PostShift{nullptr};
+};
+*/
 #define     ConvSymPostProcessParams_Bias       0
 #define     ConvSymPostProcessParams_Scale      8
 #define     ConvSymPostProcessParams_Min        16
@@ -82,14 +101,13 @@ Return Value:
 --*/
         NESTED_ENTRY MlasConvSymS8KernelDot
 
-        PROLOG_SAVE_REG_PAIR  d8,d9,#-ConvSymFrame_SavedRegisters!
+        PROLOG_SAVE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters_Neg!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
-        PROLOG_SAVE_REG       d10,#16
         PROLOG_NOP    cmp     x7,2                    // OutputCount < 2 ?
-        PROLOG_SAVE_REG       d11,#24
         PROLOG_NOP    add     x16,x2,x5               // x16 -> C1
-        PROLOG_SAVE_REG_PAIR  x19,x20,#32
-        PROLOG_SAVE_REG_PAIR  x21,x22,#48
+        PROLOG_SAVE_REG_PAIR  d10,d11,#ConvSymFrame_d10_d11
+        PROLOG_SAVE_REG_PAIR  x19,x20,#ConvSymFrame_x19_x20
+        PROLOG_SAVE_REG_PAIR  x21,x22,#ConvSymFrame_x21_x22
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
         csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
         add     x4,x4,3                 // InputChannels align to 4
@@ -545,9 +563,9 @@ Quantize
         b.hi    OutputChannelLoop
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR  x21,x22,#48
-        EPILOG_RESTORE_REG_PAIR  x19,x20,#32
-        EPILOG_RESTORE_REG_PAIR  d10,d11,#16
+        EPILOG_RESTORE_REG_PAIR  x21,x22,#ConvSymFrame_x21_x22
+        EPILOG_RESTORE_REG_PAIR  x19,x20,#ConvSymFrame_x19_x20
+        EPILOG_RESTORE_REG_PAIR  d10,d11,#ConvSymFrame_d10_d11
         EPILOG_RESTORE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters!
         EPILOG_RETURN
 
