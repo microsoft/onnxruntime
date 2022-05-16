@@ -16,7 +16,6 @@ from typing import List
 
 import numpy as np
 import torch
-from onnx import TensorProto
 from torch._C import _from_dlpack
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
