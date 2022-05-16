@@ -15,7 +15,8 @@ Rewrite Dropout + DropoutGrad to BitmaskDropout + BitmaskDropoutGrad
 */
 class BitmaskDropoutReplacement : public GraphTransformer {
  public:
-  BitmaskDropoutReplacement(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+  explicit BitmaskDropoutReplacement(
+      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("BitmaskDropoutReplacement", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

@@ -19,7 +19,7 @@
  * Thread 7 generates output booleans 28-31
  *
  * These threads all agree on the same thread mask by determining which output bitmask index they want to write to.
- * Threads 0-7 will generate the same thread mask (for ouput index 0), threads 8-15 will generate the same thread mask
+ * Threads 0-7 will generate the same thread mask (for output index 0), threads 8-15 will generate the same thread mask
  * (for output index 1), and so on.
  *
  * After (partially before) agreeing upon which threads will collaborate to write out a single index,

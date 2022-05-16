@@ -18,8 +18,8 @@
 
 #include "core/providers/cuda/nn/dropout_impl.h"
 
-#include <algorithm>
 #include <curand_kernel.h>
+#include <algorithm>
 #include "core/providers/cuda/cu_inc/bitmask.cuh"
 
 namespace onnxruntime {
@@ -58,7 +58,7 @@ __global__ void DropoutKernel(const CUDA_LONG N, const CUDA_LONG mask_element_co
       CUDA_LONG li = id + i;
       if (li < N) {
         bool mask = (&rand.x)[i] < p;
-        Y_data[li] = T(float(X_data[li]) * mask * scale);
+        Y_data[li] = static_cast<T>(static_cast<float>(X_data[li]) * mask * scale);
         if (UseBitmask) {
           thread_bitmask |= (mask << i);
         } else {
@@ -113,7 +113,7 @@ __global__ void DropoutVectorizedKernel(const CUDA_LONG N, const CUDA_LONG mask_
 #pragma unroll
       for (int ii = 0; ii < kNumUnroll; ++ii) {
         bool mask = (&rand.x)[ii] < p;
-        r[ii] = T(float(src[ii]) * mask * scale);
+        r[ii] = static_cast<T>(static_cast<float>(src[ii]) * mask * scale);
         if (UseBitmask) {
           thread_bitmask |= (mask << ii);
         } else {

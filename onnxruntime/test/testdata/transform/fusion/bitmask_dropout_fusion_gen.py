@@ -1,5 +1,5 @@
 import onnx
-from onnx import helper, TensorProto, OperatorSetIdProto
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 13

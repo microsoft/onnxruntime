@@ -18,8 +18,8 @@
 
 #include "contrib_ops/cuda/math/bias_dropout.h"
 
-#include <algorithm>
 #include <curand_kernel.h>
+#include <algorithm>
 #include "core/providers/cuda/cu_inc/bitmask.cuh"
 
 namespace onnxruntime {
@@ -62,19 +62,19 @@ __global__ void BiasDropoutKernel(const CUDA_LONG N, const CUDA_LONG mask_elemen
       if (li < N) {
         float bias;
         if (HasSameShapeBias) {
-          bias = float(bias_data[li]);
+          bias = static_cast<float>(bias_data[li]);
         } else {
           int offset = fdm_dim.mod(li);
-          bias = float(bias_data[offset]);
+          bias = static_cast<float>(bias_data[offset]);
         }
 
         bool mask = (&rand.x)[i] < p;
-        float output_data = (float(X_data[li]) + bias) * mask * scale;
+        float output_data = (static_cast<float>(X_data[li]) + bias) * mask * scale;
         if (HasResidual) {
-          output_data += float(residual_data[li]);
+          output_data += static_cast<float>(residual_data[li]);
         }
 
-        Y_data[li] = T(output_data);
+        Y_data[li] = static_cast<T>(output_data);
         if (UseBitmask) {
           thread_bitmask |= (mask << i);
         } else {
@@ -144,18 +144,18 @@ __global__ void BiasDropoutVectorizedKernel(const CUDA_LONG N, const CUDA_LONG m
       for (int ii = 0; ii < kNumUnroll; ii++) {
         float bias;
         if (HasSameShapeBias) {
-          bias = float(bias_vec[ii]);
+          bias = static_cast<float>(bias_vec[ii]);
         } else {
           int offset = fdm_dim.mod(id + ii);
-          bias = float(bias_data[offset]);
+          bias = static_cast<float>(bias_data[offset]);
         }
 
         bool mask = (&rand.x)[ii] < p;
-        float output_data = (float(src[ii]) + bias) * mask * scale;
+        float output_data = (static_cast<float>(src[ii]) + bias) * mask * scale;
         if (HasResidual) {
-          output_data += float(residual[ii]);
+          output_data += static_cast<float>(residual[ii]);
         }
-        r[ii] = T(output_data);
+        r[ii] = static_cast<T>(output_data);
         if (UseBitmask) {
           thread_bitmask |= (mask << ii);
         } else {

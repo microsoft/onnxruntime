@@ -19,7 +19,6 @@
 #include "orttraining/training_ops/cuda/nn/dropout_grad_impl.h"
 
 #include <algorithm>
-#include <curand_kernel.h>
 #include "core/providers/cuda/cu_inc/bitmask.cuh"
 
 namespace onnxruntime {
@@ -42,7 +41,7 @@ __global__ void DropoutGradientKernel(const int64_t N, const fast_divmod fdm_bit
     CUDA_LONG li = id + i;
     if (li < N) {
       bool mask = UseBitmask ? masks[i] : reinterpret_cast<const bool*>(mask_data)[li];
-      dX_data[li] = T(float(dY_data[li]) * mask * scale);
+      dX_data[li] = static_cast<T>(static_cast<float>(dY_data[li]) * mask * scale);
     }
   }
 }
@@ -77,7 +76,7 @@ __global__ void DropoutGradientVectorizedKernel(const int64_t N, const fast_divm
 // actual computation
 #pragma unroll
     for (int ii = 0; ii < kNumUnroll; ++ii) {
-      r[ii] = T(float(src[ii]) * masks[ii] * scale);
+      r[ii] = static_cast<T>(static_cast<float>(src[ii]) * masks[ii] * scale);
     }
 
     // Vectorized writes for dX_data
