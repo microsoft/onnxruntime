@@ -64,7 +64,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
     std::vector<int64_t> x_shape;
     ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], x_shape, logger), "Failed to get shape of X.");
 
-    // assume X has at least 3 dimensions, that was checked in IsPReluOpSupported()
+    // assume X has 3 or 4 dimensions, that was checked in IsPReluOpSupported()
     const auto num_channels = x_shape[x_shape.size() - 3];
 
     std::vector<uint8_t> unpacked_tensor;
