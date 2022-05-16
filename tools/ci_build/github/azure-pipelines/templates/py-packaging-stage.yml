@@ -40,8 +40,8 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_mac_universal
-  displayName: 'Whether Mac universal package is built.'
+- name: enable_mac_silicon
+  displayName: 'Whether Mac silicon package is built.'
   type: boolean
   default: true
 
@@ -629,7 +629,6 @@ stages:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
@@ -756,21 +755,19 @@ stages:
         parameters:
           condition: 'succeeded'
 
-  - ${{ if eq(parameters.enable_mac_universal, true) }}:
-    - job: MacOS_universal_py_Wheels
+  - ${{ if eq(parameters.enable_mac_silicon, true) }}:
+    - job: MacOS_silicon_py_Wheels
       timeoutInMinutes: 90
       workspace:
         clean: all
       pool:
         vmImage: 'macOS-11'
       variables:
-        MACOSX_DEPLOYMENT_TARGET: '10.14'
+        MACOSX_DEPLOYMENT_TARGET: '11.0'
       strategy:
+        # As of 3.9.1, Python now fully supports building and running on macOS 11.0 (Big Sur) and on Apple Silicon Macs (based on the ARM64 architecture).
+        # https://docs.python.org/3/whatsnew/3.9.html
         matrix:
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
           Python39:
             PythonVersion: '3.9'
           Python310:
@@ -787,6 +784,7 @@ stages:
 
       - script: |
           set -ex
+          uname -m
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac machine info'
 
@@ -803,7 +801,7 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - task: CopyFiles@2
