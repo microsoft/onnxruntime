@@ -41,6 +41,8 @@ You might also find the following resources useful:
 * Understand the [architecture and terms](https://docs.microsoft.com/azure/machine-learning/service/concept-azure-machine-learning-architecture) introduced by Azure Machine Learning
 * The [Azure Portal](https://portal.azure.com/) allows you to track the status of your deployments.
 
+If you do not have access to an AzureML subscription, you can run this tutorial locally.
+
 ## Environment
 
 To install dependencies directly run the following
@@ -53,7 +55,7 @@ pip install onnxruntime
 pip install matplotlib
 ```
 
-To create a a Jupter kernel from your conda environment, run the following, replacing <kernel name> with your own name
+To create a a Jupter kernel from your conda environment, run the following. Replace <kernel name> with the name of your kernel.
 
 ```bash
 conda install -c anaconda ipykernel
@@ -148,9 +150,8 @@ def preprocess(question, context):
     tokens = tokenizer.convert_ids_to_tokens(encoded_input.input_ids)
     return (encoded_input.input_ids, encoded_input.attention_mask, encoded_input.token_type_ids, tokens)
 
-# The post process function takes the list of tokens in the question and context, as well as the output of the 
-# model, the list of log probabilities for the choices of start and end of the answer, and maps it back to an
-# answer to the question that is asked of the context.
+# The post process function maps the list of start and end log probabilities onto a text answer, using the text tokens from the question
+# and context. 
 def postprocess(tokens, start, end):
     results = {}
     answer_start = np.argmax(start)
@@ -167,7 +168,7 @@ def postprocess(tokens, start, end):
         results['error'] = "I am unable to find the answer to this question. Can you please ask another question?"
     return results
 
-# Perform the one-off intialisation for the prediction. The init code is run once when the endpoint is setup.
+# Perform the one-off initialization for the prediction. The init code is run once when the endpoint is setup.
 def init():
     global tokenizer, session, model
 
@@ -240,7 +241,7 @@ if __name__ == '__main__':
 
 Now that we have the ONNX model and the code to run it with ONNX Runtime, we can deploy it using Azure ML.
 
-![Component diagram showing AzureML deployment with ONNX RUntime including environment, ONNX model and scoring code](/images/azureml-deployment.png)
+![Component diagram showing AzureML deployment with ONNX Runtime including environment, ONNX model and scoring code](/images/azureml-deployment.png)
 
 ### Check your environment
 
@@ -261,7 +262,7 @@ print("ONNX Runtime version: ", onnxruntime.__version__)
 
 We begin by instantiating a workspace object from the existing workspace created earlier in the configuration notebook.
 
-Note that the following code assumes you have a config.json file containing the subscription information in the same directory as the notebook, or in a sub-directory called .azureml. You can also supply the workspace name, subscription name, and resource group explicity using the Workspace.get() method.
+Note that, the following code assumes you have a config.json file containing the subscription information in the same directory as the notebook, or in a sub-directory called .azureml. You can also supply the workspace name, subscription name, and resource group explicity using the Workspace.get() method.
 
 ```python
 import os
@@ -299,7 +300,7 @@ for name, m in models.items():
 
 ### Deploy the model and scoring code as an AzureML endpoint
 
-Note that the endpoint interface of the Python SDK has not been publicly released yet, so for this section, we will use the Azure ML CLI.
+Note: the endpoint interface of the Python SDK has not been publicly released yet, so for this section, we will use the Azure ML CLI.
 
 There are three YML files in the yml folder:
 
