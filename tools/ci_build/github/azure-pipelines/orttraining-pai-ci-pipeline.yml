@@ -66,12 +66,12 @@ jobs:
       echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
     displayName: 'Set Onnxruntime Build Succeeded'
 
-  # - task: CmdLine@2
-  #   inputs:
-  #     script: |-
-  #       cd ./build/RelWithDebInfo &&\
-  #       ../../tools/ci_build/github/pai/pai_test_launcher.sh
-  #   displayName: 'Run onnxruntime unit tests'
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        cd ./build/RelWithDebInfo &&\
+        ../../tools/ci_build/github/pai/pai_test_launcher.sh
+    displayName: 'Run onnxruntime unit tests'
 
   - task: CmdLine@2
     inputs:
