@@ -29,14 +29,13 @@ constexpr int kBlockSize = 256;
 constexpr int kNumUnroll = 4;
 
 template <typename T, bool UseBitmask>
-__global__ void DropoutKernel(const int64_t N, const fast_divmod fdm_bits_per_element, const float ratio,
+__global__ void DropoutKernel(const CUDA_LONG N, const CUDA_LONG mask_element_count, const int step_size,
+                              const int steps_per_thread, const fast_divmod fdm_bits_per_element, const float ratio,
                               const std::pair<uint64_t, uint64_t> seeds, const T* X_data, T* Y_data, void* mask_data) {
+  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
+
   const float p = 1.0f - ratio;
   const float scale = 1.0f / p;
-
-  CUDA_LONG idx = (blockDim.x * blockIdx.x + threadIdx.x) * kNumUnroll;
-  CUDA_LONG step_size = gridDim.x * blockDim.x * kNumUnroll;
-
   curandStatePhilox4_32_10_t state;
   curand_init(seeds.first, idx, seeds.second, &state);
 
@@ -48,7 +47,8 @@ __global__ void DropoutKernel(const int64_t N, const fast_divmod fdm_bits_per_el
   //   The Philox_4x32_10 algorithm is closely tied to the thread and block count.
   //   Each thread computes 4 random numbers in the same time thus the most efficient
   //   use of Philox_4x32_10 is to generate a multiple of 4 times number of threads.
-  for (CUDA_LONG id = idx; id < N; id += step_size) {
+  for (int i = 0; i < steps_per_thread; ++i) {
+    CUDA_LONG id = idx * kNumUnroll + i * step_size;
     rand = curand_uniform4(&state);
     uint32_t thread_bitmask = 0;
 
@@ -68,7 +68,8 @@ __global__ void DropoutKernel(const int64_t N, const fast_divmod fdm_bits_per_el
     }
 
     if (UseBitmask) {
-      SetBitmask<kNumUnroll>(id, fdm_bits_per_element, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
+      SetBitmask<kNumUnroll>(id, mask_element_count, fdm_bits_per_element, thread_bitmask,
+                             reinterpret_cast<uint32_t*>(mask_data));
     }
 
     __syncthreads();
@@ -76,15 +77,14 @@ __global__ void DropoutKernel(const int64_t N, const fast_divmod fdm_bits_per_el
 }
 
 template <typename T, bool UseBitmask>
-__global__ void DropoutVectorizedKernel(const int64_t N, const fast_divmod fdm_bits_per_element, const float ratio,
-                                        const std::pair<uint64_t, uint64_t> seeds, const T* X_data, T* Y_data,
-                                        void* mask_data) {
+__global__ void DropoutVectorizedKernel(const CUDA_LONG N, const CUDA_LONG mask_element_count, const int step_size,
+                                        const int steps_per_thread, const fast_divmod fdm_bits_per_element,
+                                        const float ratio, const std::pair<uint64_t, uint64_t> seeds, const T* X_data,
+                                        T* Y_data, void* mask_data) {
+  CUDA_LONG idx = blockDim.x * blockIdx.x + threadIdx.x;
+
   const float p = 1.0f - ratio;
   const float scale = 1.0f / p;
-
-  CUDA_LONG idx = (blockDim.x * blockIdx.x + threadIdx.x) * kNumUnroll;
-  CUDA_LONG step_size = gridDim.x * blockDim.x * kNumUnroll;
-
   curandStatePhilox4_32_10_t state;
   curand_init(seeds.first, idx, seeds.second, &state);
 
@@ -95,37 +95,42 @@ __global__ void DropoutVectorizedKernel(const int64_t N, const fast_divmod fdm_b
   using LoadT = aligned_vector<T, kNumUnroll>;
   using MaskLoadT = aligned_vector<bool, kNumUnroll>;
 
-  for (CUDA_LONG id = idx; id < N; id += step_size) {
+  for (int i = 0; i < steps_per_thread; ++i) {
+    CUDA_LONG id = idx * kNumUnroll + i * step_size;
     rand = curand_uniform4(&state);
     uint32_t thread_bitmask = 0;
 
-    // vectorized load into storage
-    T src[kNumUnroll];
-    LoadT* value = reinterpret_cast<LoadT*>(&src);
-    *value = *reinterpret_cast<const LoadT*>(&X_data[id]);
+    if (id < N) {
+      // vectorized load into storage
+      T src[kNumUnroll];
+      LoadT* value = reinterpret_cast<LoadT*>(&src);
+      *value = *reinterpret_cast<const LoadT*>(&X_data[id]);
 
-    T r[kNumUnroll];
-    bool masks[kNumUnroll];
+      T r[kNumUnroll];
+      bool masks[kNumUnroll];
 
 // actual computation
 #pragma unroll
-    for (int ii = 0; ii < kNumUnroll; ++ii) {
-      bool mask = (&rand.x)[ii] < p;
-      r[ii] = T(float(src[ii]) * mask * scale);
-      if (UseBitmask) {
-        thread_bitmask |= (mask << ii);
-      } else {
-        masks[ii] = mask;
+      for (int ii = 0; ii < kNumUnroll; ++ii) {
+        bool mask = (&rand.x)[ii] < p;
+        r[ii] = T(float(src[ii]) * mask * scale);
+        if (UseBitmask) {
+          thread_bitmask |= (mask << ii);
+        } else {
+          masks[ii] = mask;
+        }
+      }
+      // Vectorized writes for mask_data & Y_data
+      *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
+      if (!UseBitmask) {
+        *(reinterpret_cast<MaskLoadT*>(&reinterpret_cast<bool*>(mask_data)[id])) =
+            *reinterpret_cast<MaskLoadT*>(&masks[0]);
       }
     }
-    // Vectorized writes for mask_data & Y_data
-    *(reinterpret_cast<LoadT*>(&Y_data[id])) = *reinterpret_cast<LoadT*>(&r[0]);
 
     if (UseBitmask) {
-      SetBitmask<kNumUnroll>(id, fdm_bits_per_element, thread_bitmask, reinterpret_cast<uint32_t*>(mask_data));
-    } else {
-      *(reinterpret_cast<MaskLoadT*>(&reinterpret_cast<bool*>(mask_data)[id])) =
-          *reinterpret_cast<MaskLoadT*>(&masks[0]);
+      SetBitmask<kNumUnroll>(id, mask_element_count, fdm_bits_per_element, thread_bitmask,
+                             reinterpret_cast<uint32_t*>(mask_data));
     }
 
     __syncthreads();
@@ -133,32 +138,35 @@ __global__ void DropoutVectorizedKernel(const int64_t N, const fast_divmod fdm_b
 }
 
 template <typename T, bool UseBitmask>
-void DropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float ratio,
-                       PhiloxGenerator& generator, const T* X_data, T* Y_data, void* mask_data) {
+void DropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,
+                       const int64_t mask_element_count, const float ratio, PhiloxGenerator& generator, const T* X_data,
+                       T* Y_data, void* mask_data) {
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / kBlockSize;
   const int grid_size =
       std::min(prop.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, kBlockSize * kNumUnroll)));
 
   // Compute the number of random numbers generated by each thread, and increment philox generator offset by that
   // amount.
-  const uint64_t counter_offset =
-      static_cast<uint64_t>(((N - 1) / (kBlockSize * grid_size * kNumUnroll) + 1) * kNumUnroll);
-  auto seeds = generator.NextPhiloxSeeds(counter_offset);
+  const int step_size = kBlockSize * grid_size * kNumUnroll;
+  const int steps_per_thread = static_cast<int>(CeilDiv(N, step_size));
+  auto seeds = generator.NextPhiloxSeeds(static_cast<uint64_t>(steps_per_thread * kNumUnroll));
 
   fast_divmod fdm_bits_per_element(kNumBitPerElement);
   if (N % kNumUnroll != 0) {
-    DropoutKernel<T, UseBitmask>
-        <<<grid_size, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
+    DropoutKernel<T, UseBitmask><<<grid_size, kBlockSize, 0, stream>>>(
+        static_cast<CUDA_LONG>(N), static_cast<CUDA_LONG>(mask_element_count), step_size, steps_per_thread,
+        fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
   } else {
-    DropoutVectorizedKernel<T, UseBitmask>
-        <<<grid_size, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
+    DropoutVectorizedKernel<T, UseBitmask><<<grid_size, kBlockSize, 0, stream>>>(
+        static_cast<CUDA_LONG>(N), static_cast<CUDA_LONG>(mask_element_count), step_size, steps_per_thread,
+        fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
   }
 }
 
-#define SPECIALIZED_DROPOUT_IMPL(T, UseBitmask)                                                                    \
-  template void DropoutKernelImpl<T, UseBitmask>(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, \
-                                                 const float ratio, PhiloxGenerator& generator, const T* X_data,   \
-                                                 T* Y_data, void* mask_data);
+#define SPECIALIZED_DROPOUT_IMPL(T, UseBitmask)                                                           \
+  template void DropoutKernelImpl<T, UseBitmask>(                                                         \
+      const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count, \
+      const float ratio, PhiloxGenerator& generator, const T* X_data, T* Y_data, void* mask_data);
 
 #define SPECIALIZED_DROPOUT_IMPL_TYPED(T) \
   SPECIALIZED_DROPOUT_IMPL(T, true)       \

@@ -33,9 +33,9 @@ constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * C
 
 template <typename T>
 struct BiasDropoutComputeImpl {
-  Status operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const fast_divmod fdm_dim,
-                    const float ratio_data, PhiloxGenerator& generator, const Tensor& X, const Tensor& bias,
-                    const Tensor* residual, Tensor& Y, void* mask_data, bool has_same_shape_bias,
+  Status operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count,
+                    const fast_divmod fdm_dim, const float ratio_data, PhiloxGenerator& generator, const Tensor& X,
+                    const Tensor& bias, const Tensor* residual, Tensor& Y, void* mask_data, bool has_same_shape_bias,
                     bool use_bitmask) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -52,11 +52,11 @@ struct BiasDropoutComputeImpl {
 
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
     if (use_bitmask) {
-      BiasDropoutKernelImpl<CudaT, true>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data,
-                                         residual_data, Y_data, mask_data, has_same_shape_bias);
+      BiasDropoutKernelImpl<CudaT, true>(prop, stream, N, mask_element_count, fdm_dim, ratio_data, generator, X_data,
+                                         bias_data, residual_data, Y_data, mask_data, has_same_shape_bias);
     } else {
-      BiasDropoutKernelImpl<CudaT, false>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data,
-                                          residual_data, Y_data, mask_data, has_same_shape_bias);
+      BiasDropoutKernelImpl<CudaT, false>(prop, stream, N, mask_element_count, fdm_dim, ratio_data, generator, X_data,
+                                          bias_data, residual_data, Y_data, mask_data, has_same_shape_bias);
     }
 
     return Status::OK();
@@ -130,9 +130,9 @@ Status BiasDropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-  return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator,
-                                                          *X, *bias, residual, *Y, mask_data, has_same_shape_bias,
-                                                          UseBitmask);
+  return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(GetDeviceProp(), Stream(), N, mask_element_count, fdm_dim,
+                                                          ratio_data, generator, *X, *bias, residual, *Y, mask_data,
+                                                          has_same_shape_bias, UseBitmask);
 }
 
 }  // namespace cuda

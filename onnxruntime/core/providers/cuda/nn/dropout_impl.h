@@ -9,8 +9,9 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T, bool UseBitmask>
-void DropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float ratio,
-                       PhiloxGenerator& generator, const T* X_data, T* Y_data, void* mask_data);
+void DropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,
+                       const int64_t mask_element_count, const float ratio, PhiloxGenerator& generator, const T* X_data,
+                       T* Y_data, void* mask_data);
 
 }  // namespace cuda
 }  // namespace onnxruntime

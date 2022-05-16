@@ -30,16 +30,19 @@ constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * C
 
 template <typename T>
 struct DropoutComputeImpl {
-  void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float ratio_data,
-                  PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data, bool use_bitmask) const {
+  void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count,
+                  const float ratio_data, PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data,
+                  bool use_bitmask) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
     if (use_bitmask) {
-      DropoutKernelImpl<CudaT, true>(prop, stream, N, ratio_data, generator, X_data, Y_data, mask_data);
+      DropoutKernelImpl<CudaT, true>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data,
+                                     mask_data);
     } else {
-      DropoutKernelImpl<CudaT, false>(prop, stream, N, ratio_data, generator, X_data, Y_data, mask_data);
+      DropoutKernelImpl<CudaT, false>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data,
+                                      mask_data);
     }
   }
 };
@@ -114,7 +117,8 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, ratio_data, generator, *X, *Y, mask_data, UseBitmask);
+  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, mask_element_count, ratio_data, generator, *X, *Y,
+                                    mask_data, UseBitmask);
 
   return Status::OK();
 }

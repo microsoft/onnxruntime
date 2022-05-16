@@ -52,8 +52,9 @@ namespace cuda {
 constexpr int kNumBitPerElement = static_cast<int>(sizeof(uint32_t) * CHAR_BIT);
 
 template <int NumUnroll>
-__device__ __forceinline__ void SetBitmask(CUDA_LONG id, const fast_divmod fdm_bits_per_element,
-                                           uint32_t thread_bitmask, uint32_t* mask_data) {
+__device__ __forceinline__ void SetBitmask(const CUDA_LONG id, const CUDA_LONG mask_element_count,
+                                           const fast_divmod fdm_bits_per_element, uint32_t thread_bitmask,
+                                           uint32_t* mask_data) {
   int bitmask_idx, bitmask_shift;
   fdm_bits_per_element.divmod(id, bitmask_idx, bitmask_shift);
   uint32_t bitmask = (thread_bitmask << bitmask_shift);
@@ -71,7 +72,7 @@ __device__ __forceinline__ void SetBitmask(CUDA_LONG id, const fast_divmod fdm_b
 #endif
 
   // Choose a single from the "thread mask" group to perform the output write.
-  if (bitmask_shift == 0) {
+  if (bitmask_shift == 0 && bitmask_idx < mask_element_count) {
     mask_data[bitmask_idx] = bitmask;
   }
 }
