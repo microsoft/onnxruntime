@@ -674,7 +674,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 #if defined(_M_ARM64) || defined(__aarch64__)
-  int32_t task_count = (output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M;
+  int32_t task_count = static_cast<int32_t>((output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M);
 #else
   int32_t task_count = ComputeTaskCount(output_image_size, group_output_channels, kernel_dim);
   task_count = std::min(task_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));

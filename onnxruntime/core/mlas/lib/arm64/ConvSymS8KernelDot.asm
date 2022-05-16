@@ -105,9 +105,9 @@ Return Value:
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
         PROLOG_NOP    cmp     x7,2                    // OutputCount < 2 ?
         PROLOG_NOP    add     x16,x2,x5               // x16 -> C1
-        PROLOG_SAVE_REG_PAIR  d10,d11,#ConvSymFrame_d10_d11
-        PROLOG_SAVE_REG_PAIR  x19,x20,#ConvSymFrame_x19_x20
-        PROLOG_SAVE_REG_PAIR  x21,x22,#ConvSymFrame_x21_x22
+        PROLOG_SAVE_REG_PAIR  d10,d11,#ConvSymFrame_SavedRegisters_d10_d11
+        PROLOG_SAVE_REG_PAIR  x19,x20,#ConvSymFrame_SavedRegisters_x19_x20
+        PROLOG_SAVE_REG_PAIR  x21,x22,#ConvSymFrame_SavedRegisters_x21_x22
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
         csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
         add     x4,x4,3                 // InputChannels align to 4
@@ -563,9 +563,9 @@ Quantize
         b.hi    OutputChannelLoop
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR  x21,x22,#ConvSymFrame_x21_x22
-        EPILOG_RESTORE_REG_PAIR  x19,x20,#ConvSymFrame_x19_x20
-        EPILOG_RESTORE_REG_PAIR  d10,d11,#ConvSymFrame_d10_d11
+        EPILOG_RESTORE_REG_PAIR  x21,x22,#ConvSymFrame_SavedRegisters_x21_x22
+        EPILOG_RESTORE_REG_PAIR  x19,x20,#ConvSymFrame_SavedRegisters_x19_x20
+        EPILOG_RESTORE_REG_PAIR  d10,d11,#ConvSymFrame_SavedRegisters_d10_d11
         EPILOG_RESTORE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters!
         EPILOG_RETURN
 

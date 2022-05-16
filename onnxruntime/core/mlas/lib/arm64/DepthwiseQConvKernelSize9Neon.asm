@@ -57,9 +57,9 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
 #define    ConvSymDepthwisePostProcessParams_Min          16
 #define    ConvSymDepthwisePostProcessParams_Max          20
 #define    ConvSymDepthwisePostProcessParams_ZeroPoint    24
-#define    ConvSymPostProcessParams_Multiplier,           32
-#define    ConvSymPostProcessParams_PreShift,             40
-#define    ConvSymPostProcessParams_PostShift,            48
+#define    ConvSymPostProcessParams_Multiplier            32
+#define    ConvSymPostProcessParams_PreShift              40
+#define    ConvSymPostProcessParams_PostShift             48
 
         TEXTAREA
 
@@ -345,7 +345,7 @@ FloatPointScale_U8S8
         fcvtns  v7.4s, v7.4s
         fcvtns  v8.4s, v8.4s
         fcvtns  v9.4s, v9.4s
-        b .LQuantize_U8S8
+        b Quantize_U8S8
 
 FixedPointScale_U8S8
         tbz     x6,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, BroadcastFixedPointValue_U8S8
@@ -709,7 +709,7 @@ FloatPointScale
         b Quantize
 
 FixedPointScale
-        tbz     x6,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, .LBroadcastFixedPointValue
+        tbz     x6,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE_BIT_INDEX, BroadcastFixedPointValue
         ldp     q20,q21,[x0],32          // load multiplier vector
         ldp     q22,q23,[x0],32
         ldp     q24,q25,[x4],32          // load postshift vector

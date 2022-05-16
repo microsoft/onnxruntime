@@ -25,14 +25,14 @@ Abstract:
 // d8-d15, x19-x30 need to be preserved if used
 //
 
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9,      0
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11,    16
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13,    32
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15,    48
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters,            64
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_Neg,        -64
-#define    ConvSymDepthwiseKernelFrame_PostProcessParams          0 + ConvSymDepthwiseKernelFrame_SavedRegisters
-#define    ConvSymDepthwiseKernelFrame_KernelFlags                8 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9      0
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11    16
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13    32
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15    48
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters            64
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_Neg        -64
+#define    ConvSymDepthwiseKernelFrame_PostProcessParams         0 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_KernelFlags               8 + ConvSymDepthwiseKernelFrame_SavedRegisters
 
 /*
 struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {

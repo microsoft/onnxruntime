@@ -120,9 +120,9 @@ Return Value:
         add     x5,x2,x5                // c1 = c0 + ldc
         add     x4,x4,7                 // kc = (kc + 7) & ~7
         csel    x5,x2,x5,lo             // if OutputCount < 2  c1 = c0
-        ldr     x19,[x8,#.LConvSymPostProcessParams_PreShift]
-        ldr     x20,[x8,#.LConvSymPostProcessParams_Multiplier]
-        ldr     x21,[x8,#.LConvSymPostProcessParams_PostShift]
+        ldr     x19,[x8,#ConvSymPostProcessParams_PreShift]
+        ldr     x20,[x8,#ConvSymPostProcessParams_Multiplier]
+        ldr     x21,[x8,#ConvSymPostProcessParams_PostShift]
         bic     x4,x4,7
         ldp     s16,s18,[x11],8         // init accumulators with bias
         ldp     s20,s22,[x11],8

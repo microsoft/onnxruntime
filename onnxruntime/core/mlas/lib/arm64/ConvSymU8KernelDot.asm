@@ -123,9 +123,9 @@ Return Value:
         ldr     x19,[x8,#ConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
         movi    v12.16b,128             // for top bit flipping
-        ldr     x20,[x8,#.LConvSymPostProcessParams_PreShift]
-        ldr     x21,[x8,#.LConvSymPostProcessParams_Multiplier]
-        ldr     x22,[x8,#.LConvSymPostProcessParams_PostShift]
+        ldr     x20,[x8,#ConvSymPostProcessParams_PreShift]
+        ldr     x21,[x8,#ConvSymPostProcessParams_Multiplier]
+        ldr     x22,[x8,#ConvSymPostProcessParams_PostShift]
 
 OutputChannelLoop
         ldp     q16,q20,[x11],32        // Init accumulators with biases

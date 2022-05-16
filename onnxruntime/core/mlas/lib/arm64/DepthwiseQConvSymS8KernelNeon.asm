@@ -25,14 +25,14 @@ Abstract:
 // d8-d15, x19-x30 need to be preserved if used
 //
 
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9,      0
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11,    16
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13,    32
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15,    48
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters,            64
-#define    ConvSymDepthwiseKernelFrame_SavedRegisters_Neg,        -64
-#define    ConvSymDepthwiseKernelFrame_PostProcessParams          0 + ConvSymDepthwiseKernelFrame_SavedRegisters
-#define    ConvSymDepthwiseKernelFrame_KernelFlags                8 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9      0
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11    16
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13    32
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15    48
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters            64
+#define    ConvSymDepthwiseKernelFrame_SavedRegisters_Neg        -64
+#define    ConvSymDepthwiseKernelFrame_PostProcessParams         0 + ConvSymDepthwiseKernelFrame_SavedRegisters
+#define    ConvSymDepthwiseKernelFrame_KernelFlags               8 + ConvSymDepthwiseKernelFrame_SavedRegisters
 
 /*
 struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
@@ -566,7 +566,7 @@ Quantize
 ExitKernel
         EPILOG_RESTORE_REG_PAIR d14,d15,#ConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15
         EPILOG_RESTORE_REG_PAIR d12,d13,#ConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13
-        EPILOG_RESTORE_REG_PAIR d10,d11,#LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11
+        EPILOG_RESTORE_REG_PAIR d10,d11,#ConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11
         EPILOG_RESTORE_REG_PAIR d8,d9,#ConvSymDepthwiseKernelFrame_SavedRegisters!
         EPILOG_RETURN
 
@@ -739,11 +739,11 @@ FloatingPointScaleC8:
         ldp     q4,q5,[x12]                // load scale vector if per channel
         b       ScaleWithFloatPointC8
 
-BroadcastScaleValueC8:
+BroadcastScaleValueC8
         ld1r    {v4.4s},[x12]               // load scale val
         mov     v5.16b,v4.16b               // broadcast scale val if not per channel
 
-ScaleWithFloatPointC8:
+ScaleWithFloatPointC8
         scvtf   v24.4s,v24.4s               // convert to float
         scvtf   v25.4s,v25.4s
         scvtf   v28.4s,v28.4s
