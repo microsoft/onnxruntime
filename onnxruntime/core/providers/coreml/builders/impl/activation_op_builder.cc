@@ -116,13 +116,15 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
                         const logging::Logger& logger) {
   const auto& input_defs = node.InputDefs();
 
-  // X input rank must be at least 3
+  // X input rank must be 3 or 4
   std::vector<int64_t> x_shape;
   if (!GetShape(*input_defs[0], x_shape, logger)) {
     return false;
   }
-  if (x_shape.size() < 3) {
-    LOGS(logger, VERBOSE) << "PRelu 'X' input must have at least 3 dimensions";
+
+  const auto x_rank = x_shape.size();
+  if (x_rank == 3 || x_rank == 4) {
+    LOGS(logger, VERBOSE) << "PRelu 'X' input must have 3 or 4 dimensions, it has " << x_rank << " dimensions";
     return false;
   }
 
@@ -149,7 +151,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
       return false;
     }
 
-    if (has_single_slope && x_shape[x_shape.size() - 3] == 1) {
+    if (has_single_slope && x_shape[x_rank - 3] == 1) {
       // TODO: CoreML crashes with single element slope, hence this special case. Remove when fixed.
       // https://github.com/apple/coremltools/issues/1488
       LOGS(logger, VERBOSE) << "PRelu single 'slope' value in CoreML weight is not supported";
