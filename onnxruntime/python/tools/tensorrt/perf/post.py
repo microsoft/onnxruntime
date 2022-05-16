@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import os
 import sys
 
@@ -46,7 +47,14 @@ def parse_arguments():
     parser.add_argument("-u", "--report_url", help="Report Url", required=True)
     parser.add_argument("-t", "--trt_version", help="Tensorrt Version", required=True)
     parser.add_argument("-b", "--branch", help="Branch", required=True)
-    parser.add_argument("-d", "--datetime", help="Commit Datetime", required=True)
+    parser.add_argument(
+        "-d",
+        "--commit_datetime",
+        help="Commit datetime in Python's datetime ISO 8601 format",
+        required=True,
+        type=lambda s: datetime.datetime.fromisoformat(s),
+    )
+
     return parser.parse_args()
 
 
@@ -120,13 +128,13 @@ def get_status(status, model_group):
     return status
 
 
-def get_specs(specs, branch, commit_id, date_time):
+def get_specs(specs, branch, commit_id, commit_datetime):
     init_id = int(specs.tail(1).get(".", 0)) + 1
     specs_additional = pd.DataFrame(
         {
             ".": [init_id, init_id + 1, init_id + 2],
             "Spec": ["Branch", "CommitId", "CommitTime"],
-            "Version": [branch, commit_id, date_time],
+            "Version": [branch, commit_id, str(commit_datetime)],
         }
     )
 
@@ -150,11 +158,13 @@ def get_op_metrics(op_metrics, model_group):
     return adjust_columns(op_metrics, csv_columns, db_columns, model_group)
 
 
-def write_table(ingest_client, table, table_name, commit_time, identifier):
+def write_table(ingest_client, table, table_name, upload_time, identifier):
     if table.empty:
         return
-    table = table.assign(UploadTime=commit_time)  # add Commit DateTime
-    table = table.assign(Identifier=identifier)  # add Identifier
+
+    # Add upload time and identifier columns to data table.
+    table = table.assign(UploadTime=str(upload_time))
+    table = table.assign(Identifier=identifier)
     ingestion_props = IngestionProperties(
         database=database,
         table=table_name,
@@ -165,8 +175,8 @@ def write_table(ingest_client, table, table_name, commit_time, identifier):
     ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
 
-def get_identifier(date_time, commit_id, trt_version, branch):
-    date = date_time.split("T")[0]  # extract date only
+def get_identifier(commit_datetime, commit_id, trt_version, branch):
+    date = str(commit_datetime.date())  # extract date only
     return date + "_" + commit_id + "_" + trt_version + "_" + branch
 
 
@@ -177,8 +187,8 @@ def main():
     # connect to database
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
-    date_time = args.datetime
-    identifier = get_identifier(date_time, args.commit_hash, args.trt_version, args.branch)
+    identifier = get_identifier(args.commit_datetime, args.commit_hash, args.trt_version, args.branch)
+    upload_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
     try:
         result_file = args.report_folder
@@ -211,7 +221,7 @@ def main():
                     )
                 elif specs_name in csv:
                     table_results[specs_name] = table_results[specs_name].append(
-                        get_specs(table, args.branch, args.commit_hash, date_time),
+                        get_specs(table, args.branch, args.commit_hash, args.commit_datetime),
                         ignore_index=True,
                     )
                 elif fail_name in csv:
@@ -252,7 +262,7 @@ def main():
                 ingest_client,
                 table_results[table],
                 db_table_name,
-                date_time,
+                upload_time,
                 identifier,
             )
         """
@@ -264,7 +274,7 @@ def main():
             ingest_client,
             table_results[table],
             db_table_name,
-            date_time,
+            upload_time,
             identifier,
         )
 
