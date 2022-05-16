@@ -614,7 +614,7 @@ Quantize:
         b.hi    OutputChannelLoop
 
 ExitKernel:
-        ldp     x25,x26,[sp,#64]
+        ldp     x25,x26,[sp,#80]
         ldp     x23,x24,[sp,#64]
         ldp     x21,x22,[sp,#48]
         ldp     x19,x20,[sp,#32]

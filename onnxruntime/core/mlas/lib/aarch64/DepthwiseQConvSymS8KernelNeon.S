@@ -87,10 +87,10 @@ Return Value:
         FUNCTION_ENTRY MlasConvSymDepthwiseS8KernelNeon
 
         stp     d8,d9,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_Neg]!
+        ldr     x8,[sp,#.LConvSymDepthwiseKernelFrame_PostProcessParams]
         stp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_backup_d10_d11]
         stp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_backup_d12_d13]
         stp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_backup_d14_d15]
-        ldr     x8,[sp,#.LConvSymDepthwiseKernelFrame_PostProcessParams]
         cmp     x7,2
         add     x9,x0,x3,lsl#3              // x9 -> &A1
         add     x14,x0,x3,lsl#4             // x14 -> &A2

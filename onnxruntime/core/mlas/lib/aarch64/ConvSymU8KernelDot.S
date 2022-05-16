@@ -49,9 +49,10 @@ Routine Description:
 
 Arguments:
 
-    Input (x0) - Points to the indirection buffer. Every pointer in the indirection buffer points at a
-        InputChannels length vector (either from the input tensor or a vector of
-        padding values). These are grouped in batches of length KernelSize.
+    Input (x0) - Supplies the address of the indirect buffer. Every pointer in
+        the indirection buffer points at a InputChannels length vector (either
+        from the input tensor or a vector of padding values). These are grouped
+        in batches of length KernelSize.
         These batches are then repeated OutputCount times.
 
     Filter (x1) - Points to the filter buffer.
@@ -437,7 +438,6 @@ ScaleWithFloatPoint:
         fcvtns  v29.4s,v29.4s
         fcvtns  v30.4s,v30.4s
         fcvtns  v31.4s,v31.4s
-        b Quantize
         b Quantize
 
 FixedPointScale:

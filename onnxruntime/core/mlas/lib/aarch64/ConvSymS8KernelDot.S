@@ -107,7 +107,6 @@ Return Value:
         ldr     x21,[x8,#.LConvSymPostProcessParams_Multiplier]
         ldr     x22,[x8,#.LConvSymPostProcessParams_PostShift]
 
-
         // TODO!! tiptoe around loading biases if we need to support
         // output channels none divisible by 16
 OutputChannelLoop:
