@@ -522,7 +522,11 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   std::vector<int32_t> multipliers;
   std::vector<int32_t> post_shifts;
   if (use_fixed_point_requant_) {
-    quantization::ComputeMultiplierShiftVector(output_scales, multipliers, pre_shifts, post_shifts);
+    MlasFloatToFixedPoint(output_scales.data(),
+                          multipliers.data(),
+                          pre_shifts.data(),
+                          post_shifts.data(),
+                          output_scales.size());
     RequantParam.RequantRoundKind = MLAS_ROUND_KIND::MlasRoundHalfUp;
     RequantParam.PreShift = pre_shifts.data();
     RequantParam.Multiplier = multipliers.data();

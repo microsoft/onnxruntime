@@ -829,6 +829,56 @@ MlasConvSymFixupInputZeroPoint(
     bool InputIsSigned
     );
 
+inline
+uint32_t
+BitsOfFp32(float FloatValue)
+{
+  union {
+    uint32_t IntegerValue;
+    float FloatValue;
+  } u;
+  u.FloatValue = FloatValue;
+  return u.IntegerValue;
+}
+
+inline
+void
+MlasFloatToFixedPoint(
+    float Scale,
+    int32_t& Multiplier,
+    int32_t& PreShift,
+    int32_t& PostShift)
+{
+  const uint32_t ScaleBits = BitsOfFp32(Scale);
+
+  // Multiplier is in [0x40000000, 0x7FFFFF80] range.
+  Multiplier = (int32_t)(((ScaleBits & UINT32_C(0x007FFFFF)) | UINT32_C(0x00800000)) << 7);
+
+  // Shift is in [-8, 31] range.
+  const int32_t Shift = 127 + 31 - 32 - (ScaleBits >> 23);
+
+  // Split shift into PreShift + PostShift, PostShift in [1, 31] range.
+  PostShift = Shift > 1 ? Shift : 1;
+  PreShift = Shift - PostShift;
+
+  PreShift = -PreShift;
+  PostShift = -PostShift;
+}
+
+inline
+void
+MlasFloatToFixedPoint(
+    const float* Scale,
+    int32_t* Multiplier,
+    int32_t* PreShift,
+    int32_t* PostShift,
+    size_t N)
+{
+    for(auto i = 0; i < N; i++) {
+        MlasFloatToFixedPoint(Scale[i], Multiplier[i], PreShift[i], PostShift[i]);
+    }
+}
+
 enum MLAS_ROUND_KIND {
     MlasRoundHalfEven,
     MlasRoundHalfUp,
