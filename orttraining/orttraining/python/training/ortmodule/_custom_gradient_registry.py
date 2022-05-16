@@ -125,6 +125,51 @@ def max_pool2d_gradient():
     ]
 
 
+def minmax_gradient():
+    # Gradient of torch.min(input) (and max)
+    # In PyTorch, when there are multiple maxima/minima, the gradient is evenly distributed among them.
+    # e.g.: x = torch.tensor([1., 2., 2., 1., 2.], requires_grad=True)
+    #       y = x.max()       (tensor(2., grad_fn=<MaxBackward1>))
+    #       y.backward()
+    #       print(x.grad)     (tensor([0.0000, 0.3333, 0.3333, 0.0000, 0.3333]))
+    return [
+        ("Equal", ["I(0)", "O(0)"], ["Mask"]),
+        ("Constant", [], ["Const_0"], {"value": {"value": 0.0, "dtype": "IElemType(0)", "is_tensor": True}}),
+        ("Constant", [], ["Const_1"], {"value": {"value": 1.0, "dtype": "IElemType(0)", "is_tensor": True}}),
+        ("Where", ["Mask", "Const_1", "Const_0"], ["MaskValue"]),
+        ("ReduceSum", ["MaskValue"], ["MaskSum"], {"keepdims": {"value": 0, "dtype": "int"}}),
+        ("Div", ["GO(0)", "MaskSum"], ["DistributedGrad"]),
+        ("Mul", ["MaskValue", "DistributedGrad"], ["GI(0)"]),
+    ]
+
+
+min_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::min", "")(minmax_gradient)
+max_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::max", "")(minmax_gradient)
+
+
+def minmax_dim_gradient():
+    # Gradient of torch.min(input, dim, keepdim) (and max)
+    # In PyTorch, when there are multiple maxima/minima along the axis, the gradient is granted to the first.
+    # e.g.: x = torch.tensor([1., 2., 2., 1., 2.], requires_grad=True)
+    #       y = x.max(dim=0)     (torch.return_types.max(values=tensor(2., grad_fn=<MaxBackward0>),
+    #                                                    indices=tensor(1)))
+    #       y.values.backward()
+    #       print(x.grad)        (tensor([0., 1., 0., 0., 0.]))
+    return [
+        ("Shape", ["I(0)"], ["Shape_X"]),
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "I(1)", "O(1)", "Shape_X", "I(2)"],
+            ["GI(0)"],
+            {"operator": {"value": "aten::value_selecting_reduction_backward", "dtype": "string"}},
+        ),
+    ]
+
+
+min_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::min", "dim")(minmax_dim_gradient)
+max_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::max", "dim")(minmax_dim_gradient)
+
+
 @register_gradient("org.pytorch.aten", "ATen", "aten::unfold", "")
 def unfold_gradient():
     return [

@@ -2,44 +2,41 @@
 # Licensed under the MIT License.
 # orttraining_test_ortmodule_api.py
 
+import copy
 import itertools
 import math
-import random
-import copy
-import torch
-from transformers import AutoConfig, BertForSequenceClassification, Trainer
-from transformers.modeling_outputs import SequenceClassifierOutput
-import pytest
-from time import sleep
-import warnings
-from unittest.mock import patch
-from collections import OrderedDict
-from collections import namedtuple
-from inspect import signature
-import tempfile
 import os
 import pickle
+import random
+import tempfile
+import warnings
+from collections import OrderedDict, namedtuple
 from distutils.version import LooseVersion
-from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
-from onnxruntime.training.ortmodule import (
-    ORTModule,
-    _utils,
-    _io,
-    DebugOptions,
-    LogLevel,
-    _fallback,
-    _graph_execution_manager,
-)
-import onnxruntime.training.ortmodule as ortmodule_module
-
-from onnxruntime.training.optim import FusedAdam, AdamWMode
-from transformers import AdamW
+from inspect import signature
+from time import sleep
+from unittest.mock import patch
 
 import _test_helpers
+import pytest
+import torch
 
 # Import autocasting libs
 from torch.cuda import amp
+from transformers import AdamW, AutoConfig, BertForSequenceClassification, Trainer
+from transformers.modeling_outputs import SequenceClassifierOutput
 
+import onnxruntime.training.ortmodule as ortmodule_module
+from onnxruntime.training.optim import AdamWMode, FusedAdam
+from onnxruntime.training.ortmodule import (
+    DebugOptions,
+    LogLevel,
+    ORTModule,
+    _fallback,
+    _graph_execution_manager,
+    _io,
+    _utils,
+)
+from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 
 DEFAULT_OPSET = 14
 
@@ -1084,6 +1081,91 @@ def test_export_correctness_pool2d(pool_type, stride):
         ort_prediction = run_step(ort_model, input)
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+
+
+@pytest.mark.parametrize("operator", ["min", "max"])
+@pytest.mark.parametrize("dim", [None, 0, -1])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_gradient_correctness_max(operator, dim, keepdim):
+    func = getattr(torch, operator)
+
+    class NeuralNetMax(torch.nn.Module):
+        def forward(self, input):
+            if dim is None:
+                return func(input), None
+            # torch.max(input, dim, keepdim) returns (max_values, max_indices)
+            return func(input, dim=dim, keepdim=keepdim)
+
+    N, C, D = 16, 256, 128
+    device = "cuda"
+    pt_model = NeuralNetMax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction, indices = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, indices
+
+    for _ in range(10):
+        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction, pt_indices = run_step(pt_model, pt_input)
+        ort_prediction, ort_indices = run_step(ort_model, ort_input)
+
+        if dim is not None:  # For torch.max(input, dim, keepdim), also check the max_indices
+            assert torch.equal(ort_indices, pt_indices)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
+# Before 1.10 (excluded), Torch's min/max(x,y) will assign dY to y's dX if value from x and y are equal.
+# From 1.10, both x and y's dX will be dY/2. ORT follows this distribution logic, so skip below test if Torch version
+# is lower than 1.10.
+@pytest.mark.skipif(LooseVersion(torch.__version__) < LooseVersion("1.10.0"), reason="PyTorch 1.9 incompatible")
+@pytest.mark.parametrize("operator", ["min", "max"])
+def test_gradient_correctness_minmax_two_tensors(operator):
+    func = getattr(torch, operator)
+
+    class NeuralNetMaxTwoTensors(torch.nn.Module):
+        def forward(self, input, other):
+            return func(input, other)
+
+    N, C, D = 16, 256, 128
+    device = "cuda"
+    pt_model = NeuralNetMaxTwoTensors().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, *input):
+        prediction = model(*input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
+        pt_other = torch.rand((N, C, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        ort_other = copy.deepcopy(pt_other)
+        pt_prediction = run_step(pt_model, pt_input, pt_other)
+        ort_prediction = run_step(ort_model, ort_input, ort_other)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+        _test_helpers.assert_values_are_close(ort_other.grad, pt_other.grad)
+
+    # Simple test for case that has equal value.
+    pt_input = torch.tensor([0.0, 0.0, 1.0, 1.0], device=device, requires_grad=True)
+    pt_other = torch.tensor([1.0, 0.0, 1.0, 0.0], device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    ort_other = copy.deepcopy(pt_other)
+    pt_prediction = run_step(pt_model, pt_input, pt_other)
+    ort_prediction = run_step(ort_model, ort_input, ort_other)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+    _test_helpers.assert_values_are_close(ort_other.grad, pt_other.grad)
 
 
 def test_gradient_correctness_argmax_unfold():
@@ -2642,7 +2724,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy, ORTModuleDeviceException
+    from onnxruntime.training.ortmodule._fallback import ORTModuleDeviceException, _FallbackPolicy
 
     if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
@@ -3120,7 +3202,7 @@ def test_train_eval_with_various_outputs():
         def forward(self, input1):
             out1 = self.fc1(input1)
             out2 = self.relu(out1)
-            # return different number of outputs for train ane eval mode
+            # return different number of outputs for train and eval mode
             if self.training:
                 return out1, out2
             else:

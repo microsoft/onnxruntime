@@ -196,6 +196,8 @@ class SymbolicShapeInference:
             "aten::bitwise_or": self._infer_aten_bitwise_or,
             "aten::diagonal": self._infer_aten_diagonal,
             "aten::max_pool2d_with_indices": self._infer_aten_pool2d,
+            "aten::max": self._infer_aten_minmax,
+            "aten::min": self._infer_aten_minmax,
             "aten::multinomial": self._infer_aten_multinomial,
             "aten::unfold": self._infer_aten_unfold,
             "aten::argmax": self._infer_aten_argmax,
@@ -1262,6 +1264,39 @@ class SymbolicShapeInference:
             elem_type = onnx.TensorProto.INT64 if i == 1 else self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(o, elem_type, get_shape_from_sympy_shape(sympy_shape)))
 
+    def _infer_aten_minmax(self, node):
+        vi = self.known_vi_[node.output[0]]
+        if len(node.input) == 1:
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, []
+                )
+            )
+        else:
+            assert len(node.input) == 3
+            keepdim = self._try_get_value(node, 2)
+            assert keepdim is not None  # can only handle known keepdim case.
+            dim = self._try_get_value(node, 1)
+            if dim is None:
+                rank = self._get_shape_rank(node, 0)
+                output_shape = self._new_symbolic_shape(rank if keepdim else rank - 1, node)
+            else:
+                shape = self._get_sympy_shape(node, 0)
+                dim = handle_negative_axis(dim, len(shape))
+                output_shape = shape[:dim]
+                if keepdim:
+                    output_shape += [1]
+                output_shape += shape[dim + 1 :]
+
+            output_shape = get_shape_from_sympy_shape(output_shape)
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type, output_shape
+                )
+            )
+            vi1 = self.known_vi_[node.output[1]]
+            vi1.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT64, output_shape))
+
     def _infer_aten_unfold(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
         dimension = self._try_get_value(node, 1)
@@ -2195,6 +2230,8 @@ class SymbolicShapeInference:
                             "Greater",
                             "LessOrEqual",
                             "GreaterOrEqual",
+                            "Min",
+                            "Max",
                         ]:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in [
