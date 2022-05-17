@@ -7,10 +7,12 @@ This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
    python convert_beam_search.py -m gpt2 --decoder_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
-   
+
 Example 2: convert T5 model with beam search:
-   python ./models/t5/convert_to_onnx.py -m t5-small -s
-   python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./onnx_models/t5-small_decoder.onnx --encoder_decoder_init_onnx ./onnx_models/t5-small_encoder_decoder_init.onnx --output ./onnx_models/t5_small_beam_search.onnx
+   cd ./models/t5
+   python convert_to_onnx.py -m t5-small -s
+   cd ../..
+   python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./models/t5/t5-small_decoder.onnx --encoder_decoder_init_onnx ./models/t5/t5-small_encoder_decoder_init.onnx --output ./models/t5/t5_small_beam_search.onnx
 """
 
 import argparse
@@ -421,7 +423,7 @@ def convert_model(args):
         verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
         node.attribute.extend(
             [
-                helper.make_attribute("encoder_decoder_init", init_model.graph),
+                helper.make_attribute("encoder", init_model.graph),
             ]
         )
 
@@ -543,12 +545,8 @@ def test_torch_performance(args, model, input_ids, attention_mask, eos_token_id,
     return get_latency_result(torch_latency, batch_size)
 
 
-def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
-    if args.model_type != "gpt2":
-        print(
-            f"Skipping parity test since the support for model type {args.model_type} is not implemented in OnnxRuntime"
-        )
-        return True
+def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
+    assert args.model_type == "gpt2"
 
     if args.temperature != 1.0:
         # TODO: implement temperature in BeamSearch operator.
@@ -724,17 +722,197 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
     return output
 
 
+def test_t5_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
+    assert args.model_type == "t5"
+
+    if args.temperature != 1.0:
+        # TODO: implement temperature in BeamSearch operator.
+        print("Skipping parity test as temperature is not implemented in BeamSearch operator")
+        return True
+
+    if args.prefix_vocab_mask:
+        print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
+        return True
+
+    from transformers import T5ForConditionalGeneration, T5Tokenizer
+
+    tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token = tokenizer.eos_token
+
+    model = T5ForConditionalGeneration.from_pretrained(
+        args.model_name_or_path,
+        cache_dir=args.cache_dir,
+        pad_token_id=tokenizer.eos_token_id,
+    )
+
+    # Use different length sentences to test batching
+    if sentences is None:
+        sentences = [
+            "translate English to French: The product is released",
+            "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
+        ]
+
+    inputs = tokenizer(sentences, return_tensors="pt", padding=True)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+
+    bad_words = "walk in park"
+    bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
+    bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
+    if use_vocab_mask:
+        print("bad_words_ids", bad_words_ids)
+    else:
+        bad_words_ids = None
+
+    global config
+    config = model.config
+    eos_token_id = config.eos_token_id
+    pad_token_id = config.eos_token_id
+    vocab_size = config.vocab_size
+
+    torch_decoded_sequences = []
+    if not args.disable_parity:
+        print("-" * 50)
+        print("Test PyTorch model and beam search with huggingface transformers...")
+        beam_outputs = model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_length=args.max_length,
+            min_length=args.min_length,
+            num_beams=args.num_beams,
+            early_stopping=args.early_stopping,
+            no_repeat_ngram_size=args.no_repeat_ngram_size,
+            eos_token_id=eos_token_id,
+            pad_token_id=pad_token_id,
+            num_return_sequences=args.num_return_sequences,
+            temperature=args.temperature,
+            length_penalty=args.length_penalty,
+            repetition_penalty=args.repetition_penalty,
+            bad_words_ids=bad_words_ids,
+            return_dict_in_generate=True,
+            output_scores=args.output_sequences_scores or args.output_token_scores,
+        )
+        print("input_ids", input_ids)
+        print("huggingface transformers outputs:")
+        print("sequences", beam_outputs.sequences)
+        if args.output_sequences_scores:
+            print("sequences_scores", beam_outputs.sequences_scores)
+        if args.output_token_scores:
+            print("scores", beam_outputs.scores)
+        for i, sequence in enumerate(beam_outputs.sequences):
+            decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
+            torch_decoded_sequences.append(decoded_sequence)
+            print("{}: {}".format(i, decoded_sequence))
+
+    print("-" * 50)
+    print("Test ONNX model and bream search with onnxruntime...")
+
+    ort_session = create_ort_session(args.output, args.use_gpu)
+
+    vocab_mask = np.ones((vocab_size), dtype=np.int32)
+    if use_vocab_mask:
+        for bad_word_id in bad_words_ids:
+            vocab_mask[bad_word_id] = 0
+
+    inputs = {
+        "input_ids": input_ids.cpu().numpy().astype(np.int32),
+        "max_length": np.array([args.max_length], dtype=np.int32),
+        "min_length": np.array([args.min_length], dtype=np.int32),
+        "num_beams": np.array([args.num_beams], dtype=np.int32),
+        "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
+        "temperature": np.array([args.temperature], dtype=np.float32),
+        "length_penalty": np.array([args.length_penalty], dtype=np.float32),
+        "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
+        "vocab_mask": vocab_mask,
+    }
+
+    test_data_dir = Path(args.output).parent.as_posix()
+    print("test_data_dir", test_data_dir)
+    from bert_test_data import output_test_data
+
+    all_inputs = [inputs]
+    for i, inputs in enumerate(all_inputs):
+        dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
+        output_test_data(dir, inputs)
+
+    print("inputs", inputs)
+
+    # Test performance
+    latency = []
+    for _ in range(args.total_runs):
+        start = time.time()
+        result = ort_session.run(None, inputs)
+        latency.append(time.time() - start)
+    batch_size = input_ids.shape[0]
+    from benchmark_helper import get_latency_result
+
+    output = get_latency_result(latency, batch_size)
+
+    print("ORT outputs:")
+    sequences = result[0]
+    print("sequences", sequences)
+    if args.output_sequences_scores:
+        print("sequences_scores", result[1])
+    if args.output_token_scores:
+        print("scores", result[2])
+
+    (batch_size, num_sequences, max_length) = sequences.shape
+    ort_decoded_sequences = []
+    for i in range(batch_size):
+        for j in range(num_sequences):
+            decoded_sequence = tokenizer.decode(sequences[i][j], skip_special_tokens=True)
+            ort_decoded_sequences.append(decoded_sequence)
+            print(f"batch {i} sequence {j}: {decoded_sequence}")
+
+    if not args.disable_parity:
+        torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
+        ort_sequences = torch.LongTensor(sequences)
+        print("-" * 50)
+        print("Torch Sequences:")
+        print(torch_sequences)
+        print(torch_decoded_sequences)
+        print("-" * 50)
+        print("ORT Sequences:")
+        print(ort_sequences)
+        print(ort_decoded_sequences)
+        print("-" * 50)
+        # Compare the generated text instead of word IDs since ORT pads to max sequence length but Torch not.
+        is_same = torch_decoded_sequences == ort_decoded_sequences
+        print("Torch and ORT result is ", "same" if is_same else "different")
+        output["parity"] = is_same
+
+    if args.torch_performance:
+        torch_latency_output = test_torch_performance(
+            args,
+            model,
+            input_ids,
+            attention_mask,
+            eos_token_id,
+            pad_token_id,
+            bad_words_ids,
+        )
+        print("Torch Latency", torch_latency_output)
+
+    print("ORT", output)
+    return output
+
+
 def main(argv=None, sentences=None):
     args = parse_arguments(argv)
     if args.model_type == "t5":
         assert args.encoder_decoder_init_onnx, "please export t5 to onnx models before using this tool"
 
-    if os.path.exists(args.output):
-        print(f"skip conversion since path existed: {args.output}")
-    else:
-        convert_model(args)
+    # if os.path.exists(args.output):
+    #     print(f"skip conversion since path existed: {args.output}")
+    # else:
+    #     convert_model(args)
+    convert_model(args)
 
-    return test_model(args, use_vocab_mask=True, sentences=sentences)
+    if args.model_type == "t5":
+        return test_t5_model(args, use_vocab_mask=True, sentences=sentences)
+    else:
+        return test_gpt_model(args, use_vocab_mask=True, sentences=sentences)
 
 
 if __name__ == "__main__":

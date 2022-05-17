@@ -135,7 +135,8 @@ class T5EncoderDecoderInitHelper:
 
         input_names = ["encoder_input_ids", "encoder_attention_mask"]
 
-        # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2'. Use more friendly string here.
+        # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2' in shape inference.
+        # We use a walkaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
         sequence_length = "1"
         num_heads = str(model.config.num_heads)
         hidden_size = str(model.config.d_model)
@@ -149,12 +150,18 @@ class T5EncoderDecoderInitHelper:
                 1: "encode_sequence_length",
                 2: hidden_size,
             },
-            "logits": {0: "batch_size", 1: sequence_length},
+            "logits": {
+                0: "batch_size",
+                1: sequence_length,
+            },
         }
 
         if use_decoder_input_ids:
             input_names.append("decoder_input_ids")
-            dynamic_axes["decoder_input_ids"] = {0: "batch_size", 1: sequence_length}
+            dynamic_axes["decoder_input_ids"] = {
+                0: "batch_size",
+                1: sequence_length,
+            }
 
         for name in present_names:
             if "cross" in name:
@@ -187,6 +194,24 @@ class T5EncoderDecoderInitHelper:
             use_external_data_format=use_external_data_format,
             verbose=verbose,
         )
+
+        import onnx
+
+        # Walkaround as mentioned earlier: change numeric dim_param to dim_value
+        model = onnx.load(onnx_model_path)
+        for tensor in model.graph.output:
+            for dim_proto in tensor.type.tensor_type.shape.dim:
+                if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
+                    sequence_length,
+                    num_heads,
+                    hidden_size,
+                    head_size,
+                ]:
+                    print(f"change dim_param {dim_proto.dim_param} to dim_value for {tensor.name}")
+                    dim_value = int(dim_proto.dim_param)
+                    dim_proto.Clear()
+                    dim_proto.dim_value = dim_value
+        onnx.save(model, onnx_model_path)
 
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: T5EncoderDecoderInitInputs):

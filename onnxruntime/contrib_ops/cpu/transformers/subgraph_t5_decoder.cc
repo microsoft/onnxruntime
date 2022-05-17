@@ -66,7 +66,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
-  num_layers = (static_cast<int>(subgraph_outputs.size()) - 1) / 4;
+  num_layers = (static_cast<int>(subgraph_outputs.size()) - 1) / 2;
 
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
                 "decoder subgraph input 0 (input_ids) shall have int64 type");
