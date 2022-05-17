@@ -99,6 +99,7 @@ struct Module {
   std::vector<std::string> eval_output_names_;
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
+  bool lazy_reset_grad_ = false;
 };
 
 }  // namespace api

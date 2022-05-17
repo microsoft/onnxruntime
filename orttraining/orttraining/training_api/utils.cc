@@ -3,6 +3,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/allocator.h"
+
 #include "orttraining/training_api/include/utils.h"
 
 namespace onnxruntime {
@@ -62,4 +63,6 @@ Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, O
   return Status::OK();
 }
 
-}}}
+}  // namespace api
+}  // namespace training
+}  // namespace onnxruntime
