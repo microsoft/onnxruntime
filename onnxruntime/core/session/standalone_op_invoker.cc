@@ -86,8 +86,8 @@ class NodeHolder {
     return *this;
   }
 
-  bool operator==(const NodeHolder& node_holder) const {
-    return node_ == node_holder.node_;
+  bool operator != (const NodeHolder& node_holder) const {
+    return node_ != node_holder.node_;
   }
 
   onnxruntime::Node* get() const {
@@ -126,7 +126,7 @@ void AddNode(const onnxruntime::OpKernel* kernel, const NodeHolder& node) {
   std::lock_guard<std::mutex> guard(GetMutex());
   StandAloneNodes nodes = GetNodes();
   auto iter = nodes.find(kernel);
-  if (iter != nodes.end() && iter->second == node) {
+  if (iter != nodes.end() && iter->second != node) {
     ORT_THROW("kernel mapped to two different nodes!");
   }
   nodes[kernel] = node;
