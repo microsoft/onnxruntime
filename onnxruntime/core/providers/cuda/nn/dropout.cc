@@ -8,6 +8,20 @@
 namespace onnxruntime {
 namespace cuda {
 
+namespace {
+
+constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
+
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
+}  // namespace
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 12, 12, kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
@@ -25,8 +39,6 @@ ONNX_OPERATOR_KERNEL_EX(Dropout, kOnnxDomain, 13, kCudaExecutionProvider,
                             .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .InputMemoryType(OrtMemTypeCPUInput, 2),
                         Dropout<false>);
-
-constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
 
 template <typename T>
 struct DropoutComputeImpl {
@@ -46,12 +58,6 @@ struct DropoutComputeImpl {
     }
   }
 };
-
-template <typename T>
-void GetRatioDataImpl<T>::operator()(const Tensor* ratio, float& ratio_data) const {
-  ratio_data = static_cast<float>(*(ratio->template Data<T>()));
-  ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
-}
 
 template <bool UseBitmask>
 Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {

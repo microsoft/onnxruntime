@@ -4,12 +4,25 @@
 #include "orttraining/training_ops/cuda/nn/dropout_grad.h"
 
 #include "orttraining/training_ops/cuda/nn/dropout_grad_impl.h"
-#include "core/providers/cuda/nn/dropout.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+namespace {
+
+constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
+
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
+}  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(DropoutGrad, kMSDomain, 1, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
@@ -28,8 +41,6 @@ ONNX_OPERATOR_KERNEL_EX(BitmaskDropoutGrad, kMSDomain, 1, kCudaExecutionProvider
                             .InputMemoryType(OrtMemTypeCPUInput, 2)
                             .InputMemoryType(OrtMemTypeCPUInput, 3),
                         DropoutGrad<true>);
-
-constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
 
 template <typename T>
 struct DropoutGradComputeImpl {

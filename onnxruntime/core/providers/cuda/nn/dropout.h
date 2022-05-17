@@ -10,11 +10,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
-struct GetRatioDataImpl {
-  void operator()(const Tensor* ratio, float& ratio_data) const;
-};
-
 template <bool UseBitmask>
 class Dropout final : public CudaKernel {
  public:
