@@ -154,7 +154,7 @@ def main():
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
     identifier = get_identifier(args.commit_datetime, args.commit_hash, args.trt_version, args.branch)
-    upload_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
         result_file = args.report_folder
