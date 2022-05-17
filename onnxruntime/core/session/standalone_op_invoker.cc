@@ -24,7 +24,7 @@ ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr*) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOp,
-                    _In_ const OrtKernelInfo*,
+                    _In_ const OrtExecutionProvider* ep,
                     _In_ const char*,
                     _In_ const char*,
                     _In_ int,
