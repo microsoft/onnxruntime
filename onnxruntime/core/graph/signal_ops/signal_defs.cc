@@ -104,7 +104,7 @@ void RegisterSignalSchemas() {
               "If axis=N-1 and onesided is 1, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[floor(signal_dimN/2)+1][2].",
               "T1")
       .TypeConstraint(
-          "T1",
+          "T1", 
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(

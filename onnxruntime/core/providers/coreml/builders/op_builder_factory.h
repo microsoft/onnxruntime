@@ -14,8 +14,6 @@ struct OpBuilderRegistrations {
 };
 
 // Get the lookup table with IOpBuilder delegates for different onnx operators
-// Note, the lookup table should have same number of entries as the result of CreateOpSupportCheckers()
-// in op_support_checker.h
 const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders();
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
