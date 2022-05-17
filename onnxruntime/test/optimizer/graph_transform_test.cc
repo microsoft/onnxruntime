@@ -3631,6 +3631,7 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
 
+#ifdef ENABLE_TRAINING
 static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
                                      const int add_count, const int dropout_count, const int bitmask_dropout_count,
                                      const int bias_dropout_count, const int bitmask_bias_dropout_count,
@@ -3677,6 +3678,7 @@ TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
   TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_residual_multiple_consumers.onnx", true,
                            *logger_, 1, 0, 0, 0, 1, 0, 1);
 }
+#endif
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
