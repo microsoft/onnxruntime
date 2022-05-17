@@ -16,7 +16,7 @@ namespace test {
 
 namespace {
 
-constexpr std::initializer_list<float> kRatios = {0.00f, 0.25f, 0.50f, 0.75f, 0.99f};
+const std::vector<float> kRatios{0.00f, 0.25f, 0.50f, 0.75f, 0.99f};
 constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
 
 void GenerateMaskData(size_t size, bool* mask_data, float ratio) {
@@ -57,7 +57,7 @@ void RunTest(const std::vector<int64_t>& input_dims) {
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   std::vector<T> input_data = onnxruntime::test::ValueRange<T>(input_size, T(1.f), T(1.f));
   std::unique_ptr<bool[]> mask_buffer = std::make_unique<bool[]>(input_size);
-  for (const float ratio : kRatios) {
+  for (float ratio : kRatios) {
     onnxruntime::test::OpTester test("BitmaskDropoutGrad", 1, kMSDomain);
     GenerateMaskData(input_size, mask_buffer.get(), ratio);
     std::vector<uint32_t> bitmask_data;

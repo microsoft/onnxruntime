@@ -15,7 +15,7 @@ namespace {
 
 constexpr int64_t kMaskSeed = 42;
 // If ratio is 0, it will go to inference mode even the training_mode is true.
-constexpr std::initializer_list<float> kRatios = {0.25f, 0.50f, 0.75f, 0.99f};
+const std::vector<float> kRatios{0.25f, 0.50f, 0.75f, 0.99f};
 constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
 
 template <typename T>
