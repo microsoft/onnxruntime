@@ -78,7 +78,7 @@ FORCEINLINE int64_t GetIndex(size_t i, const T* indices, int64_t axis_size) {
   if (index < 0)  // Handle negative indices
     index += axis_size;
   if (std::make_unsigned_t<T>(index) >= std::make_unsigned_t<T>(axis_size))
-    throw std::out_of_range{"Index out of range"};
+    ORT_THROW("Index out of range");
   return index;
 };
 
@@ -114,7 +114,7 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
 
   auto MainLoop = [&](auto* output_data, auto* input_data) {
     auto BatchWork = [&](size_t inner_dim) {
-      try {
+      ORT_TRY {
         auto output = output_data + inner_dim_size * inner_dim;
         auto input = input_data + CalculateOffset(inner_dim, input_shape_pitches, axis, indices_shape);
         auto indices = indices_data + inner_dim_size * inner_dim;
@@ -126,7 +126,8 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
           for (size_t i = 0; i < inner_dim_size; i++)
             output[i] = input[GetIndex(i, indices, axis_size) * axis_pitch + i];
         }
-      } catch (const std::out_of_range&) {
+      }
+      ORT_CATCH(const std::exception&) {
         index_error = true;
       }
     };
