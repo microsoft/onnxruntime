@@ -1245,7 +1245,7 @@ inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
 }
 
 inline void CustomOpApi::GetExecutionProvider(_In_ const OrtKernelInfo* info, _Outptr_ OrtExecutionProvider** ep) {
-  api_.GetExecutionProvider(info, ep);
+  ThrowOnError(api_.GetExecutionProvider(info, ep));
 }
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
