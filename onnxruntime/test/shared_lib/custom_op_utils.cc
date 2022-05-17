@@ -418,11 +418,11 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   InvokeTopK(context);
   // Create GRU on the fly
   InitGru(ort_, ep_);
-  ORT_ENFORCE(op_gru, "op_add not initialzied");
+  ORT_ENFORCE(op_gru, "op_gru not initialzied");
   InvokeGru(context);
   std::cout << "gru invoked as standalone op" << std::endl;
   ort_.ReleaseOp(op_gru);
-  op_gru = {};
+  op_gru = nullptr;
 }
 
 StandaloneCustomKernel::~StandaloneCustomKernel() {
