@@ -7,7 +7,6 @@ import pandas as pd
 from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.data_format import DataFormat
 from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
-
 from perf_utils import (
     avg_ending,
     cpu,
