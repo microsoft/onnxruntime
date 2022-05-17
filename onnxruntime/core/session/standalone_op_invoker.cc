@@ -55,8 +55,8 @@ ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp*) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetExecutionProvider,
-      _In_ const OrtKernelInfo* info,
-      _Outptr_ OrtExecutionProvider** ep) {
+      _In_ const OrtKernelInfo*,
+      _Outptr_ OrtExecutionProvider**) {
   API_IMPL_BEGIN
   return CreateStatus(ORT_NOT_IMPLEMENTED, "GetExecutionProvider is not implemented for minimal build.");
   API_IMPL_END
@@ -152,6 +152,12 @@ void UpdateNode(const onnxruntime::OpKernel* kernel,
     if (input_defs.size() == static_cast<size_t>(input_count) &&
         output_defs.size() == static_cast<size_t>(output_count)) {
       return;  // already done init
+    }
+    for (auto* input_arg : input_defs) {
+      delete input_arg;
+    }
+    for (auto* output_arg : output_defs) {
+      delete output_arg;
     }
     input_defs.clear();
     output_defs.clear();
