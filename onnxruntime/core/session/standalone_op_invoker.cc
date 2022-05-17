@@ -149,7 +149,8 @@ void UpdateNode(const onnxruntime::OpKernel* kernel,
     Node* node = iter->second.get();
     auto& input_defs = node->MutableInputDefs();
     auto& output_defs = node->MutableOutputDefs();
-    if (input_defs.size() == input_count && output_defs.size() == output_count) {
+    if (input_defs.size() == static_cast<size_t>(input_count) &&
+        output_defs.size() == static_cast<size_t>(output_count)) {
       return;  // already done init
     }
     input_defs.clear();
