@@ -52,7 +52,7 @@ def parse_arguments():
         "--commit_datetime",
         help="Commit datetime in Python's datetime ISO 8601 format",
         required=True,
-        type=lambda s: datetime.datetime.fromisoformat(s),
+        type=datetime.datetime.fromisoformat
     )
 
     return parser.parse_args()
@@ -188,7 +188,7 @@ def main():
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
     identifier = get_identifier(args.commit_datetime, args.commit_hash, args.trt_version, args.branch)
-    upload_time = datetime.datetime.now(tz=datetime.timezone.utc)
+    upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
 
     try:
         result_file = args.report_folder
