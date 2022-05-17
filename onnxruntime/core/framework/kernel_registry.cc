@@ -5,12 +5,29 @@
 
 #include <algorithm>
 #include <memory>
+#include <numeric>
 #include <unordered_map>
 
-#include "core/common/container_utils.h"
 #include "core/framework/session_state.h"
 
 namespace onnxruntime {
+
+gsl::span<const ArgTypeAndIndex> KernelTypeStrResolver::ResolveKernelTypeStr(
+    const OpIdentifier& op_id, const std::string& kernel_type_str) const {
+  if (auto op_it = op_type_str_map_.find(op_id); op_it != op_type_str_map_.end()) {
+    const auto& type_str_map = op_it->second;
+    if (const auto type_str_it = type_str_map.find(kernel_type_str); type_str_it != type_str_map.end()) {
+      return type_str_it->second;
+    }
+  }
+  ORT_THROW("Failed to resolve type string '", kernel_type_str, "' for op ",
+            std::get<1>(op_id), ":", std::get<0>(op_id), "(", std::get<2>(op_id), ")");
+}
+
+bool KernelTypeStrResolver::RegisterKernelTypeStrToArgsMap(OpIdentifier op_id,
+                                                           KernelTypeStrToArgsMap kernel_type_str_to_args) {
+  return op_type_str_map_.try_emplace(std::move(op_id), std::move(kernel_type_str_to_args)).second;
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
@@ -24,32 +41,49 @@ bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_
     return names;
   }();
 
-  InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>> type_str_map{};
+  InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>> kernel_type_str_map{};
   // one entry for each type constraint, input, and output name
-  type_str_map.reserve(type_constraint_names.size() +
-                       op_schema.inputs().size() + op_schema.outputs().size());
+  kernel_type_str_map.reserve(type_constraint_names.size() +
+                              op_schema.inputs().size() + op_schema.outputs().size());
 
   auto process_formal_params = [&](ArgType arg_type,
                                    gsl::span<const ONNX_NAMESPACE::OpSchema::FormalParameter> params) {
     for (size_t i = 0; i < params.size(); ++i) {
       const auto& param = params[i];
-      const auto& type_str = param.GetTypeStr();
-      if (Contains(type_constraint_names, type_str)) {
-        type_str_map[type_str].push_back(ArgTypeAndIndex{arg_type, i});
+      auto curr_arg_type_and_idx = ArgTypeAndIndex{arg_type, i};
+
+      // handle type constraint
+      if (const auto& type_str = param.GetTypeStr();
+          Contains(type_constraint_names, type_str)) {
+        kernel_type_str_map[type_str].push_back(curr_arg_type_and_idx);
       }
-      const bool added = type_str_map.try_emplace(param.GetName(),
-                                                  InlinedVector<ArgTypeAndIndex>{{arg_type, i}})
-                             .second;
-      ORT_ENFORCE(added, "Type string already exists for formal parameter name: ", param.GetName());
+
+      // handle input/output name
+      auto& args_for_io_name = kernel_type_str_map[param.GetName()];
+      if (!args_for_io_name.empty()) {
+        // It's possible that an input and output have the same name (e.g, BatchNormalization-9 has both an input and
+        // an output named 'mean').
+        // If so, their formal parameters also need to have the same type string. Otherwise, it would be ambiguous to
+        // use that name as a kernel type string.
+        auto formal_param_type_str = [&](const ArgTypeAndIndex& arg_type_and_idx) {
+          const auto [arg_type, idx] = arg_type_and_idx;
+          const auto& formal_params = arg_type == ArgType::kInput ? op_schema.inputs() : op_schema.outputs();
+          return formal_params[idx].GetTypeStr();
+        };
+
+        ORT_ENFORCE(formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
+                    "Kernel type string already exists for formal parameter name '", param.GetName(),
+                    "', but the existing argument's formal parameter type string is different.");
+      }
+      args_for_io_name.push_back(std::move(curr_arg_type_and_idx));
     }
   };
 
   process_formal_params(ArgType::kInput, op_schema.inputs());
   process_formal_params(ArgType::kOutput, op_schema.outputs());
 
-  return op_type_str_map_.try_emplace(OpIdentifier{op_schema.Name(), op_schema.domain(), op_schema.SinceVersion()},
-                                      std::move(type_str_map))
-      .second;
+  return RegisterKernelTypeStrToArgsMap(OpIdentifier{op_schema.domain(), op_schema.Name(), op_schema.SinceVersion()},
+                                        std::move(kernel_type_str_map));
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -83,6 +117,17 @@ bool MatchKernelDefTypes(const Node& node,
                          const KernelDef& kernel_def,
                          const KernelTypeStrResolver& kernel_type_str_resolver,
                          std::string& mismatch_reason) {
+  const auto actual_inputs = node.InputDefs();
+  const auto actual_outputs = node.OutputDefs();
+  const auto& actual_input_arg_counts = node.InputArgCount();
+  const auto actual_input_arg_offsets = [&actual_input_arg_counts]() {
+    InlinedVector<int> offsets{};
+    offsets.reserve(actual_input_arg_counts.size());
+    std::exclusive_scan(actual_input_arg_counts.begin(), actual_input_arg_counts.end(),
+                        std::back_inserter(offsets), 0);
+    return offsets;
+  }();
+
   // for each type constraint
   //   map type constraint to arg
   //   check arg type against type constraint enabled types
@@ -94,16 +139,19 @@ bool MatchKernelDefTypes(const Node& node,
     for (const auto [arg_type, formal_arg_idx] : constraint_args) {
       const NodeArg* arg;
       if (arg_type == ArgType::kInput) {
-        const auto& input_arg_counts = node.InputArgCount();
-        const size_t first_arg_idx = static_cast<size_t>(std::accumulate(input_arg_counts.begin(),
-                                                                         input_arg_counts.begin() + formal_arg_idx,
-                                                                         int{0}));
-        arg = node.InputDefs()[first_arg_idx];
+        if (formal_arg_idx >= actual_input_arg_counts.size() ||
+            actual_input_arg_counts[formal_arg_idx] == 0) {
+          arg = nullptr;
+        } else {
+          const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
+          ORT_ENFORCE(first_arg_idx < actual_inputs.size());
+          arg = actual_inputs[first_arg_idx];
+        }
       } else {
-        arg = node.OutputDefs()[formal_arg_idx];
+        arg = formal_arg_idx < actual_outputs.size() ? actual_outputs[formal_arg_idx] : nullptr;
       }
 
-      if (arg->Exists()) {
+      if (arg && arg->Exists()) {
         const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
         ORT_ENFORCE(type_proto != nullptr);
 

@@ -19,31 +19,19 @@ inline OpIdentifier OpIdFromNode(const Node& node) {
 
 class KernelTypeStrResolver {
  public:
-  gsl::span<const ArgTypeAndIndex> ResolveKernelTypeStr(const OpIdentifier& op_id,
-                                                        const std::string& kernel_type_str) const {
-    if (auto op_it = op_type_str_map_.find(op_id); op_it != op_type_str_map_.end()) {
-      const auto& type_str_map = op_it->second;
-      if (const auto type_str_it = type_str_map.find(kernel_type_str); type_str_it != type_str_map.end()) {
-        return type_str_it->second;
-      }
-    }
-    ORT_THROW("Failed to resolve type string '", kernel_type_str, "' for op ",
-              std::get<1>(op_id), ":", std::get<0>(op_id), "(", std::get<2>(op_id), ")");
-  }
+  using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
 
-  bool Register(const OpIdentifier& op_id, std::string type_str, InlinedVector<ArgTypeAndIndex> args) {
-    return op_type_str_map_[op_id].try_emplace(std::move(type_str), std::move(args)).second;
-  }
+  gsl::span<const ArgTypeAndIndex> ResolveKernelTypeStr(const OpIdentifier& op_id,
+                                                        const std::string& kernel_type_str) const;
+
+  bool RegisterKernelTypeStrToArgsMap(OpIdentifier op_id, KernelTypeStrToArgsMap kernel_type_str_to_args);
 
 #if !defined(ORT_MINIMAL_BUILD)
   bool RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:
-  InlinedHashMap<OpIdentifier,
-                 InlinedHashMap<std::string,
-                                InlinedVector<ArgTypeAndIndex>>>
-      op_type_str_map_;
+  InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap> op_type_str_map_;
 };
 
 /**
