@@ -12,6 +12,7 @@
 
 namespace onnxruntime {
 
+#if !defined(ORT_MINIMAL_BUILD)
 bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
   const auto type_constraint_names = [&]() {
     const auto& type_constraints = op_schema.typeConstraintParams();
@@ -50,8 +51,8 @@ bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_
                                       std::move(type_str_map))
       .second;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD)
 namespace {
 bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX_NAMESPACE::TypeProto& actual_type,
                            std::string& mismatch_reason) {
@@ -79,15 +80,16 @@ bool IsTypeProtoCompatible(gsl::span<const MLDataType> enabled_types, const ONNX
 }
 
 bool MatchKernelDefTypes(const Node& node,
-    const KernelDef& kernel_def,
-    const KernelTypeStrResolver& kernel_type_str_resolver,
-    std::string& mismatch_reason) {
+                         const KernelDef& kernel_def,
+                         const KernelTypeStrResolver& kernel_type_str_resolver,
+                         std::string& mismatch_reason) {
   // for each type constraint
   //   map type constraint to arg
   //   check arg type against type constraint enabled types
   const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
-  for (const auto& [type_str, enabled_types] : kernel_type_constraints) {
-    const auto constraint_args = kernel_type_str_resolver.Resolve(node, type_str);
+  for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
+    const auto op_id = OpIdFromNode(node);
+    const auto constraint_args = kernel_type_str_resolver.ResolveKernelTypeStr(op_id, kernel_type_str);
 
     for (const auto [arg_type, formal_arg_idx] : constraint_args) {
       const NodeArg* arg;
@@ -171,31 +173,6 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
   return true;
 }
 
-Status KernelRegistry::TryCreateKernel(const Node& node,
-                                       const IExecutionProvider& execution_provider,
-                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                       FuncManager& funcs_mgr,
-                                       const DataTransferManager& data_transfer_mgr,
-                                       /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
-  const KernelCreateInfo* kernel_create_info = nullptr;
-  ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
-  OpKernelInfo kernel_info(node,
-                           *kernel_create_info->kernel_def,
-                           execution_provider,
-                           constant_initialized_tensors,
-                           ort_value_name_idx_map,
-                           data_transfer_mgr);
-  return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
-}
-
-static std::string ToString(const std::vector<std::string>& error_strs) {
-  std::ostringstream ostr;
-  std::for_each(std::begin(error_strs), std::end(error_strs),
-                [&ostr](const std::string& str) { ostr << str << "\n"; });
-  return ostr.str();
-}
-
 // It's often this function returns a failed status, but it is totally expected.
 // It just means this registry doesn't have such a kernel, please search it elsewhere.
 // if this function is called before graph partition, then node.provider is not set.
@@ -203,14 +180,8 @@ static std::string ToString(const std::vector<std::string>& error_strs) {
 // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
 Status KernelRegistry::TryFindKernel(const Node& node,
                                      ProviderType exec_provider,
+                                     const KernelTypeStrResolver& kernel_type_str_resolver,
                                      const KernelCreateInfo** out) const {
-  // TODO make this a parameter
-  KernelTypeStrResolver kernel_type_str_resolver{};
-  {
-    ORT_ENFORCE(node.Op() != nullptr);
-    kernel_type_str_resolver.RegisterOpSchema(*node.Op());
-  }
-
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 
@@ -233,7 +204,10 @@ Status KernelRegistry::TryFindKernel(const Node& node,
     oss << "Op with name (" << node.Name() << ")"
         << " and type (" << node.OpType() << ")"
         << " kernel is not supported in " << expected_provider << "."
-        << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
+        << " Encountered following errors: (";
+    std::copy(verify_kernel_def_error_strs.begin(), verify_kernel_def_error_strs.end(),
+              std::ostream_iterator<std::string>(oss, "\n"));
+    oss << ")";
 
     VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
     return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
@@ -242,32 +216,60 @@ Status KernelRegistry::TryFindKernel(const Node& node,
   return Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found");
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+Status KernelRegistry::TryCreateKernel(const Node& node,
+                                       const IExecutionProvider& execution_provider,
+                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                       FuncManager& funcs_mgr,
+                                       const DataTransferManager& data_transfer_mgr,
+                                       /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
+  const KernelCreateInfo* kernel_create_info = nullptr;
+  ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
+  OpKernelInfo kernel_info(node,
+                           *kernel_create_info->kernel_def,
+                           execution_provider,
+                           constant_initialized_tensors,
+                           ort_value_name_idx_map,
+                           data_transfer_mgr);
+  return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
+}
+
+Status KernelRegistry::TryFindKernel(const Node& node,
+                                     ProviderType exec_provider,
+                                     const KernelCreateInfo** out) const {
+  KernelTypeStrResolver kernel_type_str_resolver{};
+  ORT_RETURN_IF(node.Op() == nullptr, "Op schema must be available.");
+  kernel_type_str_resolver.RegisterOpSchema(*node.Op());
+  return TryFindKernel(node, exec_provider, kernel_type_str_resolver, out);
+}
+
 Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
                                      const std::unordered_map<std::string, MLDataType>& type_constraints,
                                      ProviderType exec_provider, const KernelCreateInfo** out) const {
   *out = nullptr;
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_name, domain, exec_provider));
-  for (auto i = range.first; i != range.second; ++i) {  //loop through all kernels
+  for (auto i = range.first; i != range.second; ++i) {  // loop through all kernels
     const KernelCreateInfo& kci = i->second;
     int start_ver{};
     int end_ver{};
     kci.kernel_def->SinceVersion(&start_ver, &end_ver);
-    if (start_ver <= version && end_ver >= version) {  //try match the version
+    if (start_ver <= version && end_ver >= version) {  // try match the version
       auto& kci_constraints = kci.kernel_def->TypeConstraints();
       bool match = true;
-      for (auto& constraint : type_constraints) {  //try match type constraints
+      for (auto& constraint : type_constraints) {  // try match type constraints
         auto iter = kci_constraints.find(constraint.first);
         if (iter == kci_constraints.end() || find(iter->second.begin(), iter->second.end(), constraint.second) == iter->second.end()) {
           match = false;
           break;
         }
-      }  //for
+      }  // for
       if (match) {
-        *out = &kci;  //found match, exit loop
+        *out = &kci;  // found match, exit loop
         break;
       }
-    }  //if
-  }    //for
+    }  // if
+  }    // for
   return *out == nullptr ? Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found") : Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)

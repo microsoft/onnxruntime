@@ -10,39 +10,40 @@ namespace onnxruntime {
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
 using KernelDefHashes = std::vector<std::pair<std::string, HashValue>>;
 
-class IKernelTypeMatcher {
- public:
-  virtual ~IKernelTypeMatcher() = default;
-  virtual bool IsMatch(const Node& node, const KernelDef& kernel_def, std::string& mismatch_reason) const = 0;
-};
+using OpIdentifier = std::tuple<std::string, std::string, ONNX_NAMESPACE::OperatorSetVersion>;
+using ArgTypeAndIndex = std::pair<ArgType, size_t>;
+
+inline OpIdentifier OpIdFromNode(const Node& node) {
+  return OpIdentifier{node.Domain(), node.OpType(), node.SinceVersion()};
+}
 
 class KernelTypeStrResolver {
  public:
-  using OpIdentifier = std::tuple<std::string, std::string, ONNX_NAMESPACE::OperatorSetVersion>;
-  using ArgTypeAndIndex = std::pair<ArgType, size_t>;
-
-  gsl::span<const ArgTypeAndIndex> Resolve(const Node& node, const std::string& type_str) const {
-    const auto key = OpIdentifier{node.OpType(), node.Domain(), node.SinceVersion()};
-    if (auto op_it = op_type_str_map_.find(key); op_it != op_type_str_map_.end()) {
+  gsl::span<const ArgTypeAndIndex> ResolveKernelTypeStr(const OpIdentifier& op_id,
+                                                        const std::string& kernel_type_str) const {
+    if (auto op_it = op_type_str_map_.find(op_id); op_it != op_type_str_map_.end()) {
       const auto& type_str_map = op_it->second;
-      if (const auto type_str_it = type_str_map.find(type_str); type_str_it != type_str_map.end()) {
+      if (const auto type_str_it = type_str_map.find(kernel_type_str); type_str_it != type_str_map.end()) {
         return type_str_it->second;
       }
     }
-    ORT_THROW("Failed to resolve type string '", type_str, "' for op ", node.Domain(), ":", node.OpType(),
-              "(", node.SinceVersion(), ")");
+    ORT_THROW("Failed to resolve type string '", kernel_type_str, "' for op ",
+              std::get<1>(op_id), ":", std::get<0>(op_id), "(", std::get<2>(op_id), ")");
   }
 
   bool Register(const OpIdentifier& op_id, std::string type_str, InlinedVector<ArgTypeAndIndex> args) {
     return op_type_str_map_[op_id].try_emplace(std::move(type_str), std::move(args)).second;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   bool RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-  private:
-   InlinedHashMap<OpIdentifier,
-                  InlinedHashMap<std::string,
-                                 InlinedVector<ArgTypeAndIndex>>> op_type_str_map_;
+ private:
+  InlinedHashMap<OpIdentifier,
+                 InlinedHashMap<std::string,
+                                InlinedVector<ArgTypeAndIndex>>>
+      op_type_str_map_;
 };
 
 /**
@@ -58,7 +59,12 @@ class KernelRegistry {
 
   Status Register(KernelCreateInfo&& create_info);
 
+  Status TryFindKernel(const Node& node, ProviderType exec_provider,
+                       const KernelTypeStrResolver& kernel_type_str_resolver,
+                       const KernelCreateInfo** out) const;
+
 #if !defined(ORT_MINIMAL_BUILD)
+
   static bool HasImplementationOf(const KernelRegistry& r, const Node& node,
                                   ProviderType exec_provider) {
     const KernelCreateInfo* info;
@@ -85,7 +91,7 @@ class KernelRegistry {
                        const std::unordered_map<std::string, MLDataType>& type_constraints,
                        ProviderType exec_provider, const KernelCreateInfo** out) const;
 
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Try to find the kernel given a kernel def hash.
   bool TryFindKernelByHash(HashValue kernel_def_hash, const KernelCreateInfo** out) const;
@@ -103,7 +109,6 @@ class KernelRegistry {
   KernelDefHashes ExportKernelDefHashes() const;
 
  private:
-#if !defined(ORT_MINIMAL_BUILD)
   // Check whether the types of inputs/outputs of the given node match the extra
   // type-constraints of the given kernel. This serves two purposes: first, to
   // select the right kernel implementation based on the types of the arguments
@@ -122,7 +127,6 @@ class KernelRegistry {
                               const KernelDef& kernel_def,
                               const KernelTypeStrResolver& kernel_type_str_resolver,
                               std::string& error_str);
-#endif
 
   static std::string GetMapKey(const std::string& op_name, const std::string& domain, const std::string& provider) {
     std::string key(op_name);
