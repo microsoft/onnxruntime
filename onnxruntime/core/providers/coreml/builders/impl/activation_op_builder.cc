@@ -123,7 +123,7 @@ bool IsPReluOpSupported(const Node& node, const OpBuilderInputParams& input_para
   }
 
   const auto x_rank = x_shape.size();
-  if (x_rank == 3 || x_rank == 4) {
+  if (x_rank != 3 && x_rank != 4) {
     LOGS(logger, VERBOSE) << "PRelu 'X' input must have 3 or 4 dimensions, it has " << x_rank << " dimensions";
     return false;
   }
