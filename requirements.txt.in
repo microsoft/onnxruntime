@@ -1,6 +1,6 @@
 coloredlogs
-packaging
-sympy
-numpy >= @Python_NumPy_VERSION@
-protobuf
 flatbuffers
+numpy >= @Python_NumPy_VERSION@
+packaging
+protobuf
+sympy
