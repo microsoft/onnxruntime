@@ -2,14 +2,36 @@ import argparse
 import datetime
 import os
 import sys
-import time
 
 import pandas as pd
 from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.data_format import DataFormat
-from azure.kusto.data.helpers import dataframe_from_result_table
 from azure.kusto.ingest import IngestionProperties, QueuedIngestClient, ReportLevel
-from perf_utils import *
+
+from perf_utils import (
+    avg_ending,
+    cpu,
+    cuda,
+    cuda_fp16,
+    fail_name,
+    group_title,
+    latency_name,
+    latency_over_time_name,
+    memory_ending,
+    memory_name,
+    model_title,
+    ort_provider_list,
+    provider_list,
+    second,
+    session_name,
+    specs_name,
+    standalone_trt,
+    standalone_trt_fp16,
+    status_name,
+    table_headers,
+    trt,
+    trt_fp16,
+)
 
 # database connection strings
 cluster_ingest = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
