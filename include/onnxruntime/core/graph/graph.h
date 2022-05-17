@@ -80,6 +80,19 @@ class Node {
   };
 
   explicit Node() = default;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  Node(const std::string& name,
+       const std::string& op_type,
+       const std::string& description,
+       const std::vector<NodeArg*>& input_args,
+       const std::vector<NodeArg*>& output_args,
+       const NodeAttributes* attributes,
+       const std::string& domain) {
+    Init(name, op_type, description, input_args, output_args, attributes, domain);
+  }
+#endif
+
   ~Node() = default;
 
   /**

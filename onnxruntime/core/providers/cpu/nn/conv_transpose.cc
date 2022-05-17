@@ -123,8 +123,7 @@ template <typename T>
 Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  //size_t num_inputs = OpKernel::Node().InputDefs().size();
-  size_t num_inputs = context->InputCount();
+  size_t num_inputs = OpKernel::Node().InputDefs().size();
   ConvTransposeAttributes::Prepare p;
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
   ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
