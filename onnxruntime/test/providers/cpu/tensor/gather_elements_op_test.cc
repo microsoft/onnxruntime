@@ -90,13 +90,12 @@ void RunTypedTest() {
   test5.AddOutput<T>("output", {2, 2},
                      {1, 1,
                       3, 3});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Out of range value in index tensor",
-            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
+            {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
@@ -247,11 +246,10 @@ void RunTypedTest<std::string>() {
   test4.AddOutput<std::string>("output", {2, 2},
                                {"a", "a",
                                 "c", "c"});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
   test4.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Out of range value in index tensor",
-            {kNupharExecutionProvider, kOpenVINOExecutionProvider});
+            {kOpenVINOExecutionProvider});
 
   // 3D input - axis 1
   OpTester test5("GatherElements", 11);

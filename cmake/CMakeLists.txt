@@ -60,7 +60,7 @@ option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
-option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation for NUPHAR EP" OFF)
+# option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation for NUPHAR EP" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
@@ -71,7 +71,7 @@ option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
-option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
+# option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
@@ -1141,11 +1141,13 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
-if (onnxruntime_USE_NUPHAR)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
-endif()
+
+#if (onnxruntime_USE_NUPHAR)
+#    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)
+#    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
+#    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
+#endif()
+
 if (onnxruntime_USE_TVM)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_TVM=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TVM=1)
@@ -1383,6 +1385,7 @@ if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
 
+#[[
 # NUPHAR EP
 if (onnxruntime_USE_NUPHAR_TVM)
   if (NOT TARGET tvm)
@@ -1445,6 +1448,7 @@ if (onnxruntime_USE_NUPHAR_TVM)
   endif()
 
 endif(onnxruntime_USE_NUPHAR_TVM)
+]]
 
 # TVM EP
 if (onnxruntime_USE_TVM)
@@ -1926,9 +1930,11 @@ endif()
 
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+#[[
 if (onnxruntime_USE_NUPHAR_TVM)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
 endif()
+]]
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
     message(

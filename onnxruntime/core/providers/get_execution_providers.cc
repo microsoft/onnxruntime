@@ -66,14 +66,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kNupharExecutionProvider,
-#ifdef USE_NUPHAR
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kTvmExecutionProvider,
 #ifdef USE_TVM
             true,

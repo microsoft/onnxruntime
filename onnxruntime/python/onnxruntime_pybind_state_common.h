@@ -23,7 +23,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -78,12 +78,6 @@ struct OrtStatus {
 #endif
 #else
 #define BACKEND_OPENVINO ""
-#endif
-
-#ifdef USE_NUPHAR
-#define BACKEND_NUPHAR "-NUPHAR"
-#else
-#define BACKEND_NUPHAR ""
 #endif
 
 #ifdef USE_TVM
@@ -144,15 +138,6 @@ namespace onnxruntime {
 ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
 namespace python {
 extern std::string openvino_device_type;
-}
-}  // namespace onnxruntime
-#endif
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-// TODO remove deprecated global config
-namespace onnxruntime {
-namespace python {
-extern std::string nuphar_settings;
 }
 }  // namespace onnxruntime
 #endif
@@ -485,7 +470,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 #ifdef USE_TVM
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);

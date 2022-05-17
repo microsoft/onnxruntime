@@ -223,11 +223,8 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // Ideally, it should be moved to "Compile" call.
         // Here we temporary keep the function body for DML fusion
         // Need to remove it after migrate DML to the Compile-based approach.
-        // TODO2: Nuphar is out of maintain, keep it with old API temporarily.
-        // We want to deprecate Nuphar soon.
         if (fusion_style == IExecutionProvider::FusionStyle::Function ||
-            provider_type == kDmlExecutionProvider ||
-            provider_type == kNupharExecutionProvider) {
+            provider_type == kDmlExecutionProvider) {
           fused_node = &graph.FuseSubGraph(capability, node_name);
         } else {
           // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
@@ -346,7 +343,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     std::vector<NodeComputeInfo> node_compute_funcs;
     // !!! The Function style fusion will be deprecated soon.
     if (fusion_style == IExecutionProvider::FusionStyle::Function) {
-      // TODO: Nuphar is out of maintain. Use the old api temporarily.
       // We want to deprecate it soon.
       // Create a Function based node where the fused nodes have a new Graph instance.
       static std::once_flag legacy_compile_method_warning_flag;

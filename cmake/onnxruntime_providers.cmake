@@ -108,10 +108,11 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
   "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
-
+#[[
 if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
 endif()
+]]
 if(onnxruntime_USE_VITISAI)
   set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
 endif()
@@ -478,9 +479,11 @@ if (onnxruntime_USE_CUDA)
 
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
+    #[[
     if (onnxruntime_USE_NUPHAR_TVM)
       target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
     endif()
+    ]]
     set(onnxruntime_providers_cuda_static_library_flags
         -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
     )
@@ -651,7 +654,7 @@ if (onnxruntime_USE_TENSORRT)
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-
+#[[
 if (onnxruntime_USE_NUPHAR)
   add_definitions(-DUSE_NUPHAR=1)
 
@@ -701,7 +704,7 @@ if (onnxruntime_USE_NUPHAR)
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
 endif()
-
+]]
 if (onnxruntime_USE_VITISAI)
   file(GLOB_RECURSE onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"

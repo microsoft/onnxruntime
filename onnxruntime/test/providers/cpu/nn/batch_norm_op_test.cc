@@ -41,7 +41,7 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
   test.AddInput<T>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"), all_input_except_x_are_initializers);
   test.AddInput<T>("var", input_shapes_map.at("var"), input_data_map.at("var"), all_input_except_x_are_initializers);
   test.AddOutput<T>("output", expected_output_shape, expected_output);
-  // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
+  // Weight as input is not supported by TensorRT
   std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
   if (spatial_mode == 0) {
     excluded_eps.insert(kOpenVINOExecutionProvider);
