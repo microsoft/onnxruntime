@@ -517,7 +517,7 @@ void NhwcUpsampleBilinear(const int64_t batch_size,
 
 inline void ComputeInterpolationValuesInteger(
     const int32_t value, const int32_t scale_10, const bool is_half_pixel,
-    int32_t input_size, int32_t* scaled_value, int32_t* lower_bound,
+    const int32_t input_size, int32_t* scaled_value, int32_t* lower_bound,
     int32_t* upper_bound) {
   if (is_half_pixel) {
     *scaled_value = value * scale_10 + scale_10 / 2 - (1 << 9);
@@ -530,52 +530,20 @@ inline void ComputeInterpolationValuesInteger(
       std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
 }
 
-inline int Offset(gsl::span<const int64_t> dims_data, int i0, int i1, int i2, int i3) {
-  ORT_ENFORCE(dims_data.size() == 4);
-  ORT_ENFORCE(i0 >= 0 && i0 < dims_data[0]);
-  ORT_ENFORCE(i1 >= 0 && i1 < dims_data[1]);
-  ORT_ENFORCE(i2 >= 0 && i2 < dims_data[2]);
-  ORT_ENFORCE(i3 >= 0 && i3 < dims_data[3]);
+inline int Offset(const gsl::span<const int64_t>& dims_data, int i0, int i1, int i2, int i3) {
   return static_cast<int>(((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3);
 }
 
 // Same as above but doesn't use any floating-point for the resize
 template <typename T>
 inline void NhwcUpsampleBilinearInteger(
-    //const ResizeCoordinateTransformationMode coordinate_transform_mode,
     bool is_half_pixel, bool is_align_corners,
     const int32_t batches, const int32_t input_height, const int32_t input_width, const int32_t depth,
-    gsl::span<const int64_t> input_dims,
+    const gsl::span<const int64_t>& input_dims,
     const T* input_data,
     const int32_t output_height, const int32_t output_width,
-    gsl::span<const int64_t> output_dims,
+    const gsl::span<const int64_t>& output_dims,
     T* output_data) {
-  ORT_ENFORCE(!is_half_pixel || !is_align_corners);
-  ORT_ENFORCE(input_dims.size() == 4);
-  ORT_ENFORCE(output_dims.size() == 4);
-#if 0
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_size_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_size_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  const int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int32_t input_height = input_shape.Dims(1);
-  const int32_t input_width = input_shape.Dims(2);
-  const int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
-
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(0), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(1), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(2), 1);
-  TFLITE_DCHECK_EQ(output_size_shape.Dims(3), 2);
-  const int32_t output_height =
-      output_size_data[Offset(output_size_shape, 0, 0, 0, 0)];
-  const int32_t output_width =
-      output_size_data[Offset(output_size_shape, 0, 0, 0, 1)];
-#endif
-
   int32_t height_scale_10 =
       ((1 << 10) * input_height + output_height / 2) / output_height;
   int32_t width_scale_10 =
