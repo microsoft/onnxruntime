@@ -43,6 +43,7 @@ namespace transformers {
 
 Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
+  // TODO: support subgraph with 2 inputs (no decoder_input_ids input).
   ORT_RETURN_IF(num_subgraph_inputs != 3, "expect 3 inputs, got:", num_subgraph_inputs);
 
   ORT_RETURN_IF(num_subgraph_outputs < 6, "expect >=6 outputs, got:", num_subgraph_outputs);
@@ -121,7 +122,16 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   OrtValue expanded_encoder_input_ids;
   OrtValue expanded_encoder_attention_mask;
   OrtValue expanded_decoder_input_ids;  // filled with start token ID
-  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids, num_beams, pad_token_id, start_token_id, sequence_lengths, cpu_alloactor, expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids));
+  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids,
+                                                 num_beams,
+                                                 pad_token_id,
+                                                 start_token_id,
+                                                 sequence_lengths,
+                                                 cpu_alloactor,
+                                                 expanded_encoder_input_ids,
+                                                 expanded_encoder_attention_mask,
+                                                 expanded_decoder_input_ids));
+
   const IExecutionProvider* provider = GetProvider();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(provider, expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids, feeds, buffer));
 

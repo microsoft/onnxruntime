@@ -10,9 +10,9 @@ Example 1: convert gpt2 model with beam search:
 
 Example 2: convert T5 model with beam search:
    cd ./models/t5
-   python convert_to_onnx.py -m t5-small -s
+   python convert_to_onnx.py -m t5-small
    cd ../..
-   python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./models/t5/t5-small_decoder.onnx --encoder_decoder_init_onnx ./models/t5/t5-small_encoder_decoder_init.onnx --output ./models/t5/t5_small_beam_search.onnx
+   python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 """
 
 import argparse
@@ -903,11 +903,10 @@ def main(argv=None, sentences=None):
     if args.model_type == "t5":
         assert args.encoder_decoder_init_onnx, "please export t5 to onnx models before using this tool"
 
-    # if os.path.exists(args.output):
-    #     print(f"skip conversion since path existed: {args.output}")
-    # else:
-    #     convert_model(args)
     convert_model(args)
+
+    print("You have 30 seconds to attach a debugger...")
+    time.sleep(30)
 
     if args.model_type == "t5":
         return test_t5_model(args, use_vocab_mask=True, sentences=sentences)
