@@ -1269,15 +1269,19 @@ void RegisterTrainingOpSchemas() {
    * Implementation-wise, this bring portunaties for better performance.
    *
    * The differences with AdamOptimizer:
-   * > AdamWOptimizer can accept multiple parameters and other states related to them as inputs (seq<tensor>).
+   * > Different inputs.
+   *
+   *   AdamWOptimizer can accept multiple parameters and other states related to them as inputs (seq<tensor>).
    *   This make multi-tensor-apply applicable to implement on GPUs. Existing LambOptimizer has similar capability,
-   *   while it is using many fixed-length optional vardaric inputs, which is not clean in terms of op definition.
+   *   while it is using many fixed-length optional vardaric inputs, which is not a clean op definition.
    *
    *   AdamOptimizer takes one single parameter and its other states.
    *
-   * > Despite of normal adam computation, for better perf in ORTTrainer, AdamOptimizer also fused gradient norm
-   *   clipping in its implementation. This sometimes make it hard to align the optimizer with other frameworks during
-   *   model onboarding, on the other hand, the fusion is not bring very significant gains actually.
+   * > Different computation.
+   *
+   *   Despite of normal adam computation, for better perf in ORTTrainer, AdamOptimizer also fused gradient norm
+   *   clipping in its implementation. This sometimes makes it hard to align the optimizer with other frameworks during
+   *   model onboarding, on the other hand, the fusion did not bring very significant gains actually.
    *
    *   AdamWOptimizer has simplified definitions, excludes inputs/attributes not related to optimizer computations.
    *
@@ -1288,7 +1292,7 @@ void RegisterTrainingOpSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "lr", "The initial learning rate.", "T1")
-      .Input(1, "step", "The update count of \"X\". It should be a scalar.", "T2")
+      .Input(1, "step", "The update count of weights. It should be a scalar.", "T2")
       .Input(2, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
       .Input(3, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
       .Input(4, "momentums_1", "Sequence of exponentially averaged historical gradients.", "S_MOMENT")
@@ -1326,8 +1330,8 @@ void RegisterTrainingOpSchemas() {
           "adam_mode",
           "Modes for applying bias correction and weight decay (default 0) "
           "0 : Weight decay is applied before weight is updated."
-          "  compuatation aligned with Torch AdamW. In this mode, "
-          "  correct_bias should be set 1 to keep aligned with PyTorch."
+          "  Computation aligned with Torch AdamW. In this mode, "
+          "  correct_bias should be 1 to keep aligned with PyTorch."
           "1 : Weight decay is applied after weight is updated."
           "    Computation is aligned with Huggingface AdamW.",
           AttributeProto::INT,
@@ -1353,20 +1357,21 @@ void RegisterTrainingOpSchemas() {
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
           "Constrain momentums' types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        if (!hasNInputShapes(ctx, 5)) {
-          fail_shape_inference("missing input shapes for Adam.");
+        if (hasInputShape(ctx, 0)) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          updateOutputShape(ctx, 0, {});
         }
 
-        if (ctx.getNumOutputs() >= 2) {
+        if (ctx.getNumOutputs() >= 2 && hasInputShape(ctx, 2)) {
           propagateElemTypeFromInputToOutput(ctx, 2, 1);
           propagateShapeFromInputToOutput(ctx, 2, 1);
         }
-        if (ctx.getNumOutputs() >= 3) {
+        if (ctx.getNumOutputs() >= 3 && hasInputShape(ctx, 4)) {
           propagateElemTypeFromInputToOutput(ctx, 4, 2);
           propagateShapeFromInputToOutput(ctx, 4, 2);
         }
 
-        if (ctx.getNumOutputs() >= 4) {
+        if (ctx.getNumOutputs() >= 4 && hasInputShape(ctx, 5)) {
           propagateElemTypeFromInputToOutput(ctx, 5, 3);
           propagateShapeFromInputToOutput(ctx, 5, 3);
         }

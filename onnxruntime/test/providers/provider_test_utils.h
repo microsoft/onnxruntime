@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <utility>
+#include <variant>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
@@ -28,9 +31,6 @@
 #include "test/framework/TestAllocatorManager.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-
-#include <utility>
-#include <variant>
 
 namespace onnxruntime {
 class InferenceSession;
@@ -205,7 +205,7 @@ class OpTester {
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
-  // should validate. Default is to not add.
+  // should validate. Default is to add.
   // Additionally a symbolic dimension will be added if symbolic_dim matches a dimension in the input.
   OpTester& AddShapeToTensorData(bool add_shape = true, int symbolic_dim = -1) {
     add_shape_to_tensor_data_ = add_shape;
@@ -958,12 +958,18 @@ class OpTester {
 #endif
 
     std::unique_ptr<TensorSeq> ptr;
+    SequenceTensorTypeProto<T> sequence_tensor_proto;
 
     if (seq_tensors) {
       auto num_tensors = seq_tensors->tensors.size();
       std::vector<Tensor> tensors;
       tensors.resize(num_tensors);
       auto elem_type = DataTypeImpl::GetType<T>();
+
+      auto* output_tensor_type = sequence_tensor_proto.proto.mutable_sequence_type()
+                                     ->mutable_elem_type()
+                                     ->mutable_tensor_type();
+      ONNX_NAMESPACE::TensorShapeProto* seq_input_shape = output_tensor_type->mutable_shape();
       for (size_t i = 0; i < num_tensors; ++i) {
         TensorShape shape{seq_tensors->tensors[i].shape};
         auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
@@ -981,6 +987,24 @@ class OpTester {
         for (int64_t x = 0; x < values_count; ++x) {
           data_ptr[x] = seq_tensors->tensors[i].data[x];
         }
+
+        if (add_shape_to_tensor_data_) {
+          if (i == 0) {
+            output_tensor_type->set_elem_type(utils::ToTensorProtoElementType<T>());
+            for (size_t j = 0; j < shape.NumDimensions(); ++j) {
+              auto dim = seq_input_shape->add_dim();
+              dim->set_dim_value(shape[j]);
+            }
+          } else {
+            ONNX_NAMESPACE::TensorShapeProto shape_proto;
+            for (size_t j = 0; j < shape.NumDimensions(); ++j) {
+              auto dim = shape_proto.add_dim();
+              dim->set_dim_value(shape[j]);
+            }
+
+            ONNX_NAMESPACE::UnionShapeInfo(shape_proto, *output_tensor_type);
+          }
+        }
       }
 
       ptr = std::make_unique<TensorSeq>(elem_type);
@@ -993,7 +1017,6 @@ class OpTester {
     // nullptr means None OrtValue which we will skip inserting into the feeds
     value.Init(ptr ? ptr.release() : nullptr, mltype, mltype->GetDeleteFunc());
 
-    SequenceTensorTypeProto<T> sequence_tensor_proto;
 #if !defined(DISABLE_OPTIONAL_TYPE)
     OptionalTypeProto optional_type_proto(sequence_tensor_proto.proto);
     auto node_arg = NodeArg(name, !is_optional_sequence_tensor_type

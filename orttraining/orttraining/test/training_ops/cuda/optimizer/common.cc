@@ -122,8 +122,8 @@ void AdamWTestLoop(
   GetPerStepInput(weight_name_shape_mapping, named_weights, named_momentums_1, named_momentums_2,
                   0, weights_to_train, momentum1_to_train, momentum2_to_train);
 
-  for (size_t step = 0; step < total_step; ++step) {
-    OpTester test("Adam", 1, onnxruntime::kMSDomain);
+  for (size_t step = 0; step < 1; ++step) {
+    OpTester test("AdamWOptimizer", 1, onnxruntime::kMSDomain);
 
     // Weights/momentums before applying optimization.
     std::vector<TensorInfo> weight_tensor_infos;
