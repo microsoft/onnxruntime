@@ -151,8 +151,8 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   GetCapability(const GraphViewer& graph_viewer,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;

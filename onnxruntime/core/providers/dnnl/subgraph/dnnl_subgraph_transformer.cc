@@ -12,12 +12,12 @@ namespace onnxruntime {
 namespace ort_dnnl {
 
 //apply all transformation rules in order
-void DnnlGraphTransformer::Apply(DnnlSubgraph& subgraph) {
+void DnnlGraphTransformer::Apply(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
   ConvRelu(subgraph);
   MatMulAdd(subgraph);
-  Gelu(subgraph);
-  FastGelu(subgraph);
-  RemoveMatMulIntegerZP(subgraph);
+  Gelu(subgraph, onnx_subgraph_viewer);
+  FastGelu(subgraph, onnx_subgraph_viewer);
+  RemoveMatMulIntegerZP(subgraph, onnx_subgraph_viewer);
 }
 
 //resolve a fusion by replacing old_indices nodes with a new_node
@@ -162,13 +162,13 @@ bool IsScalar(const DnnlTensor& input_arg) {
   return dim_size == 0 || (dim_size == 1 && dim[0] == 1);
 }
 
-bool DnnlGraphTransformer::IsInitilizedWithExpectedValue(DnnlSubgraph& subgraph, DnnlTensor& input_arg, float expected_value) {
+bool DnnlGraphTransformer::IsInitilizedWithExpectedValue(const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlTensor& input_arg, float expected_value) {
     if (!IsScalar(input_arg)) {
     return false;
   }
 
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  if (!subgraph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
+  if (!onnx_subgraph_viewer.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
   }
 
@@ -234,7 +234,7 @@ DnnlNode* FirstParentByType(DnnlNode* node, const std::string& parent_type) {
        After Fusion:
                 [root]--> Gelu ==>
 */
-void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph) {
+void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
   static int gelu_index = 0;
   //traverse with max index as there will be empty nodes due to fusion
   size_t max_index = subgraph.GetMaxNodeIndex();
@@ -249,8 +249,8 @@ void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph) {
     // Check second input is sqrt(2)
     // Some Bert models uses this approximation of SQRT2 in the Gelu function
     float approximated_sqrt_two = 1.4142099618911743f;
-    if (!IsInitilizedWithExpectedValue(subgraph, div_node->Input(1), approximated_sqrt_two) &&
-        !IsInitilizedWithExpectedValue(subgraph, div_node->Input(1), static_cast<float>(M_SQRT2))) {
+    if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, div_node->Input(1), approximated_sqrt_two) &&
+        !IsInitilizedWithExpectedValue(onnx_subgraph_viewer, div_node->Input(1), static_cast<float>(M_SQRT2))) {
       continue;
     }
 
@@ -275,7 +275,7 @@ void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph) {
     }
 
     bool is_add_input0 = add_node->Input(0).Name() == erf_node->Output(0).Name();
-    if (!IsInitilizedWithExpectedValue(subgraph, add_node->Input(is_add_input0 ? 1 : 0), 1.0f)) {
+    if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, add_node->Input(is_add_input0 ? 1 : 0), 1.0f)) {
       continue;
     }
 
@@ -304,7 +304,7 @@ void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph) {
       if (!(is_mul2_input0 ^ is_mul2_input1)) {
         is_pattern_1 = false;
       }
-      if (is_pattern_1 && !IsInitilizedWithExpectedValue(subgraph, mul2_node->Input(is_mul2_input0 ? 1 : 0), 0.5f)) {
+      if (is_pattern_1 && !IsInitilizedWithExpectedValue(onnx_subgraph_viewer, mul2_node->Input(is_mul2_input0 ? 1 : 0), 0.5f)) {
         is_pattern_1 = false;
       }
       if (is_pattern_1 && !IsNodeFusable(subgraph, mul2_node)) {
@@ -329,7 +329,7 @@ void DnnlGraphTransformer::Gelu(DnnlSubgraph& subgraph) {
         ORT_THROW("Invalid Mul node");
       }
       bool is_mul2_first_input = mul2_node->Input(0).Name() == mul1_node->Output(0).Name();
-      if (!IsInitilizedWithExpectedValue(subgraph, mul2_node->Input(is_mul2_first_input ? 1 : 0), 0.5f)) {
+      if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, mul2_node->Input(is_mul2_first_input ? 1 : 0), 0.5f)) {
         continue;
       }
     }
@@ -369,14 +369,14 @@ The formula corresponding to Gelu activation subgraph :
 
 where x is the input.
 */
-void DnnlGraphTransformer::FastGelu(DnnlSubgraph& subgraph) {
+void DnnlGraphTransformer::FastGelu(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
   static int fastgelu_index = 0;
   //traverse with max index as there will be empty nodes due to fusion
   size_t max_index = subgraph.GetMaxNodeIndex();
   for (size_t index = 0; index < max_index; index++) {
     auto dnnl_node = subgraph.GetDnnlNode(index);
-    if (!FastGeluFirstFormula(subgraph, dnnl_node, fastgelu_index)) {
-      FastGeluSecondFormula(subgraph, dnnl_node, fastgelu_index);
+    if (!FastGeluFirstFormula(subgraph, onnx_subgraph_viewer, dnnl_node, fastgelu_index)) {
+      FastGeluSecondFormula(subgraph, onnx_subgraph_viewer, dnnl_node, fastgelu_index);
     }
   }
 }
@@ -389,7 +389,7 @@ The formula corresponding to Gelu activation subgraph :
 
 where x is the input.
 */
-bool DnnlGraphTransformer::FastGeluFirstFormula(DnnlSubgraph& subgraph, DnnlNode* mul1_node, int& fastgelu_index) {
+bool DnnlGraphTransformer::FastGeluFirstFormula(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlNode* mul1_node, int& fastgelu_index) {
   std::vector<size_t> gelu_indices;
   //----------mul(0.44715)------------------
   if (mul1_node == nullptr || mul1_node->OpType() != "Mul") {
@@ -398,7 +398,7 @@ bool DnnlGraphTransformer::FastGeluFirstFormula(DnnlSubgraph& subgraph, DnnlNode
   int32_t mul1_input_index = -1;
   const float mul_val = 0.044715f;
   for (auto i = 0; i < 2; i++) {
-    if (IsInitilizedWithExpectedValue(subgraph, mul1_node->Input(i), mul_val)) {
+    if (IsInitilizedWithExpectedValue(onnx_subgraph_viewer, mul1_node->Input(i), mul_val)) {
       mul1_input_index = i;
       break;
     }
@@ -424,7 +424,7 @@ bool DnnlGraphTransformer::FastGeluFirstFormula(DnnlSubgraph& subgraph, DnnlNode
     return false;
   }
   bool is_add_input0 = mul2_node->Output(0).Name() == add1_node->Input(0).Name();
-  if (!IsInitilizedWithExpectedValue(subgraph, add1_node->Input(is_add_input0 ? 1 : 0), 1.0f)) {
+  if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, add1_node->Input(is_add_input0 ? 1 : 0), 1.0f)) {
     return false;
   }
 
@@ -450,7 +450,7 @@ bool DnnlGraphTransformer::FastGeluFirstFormula(DnnlSubgraph& subgraph, DnnlNode
   int32_t mul4_input_index = -1;
   const float mul4_val = 0.7978845834732056f;
   for (auto i = 0; i < 2; i++) {
-    if (IsInitilizedWithExpectedValue(subgraph, prev_mul4_node->Input(i), mul4_val)) {
+    if (IsInitilizedWithExpectedValue(onnx_subgraph_viewer, prev_mul4_node->Input(i), mul4_val)) {
       mul4_input_index = i;
       break;
     }
@@ -464,7 +464,7 @@ bool DnnlGraphTransformer::FastGeluFirstFormula(DnnlSubgraph& subgraph, DnnlNode
 
   auto tanh_node = mul3_node->Output(0).GetConsumers()[0].GetNode();
   int32_t x_input_index = (mul1_input_index == 0) ? 1 : 0;
-  if (FastGeluFormulaCommon(subgraph, mul1_node, x_input_index, tanh_node, gelu_indices, fastgelu_index)) {
+  if (FastGeluFormulaCommon(subgraph, onnx_subgraph_viewer, mul1_node, x_input_index, tanh_node, gelu_indices, fastgelu_index)) {
     if (debug_log_) {
       LOGS_DEFAULT(ERROR) << "FastGelu fusion found [" << fastgelu_index << "] (first formula)";
     }
@@ -481,15 +481,15 @@ The formula corresponding to Gelu activation subgraph :
 
 where x is the input.
 */
-void DnnlGraphTransformer::FastGeluSecondFormula(DnnlSubgraph& subgraph, DnnlNode* pow_node, int& fastgelu_index) {
+void DnnlGraphTransformer::FastGeluSecondFormula(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlNode* pow_node, int& fastgelu_index) {
   std::vector<size_t> gelu_indices;
   //---------Pow-------------------
   if (pow_node == nullptr || pow_node->OpType() != "Pow") {
     return;
   }
 
-  auto pow_exponent = pow_node->Input(1);
-  if (!IsInitilizedWithExpectedValue(subgraph, pow_exponent, 3.0f)) {
+  auto& pow_exponent = pow_node->Input(1);
+  if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, pow_exponent, 3.0f)) {
     return;
   }
 
@@ -505,7 +505,7 @@ void DnnlGraphTransformer::FastGeluSecondFormula(DnnlSubgraph& subgraph, DnnlNod
 
   float fastgelu_muliplyer = 0.044714998453855515f;
   bool is_mul1_input0 = pow_node->Output(0).Name() == mul1_node->Input(0).Name();
-  if (!IsInitilizedWithExpectedValue(subgraph, mul1_node->Input(is_mul1_input0 ? 1 : 0), fastgelu_muliplyer)) {
+  if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, mul1_node->Input(is_mul1_input0 ? 1 : 0), fastgelu_muliplyer)) {
     return;
   }
   if (!IsNodeFusable(subgraph, mul1_node)) {
@@ -531,7 +531,7 @@ void DnnlGraphTransformer::FastGeluSecondFormula(DnnlSubgraph& subgraph, DnnlNod
   // constant is sqrt(2/pi)
   float fastgelu_sqrt_2_div_pi = 0.7978845834732056f;
   bool is_mul2_input0 = add1_node->Output(0).Name() == mul2_node->Input(0).Name();
-  if (!IsInitilizedWithExpectedValue(subgraph, mul2_node->Input(is_mul2_input0 ? 1 : 0), fastgelu_sqrt_2_div_pi)) {
+  if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, mul2_node->Input(is_mul2_input0 ? 1 : 0), fastgelu_sqrt_2_div_pi)) {
     return;
   }
 
@@ -543,7 +543,7 @@ void DnnlGraphTransformer::FastGeluSecondFormula(DnnlSubgraph& subgraph, DnnlNod
   //----------Tanh------------------
   auto tanh_node = mul2_node->Output(0).GetConsumers()[0].GetNode();
   // since the first node is pow the x_input_index is always 0
-  if (FastGeluFormulaCommon(subgraph, pow_node, 0, tanh_node, gelu_indices, fastgelu_index)) {
+  if (FastGeluFormulaCommon(subgraph, onnx_subgraph_viewer, pow_node, 0, tanh_node, gelu_indices, fastgelu_index)) {
     if (debug_log_) {
       LOGS_DEFAULT(ERROR) << "FastGelu fusion found [" << fastgelu_index << "] (second formula)";
     }
@@ -559,7 +559,7 @@ void DnnlGraphTransformer::FastGeluSecondFormula(DnnlSubgraph& subgraph, DnnlNod
     x * 0.5 * (1.0 + tanh((sqrt(2 / pi) * (x + 0.044715 * pow(x, 3))))),
 where x is the input.
 */
-bool DnnlGraphTransformer::FastGeluFormulaCommon(DnnlSubgraph& subgraph, DnnlNode* gelu_start_node, int32_t x_input_index, DnnlNode* tanh_node, std::vector<size_t>& gelu_indices, int& fastgelu_index) {
+bool DnnlGraphTransformer::FastGeluFormulaCommon(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlNode* gelu_start_node, int32_t x_input_index, DnnlNode* tanh_node, std::vector<size_t>& gelu_indices, int& fastgelu_index) {
   //----------Tanh------------------
   if (tanh_node == nullptr || tanh_node->OpType() != "Tanh") {
     return false;
@@ -575,7 +575,7 @@ bool DnnlGraphTransformer::FastGeluFormulaCommon(DnnlSubgraph& subgraph, DnnlNod
     return false;
   }
   bool is_add2_input0 = tanh_node->Output(0).Name() == add2_node->Input(0).Name();
-  if (!IsInitilizedWithExpectedValue(subgraph, add2_node->Input(is_add2_input0 ? 1 : 0), 1.0f)) {
+  if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, add2_node->Input(is_add2_input0 ? 1 : 0), 1.0f)) {
     return false;
   }
 
@@ -607,7 +607,7 @@ bool DnnlGraphTransformer::FastGeluFormulaCommon(DnnlSubgraph& subgraph, DnnlNod
   if (!(is_mul_input0 ^ is_mul_input1)) {
     return false;
   }
-  if (!IsInitilizedWithExpectedValue(subgraph, prev_mul4_node->Input(is_mul_input0 ? 1 : 0), 0.5f)) {
+  if (!IsInitilizedWithExpectedValue(onnx_subgraph_viewer, prev_mul4_node->Input(is_mul_input0 ? 1 : 0), 0.5f)) {
     return false;
   }
   if (!IsNodeFusable(subgraph, prev_mul4_node)) {
@@ -748,7 +748,7 @@ void DnnlGraphTransformer::MatMulAdd(DnnlSubgraph& subgraph) {
   }
 }
 
-void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
+void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer) {
   size_t max_index = subgraph.GetMaxNodeIndex();
   for (size_t index = 0; index < max_index; index++) {
     auto dnnl_node = subgraph.GetDnnlNode(index);
@@ -763,9 +763,9 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
       continue;
     }
 
-    auto b_zero_point = dnnl_node->Input(3);
+    auto& b_zero_point = dnnl_node->Input(3);
     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-    if (!subgraph.GetInitializedTensor(b_zero_point.Name(), tensor_proto)) {
+    if (!onnx_subgraph_viewer.GetInitializedTensor(b_zero_point.Name(), tensor_proto)) {
       continue;
     }
 

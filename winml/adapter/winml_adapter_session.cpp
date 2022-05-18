@@ -37,12 +37,18 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
   }
 };
 
-ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session) {
+ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+ _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
     // Create the inference session
-    inference_session = std::make_unique<onnxruntime::InferenceSession>(options->value, env->GetEnvironment());
+    inference_session =
+        std::make_unique<onnxruntime::InferenceSession>(
+            options->value,
+            env->GetEnvironment(),
+            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(intra_op_thread_pool),
+            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(inter_op_thread_pool));
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -252,9 +258,17 @@ ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* s
 
 ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* session, _Out_ uint32_t* num_threads) {
   API_IMPL_BEGIN
-  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_options = inference_session->GetSessionOptions();
-  *num_threads = session_options.intra_op_param.thread_pool_size;
+
+  struct ThreadPoolSessionInspector : public ::onnxruntime::InferenceSession {
+   public:
+    onnxruntime::concurrency::ThreadPool* IntraOpThreadPool() const {
+      return GetIntraOpThreadPoolToUse();
+    }
+  };
+
+  auto inference_session = reinterpret_cast<ThreadPoolSessionInspector*>(session);
+  auto thread_pool = inference_session->IntraOpThreadPool();
+  *num_threads = ::onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(thread_pool);
   return nullptr;
   API_IMPL_END
 }

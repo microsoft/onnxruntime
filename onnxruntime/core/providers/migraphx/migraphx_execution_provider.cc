@@ -660,34 +660,6 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   return true;
 }
 
-// Convert GraphViewer graph to GraphProto
-void ToGraphProtoInternal(const GraphViewer& graph, ONNX_NAMESPACE::GraphProto& graph_proto) {
-  for (const auto* input_arg : graph.GetInputs()) {
-    *(graph_proto.mutable_input()->Add()) = input_arg->ToProto();
-  }
-
-  // Add all graph's initializers to the subgraph
-  const auto& init_tensors = graph.GetAllInitializedTensors();
-  for (const auto& tensor : init_tensors) {
-    *(graph_proto.mutable_initializer()->Add()) = *(tensor.second);
-  }
-
-  for (const auto* output_arg : graph.GetOutputs()) {
-    *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
-  }
-
-  for (const auto* value_info : graph.GetValueInfo()) {
-    *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
-  }
-
-  // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
-  for (auto& node_idx : graph.GetNodesInTopologicalOrder()) {
-    const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
-    const gsl::not_null<const Node*> p_node{graph.GetNode(node_idx)};
-    p_node->ToProto(*node_proto);
-  }
-}
-
 std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const {
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.size());
@@ -913,7 +885,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
-  ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
+  graph_viewer.ToProto(*model_proto->mutable_graph(), true, true);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
@@ -1012,30 +984,24 @@ bool get_input_output_names(const GraphViewer& graph,
   return no_input_shape;
 }
 
-Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
   bool no_input_shape = false;
-  for (const auto& fused_node : fused_nodes) {
+  for (const auto& fused_node_graph : fused_nodes) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
-    const auto& input_defs = fused_node->InputDefs();
+    const auto& input_defs = fused_node.InputDefs();
     input_name_index.reserve(input_defs.size());
     for (std::size_t i = 0; i < input_defs.size(); ++i) {
       input_name_index[input_defs[i]->Name()] = i;
     }
 
-    // Reconstruct graph proto from fused node's function body
-    const auto* func_body = fused_node->GetFunctionBody();
-    if (!func_body) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-    }
-
-    const Graph& graph_body = func_body->Body();
-    auto graph_body_viewer = graph_body.CreateGraphViewer();
-    auto model = graph_body_viewer->CreateModel(*GetLogger());
+    auto model = graph_body_viewer.CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-    *model_proto->mutable_graph() = *graph_body.ToGraphProto();
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
@@ -1069,11 +1035,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     }
 
     // compile the program
-    map_progs_[fused_node->Name()] = prog;
+    map_progs_[fused_node.Name()] = prog;
 
-    map_onnx_string_[fused_node->Name()] = onnx_string_buffer;
-    map_input_index_[fused_node->Name()] = input_name_index;
-    map_no_input_shape_[fused_node->Name()] = no_input_shape;
+    map_onnx_string_[fused_node.Name()] = onnx_string_buffer;
+    map_input_index_[fused_node.Name()] = input_name_index;
+    map_no_input_shape_[fused_node.Name()] = no_input_shape;
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
