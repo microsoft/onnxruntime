@@ -96,25 +96,24 @@ def get_latency_over_time(commit_hash, report_url, branch, latency_table):
     :return: The updated table.
     """
 
-    if not latency_table.empty:
-        over_time = latency_table
-        over_time = over_time.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Latency")
-        over_time = over_time.assign(CommitId=commit_hash)
-        over_time = over_time.assign(ReportUrl=report_url)
-        over_time = over_time.assign(Branch=branch)
-        over_time = over_time[
-            [
-                "CommitId",
-                model_title,
-                "Ep",
-                "Latency",
-                "ReportUrl",
-                group_title,
-                "Branch",
-            ]
+    over_time = latency_table
+    over_time = over_time.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Latency")
+    over_time = over_time.assign(CommitId=commit_hash)
+    over_time = over_time.assign(ReportUrl=report_url)
+    over_time = over_time.assign(Branch=branch)
+    over_time = over_time[
+        [
+            "CommitId",
+            model_title,
+            "Ep",
+            "Latency",
+            "ReportUrl",
+            group_title,
+            "Branch",
         ]
-        over_time.fillna("", inplace=True)
-        return over_time
+    ]
+    over_time.fillna("", inplace=True)
+    return over_time
 
 
 def get_failures(fail, model_group):
@@ -336,15 +335,16 @@ def main():
                     table_results[latency_name] = table_results[latency_name].append(
                         get_latency(table, model_group), ignore_index=True
                     )
-                    table_results[latency_over_time_name] = table_results[latency_over_time_name].append(
-                        get_latency_over_time(
-                            args.commit_hash,
-                            args.report_url,
-                            args.branch,
-                            table_results[latency_name],
-                        ),
-                        ignore_index=True,
-                    )
+                    if not table_results[latency_name].empty:
+                        table_results[latency_over_time_name] = table_results[latency_over_time_name].append(
+                            get_latency_over_time(
+                                args.commit_hash,
+                                args.report_url,
+                                args.branch,
+                                table_results[latency_name],
+                            ),
+                            ignore_index=True,
+                        )
                 elif status_name in csv:
                     table_results[status_name] = table_results[status_name].append(
                         get_status(table, model_group), ignore_index=True
