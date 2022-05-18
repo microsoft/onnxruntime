@@ -17,6 +17,10 @@ inline OpIdentifier OpIdFromNode(const Node& node) {
   return OpIdentifier{node.Domain(), node.OpType(), node.SinceVersion()};
 }
 
+inline OpIdentifier OpIdFromOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
+  return OpIdentifier{op_schema.domain(), op_schema.Name(), op_schema.SinceVersion()};
+}
+
 class KernelTypeStrResolver {
  public:
   using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
@@ -28,6 +32,8 @@ class KernelTypeStrResolver {
 
 #if !defined(ORT_MINIMAL_BUILD)
   bool RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema);
+
+  bool RegisterNodeOpSchema(const Node& node);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:

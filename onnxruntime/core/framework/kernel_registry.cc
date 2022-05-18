@@ -31,6 +31,11 @@ bool KernelTypeStrResolver::RegisterKernelTypeStrToArgsMap(OpIdentifier op_id,
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
+  auto op_id = OpIdFromOpSchema(op_schema);
+  if (Contains(op_type_str_map_, op_id)) {
+    return false;
+  }
+
   const auto type_constraint_names = [&]() {
     const auto& type_constraints = op_schema.typeConstraintParams();
     InlinedHashSet<std::string_view> names{};
@@ -82,8 +87,12 @@ bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_
   process_formal_params(ArgType::kInput, op_schema.inputs());
   process_formal_params(ArgType::kOutput, op_schema.outputs());
 
-  return RegisterKernelTypeStrToArgsMap(OpIdentifier{op_schema.domain(), op_schema.Name(), op_schema.SinceVersion()},
-                                        std::move(kernel_type_str_map));
+  return RegisterKernelTypeStrToArgsMap(std::move(op_id), std::move(kernel_type_str_map));
+}
+
+bool KernelTypeStrResolver::RegisterNodeOpSchema(const Node& node) {
+  ORT_ENFORCE(node.Op() != nullptr, "Op schema must be available.");
+  return RegisterOpSchema(*node.Op());
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -287,15 +296,14 @@ Status KernelRegistry::TryFindKernel(const Node& node,
                                      ProviderType exec_provider,
                                      const KernelCreateInfo** out) const {
   KernelTypeStrResolver kernel_type_str_resolver{};
-  ORT_RETURN_IF(node.Op() == nullptr, "Op schema must be available.");
-  kernel_type_str_resolver.RegisterOpSchema(*node.Op());
+  kernel_type_str_resolver.RegisterNodeOpSchema(node);
   return TryFindKernel(node, exec_provider, kernel_type_str_resolver, out);
 }
 
 Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
                                      const std::unordered_map<std::string, MLDataType>& type_constraints,
-                                     ProviderType exec_provider, const KernelCreateInfo** out) const {
-  *out = nullptr;
+                                     ProviderType exec_provider, const KernelCreateInfo** kernel_out) const {
+  const KernelCreateInfo* kernel = nullptr;
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_name, domain, exec_provider));
   for (auto i = range.first; i != range.second; ++i) {  // loop through all kernels
     const KernelCreateInfo& kci = i->second;
@@ -313,12 +321,13 @@ Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::stri
         }
       }  // for
       if (match) {
-        *out = &kci;  // found match, exit loop
+        kernel = &kci;  // found match, exit loop
         break;
       }
     }  // if
   }    // for
-  return *out == nullptr ? Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found") : Status::OK();
+  if (kernel_out) *kernel_out = kernel;
+  return kernel == nullptr ? Status(common::ONNXRUNTIME, common::FAIL, "Kernel not found") : Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

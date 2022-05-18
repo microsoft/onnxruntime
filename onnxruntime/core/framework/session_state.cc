@@ -11,6 +11,7 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
 #include "core/framework/kernel_def_hash_helpers.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -117,10 +118,13 @@ void SessionState::CreateGraphInfo() {
 #if !defined(ORT_MINIMAL_BUILD)
 Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
                                               bool saving_ort_format) {
-  for (auto& node : graph_.Nodes()) {
-    const KernelCreateInfo* kci = nullptr;
+  KernelTypeStrResolver kernel_type_str_resolver{};
 
-    auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+  for (auto& node : graph_.Nodes()) {
+    kernel_type_str_resolver.RegisterNodeOpSchema(node);
+
+    const KernelCreateInfo* kci = nullptr;
+    auto status = kernel_registry_manager.SearchKernelRegistry(node, kernel_type_str_resolver, &kci);
     if (!status.IsOK() && saving_ort_format) {
       // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
       // in that case we assigned the node to that EP but do not compile it into a fused node.
@@ -129,7 +133,7 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
       // is loaded in a minimal build, the compiling EP will replace this node if possible. if that's not possible for
       // some reason we can fallback to the CPU EP implementation via this hash.
       node.SetExecutionProviderType(kCpuExecutionProvider);
-      status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+      status = kernel_registry_manager.SearchKernelRegistry(node, kernel_type_str_resolver, &kci);
     }
 
     ORT_RETURN_IF_ERROR(status);

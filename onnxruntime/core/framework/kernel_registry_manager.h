@@ -15,6 +15,7 @@ struct KernelCreateInfo;
 class ExecutionProviders;
 class IExecutionProvider;
 class KernelRegistry;
+class KernelTypeStrResolver;
 class OpKernel;
 class SessionState;
 
@@ -59,10 +60,16 @@ class KernelRegistryManager {
   }
 #endif
 
+  // This function assumes the node is already assigned to an execution provider
+  // Don't call this function before graph partition is done
+  Status SearchKernelRegistry(const Node& node,
+                              const KernelTypeStrResolver& kernel_type_str_resolver,
+                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
+
 #if !defined(ORT_MINIMAL_BUILD)
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done
-  Status SearchKernelRegistry(const onnxruntime::Node& node,
+  Status SearchKernelRegistry(const Node& node,
                               /*out*/ const KernelCreateInfo** kernel_create_info) const;
 
   /**
@@ -77,7 +84,7 @@ class KernelRegistryManager {
   bool SearchKernelRegistriesByHash(HashValue kernel_def_hash,
                                     const KernelCreateInfo** kernel_create_info) const;
 
-  Status CreateKernel(const onnxruntime::Node& node,
+  Status CreateKernel(const Node& node,
                       const IExecutionProvider& execution_provider,
                       SessionState& session_state,
                       const KernelCreateInfo& kernel_create_info, std::unique_ptr<OpKernel>& out) const;
