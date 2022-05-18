@@ -3848,10 +3848,8 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   fused_node.SetNodeType(Node::Type::Fused);
 #if !defined(ORT_MINIMAL_BUILD)
   // if this is a full build create the lightweight Function implementation that provides the schema so that
-  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
-  // need to create the schema.
-  //
-  // If the fusion is going to use an existing static kernel registration the required schema should already exist.
+  // kernel lookup works as per usual, if not using an existing schema. 
+  // in an extended minimal build we do the lookup via a hash so don't need a schema.
   fused_node.SetSinceVersion(func_meta_def->since_version);
   if (sub_graph.UseExistingSchema()) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),

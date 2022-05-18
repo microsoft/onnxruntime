@@ -65,7 +65,7 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
   //   - Override IExecutionProvider::RegisterAllocator to share the CPU EP's allocator/arena instead of creating a
   //     new allocator/arena here.
   //
-  // We need to updated InferenceSession so we make the RegisterAllocator calls after all EPs are registered,
+  // We need to update InferenceSession so we make the RegisterAllocator calls after all EPs are registered,
   // and do so in the reverse priority order as the CPU EP is registered last.
   // We will also need to delay the call to xnn_initialize until after we have the allocator.
   //

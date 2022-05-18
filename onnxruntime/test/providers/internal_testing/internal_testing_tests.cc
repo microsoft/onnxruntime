@@ -150,6 +150,8 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
 }
 
+// the internal NHWC operators are only included as part of contrib ops currently. as the EP requests the NHWC
+// version of the ONNX operator when matching a static kernel, those are required.
 #if !defined(DISABLE_CONTRIB_OPS)
 TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "transform/fusion/conv_relu_opset12.onnx";

@@ -32,7 +32,7 @@ struct EPVerificationParams {
   // Set this only if this is necessary
   float fp32_abs_err = 1e-5f;
 
-  // optional lambda for additional graph verification
+  // optional graph verification function
   const std::function<void(const Graph&)>* graph_verifier{nullptr};
 };
 

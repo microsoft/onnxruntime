@@ -149,8 +149,8 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
           if (new_nodes_in_capabilities.count(node->Index()) == 0) {
             return ORT_MAKE_STATUS(
                 ONNXRUNTIME, FAIL,
-                "Node ", node->Name(), " Op Type: ", node->OpType(), " with domain: ", kMSInternalNHWCDomain,
-                " was inserted using the NHWC format as requested by ", ep_type, ", but was not been selected ",
+                "Node '", node->Name(), "' OpType:", node->OpType(), " with domain:", kMSInternalNHWCDomain,
+                " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected ",
                 " by that EP. This means the graph is now invalid as there will not be an EP able to run the node. "
                 "This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
           }

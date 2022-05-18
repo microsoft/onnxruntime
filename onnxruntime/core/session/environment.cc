@@ -10,6 +10,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
+#include "core/graph/contrib_ops/internal_nhwc_onnx_opset.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
 #if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
@@ -239,10 +240,12 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifndef ORT_MINIMAL_BUILD
       RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
       RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
-      RegisterOpSetSchema<contrib::OpSet_Internal_NHWC>();
+      // internal opset that has NHWC versions of ONNX operators
+      RegisterOpSetSchema<internal_nhwc_onnx::OpSet_Internal_NHWC_ONNX>();
 #endif
       contrib::RegisterContribSchemas();
 #endif
+
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
 #endif

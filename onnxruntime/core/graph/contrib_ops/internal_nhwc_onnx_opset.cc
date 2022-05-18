@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "ms_opset.h"
+#include "internal_nhwc_onnx_opset.h"
 
 #include "onnx/defs/operator_sets.h"
 
@@ -9,7 +9,8 @@
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
 
 namespace onnxruntime {
-namespace contrib {
+namespace internal_nhwc_onnx {
+using contrib::NhwcInferenceContext;
 
 template <typename F>
 void RegisterNHWCSchema(F&& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
@@ -53,12 +54,11 @@ void RegisterNHWCConvWithActivation(F&& f, ::ONNX_NAMESPACE::OpSchema&& schema) 
       ::ONNX_NAMESPACE::GetOpSchema<                           \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>()); }
 
-// Schemas for ops that are NHWC versions of ONNX operators. They are created by the layout transformer by converting
-// the relevant input/outputs of a node between NCHW and NHWC, and moving the node to the kMSInternalNHWCDomain domain.
-void OpSet_Internal_NHWC::ForEachSchema(std::function<void(ONNX_NAMESPACE::OpSchema&&)> fn) {
+void OpSet_Internal_NHWC_ONNX::ForEachSchema(std::function<void(ONNX_NAMESPACE::OpSchema&&)> fn) {
   // if the operator may be fused with an activation, use the WITH_ACTIVATION variant to add optional attributes
   // for the activation parameters.
-  // For now we only register operators from opset 11 on.Models can easily have their opset updated using ONNX tools.
+  // For now we only register operators from opset 11 on. Models can easily have their opset updated using ONNX tools
+  // so supported older opsets is unnecessary.
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(Conv, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 12);
@@ -72,5 +72,5 @@ void OpSet_Internal_NHWC::ForEachSchema(std::function<void(ONNX_NAMESPACE::OpSch
   //   DepthToSpace, SpaceToDepth
 }
 
-}  // namespace contrib
+}  // namespace internal_nhwc_onnx
 }  // namespace onnxruntime

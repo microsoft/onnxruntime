@@ -290,8 +290,12 @@ class IExecutionProvider {
   virtual DataLayout GetPreferredLayout() const {
     // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return static_cast<DataLayout>(0);
+    return DataLayout::NCHW;
   }
+
+  /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
+   */
+  virtual bool ConcurrentRunSupported() const { return true; }
 
  private:
   const std::string type_;

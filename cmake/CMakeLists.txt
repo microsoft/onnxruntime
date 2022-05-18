@@ -198,13 +198,6 @@ endif()
 # Single output director for all binaries
 set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
-function(onnxruntime_add_include_to_target dst_target)
-    foreach(src_target ${ARGN})
-        target_include_directories(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_INCLUDE_DIRECTORIES>)
-        target_compile_definitions(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_COMPILE_DEFINITIONS>)
-    endforeach()
-endfunction()
-
 function(set_msvc_c_cpp_compiler_warning_level warning_level)
   if (NOT "${warning_level}" MATCHES "^[0-4]$")
     message(FATAL_ERROR "Expected warning_level value of 0-4, got '${warning_level}'.")
@@ -805,9 +798,6 @@ else()
   else()
     set(PROTOBUF_LIB libprotobuf-lite)
   endif()
-  if (TARGET ${PROTOBUF_LIB})
-    set_target_properties(${PROTOBUF_LIB} PROPERTIES FOLDER "External/Protobuf")
-  endif()
 endif()
 
 if (UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
@@ -1314,6 +1304,13 @@ function(onnxruntime_add_executable target_name)
   endif()
 endfunction()
 
+function(onnxruntime_add_include_to_target dst_target)
+    foreach(src_target ${ARGN})
+        target_include_directories(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_INCLUDE_DIRECTORIES>)
+        target_compile_definitions(${dst_target} PRIVATE $<TARGET_PROPERTY:${src_target},INTERFACE_COMPILE_DEFINITIONS>)
+    endforeach()
+endfunction()
+
 set(onnxruntime_EXTERNAL_DEPENDENCIES onnx_proto)
 
 # ACL
@@ -1501,6 +1498,11 @@ endif()
 
 # XNNPACK EP
 if (onnxruntime_USE_XNNPACK)
+  if (onnxruntime_DISABLE_CONTRIB_OPS)
+    message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available \
+                         but onnxruntime_DISABLE_CONTRIB_OPS is ON")
+  endif()
+
   set(XNNPACK_DIR external/XNNPACK)
   set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
   set(XNNPACK_USE_SYSTEM_LIBS ON CACHE INTERNAL "")  
@@ -1515,9 +1517,9 @@ if (onnxruntime_USE_XNNPACK)
   add_subdirectory(external/pthreadpool)
   add_subdirectory(external/XNNPACK)
 
-  set_target_properties(fp16 PROPERTIES FOLDER "External")  
-  set_target_properties(pthreadpool PROPERTIES FOLDER "External")  
-  set_target_properties(XNNPACK PROPERTIES FOLDER "External")
+  set_target_properties(fp16 PROPERTIES FOLDER "External/Xnnpack")
+  set_target_properties(pthreadpool PROPERTIES FOLDER "External/Xnnpack")
+  set_target_properties(XNNPACK PROPERTIES FOLDER "External/Xnnpack")
   
   set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
@@ -1998,14 +2000,10 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 
-set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util 
-                        onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas 
-                        onnxruntime_flatbuffers)
-
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
 endif()
-
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
     message(
@@ -2015,7 +2013,6 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   add_compile_definitions(ENABLE_EAGER_MODE)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
 endif()
-
 foreach(target_name ${ONNXRUNTIME_TARGETS})
   include(${target_name}.cmake)
 endforeach()

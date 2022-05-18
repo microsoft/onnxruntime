@@ -33,6 +33,9 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
+
+  // xnnpack does not support concurrent execution of a kernel
+  bool ConcurrentRunSupported() const override { return false; }
 };
 
 }  // namespace onnxruntime
