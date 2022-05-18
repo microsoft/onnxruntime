@@ -32,10 +32,10 @@ jobs:
       script: |-
         export ROCM_HOME=/opt/rocm
         python tools/ci_build/build.py \
-        --config Release \
+        --config RelWithDebInfo \
         --mpi_home /opt/ompi \
         --use_migraphx \
-        --rocm_version=4.3.1 \
+        --rocm_version=5.1.1 \
         --rocm_home /opt/rocm \
         --nccl_home /opt/rocm \
         --update \
@@ -45,3 +45,10 @@ jobs:
         --build_wheel \
         --skip_tests
     displayName: 'Build onnxruntime'
+
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        cd ./build/RelWithDebInfo &&\
+        ../../tools/ci_build/github/pai/migraphx_test_launcher.sh
+    displayName: 'Run onnxruntime unit tests'
