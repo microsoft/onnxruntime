@@ -4,261 +4,161 @@
 #include "gtest/gtest.h"
 
 #include "test/providers/provider_test_utils.h"
+#include "orttraining/test/training_ops/cuda/optimizer/common.h"
+
+using namespace onnxruntime::test::optimizer;
 
 namespace onnxruntime {
 namespace test {
-
+namespace optimizer {
 namespace {
 
-struct TensorInfo {
-  TensorInfo(VectorInt64 shapes, std::vector<float> values) {
-    shapes_ = shapes;
-    fp32_values_ = values;
-
-    size_t total_size = 1;
-    for (size_t i = 0; i < shapes_.size(); ++i) {
-      total_size *= shapes_[i];
-    }
-
-    EXPECT_TRUE(fp32_values_.size() == total_size) << "Number of elements mismtach betwen shapes and values."
-                                                   << "fp32_values_.size():" << fp32_values_.size()
-                                                   << ", total_size: " << total_size;
-  }
-
-  template <typename OutT>
-  std::vector<OutT> Values() const {
-    if (std::is_same<OutT, MLFloat16>::value) {
-      std::vector<OutT> fp16_values;
-      fp16_values.reserve(fp32_values_.size());
-      ConvertFloatToMLFloat16(fp32_values_.data(), reinterpret_cast<onnxruntime::MLFloat16*>(fp16_values.data()), fp32_values_.size());
-      return fp16_values;
-    } else if (std::is_same<OutT, float>::value) {
-      return fp32_values_;
-    } else {
-      ORT_THROW("Not supported data type.");
-    }
-  }
-
-  VectorInt64 Shapes() const {
-    return shapes_;
-  }
-
-  VectorInt64 shapes_;
-  std::vector<float> fp32_values_;
-};
-
-template <typename T>
-struct AdamTestInputOutput {
-  AdamTestInputOutput(
-      float lr,
-      int64_t step,
-      const std::vector<TensorInfo>& weight_tensor_infos,
-      const std::vector<TensorInfo>& gradient_tensor_infos,
-      const std::vector<TensorInfo>& momentum_1_tensor_infos,
-      const std::vector<TensorInfo>& momentum_2_tensor_infos,
-      const std::vector<TensorInfo>& updated_weight_tensor_infos,
-      const std::vector<TensorInfo>& updated_momentum_1_tensor_infos,
-      const std::vector<TensorInfo>& updated_momentum_2_tensor_infos) {
-    lr_vector.push_back(lr);
-    step_vector.push_back(step);
-
-    // Input Sequence tensors.
-
-    for (const TensorInfo& ti : weight_tensor_infos) {
-      weight_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
-    }
-
-    for (const TensorInfo& ti : gradient_tensor_infos) {
-      gradient_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
-    }
-
-    for (const TensorInfo& ti : momentum_1_tensor_infos) {
-      momentum_1_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
-    }
-
-    for (const TensorInfo& ti : momentum_2_tensor_infos) {
-      momentum_2_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
-    }
-
-    // Update sequence tensors.
-
-    for (const TensorInfo& ti : updated_weight_tensor_infos) {
-      updated_weight_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
-    }
-
-    for (const TensorInfo& ti : updated_momentum_1_tensor_infos) {
-      updated_momentum_1_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
-    }
-
-    for (const TensorInfo& ti : updated_momentum_2_tensor_infos) {
-      updated_momentum_2_seq_tensors_.AddTensor(ti.Shapes(), ti.Values<T>());
-    }
-  }
-
-  SeqTensors<T>& WeightSeq() {
-    return weight_seq_tensors_;
-  }
-
-  SeqTensors<T>& GradientSeq() {
-    return gradient_seq_tensors_;
-  }
-
-  SeqTensors<T>& Momentum_1_Seq() {
-    return momentum_1_seq_tensors_;
-  }
-
-  SeqTensors<T>& Momentum_2_Seq() {
-    return momentum_2_seq_tensors_;
-  }
-
-  SeqTensors<T>& UpdatedWeightSeq() {
-    return updated_weight_seq_tensors_;
-  }
-
-  SeqTensors<T>& UpdatedMomentum_1_Seq() {
-    return updated_momentum_1_seq_tensors_;
-  }
-
-  SeqTensors<T>& UpdatedMomentum_2_Seq() {
-    return updated_momentum_2_seq_tensors_;
-  }
-
-  std::vector<float> lr_vector;
-  std::vector<int64_t> step_vector;
-
- private:
-  SeqTensors<T> weight_seq_tensors_;
-  SeqTensors<T> gradient_seq_tensors_;
-  SeqTensors<T> momentum_1_seq_tensors_;
-  SeqTensors<T> momentum_2_seq_tensors_;
-
-  SeqTensors<T> updated_weight_seq_tensors_;
-  SeqTensors<T> updated_momentum_1_seq_tensors_;
-  SeqTensors<T> updated_momentum_2_seq_tensors_;
-};
-
-TEST(AdamTest, TorchAdamWSingleWeightTest_Loop10Steps) {
+void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
   size_t total_step = 10;
   float lr = 1e-03;
 
+  std::pair<float, float> weight_tolerance{1e-5f, 1e-4f};  // rtol, atol
+  std::pair<float, float> momentum_1_tolerance{1e-3f, 1e-6f};
+  std::pair<float, float> momentum_2_tolerance{1e-3f, 1e-7f};
+  if (use_baseline_for_each_iteration) {
+    // do something.
+  }
+
   // 11 steps of weight values before applying optimization.
-  std::vector<std::vector<float>> weights_per_step{
-      {-0.18330415, 0.6739549, 0.3117089, 0.42830977, -0.39579117, 0.07424858},
-      {-0.18230231, 0.6729482, 0.31270576, 0.4273055, -0.39478722, 0.073247835},
-      {-0.18131775, 0.67253, 0.31352443, 0.42674997, -0.39517558, 0.072352484},
-      {-0.18059653, 0.6721751, 0.3133565, 0.42615423, -0.39525184, 0.071778126},
-      {-0.17977662, 0.6717074, 0.31389162, 0.42545584, -0.39562652, 0.07182311},
-      {-0.17979622, 0.6710587, 0.31389156, 0.4246631, -0.39521962, 0.07233689},
-      {-0.17989334, 0.67029196, 0.31416565, 0.42445076, -0.3947013, 0.07293851},
-      {-0.179972, 0.66955495, 0.31445312, 0.4242259, -0.39403903, 0.07336583},
-      {-0.17965378, 0.66875094, 0.31469414, 0.42395133, -0.3932723, 0.07322361},
-      {-0.1792204, 0.6680363, 0.3151285, 0.4236793, -0.3924334, 0.0730921},
-      {-0.17886575, 0.66727906, 0.31523493, 0.42340374, -0.39180413, 0.07277241},
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_weights{
+      {
+          "fc1.weight",
+          {
+              {-0.18330415, 0.6739549, 0.3117089, 0.42830977, -0.39579117, 0.07424858},
+              {-0.18230231, 0.6729482, 0.31270576, 0.4273055, -0.39478722, 0.073247835},
+              {-0.18131775, 0.67253, 0.31352443, 0.42674997, -0.39517558, 0.072352484},
+              {-0.18059653, 0.6721751, 0.3133565, 0.42615423, -0.39525184, 0.071778126},
+              {-0.17977662, 0.6717074, 0.31389162, 0.42545584, -0.39562652, 0.07182311},
+              {-0.17979622, 0.6710587, 0.31389156, 0.4246631, -0.39521962, 0.07233689},
+              {-0.17989334, 0.67029196, 0.31416565, 0.42445076, -0.3947013, 0.07293851},
+              {-0.179972, 0.66955495, 0.31445312, 0.4242259, -0.39403903, 0.07336583},
+              {-0.17965378, 0.66875094, 0.31469414, 0.42395133, -0.3932723, 0.07322361},
+              {-0.1792204, 0.6680363, 0.3151285, 0.4236793, -0.3924334, 0.0730921},
+              {-0.17886575, 0.66727906, 0.31523493, 0.42340374, -0.39180413, 0.07277241},
+          },
+      },
   };
 
   // 10 steps of gradient values used to apply optimization.
-  std::vector<std::vector<float>> gradients_per_step{
-      {-0.18660535, 1.0501877, -0.06538727, 0.78924006, -0.06989894, 0.08311288},
-      {-0.14019422, -0.33581918, -0.015272594, -0.11933345, 0.15028854, 0.3035297},
-      {0.014209908, 0.052604817, 0.0971713, 0.2388823, -0.056654222, -0.053932328},
-      {-0.31329307, 0.3852916, -0.5335826, 0.41899508, 0.117559165, -0.29191104},
-      {0.52060837, 0.90293646, 0.45157418, 1.2402161, -0.57814085, -0.977114},
-      {0.101783685, 1.272549, -0.43885383, -1.2290779, -0.24205326, -0.41463307},
-      {-0.0077258185, 0.28624183, -0.08212745, 0.15442972, -0.4620122, 0.2059978},
-      {-0.71347064, 0.98037124, 0.02016977, 0.3170175, -0.6400585, 1.4056847},
-      {-0.35443836, 0.0006996552, -0.5025327, 0.11614283, -0.77054685, 0.019379474},
-      {0.06727458, 0.71261775, 0.5345064, 0.13658585, 0.27908903, 0.8989311},
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_gradients{
+      {
+          "fc1.weight",
+          {
+              {-0.18660535, 1.0501877, -0.06538727, 0.78924006, -0.06989894, 0.08311288},
+              {-0.14019422, -0.33581918, -0.015272594, -0.11933345, 0.15028854, 0.3035297},
+              {0.014209908, 0.052604817, 0.0971713, 0.2388823, -0.056654222, -0.053932328},
+              {-0.31329307, 0.3852916, -0.5335826, 0.41899508, 0.117559165, -0.29191104},
+              {0.52060837, 0.90293646, 0.45157418, 1.2402161, -0.57814085, -0.977114},
+              {0.101783685, 1.272549, -0.43885383, -1.2290779, -0.24205326, -0.41463307},
+              {-0.0077258185, 0.28624183, -0.08212745, 0.15442972, -0.4620122, 0.2059978},
+              {-0.71347064, 0.98037124, 0.02016977, 0.3170175, -0.6400585, 1.4056847},
+              {-0.35443836, 0.0006996552, -0.5025327, 0.11614283, -0.77054685, 0.019379474},
+              {0.06727458, 0.71261775, 0.5345064, 0.13658585, 0.27908903, 0.8989311},
+          },
+      },
+
   };
 
   // 11 steps of momentum1 values before applying optimization.
-  std::vector<std::vector<float>> momentums_1_per_step{
-      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
-      {-0.018660536, 0.10501877, -0.0065387273, 0.07892401, -0.0069898935, 0.008311288},
-      {-0.030813904, 0.060934976, -0.007412114, 0.05909826, 0.00873795, 0.03783313},
-      {-0.026311522, 0.06010196, 0.0030462276, 0.077076666, 0.002198733, 0.028656583},
-      {-0.055009678, 0.092620924, -0.05061666, 0.111268505, 0.013734776, -0.0034001796},
-      {0.002552128, 0.17365249, -0.0003975735, 0.22416328, -0.04545279, -0.10077157},
-      {0.012475284, 0.28354216, -0.0442432, 0.07883913, -0.06511284, -0.13215771},
-      {0.010455173, 0.2838121, -0.048031624, 0.08639819, -0.10480277, -0.09834216},
-      {-0.061937407, 0.353468, -0.041211486, 0.10946012, -0.15832835, 0.05206053},
-      {-0.09118751, 0.31819117, -0.08734361, 0.110128395, -0.21955018, 0.04879242},
-      {-0.0753413, 0.3576338, -0.025158612, 0.11277413, -0.16968626, 0.13380629},
-  };
+  std::unordered_map<std::string, std::vector<std::vector<float>>>
+      named_momentum1s{
+          {
+              "fc1.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {-0.018660536, 0.10501877, -0.0065387273, 0.07892401, -0.0069898935, 0.008311288},
+                  {-0.030813904, 0.060934976, -0.007412114, 0.05909826, 0.00873795, 0.03783313},
+                  {-0.026311522, 0.06010196, 0.0030462276, 0.077076666, 0.002198733, 0.028656583},
+                  {-0.055009678, 0.092620924, -0.05061666, 0.111268505, 0.013734776, -0.0034001796},
+                  {0.002552128, 0.17365249, -0.0003975735, 0.22416328, -0.04545279, -0.10077157},
+                  {0.012475284, 0.28354216, -0.0442432, 0.07883913, -0.06511284, -0.13215771},
+                  {0.010455173, 0.2838121, -0.048031624, 0.08639819, -0.10480277, -0.09834216},
+                  {-0.061937407, 0.353468, -0.041211486, 0.10946012, -0.15832835, 0.05206053},
+                  {-0.09118751, 0.31819117, -0.08734361, 0.110128395, -0.21955018, 0.04879242},
+                  {-0.0753413, 0.3576338, -0.025158612, 0.11277413, -0.16968626, 0.13380629},
+              },
+          },
+
+      };
 
   // 11 steps of momentum2 values before applying optimization.
-  std::vector<std::vector<float>> momentums_2_per_step{
-      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
-      {3.48216e-05, 0.0011028942, 4.2755e-06, 0.0006228999, 4.8859e-06, 6.9078e-06},
-      {5.44412e-05, 0.0012145658, 4.5045e-06, 0.0006365175, 2.74676e-05, 9.90311e-05},
-      {5.45886e-05, 0.0012161186, 1.39422e-05, 0.0006929458, 3.06499e-05, 0.0001018408},
-      {0.0001526866, 0.0013633522, 0.0002986387, 0.0008678096, 4.44394e-05, 0.000186951},
-      {0.000423567, 0.0021772832, 0.0005022593, 0.002405078, 0.0003786418, 0.0011415159},
-      {0.0004335034, 0.003794487, 0.0006943497, 0.0039133052, 0.0004368529, 0.0013122951},
-      {0.0004331296, 0.0038726272, 0.0007004002, 0.00393324, 0.0006498714, 0.001353418},
-      {0.0009417369, 0.004829882, 0.0007001066, 0.004029807, 0.0010588964, 0.0033280142},
-      {0.0010664216, 0.004825053, 0.0009519457, 0.0040392666, 0.00165158, 0.0033250616},
-      {0.0010698811, 0.0053280517, 0.0012366908, 0.0040538833, 0.001727819, 0.004129814},
-  };
+  std::unordered_map<std::string, std::vector<std::vector<float>>>
+      named_momentum2s{
+          {
+              "fc1.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {3.48216e-05, 0.0011028942, 4.2755e-06, 0.0006228999, 4.8859e-06, 6.9078e-06},
+                  {5.44412e-05, 0.0012145658, 4.5045e-06, 0.0006365175, 2.74676e-05, 9.90311e-05},
+                  {5.45886e-05, 0.0012161186, 1.39422e-05, 0.0006929458, 3.06499e-05, 0.0001018408},
+                  {0.0001526866, 0.0013633522, 0.0002986387, 0.0008678096, 4.44394e-05, 0.000186951},
+                  {0.000423567, 0.0021772832, 0.0005022593, 0.002405078, 0.0003786418, 0.0011415159},
+                  {0.0004335034, 0.003794487, 0.0006943497, 0.0039133052, 0.0004368529, 0.0013122951},
+                  {0.0004331296, 0.0038726272, 0.0007004002, 0.00393324, 0.0006498714, 0.001353418},
+                  {0.0009417369, 0.004829882, 0.0007001066, 0.004029807, 0.0010588964, 0.0033280142},
+                  {0.0010664216, 0.004825053, 0.0009519457, 0.0040392666, 0.00165158, 0.0033250616},
+                  {0.0010698811, 0.0053280517, 0.0012366908, 0.0040538833, 0.001727819, 0.004129814},
+              },
+          },
 
-  ASSERT_TRUE(weights_per_step.size() == total_step + 1);
-  ASSERT_TRUE(gradients_per_step.size() == total_step);
-  ASSERT_TRUE(momentums_1_per_step.size() == total_step + 1);
-  ASSERT_TRUE(momentums_2_per_step.size() == total_step + 1);
+      };
 
-  for (size_t step = 0; step < total_step; ++step) {
-    OpTester test("Adam", 1, onnxruntime::kMSDomain);
-    std::vector<TensorInfo> weight_tensor_infos{TensorInfo({2, 3}, weights_per_step[step])};
-    std::vector<TensorInfo> gradient_tensor_infos{TensorInfo({2, 3}, gradients_per_step[step])};
-    std::vector<TensorInfo> momentum_1_tensor_infos{TensorInfo({2, 3}, momentums_1_per_step[step])};
-    std::vector<TensorInfo> momentum_2_tensor_infos{TensorInfo({2, 3}, momentums_2_per_step[step])};
+  ASSERT_TRUE(named_weights.size() == 1);
+  ASSERT_TRUE(named_gradients.size() == 1);
+  ASSERT_TRUE(named_momentum1s.size() == 1);
+  ASSERT_TRUE(named_momentum2s.size() == 1);
 
-    std::vector<TensorInfo> updated_weight_tensor_infos{TensorInfo({2, 3}, weights_per_step[step + 1])};
-    std::vector<TensorInfo> updated_momentum_1_tensor_infos{TensorInfo({2, 3}, momentums_1_per_step[step + 1])};
-    std::vector<TensorInfo> updated_momentum_2_tensor_infos{TensorInfo({2, 3}, momentums_2_per_step[step + 1])};
-    AdamTestInputOutput<float> data(
-        lr, step, weight_tensor_infos, gradient_tensor_infos, momentum_1_tensor_infos, momentum_2_tensor_infos,
-        updated_weight_tensor_infos, updated_momentum_1_tensor_infos, updated_momentum_2_tensor_infos);
+  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
+  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
 
-    // Default values for Torch AdamW.
-    test.AddAttribute("alpha", static_cast<float>(0.9f));
-    test.AddAttribute("beta", static_cast<float>(0.999f));
-    test.AddAttribute("epsilon", static_cast<float>(1e-8f));
-    test.AddAttribute("weight_decay", static_cast<float>(1e-2f));
-    test.AddAttribute("adam_mode", static_cast<int64_t>(0));
-    test.AddAttribute("correct_bias", static_cast<int64_t>(1));
+  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+      {{"fc1.weight", {2, 3}}};
 
-    // Add test inputs.
-    test.AddInput<float>("lr", {}, data.lr_vector);
-    test.AddInput<int64_t>("step", {}, data.step_vector);
-    test.AddSeqInput("weights", data.WeightSeq());
-    test.AddSeqInput("gradients", data.GradientSeq());
-    test.AddSeqInput("momentums_1", data.Momentum_1_Seq());
-    test.AddSeqInput("momentums_2", data.Momentum_2_Seq());
+  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+                static_cast<float>(0.9f),    // alpha
+                static_cast<float>(0.999f),  // beta
+                static_cast<float>(1e-8f),   // epsilon
+                static_cast<float>(1e-2f),   // weight_decay
+                static_cast<int64_t>(0),     // adam_mode
+                static_cast<int64_t>(1),     // correct_bias
+                named_weights, named_gradients,
+                named_momentum1s, named_momentum2s,
+                weight_name_shape_mapping,
+                std::make_pair(1e-5f, 1e-4f),
+                std::make_pair(1e-3f, 1e-6f),
+                std::make_pair(1e-3f, 1e-7f)
 
-    // Add test outputs as baseline.
-    float param_rtol = 1e-5f;
-    float param_atol = 1e-4f;
-    test.AddOutput<int64_t>("updated_flag", {}, {1});
-    test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), param_rtol, param_atol);
-
-    float momentum1_rtol = 1e-3f;
-    float momentum1_atol = 1e-6f;
-    test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum1_rtol, momentum1_atol);
-
-    float momentum2_rtol = 1e-3f;
-    float momentum2_atol = 1e-7f;
-    test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum2_rtol, momentum2_atol);
-
-    test.Run();
-  }
+  );
 }
 
-TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
+TEST(AdamTest, TorchAdamWSingleWeightTest_Loop10Steps) {
+  TorchAdamWSingleWeightTestLoop10Steps(false);
+}
+
+TEST(AdamTest, TorchAdamWSingleWeightStrictTest_Loop10Steps) {
+  TorchAdamWSingleWeightTestLoop10Steps(true);
+}
+
+void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iteration) {
   size_t total_step = 10;
   float lr = 1e-03;
 
+  std::pair<float, float> weight_tolerance{1e-5f, 1e-4f};  // rtol, atol
+  std::pair<float, float> momentum_1_tolerance{1e-3f, 1e-6f};
+  std::pair<float, float> momentum_2_tolerance{1e-3f, 1e-7f};
+  if (use_baseline_for_each_iteration) {
+    // do something.
+  }
+
   // 11 steps of weight values before applying optimization.
-  std::unordered_map<std::string, std::vector<std::vector<float>>> named_weights_per_step{
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_weights{
       {
           "fc1.weight",
           {
@@ -326,7 +226,7 @@ TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
   };
 
   // 10 steps of gradient values used to apply optimization.
-  std::unordered_map<std::string, std::vector<std::vector<float>>> named_gradients_per_step{
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_gradients{
       {
           "fc1.weight",
           {
@@ -391,7 +291,7 @@ TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
 
   // 11 steps of momentum1 values before applying optimization.
   std::unordered_map<std::string, std::vector<std::vector<float>>>
-      named_momentums_1_per_step{
+      named_momentum1s{
           {
               "fc1.weight",
               {
@@ -460,7 +360,7 @@ TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
 
   // 11 steps of momentum2 values before applying optimization.
   std::unordered_map<std::string, std::vector<std::vector<float>>>
-      named_momentums_2_per_step{
+      named_momentum2s{
           {
               "fc1.weight",
               {
@@ -527,230 +427,191 @@ TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
           },
       };
 
-  ASSERT_TRUE(named_weights_per_step.size() == 4);
-  ASSERT_TRUE(named_gradients_per_step.size() == 4);
-  ASSERT_TRUE(named_momentums_1_per_step.size() == 4);
-  ASSERT_TRUE(named_momentums_2_per_step.size() == 4);
+  ASSERT_TRUE(named_weights.size() == 4);
+  ASSERT_TRUE(named_gradients.size() == 4);
+  ASSERT_TRUE(named_momentum1s.size() == 4);
+  ASSERT_TRUE(named_momentum2s.size() == 4);
 
-  ASSERT_TRUE(named_weights_per_step["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_gradients_per_step["fc1.weight"].size() == total_step);
-  ASSERT_TRUE(named_momentums_1_per_step["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_momentums_2_per_step["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
+  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
 
-  for (size_t step = 0; step < total_step; ++step) {
-    OpTester test("Adam", 1, onnxruntime::kMSDomain);
+  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+      {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
 
-    // Weights/momentums before applying optimization.
-    std::vector<TensorInfo> weight_tensor_infos{
-        TensorInfo({2, 3}, named_weights_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_weights_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_weights_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_weights_per_step["fc2.bias"][step]),
-    };
+  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+                static_cast<float>(0.9f),    // alpha
+                static_cast<float>(0.999f),  // beta
+                static_cast<float>(1e-8f),   // epsilon
+                static_cast<float>(1e-2f),   // weight_decay
+                static_cast<int64_t>(0),     // adam_mode
+                static_cast<int64_t>(1),     // correct_bias
+                named_weights, named_gradients,
+                named_momentum1s, named_momentum2s,
+                weight_name_shape_mapping,
+                std::make_pair(1e-5f, 1e-4f),
+                std::make_pair(1e-3f, 1e-6f),
+                std::make_pair(1e-3f, 1e-7f)
 
-    std::vector<TensorInfo> gradient_tensor_infos{
-        TensorInfo({2, 3}, named_gradients_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_gradients_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_gradients_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_gradients_per_step["fc2.bias"][step]),
-    };
-
-    std::vector<TensorInfo> momentum_1_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_1_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_momentums_1_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_momentums_1_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_momentums_1_per_step["fc2.bias"][step]),
-    };
-
-    std::vector<TensorInfo> momentum_2_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_2_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_momentums_2_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_momentums_2_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_momentums_2_per_step["fc2.bias"][step]),
-    };
-
-    // Updated weights/momentums values for validation.
-    std::vector<TensorInfo> updated_weight_tensor_infos{
-        TensorInfo({2, 3}, named_weights_per_step["fc1.weight"][step + 1]),
-        TensorInfo({3}, named_weights_per_step["fc1.bias"][step + 1]),
-        TensorInfo({3, 2}, named_weights_per_step["fc2.weight"][step + 1]),
-        TensorInfo({2}, named_weights_per_step["fc2.bias"][step + 1]),
-    };
-
-    std::vector<TensorInfo> updated_momentum_1_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_1_per_step["fc1.weight"][step + 1]),
-        TensorInfo({3}, named_momentums_1_per_step["fc1.bias"][step + 1]),
-        TensorInfo({3, 2}, named_momentums_1_per_step["fc2.weight"][step + 1]),
-        TensorInfo({2}, named_momentums_1_per_step["fc2.bias"][step + 1]),
-    };
-
-    std::vector<TensorInfo> updated_momentum_2_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_2_per_step["fc1.weight"][step + 1]),
-        TensorInfo({3}, named_momentums_2_per_step["fc1.bias"][step + 1]),
-        TensorInfo({3, 2}, named_momentums_2_per_step["fc2.weight"][step + 1]),
-        TensorInfo({2}, named_momentums_2_per_step["fc2.bias"][step + 1]),
-    };
-
-    AdamTestInputOutput<float> data(
-        lr, step, weight_tensor_infos, gradient_tensor_infos, momentum_1_tensor_infos, momentum_2_tensor_infos,
-        updated_weight_tensor_infos, updated_momentum_1_tensor_infos, updated_momentum_2_tensor_infos);
-
-    // Default values for Torch AdamW.
-    test.AddAttribute("alpha", static_cast<float>(0.9f));
-    test.AddAttribute("beta", static_cast<float>(0.999f));
-    test.AddAttribute("epsilon", static_cast<float>(1e-8f));
-    test.AddAttribute("weight_decay", static_cast<float>(1e-2f));
-    test.AddAttribute("adam_mode", static_cast<int64_t>(0));
-    test.AddAttribute("correct_bias", static_cast<int64_t>(1));
-
-    // Add test inputs.
-    test.AddInput<float>("lr", {}, data.lr_vector);
-    test.AddInput<int64_t>("step", {}, data.step_vector);
-    test.AddSeqInput("weights", data.WeightSeq());
-    test.AddSeqInput("gradients", data.GradientSeq());
-    test.AddSeqInput("momentums_1", data.Momentum_1_Seq());
-    test.AddSeqInput("momentums_2", data.Momentum_2_Seq());
-
-    // Add test outputs as baseline.
-    float param_rtol = 1e-5f;
-    float param_atol = 1e-4f;
-    test.AddOutput<int64_t>("updated_flag", {}, {1});
-    test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), param_rtol, param_atol);
-
-    float momentum1_rtol = 1e-3f;
-    float momentum1_atol = 1e-6f;
-    test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum1_rtol, momentum1_atol);
-
-    float momentum2_rtol = 1e-3f;
-    float momentum2_atol = 1e-7f;
-    test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum2_rtol, momentum2_atol);
-
-    test.Run();
-  }
+  );
 }
 
-TEST(AdamTest, HFAdamWSingleWeightTest_Loop10Steps) {
+TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
+  TorchAdamWMultipleWeightsTestLoop10Steps(true);
+}
+
+TEST(AdamTest, TorchAdamWMultipleWeightsStrictTest_Loop10Steps) {
+  TorchAdamWMultipleWeightsTestLoop10Steps(false);
+}
+
+void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
   size_t total_step = 10;
   float lr = 1e-03;
 
+  std::pair<float, float> weight_tolerance{1e-5f, 1e-4f};  // rtol, atol
+  std::pair<float, float> momentum_1_tolerance{1e-3f, 1e-6f};
+  std::pair<float, float> momentum_2_tolerance{1e-3f, 1e-7f};
+  if (use_baseline_for_each_iteration) {
+    // do something.
+  }
+
   // 11 steps of weight values before applying optimization.
-  std::vector<std::vector<float>> weights_per_step{
-      {-0.18330415, 0.6739549, 0.3117089, 0.42830977, -0.39579117, 0.07424858},
-      {-0.18230432, 0.6729549, 0.3127084, 0.4273098, -0.39479163, 0.07324896},
-      {-0.18132173, 0.67254347, 0.31352982, 0.42675862, -0.3951839, 0.07235443},
-      {-0.18060243, 0.6721953, 0.31336504, 0.42616716, -0.39526412, 0.071780846},
-      {-0.17978439, 0.67173433, 0.31390327, 0.42547306, -0.39564267, 0.07182653},
-      {-0.17980579, 0.6710924, 0.3139063, 0.4246846, -0.39523974, 0.07234102},
-      {-0.17990471, 0.67033243, 0.3141835, 0.4244765, -0.3947254, 0.072943345},
-      {-0.17998517, 0.66960216, 0.3144741, 0.42425588, -0.3940671, 0.07337138},
-      {-0.17966875, 0.6688048, 0.31471828, 0.42398554, -0.39330435, 0.0732299},
-      {-0.17923719, 0.66809684, 0.31515577, 0.4237177, -0.39246938, 0.073099114},
-      {-0.17888436, 0.6673463, 0.31526533, 0.42344636, -0.39184403, 0.072780155},
+  std ::unordered_map<std::string, std::vector<std::vector<float>>> named_weights{
+      {
+          "fc1.weight",
+          {
+              {-0.18330415, 0.6739549, 0.3117089, 0.42830977, -0.39579117, 0.07424858},
+              {-0.18230432, 0.6729549, 0.3127084, 0.4273098, -0.39479163, 0.07324896},
+              {-0.18132173, 0.67254347, 0.31352982, 0.42675862, -0.3951839, 0.07235443},
+              {-0.18060243, 0.6721953, 0.31336504, 0.42616716, -0.39526412, 0.071780846},
+              {-0.17978439, 0.67173433, 0.31390327, 0.42547306, -0.39564267, 0.07182653},
+              {-0.17980579, 0.6710924, 0.3139063, 0.4246846, -0.39523974, 0.07234102},
+              {-0.17990471, 0.67033243, 0.3141835, 0.4244765, -0.3947254, 0.072943345},
+              {-0.17998517, 0.66960216, 0.3144741, 0.42425588, -0.3940671, 0.07337138},
+              {-0.17966875, 0.6688048, 0.31471828, 0.42398554, -0.39330435, 0.0732299},
+              {-0.17923719, 0.66809684, 0.31515577, 0.4237177, -0.39246938, 0.073099114},
+              {-0.17888436, 0.6673463, 0.31526533, 0.42344636, -0.39184403, 0.072780155},
+          },
+      },
   };
 
   // 10 steps of gradient values used to apply optimization.
-  std::vector<std::vector<float>> gradients_per_step{
-      {-0.18660535, 1.0501877, -0.06538727, 0.78924006, -0.06989894, 0.08311288},
-      {-0.14019372, -0.33581784, -0.0152721405, -0.11933225, 0.15028848, 0.3035296},
-      {0.014210129, 0.05260541, 0.097171515, 0.23888281, -0.056654252, -0.053932384},
-      {-0.31330115, 0.3852994, -0.53358376, 0.41899636, 0.11755433, -0.29190654},
-      {0.5206307, 0.90298563, 0.45159638, 1.2402637, -0.57814527, -0.9771225},
-      {0.10178496, 1.272584, -0.4388461, -1.229053, -0.2420594, -0.41463128},
-      {-0.007730415, 0.28626472, -0.082126565, 0.15444252, -0.46201625, 0.20600216},
-      {-0.71351, 0.98043907, 0.020160869, 0.3170406, -0.64007777, 1.4057107},
-      {-0.35445014, 0.0007170309, -0.5025207, 0.11615195, -0.77056587, 0.01938322},
-      {0.06728999, 0.71267974, 0.53454334, 0.13664238, 0.27906644, 0.8989229},
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_gradients{
+      {
+          "fc1.weight",
+          {
+              {-0.18660535, 1.0501877, -0.06538727, 0.78924006, -0.06989894, 0.08311288},
+              {-0.14019372, -0.33581784, -0.0152721405, -0.11933225, 0.15028848, 0.3035296},
+              {0.014210129, 0.05260541, 0.097171515, 0.23888281, -0.056654252, -0.053932384},
+              {-0.31330115, 0.3852994, -0.53358376, 0.41899636, 0.11755433, -0.29190654},
+              {0.5206307, 0.90298563, 0.45159638, 1.2402637, -0.57814527, -0.9771225},
+              {0.10178496, 1.272584, -0.4388461, -1.229053, -0.2420594, -0.41463128},
+              {-0.007730415, 0.28626472, -0.082126565, 0.15444252, -0.46201625, 0.20600216},
+              {-0.71351, 0.98043907, 0.020160869, 0.3170406, -0.64007777, 1.4057107},
+              {-0.35445014, 0.0007170309, -0.5025207, 0.11615195, -0.77056587, 0.01938322},
+              {0.06728999, 0.71267974, 0.53454334, 0.13664238, 0.27906644, 0.8989229},
+          },
+      },
+
   };
 
   // 11 steps of momentum1 values before applying optimization.
-  std::vector<std::vector<float>> momentums_1_per_step{
-      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
-      {-0.018660536, 0.10501877, -0.0065387273, 0.07892401, -0.0069898935, 0.008311288},
-      {-0.030813852, 0.06093511, -0.007412069, 0.05909838, 0.008737944, 0.03783312},
-      {-0.026311453, 0.06010214, 0.0030462903, 0.07707683, 0.0021987236, 0.02865657},
-      {-0.055010427, 0.09262186, -0.050616715, 0.11126879, 0.013734283, -0.003399741},
-      {0.0025536926, 0.17365824, -0.0003954024, 0.22416827, -0.04545367, -0.100772016},
-      {0.01247682, 0.2835508, -0.04424047, 0.078846134, -0.065114245, -0.13215794},
-      {0.010456095, 0.28382218, -0.04802908, 0.08640577, -0.10480444, -0.09834193},
-      {-0.061940514, 0.3534839, -0.041210085, 0.10946925, -0.15833177, 0.05206334},
-      {-0.09119148, 0.3182072, -0.087341145, 0.11013751, -0.21955517, 0.048795324},
-      {-0.075343326, 0.35765445, -0.025152696, 0.11278799, -0.16969301, 0.13380808},
-  };
+  std::unordered_map<std::string, std::vector<std::vector<float>>>
+      named_momentum1s{
+          {
+              "fc1.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {-0.018660536, 0.10501877, -0.0065387273, 0.07892401, -0.0069898935, 0.008311288},
+                  {-0.030813852, 0.06093511, -0.007412069, 0.05909838, 0.008737944, 0.03783312},
+                  {-0.026311453, 0.06010214, 0.0030462903, 0.07707683, 0.0021987236, 0.02865657},
+                  {-0.055010427, 0.09262186, -0.050616715, 0.11126879, 0.013734283, -0.003399741},
+                  {0.0025536926, 0.17365824, -0.0003954024, 0.22416827, -0.04545367, -0.100772016},
+                  {0.01247682, 0.2835508, -0.04424047, 0.078846134, -0.065114245, -0.13215794},
+                  {0.010456095, 0.28382218, -0.04802908, 0.08640577, -0.10480444, -0.09834193},
+                  {-0.061940514, 0.3534839, -0.041210085, 0.10946925, -0.15833177, 0.05206334},
+                  {-0.09119148, 0.3182072, -0.087341145, 0.11013751, -0.21955517, 0.048795324},
+                  {-0.075343326, 0.35765445, -0.025152696, 0.11278799, -0.16969301, 0.13380808},
+              },
+          },
+
+      };
 
   // 11 steps of momentum2 values before applying optimization.
-  std::vector<std::vector<float>> momentums_2_per_step{
-      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
-      {3.48216e-05, 0.0011028942, 4.2755e-06, 0.0006228999, 4.8859e-06, 6.9078e-06},
-      {5.4441e-05, 0.0012145649, 4.5045e-06, 0.0006365172, 2.74676e-05, 9.90311e-05},
-      {5.45885e-05, 0.0012161176, 1.39423e-05, 0.0006929458, 3.06498e-05, 0.0001018407},
-      {0.0001526915, 0.0013633572, 0.00029864, 0.0008678107, 4.44382e-05, 0.0001869483},
-      {0.0004235952, 0.002177377, 0.0005022806, 0.0024051971, 0.0003786457, 0.0011415298},
-      {0.0004335318, 0.0037946696, 0.0006943642, 0.0039133634, 0.0004368598, 0.0013123073},
-      {0.000433158, 0.0038728225, 0.0007004146, 0.0039333026, 0.000649882, 0.001353432},
-      {0.0009418214, 0.0048302105, 0.0007001207, 0.004029884, 0.0010589317, 0.0033281012},
-      {0.0010665145, 0.0048253806, 0.0009519476, 0.0040393453, 0.0016516446, 0.003325149},
-      {0.001069976, 0.005328468, 0.0012367324, 0.0040539773, 0.0017278712, 0.004129886},
-  };
+  std::unordered_map<std::string, std::vector<std::vector<float>>>
+      named_momentum2s{
+          {
+              "fc1.weight",
+              {
+                  {0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+                  {3.48216e-05, 0.0011028942, 4.2755e-06, 0.0006228999, 4.8859e-06, 6.9078e-06},
+                  {5.4441e-05, 0.0012145649, 4.5045e-06, 0.0006365172, 2.74676e-05, 9.90311e-05},
+                  {5.45885e-05, 0.0012161176, 1.39423e-05, 0.0006929458, 3.06498e-05, 0.0001018407},
+                  {0.0001526915, 0.0013633572, 0.00029864, 0.0008678107, 4.44382e-05, 0.0001869483},
+                  {0.0004235952, 0.002177377, 0.0005022806, 0.0024051971, 0.0003786457, 0.0011415298},
+                  {0.0004335318, 0.0037946696, 0.0006943642, 0.0039133634, 0.0004368598, 0.0013123073},
+                  {0.000433158, 0.0038728225, 0.0007004146, 0.0039333026, 0.000649882, 0.001353432},
+                  {0.0009418214, 0.0048302105, 0.0007001207, 0.004029884, 0.0010589317, 0.0033281012},
+                  {0.0010665145, 0.0048253806, 0.0009519476, 0.0040393453, 0.0016516446, 0.003325149},
+                  {0.001069976, 0.005328468, 0.0012367324, 0.0040539773, 0.0017278712, 0.004129886},
+              },
+          },
 
-  ASSERT_TRUE(weights_per_step.size() == total_step + 1);
-  ASSERT_TRUE(gradients_per_step.size() == total_step);
-  ASSERT_TRUE(momentums_1_per_step.size() == total_step + 1);
-  ASSERT_TRUE(momentums_2_per_step.size() == total_step + 1);
+      };
 
-  for (size_t step = 0; step < total_step; ++step) {
-    OpTester test("Adam", 1, onnxruntime::kMSDomain);
-    std::vector<TensorInfo> weight_tensor_infos{TensorInfo({2, 3}, weights_per_step[step])};
-    std::vector<TensorInfo> gradient_tensor_infos{TensorInfo({2, 3}, gradients_per_step[step])};
-    std::vector<TensorInfo> momentum_1_tensor_infos{TensorInfo({2, 3}, momentums_1_per_step[step])};
-    std::vector<TensorInfo> momentum_2_tensor_infos{TensorInfo({2, 3}, momentums_2_per_step[step])};
+  ASSERT_TRUE(named_weights.size() == 1);
+  ASSERT_TRUE(named_gradients.size() == 1);
+  ASSERT_TRUE(named_momentum1s.size() == 1);
+  ASSERT_TRUE(named_momentum2s.size() == 1);
 
-    std::vector<TensorInfo> updated_weight_tensor_infos{TensorInfo({2, 3}, weights_per_step[step + 1])};
-    std::vector<TensorInfo> updated_momentum_1_tensor_infos{TensorInfo({2, 3}, momentums_1_per_step[step + 1])};
-    std::vector<TensorInfo> updated_momentum_2_tensor_infos{TensorInfo({2, 3}, momentums_2_per_step[step + 1])};
-    AdamTestInputOutput<float> data(
-        lr, step, weight_tensor_infos, gradient_tensor_infos, momentum_1_tensor_infos, momentum_2_tensor_infos,
-        updated_weight_tensor_infos, updated_momentum_1_tensor_infos, updated_momentum_2_tensor_infos);
+  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
+  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
 
-    // Default values for HF AdamW.
-    test.AddAttribute("alpha", static_cast<float>(0.9f));
-    test.AddAttribute("beta", static_cast<float>(0.999f));
-    test.AddAttribute("epsilon", static_cast<float>(1e-6f));
-    test.AddAttribute("weight_decay", static_cast<float>(0.0f));
-    test.AddAttribute("adam_mode", static_cast<int64_t>(0));
-    test.AddAttribute("correct_bias", static_cast<int64_t>(1));
+  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+      {{"fc1.weight", {2, 3}}};
 
-    // Add test inputs.
-    test.AddInput<float>("lr", {}, data.lr_vector);
-    test.AddInput<int64_t>("step", {}, data.step_vector);
-    test.AddSeqInput("weights", data.WeightSeq());
-    test.AddSeqInput("gradients", data.GradientSeq());
-    test.AddSeqInput("momentums_1", data.Momentum_1_Seq());
-    test.AddSeqInput("momentums_2", data.Momentum_2_Seq());
+  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+                static_cast<float>(0.9f),    // alpha
+                static_cast<float>(0.999f),  // beta
+                static_cast<float>(1e-6f),   // epsilon
+                static_cast<float>(0.0f),    // weight_decay
+                static_cast<int64_t>(1),     // adam_mode
+                static_cast<int64_t>(1),     // correct_bias
+                named_weights, named_gradients,
+                named_momentum1s, named_momentum2s,
+                weight_name_shape_mapping,
+                std::make_pair(1e-5f, 1e-4f),
+                std::make_pair(1e-3f, 1e-6f),
+                std::make_pair(1e-3f, 1e-7f)
 
-    // Add test outputs as baseline.
-    float param_rtol = 1e-5f;
-    float param_atol = 1e-4f;
-    test.AddOutput<int64_t>("updated_flag", {}, {1});
-    test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), param_rtol, param_atol);
-
-    float momentum1_rtol = 1e-3f;
-    float momentum1_atol = 1e-6f;
-    test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum1_rtol, momentum1_atol);
-
-    float momentum2_rtol = 1e-3f;
-    float momentum2_atol = 1e-7f;
-    test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum2_rtol, momentum2_atol);
-
-    test.Run();
-  }
+  );
 }
 
-TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
+TEST(AdamTest, HFAdamWSingleWeightTest_Loop10Steps) {
+  HFAdamWSingleWeightTestLoop10Steps(false);
+}
+
+TEST(AdamTest, HFAdamWSingleWeightStrictTest_Loop10Steps) {
+  HFAdamWSingleWeightTestLoop10Steps(true);
+}
+
+void HFAdamWMultipleWeightsTestLoop10Steps(
+    bool use_baseline_for_each_iteration) {
   size_t total_step = 10;
   float lr = 1e-03;
 
+  std::pair<float, float> weight_tolerance{1e-5f, 1e-4f};  // rtol, atol
+  std::pair<float, float> momentum_1_tolerance{1e-3f, 1e-6f};
+  std::pair<float, float> momentum_2_tolerance{1e-3f, 1e-7f};
+  if (use_baseline_for_each_iteration) {
+    // do something.
+  }
+
   // 11 steps of weight values before applying optimization.
-  std::unordered_map<std::string, std::vector<std::vector<float>>> named_weights_per_step{
+  std ::unordered_map<std::string, std::vector<std::vector<float>>> named_weights{
       {
           "fc1.weight",
           {
@@ -818,7 +679,7 @@ TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
   };
 
   // 10 steps of gradient values used to apply optimization.
-  std::unordered_map<std::string, std::vector<std::vector<float>>> named_gradients_per_step{
+  std::unordered_map<std::string, std::vector<std::vector<float>>> named_gradients{
       {
           "fc1.weight",
           {
@@ -883,7 +744,7 @@ TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
 
   // 11 steps of momentum1 values before applying optimization.
   std::unordered_map<std::string, std::vector<std::vector<float>>>
-      named_momentums_1_per_step{
+      named_momentum1s{
           {
               "fc1.weight",
               {
@@ -952,7 +813,7 @@ TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
 
   // 11 steps of momentum2 values before applying optimization.
   std::unordered_map<std::string, std::vector<std::vector<float>>>
-      named_momentums_2_per_step{
+      named_momentum2s{
           {
               "fc1.weight",
               {
@@ -1019,108 +880,45 @@ TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
           },
       };
 
-  ASSERT_TRUE(named_weights_per_step.size() == 4);
-  ASSERT_TRUE(named_gradients_per_step.size() == 4);
-  ASSERT_TRUE(named_momentums_1_per_step.size() == 4);
-  ASSERT_TRUE(named_momentums_2_per_step.size() == 4);
+  ASSERT_TRUE(named_weights.size() == 4);
+  ASSERT_TRUE(named_gradients.size() == 4);
+  ASSERT_TRUE(named_momentum1s.size() == 4);
+  ASSERT_TRUE(named_momentum2s.size() == 4);
 
-  ASSERT_TRUE(named_weights_per_step["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_gradients_per_step["fc1.weight"].size() == total_step);
-  ASSERT_TRUE(named_momentums_1_per_step["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_momentums_2_per_step["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
+  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
+  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
 
-  for (size_t step = 0; step < total_step; ++step) {
-    OpTester test("Adam", 1, onnxruntime::kMSDomain);
+  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+      {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
 
-    // Weights/momentums before applying optimization.
-    std::vector<TensorInfo> weight_tensor_infos{
-        TensorInfo({2, 3}, named_weights_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_weights_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_weights_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_weights_per_step["fc2.bias"][step]),
-    };
+  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+                static_cast<float>(0.9f),    // alpha
+                static_cast<float>(0.999f),  // beta
+                static_cast<float>(1e-6f),   // epsilon
+                static_cast<float>(0.0f),    // weight_decay
+                static_cast<int64_t>(1),     // adam_mode
+                static_cast<int64_t>(1),     // correct_bias
+                named_weights, named_gradients,
+                named_momentum1s, named_momentum2s,
+                weight_name_shape_mapping,
+                std::make_pair(1e-5f, 1e-4f),
+                std::make_pair(1e-3f, 1e-6f),
+                std::make_pair(1e-3f, 1e-7f)
 
-    std::vector<TensorInfo> gradient_tensor_infos{
-        TensorInfo({2, 3}, named_gradients_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_gradients_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_gradients_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_gradients_per_step["fc2.bias"][step]),
-    };
+  );
+}
 
-    std::vector<TensorInfo> momentum_1_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_1_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_momentums_1_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_momentums_1_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_momentums_1_per_step["fc2.bias"][step]),
-    };
+TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
+  HFAdamWMultipleWeightsTestLoop10Steps(false);
+}
 
-    std::vector<TensorInfo> momentum_2_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_2_per_step["fc1.weight"][step]),
-        TensorInfo({3}, named_momentums_2_per_step["fc1.bias"][step]),
-        TensorInfo({3, 2}, named_momentums_2_per_step["fc2.weight"][step]),
-        TensorInfo({2}, named_momentums_2_per_step["fc2.bias"][step]),
-    };
-
-    // Updated weights/momentums values for validation.
-    std::vector<TensorInfo> updated_weight_tensor_infos{
-        TensorInfo({2, 3}, named_weights_per_step["fc1.weight"][step + 1]),
-        TensorInfo({3}, named_weights_per_step["fc1.bias"][step + 1]),
-        TensorInfo({3, 2}, named_weights_per_step["fc2.weight"][step + 1]),
-        TensorInfo({2}, named_weights_per_step["fc2.bias"][step + 1]),
-    };
-
-    std::vector<TensorInfo> updated_momentum_1_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_1_per_step["fc1.weight"][step + 1]),
-        TensorInfo({3}, named_momentums_1_per_step["fc1.bias"][step + 1]),
-        TensorInfo({3, 2}, named_momentums_1_per_step["fc2.weight"][step + 1]),
-        TensorInfo({2}, named_momentums_1_per_step["fc2.bias"][step + 1]),
-    };
-
-    std::vector<TensorInfo> updated_momentum_2_tensor_infos{
-        TensorInfo({2, 3}, named_momentums_2_per_step["fc1.weight"][step + 1]),
-        TensorInfo({3}, named_momentums_2_per_step["fc1.bias"][step + 1]),
-        TensorInfo({3, 2}, named_momentums_2_per_step["fc2.weight"][step + 1]),
-        TensorInfo({2}, named_momentums_2_per_step["fc2.bias"][step + 1]),
-    };
-
-    AdamTestInputOutput<float> data(
-        lr, step, weight_tensor_infos, gradient_tensor_infos, momentum_1_tensor_infos, momentum_2_tensor_infos,
-        updated_weight_tensor_infos, updated_momentum_1_tensor_infos, updated_momentum_2_tensor_infos);
-
-    // Default values for HF AdamW.
-    test.AddAttribute("alpha", static_cast<float>(0.9f));
-    test.AddAttribute("beta", static_cast<float>(0.999f));
-    test.AddAttribute("epsilon", static_cast<float>(1e-6f));
-    test.AddAttribute("weight_decay", static_cast<float>(0.0f));
-    test.AddAttribute("adam_mode", static_cast<int64_t>(0));
-    test.AddAttribute("correct_bias", static_cast<int64_t>(1));
-
-    // Add test inputs.
-    test.AddInput<float>("lr", {}, data.lr_vector);
-    test.AddInput<int64_t>("step", {}, data.step_vector);
-    test.AddSeqInput("weights", data.WeightSeq());
-    test.AddSeqInput("gradients", data.GradientSeq());
-    test.AddSeqInput("momentums_1", data.Momentum_1_Seq());
-    test.AddSeqInput("momentums_2", data.Momentum_2_Seq());
-
-    // Add test outputs as baseline.
-    float param_rtol = 1e-5f;
-    float param_atol = 1e-4f;
-    test.AddOutput<int64_t>("updated_flag", {}, {1});
-    test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), param_rtol, param_atol);
-
-    float momentum1_rtol = 1e-3f;
-    float momentum1_atol = 1e-6f;
-    test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum1_rtol, momentum1_atol);
-
-    float momentum2_rtol = 1e-3f;
-    float momentum2_atol = 1e-7f;
-    test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum2_rtol, momentum2_atol);
-
-    test.Run();
-  }
+TEST(AdamTest, HFAdamWMultipleWeightsStrictTest_Loop10Steps) {
+  HFAdamWMultipleWeightsTestLoop10Steps(true);
 }
 
 }  // namespace
+}  // namespace optimizer
 }  // namespace test
 }  // namespace onnxruntime
