@@ -11,7 +11,9 @@ namespace cuda {
 
 namespace {
 
-constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr int64_t kNumBitsPerBitmaskElement = static_cast<int64_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 template <typename T>
 struct GetRatioDataImpl {
@@ -20,27 +22,6 @@ struct GetRatioDataImpl {
     ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
   }
 };
-
-}  // namespace
-
-ONNX_OPERATOR_KERNEL_EX(BiasDropout, kMSDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-                            .InputMemoryType(OrtMemTypeCPUInput, 3)
-                            .InputMemoryType(OrtMemTypeCPUInput, 4),
-                        BiasDropout<false>);
-
-ONNX_OPERATOR_KERNEL_EX(BitmaskBiasDropout, kMSDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create())
-                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
-                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint32_t>())
-                            .InputMemoryType(OrtMemTypeCPUInput, 3)
-                            .InputMemoryType(OrtMemTypeCPUInput, 4),
-                        BiasDropout<true>);
 
 template <typename T>
 struct BiasDropoutComputeImpl {
@@ -62,17 +43,32 @@ struct BiasDropoutComputeImpl {
     }
 
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
-    if (use_bitmask) {
-      BiasDropoutKernelImpl<CudaT, true>(prop, stream, N, mask_element_count, fdm_dim, ratio_data, generator, X_data,
-                                         bias_data, residual_data, Y_data, mask_data, has_same_shape_bias);
-    } else {
-      BiasDropoutKernelImpl<CudaT, false>(prop, stream, N, mask_element_count, fdm_dim, ratio_data, generator, X_data,
-                                          bias_data, residual_data, Y_data, mask_data, has_same_shape_bias);
-    }
-
+    BiasDropoutKernelImpl<CudaT>(prop, stream, N, mask_element_count, fdm_dim, ratio_data, generator, X_data, bias_data,
+                                 residual_data, Y_data, mask_data, has_same_shape_bias, use_bitmask);
     return Status::OK();
   }
 };
+
+}  // namespace
+
+ONNX_OPERATOR_KERNEL_EX(BiasDropout, kMSDomain, 1, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
+                            .InputMemoryType(OrtMemTypeCPUInput, 3)
+                            .InputMemoryType(OrtMemTypeCPUInput, 4),
+                        BiasDropout<false>);
+
+ONNX_OPERATOR_KERNEL_EX(BitmaskBiasDropout, kMSDomain, 1, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
+                            .TypeConstraint("T3", DataTypeImpl::GetTensorType<BitmaskElementType>())
+                            .InputMemoryType(OrtMemTypeCPUInput, 3)
+                            .InputMemoryType(OrtMemTypeCPUInput, 4),
+                        BiasDropout<true>);
 
 template <bool UseBitmask>
 Status BiasDropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
@@ -109,7 +105,7 @@ Status BiasDropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
   Tensor* mask = nullptr;
   int64_t mask_element_count = N;
   if (UseBitmask) {
-    mask_element_count = (N + kNumBitsPerElement - 1) / kNumBitsPerElement;
+    mask_element_count = (N + kNumBitsPerBitmaskElement - 1) / kNumBitsPerBitmaskElement;
     mask = context->Output(1, {mask_element_count});
   } else {
     mask = context->Output(1, x_shape);
@@ -133,7 +129,8 @@ Status BiasDropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
   IAllocatorUniquePtr<void> temp_mask_buffer{};  // buffer to use if mask is not provided
   void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableDataRaw();
-    temp_mask_buffer = GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(uint32_t) : sizeof(bool)));
+    temp_mask_buffer =
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)));
     return temp_mask_buffer.get();
   }();
 

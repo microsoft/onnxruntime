@@ -9,15 +9,20 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
+using namespace onnxruntime::test;
+
 namespace {
 
 const std::vector<float> kRatios{0.00f, 0.25f, 0.50f, 0.75f, 0.99f};
-constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr size_t kNumBitsPerBitmaskElement = static_cast<size_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 void GenerateMaskData(size_t size, bool* mask_data, float ratio) {
   int threshold = static_cast<int>(ratio * 100);
@@ -29,7 +34,7 @@ void GenerateMaskData(size_t size, bool* mask_data, float ratio) {
 
 template <typename T>
 int64_t GetDropoutGradBitmaskAndOutput(size_t size, const std::vector<T>& input_data, const bool* masks,
-                                       const float ratio, std::vector<uint32_t>& bitmask_data,
+                                       const float ratio, std::vector<BitmaskElementType>& bitmask_data,
                                        std::vector<T>& output_data) {
   const float p = 1.0f - ratio;
   const float scale = 1.0f / p;
@@ -37,8 +42,8 @@ int64_t GetDropoutGradBitmaskAndOutput(size_t size, const std::vector<T>& input_
   output_data.resize(size);
   for (size_t i = 0; i < size; ++i) {
     output_data[i] = T(static_cast<float>(input_data[i]) * static_cast<float>(masks[i]) * scale);
-    size_t bitmask_idx = i / kNumBitsPerElement;
-    size_t bitmask_shift = i % kNumBitsPerElement;
+    size_t bitmask_idx = i / kNumBitsPerBitmaskElement;
+    size_t bitmask_shift = i % kNumBitsPerBitmaskElement;
     if (bitmask_idx >= bitmask_data.size()) {
       bitmask_data.push_back(0);
     }
@@ -55,21 +60,27 @@ template <typename T>
 void RunTest(const std::vector<int64_t>& input_dims) {
   size_t input_size =
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> input_data = onnxruntime::test::ValueRange<T>(input_size, T(1.f), T(1.f));
+  std::vector<T> input_data = ValueRange<T>(input_size, T(1.f), T(1.f));
   std::unique_ptr<bool[]> mask_buffer = std::make_unique<bool[]>(input_size);
   for (float ratio : kRatios) {
-    onnxruntime::test::OpTester test("BitmaskDropoutGrad", 1, kMSDomain);
+    OpTester test("BitmaskDropoutGrad", 1, kMSDomain);
     GenerateMaskData(input_size, mask_buffer.get(), ratio);
-    std::vector<uint32_t> bitmask_data;
+    std::vector<BitmaskElementType> bitmask_data;
     std::vector<T> output_data;
     int64_t bitmask_element_count =
         GetDropoutGradBitmaskAndOutput(input_size, input_data, mask_buffer.get(), ratio, bitmask_data, output_data);
     test.AddInput<T>("data", input_dims, input_data);
-    test.AddInput<uint32_t>("mask", {bitmask_element_count}, bitmask_data);
+    test.AddInput<BitmaskElementType>("mask", {bitmask_element_count}, bitmask_data);
     test.AddInput<float>("ratio", {}, {ratio});
     test.AddInput<bool>("training_mode", {}, {true});
     test.AddOutput<T>("output", input_dims, output_data);
-    test.Run();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 

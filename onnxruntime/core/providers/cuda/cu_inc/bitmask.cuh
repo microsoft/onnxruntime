@@ -49,24 +49,26 @@
 namespace onnxruntime {
 namespace cuda {
 
-constexpr int kNumBitPerElement = static_cast<int>(sizeof(uint32_t) * CHAR_BIT);
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr int kNumBitsPerBitmaskElement = std::numeric_limits<BitmaskElementType>::digits;
 
 template <int NumUnroll>
 __device__ __forceinline__ void SetBitmask(const CUDA_LONG id, const CUDA_LONG mask_element_count,
-                                           const fast_divmod fdm_bits_per_element, uint32_t thread_bitmask,
-                                           uint32_t* mask_data) {
+                                           const fast_divmod fdm_bits_per_element, BitmaskElementType thread_bitmask,
+                                           BitmaskElementType* mask_data) {
   int bitmask_idx, bitmask_shift;
   fdm_bits_per_element.divmod(id, bitmask_idx, bitmask_shift);
-  uint32_t bitmask = (thread_bitmask << bitmask_shift);
+  BitmaskElementType bitmask = (thread_bitmask << bitmask_shift);
 #if defined(USE_CUDA) && __CUDA_ARCH__ >= 800
   // All thread which intend to write to the same output index will have the same thread mask.
-  uint32_t thread_mask = __match_any_sync(0xFFFFFFFF, bitmask_idx);
+  BitmaskElementType thread_mask = __match_any_sync(0xFFFFFFFF, bitmask_idx);
   // All threads with the same thread mask (threads which intend to write to the same output index) collaborate
   // on a bitwise-or reduction.
   bitmask = __reduce_or_sync(thread_mask, bitmask);
 #else
 #pragma unroll
-  for (int stride = kNumBitPerElement / (NumUnroll * 2); stride > 0; stride /= 2) {
+  for (int stride = kNumBitsPerBitmaskElement / (NumUnroll * 2); stride > 0; stride /= 2) {
     bitmask |= WARP_SHFL_DOWN(bitmask, stride);
   }
 #endif
@@ -79,10 +81,10 @@ __device__ __forceinline__ void SetBitmask(const CUDA_LONG id, const CUDA_LONG m
 
 template <int NumUnroll>
 __device__ __forceinline__ void GetMasks(CUDA_LONG id, const fast_divmod fdm_bits_per_element,
-                                         const uint32_t* mask_data, bool* mask_result) {
+                                         const BitmaskElementType* mask_data, bool* mask_result) {
   int bitmask_idx, bitmask_shift;
   fdm_bits_per_element.divmod(id, bitmask_idx, bitmask_shift);
-  uint32_t shifted_mask = mask_data[bitmask_idx] >> bitmask_shift;
+  BitmaskElementType shifted_mask = mask_data[bitmask_idx] >> bitmask_shift;
 #pragma unroll
   for (int i = 0; i < NumUnroll; i++) {
     mask_result[i] = (shifted_mask & (1 << i)) != 0;

@@ -152,67 +152,25 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     Node& dropout_node = *graph.GetNode(next_node.Index());
     nodes_to_fuse.push_back(dropout_node);
-    bool is_bitmask_dropout = dropout_node.OpType() == "BitmaskDropout";
-
-    Node* p_dropoutgrad_node = nullptr;
-    if (!is_bitmask_dropout && dropout_node.OutputDefs().size() >= 2) {
-      const NodeArg* mask_output = dropout_node.OutputDefs()[1];
-      if (!graph.IsOutput(mask_output)) {
-        auto consumer_nodes = graph.GetConsumerNodes(mask_output->Name());
-        if (consumer_nodes.size() == 1 &&
-            graph_utils::IsSupportedOptypeVersionAndDomain(*consumer_nodes[0], "DropoutGrad", {1}, kMSDomain) &&
-            consumer_nodes[0]->GetExecutionProviderType() == node.GetExecutionProviderType()) {
-          p_dropoutgrad_node = graph.GetNode(consumer_nodes[0]->Index());
-        }
-      }
-    }
 
     InlinedVector<NodeArg*> dropout_output;
-    dropout_output.push_back(dropout_node.MutableOutputDefs()[0]);
-    if (p_dropoutgrad_node) {
-      ONNX_NAMESPACE::TypeProto tensor_uint32;
-      tensor_uint32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-      NodeArg& bitmask_output_def =
-          graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("dropout_bitmask_output"), &tensor_uint32);
-      dropout_output.push_back(&bitmask_output_def);
-      nodes_to_fuse.push_back(*p_dropoutgrad_node);
-    } else if (dropout_node.OutputDefs().size() > 1) {
-      dropout_output.push_back(dropout_node.MutableOutputDefs()[1]);
+    for (size_t i = 0; i < dropout_node.OutputDefs().size(); ++i) {
+      dropout_output.push_back(dropout_node.MutableOutputDefs()[i]);
     }
 
     FuseResidualAddIfAny(graph, dropout_node, dropout_input, dropout_output, nodes_to_fuse);
 
-    if (dropout_node.InputDefs().size() > 1) {
-      dropout_input.push_back(dropout_node.MutableInputDefs()[1]);  // ratio
+    for (size_t i = 1; i < dropout_node.InputDefs().size(); ++i) {
+      dropout_input.push_back(dropout_node.MutableInputDefs()[i]);  // ratio and training_mode if exist.
     }
 
-    // populate training_mode
-    if (dropout_node.InputDefs().size() > 2) {
-      dropout_input.push_back(dropout_node.MutableInputDefs()[2]);
-    }
-
-    const std::string op_type = (!is_bitmask_dropout && !p_dropoutgrad_node) ? "BiasDropout" : "BitmaskBiasDropout";
+    std::string op_type = dropout_node.OpType() == "Dropout" ? "BiasDropout" : "BitmaskBiasDropout";
     Node& dropout_add_fusion_node =
         graph.AddNode(graph.GenerateNodeName(op_type), op_type, "fused Add-Dropout-(Add) for " + dropout_node.Name(),
                       dropout_input, dropout_output, &dropout_node.GetAttributes(), kMSDomain);
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
     dropout_add_fusion_node.SetExecutionProviderType(dropout_node.GetExecutionProviderType());
-
-    if (p_dropoutgrad_node) {
-      InlinedVector<NodeArg*> dropoutgrad_input;
-      dropoutgrad_input.push_back(p_dropoutgrad_node->MutableInputDefs()[0]);
-      dropoutgrad_input.push_back(dropout_output[1]);
-      for (size_t i = 2; i < p_dropoutgrad_node->InputDefs().size(); ++i) {
-        dropoutgrad_input.push_back(p_dropoutgrad_node->MutableInputDefs()[i]);
-      }
-      const std::string grad_op_type = "BitmaskDropoutGrad";
-      Node& bitmask_dropout_grad_node =
-          graph.AddNode(graph.GenerateNodeName(grad_op_type), grad_op_type,
-                        "BitmaskDropoutGrad replace for " + p_dropoutgrad_node->Name(), dropoutgrad_input,
-                        p_dropoutgrad_node->MutableOutputDefs(), &p_dropoutgrad_node->GetAttributes(), kMSDomain);
-      bitmask_dropout_grad_node.SetExecutionProviderType(p_dropoutgrad_node->GetExecutionProviderType());
-    }
 
     // Delete bias_add_node, dropout_node and optionally residual_add_node.
     for (Node& n : nodes_to_fuse) {

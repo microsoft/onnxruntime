@@ -50,7 +50,7 @@ __global__ void DropoutKernel(const CUDA_LONG N, const CUDA_LONG mask_element_co
   for (int i = 0; i < steps_per_thread; ++i) {
     CUDA_LONG id = idx * kNumUnroll + i * step_size;
     rand = curand_uniform4(&state);
-    uint32_t thread_bitmask = 0;
+    BitmaskElementType thread_bitmask = 0;
 
 // actual computation
 #pragma unroll
@@ -69,7 +69,7 @@ __global__ void DropoutKernel(const CUDA_LONG N, const CUDA_LONG mask_element_co
 
     if (UseBitmask) {
       SetBitmask<kNumUnroll>(id, mask_element_count, fdm_bits_per_element, thread_bitmask,
-                             reinterpret_cast<uint32_t*>(mask_data));
+                             reinterpret_cast<BitmaskElementType*>(mask_data));
     }
 
     __syncthreads();
@@ -98,7 +98,7 @@ __global__ void DropoutVectorizedKernel(const CUDA_LONG N, const CUDA_LONG mask_
   for (int i = 0; i < steps_per_thread; ++i) {
     CUDA_LONG id = idx * kNumUnroll + i * step_size;
     rand = curand_uniform4(&state);
-    uint32_t thread_bitmask = 0;
+    BitmaskElementType thread_bitmask = 0;
 
     if (id < N) {
       // vectorized load into storage
@@ -130,17 +130,29 @@ __global__ void DropoutVectorizedKernel(const CUDA_LONG N, const CUDA_LONG mask_
 
     if (UseBitmask) {
       SetBitmask<kNumUnroll>(id, mask_element_count, fdm_bits_per_element, thread_bitmask,
-                             reinterpret_cast<uint32_t*>(mask_data));
+                             reinterpret_cast<BitmaskElementType*>(mask_data));
     }
 
     __syncthreads();
   }
 }
 
-template <typename T, bool UseBitmask>
+#define LAUNCH_DROPOUT_KERNEL(FuncName, UseBitmask)                                                       \
+  FuncName<T, UseBitmask><<<grid_size, kBlockSize, 0, stream>>>(                                          \
+      static_cast<CUDA_LONG>(N), static_cast<CUDA_LONG>(mask_element_count), step_size, steps_per_thread, \
+      fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data)
+
+#define HANDLE_DROPOUT_USE_BITMASK(FuncName) \
+  if (use_bitmask) {                         \
+    LAUNCH_DROPOUT_KERNEL(FuncName, true);   \
+  } else {                                   \
+    LAUNCH_DROPOUT_KERNEL(FuncName, false);  \
+  }
+
+template <typename T>
 void DropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,
                        const int64_t mask_element_count, const float ratio, PhiloxGenerator& generator, const T* X_data,
-                       T* Y_data, void* mask_data) {
+                       T* Y_data, void* mask_data, bool use_bitmask) {
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / kBlockSize;
   const int grid_size =
       std::min(prop.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, kBlockSize * kNumUnroll)));
@@ -151,33 +163,27 @@ void DropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const in
   const int steps_per_thread = static_cast<int>(CeilDiv(N, step_size));
   auto seeds = generator.NextPhiloxSeeds(static_cast<uint64_t>(steps_per_thread * kNumUnroll));
 
-  fast_divmod fdm_bits_per_element(kNumBitPerElement);
+  fast_divmod fdm_bits_per_element(kNumBitsPerBitmaskElement);
   if (N % kNumUnroll != 0) {
-    DropoutKernel<T, UseBitmask><<<grid_size, kBlockSize, 0, stream>>>(
-        static_cast<CUDA_LONG>(N), static_cast<CUDA_LONG>(mask_element_count), step_size, steps_per_thread,
-        fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
+    HANDLE_DROPOUT_USE_BITMASK(DropoutKernel);
   } else {
-    DropoutVectorizedKernel<T, UseBitmask><<<grid_size, kBlockSize, 0, stream>>>(
-        static_cast<CUDA_LONG>(N), static_cast<CUDA_LONG>(mask_element_count), step_size, steps_per_thread,
-        fdm_bits_per_element, ratio, seeds, X_data, Y_data, mask_data);
+    HANDLE_DROPOUT_USE_BITMASK(DropoutVectorizedKernel);
   }
 }
 
-#define SPECIALIZED_DROPOUT_IMPL(T, UseBitmask)                                                           \
-  template void DropoutKernelImpl<T, UseBitmask>(                                                         \
-      const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count, \
-      const float ratio, PhiloxGenerator& generator, const T* X_data, T* Y_data, void* mask_data);
+#undef HANDLE_DROPOUT_USE_BITMASK
+#undef LAUNCH_DROPOUT_KERNEL
 
-#define SPECIALIZED_DROPOUT_IMPL_TYPED(T) \
-  SPECIALIZED_DROPOUT_IMPL(T, true)       \
-  SPECIALIZED_DROPOUT_IMPL(T, false)
+#define SPECIALIZED_DROPOUT_IMPL(T)                                                                                   \
+  template void DropoutKernelImpl<T>(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,                \
+                                     const int64_t mask_element_count, const float ratio, PhiloxGenerator& generator, \
+                                     const T* X_data, T* Y_data, void* mask_data, bool use_bitmask);
 
-SPECIALIZED_DROPOUT_IMPL_TYPED(float)
-SPECIALIZED_DROPOUT_IMPL_TYPED(double)
-SPECIALIZED_DROPOUT_IMPL_TYPED(half)
-SPECIALIZED_DROPOUT_IMPL_TYPED(BFloat16)
+SPECIALIZED_DROPOUT_IMPL(float)
+SPECIALIZED_DROPOUT_IMPL(double)
+SPECIALIZED_DROPOUT_IMPL(half)
+SPECIALIZED_DROPOUT_IMPL(BFloat16)
 
-#undef SPECIALIZED_DROPOUT_IMPL_TYPED
 #undef SPECIALIZED_DROPOUT_IMPL
 
 }  // namespace cuda

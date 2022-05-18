@@ -749,8 +749,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                                 .Input(3, "ratio",
                                        "The ratio of random dropout, with value in [0, 1). If this input was not set, "
                                        "or if it was set to 0, the output would be a simple copy of the input. "
-                                       "If it's non-zero, output will be a random dropout of input, which is typically "
-                                       "the case during training.",
+                                       "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+                                       "the case during training. It is an optional value, if not specified it will default to 0.5.",
                                        "T1",
                                        OpSchema::Optional)
                                 .Input(4, "training_mode",
@@ -800,8 +800,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(3, "ratio",
                "The ratio of random dropout, with value in [0, 1). If this input was not set, "
                "or if it was set to 0, the output would be a simple copy of the input. "
-               "If it's non-zero, output will be a random dropout of input, which is typically "
-               "the case during training.",
+               "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+               "the case during training. It is an optional value, if not specified it will default to 0.5.",
                "T1", OpSchema::Optional)
         .Input(4, "training_mode",
                "If set to true then it indicates dropout is being used for "

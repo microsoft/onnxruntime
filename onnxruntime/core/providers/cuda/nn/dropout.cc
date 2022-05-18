@@ -10,13 +10,29 @@ namespace cuda {
 
 namespace {
 
-constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr int64_t kNumBitsPerBitmaskElement = static_cast<int64_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 template <typename T>
 struct GetRatioDataImpl {
   void operator()(const Tensor* ratio, float& ratio_data) const {
     ratio_data = static_cast<float>(*(ratio->template Data<T>()));
     ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
+template <typename T>
+struct DropoutComputeImpl {
+  void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count,
+                  const float ratio_data, PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data,
+                  bool use_bitmask) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
+
+    DropoutKernelImpl<CudaT>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data, mask_data,
+                             use_bitmask);
   }
 };
 
@@ -40,25 +56,6 @@ ONNX_OPERATOR_KERNEL_EX(Dropout, kOnnxDomain, 13, kCudaExecutionProvider,
                             .InputMemoryType(OrtMemTypeCPUInput, 2),
                         Dropout<false>);
 
-template <typename T>
-struct DropoutComputeImpl {
-  void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count,
-                  const float ratio_data, PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data,
-                  bool use_bitmask) const {
-    typedef typename ToCudaType<T>::MappedType CudaT;
-    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
-
-    if (use_bitmask) {
-      DropoutKernelImpl<CudaT, true>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data,
-                                     mask_data);
-    } else {
-      DropoutKernelImpl<CudaT, false>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data,
-                                      mask_data);
-    }
-  }
-};
-
 template <bool UseBitmask>
 Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   // Get X_data
@@ -74,7 +71,7 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   Tensor* mask = nullptr;
   int64_t mask_element_count = N;
   if (UseBitmask) {
-    mask_element_count = (N + kNumBitsPerElement - 1) / kNumBitsPerElement;
+    mask_element_count = (N + kNumBitsPerBitmaskElement - 1) / kNumBitsPerBitmaskElement;
     mask = context->Output(1, {mask_element_count});
   } else {
     mask = context->Output(1, shape);
@@ -103,7 +100,7 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
     if (mask) {
       if (UseBitmask) {
         CUDA_RETURN_IF_ERROR(
-            cudaMemsetAsync(mask->MutableDataRaw(), -1, mask_element_count * sizeof(uint32_t), Stream()));
+            cudaMemsetAsync(mask->MutableDataRaw(), -1, mask_element_count * sizeof(BitmaskElementType), Stream()));
       } else {
         CUDA_RETURN_IF_ERROR(
             cudaMemsetAsync(mask->MutableData<bool>(), true, mask_element_count * sizeof(bool), Stream()));
@@ -116,7 +113,8 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> temp_mask_buffer{};  // buffer to use if mask is not provided
   void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableDataRaw();
-    temp_mask_buffer = GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(uint32_t) : sizeof(bool)));
+    temp_mask_buffer =
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)));
     return temp_mask_buffer.get();
   }();
 

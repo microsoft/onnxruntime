@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/bitmask_dropout_replacement.h"
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 
 #include "core/graph/graph_utils.h"
 
@@ -20,7 +20,8 @@ Status BitmaskDropoutReplacement::ApplyImpl(Graph& graph, bool& modified, int gr
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     // Matching for Dropout node.
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13}) ||
+    if ((!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13}) &&
+         !graph_utils::IsSupportedOptypeVersionAndDomain(node, "BiasDropout", {1}, kMSDomain)) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -46,9 +47,9 @@ Status BitmaskDropoutReplacement::ApplyImpl(Graph& graph, bool& modified, int gr
     NodeArg& bitmask_output_def =
         graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("dropout_bitmask_output"), &tensor_uint32);
     dropout_output.emplace_back(&bitmask_output_def);
-    const std::string op_type = "BitmaskDropout";
+    const std::string op_type = node.OpType() == "Dropout" ? "BitmaskDropout" : "BitmaskBiasDropout";
     Node& bitmask_dropout_node =
-        graph.AddNode(graph.GenerateNodeName(op_type), op_type, "BitmaskDropout replace for " + node.Name(),
+        graph.AddNode(graph.GenerateNodeName(op_type), op_type, "Bitmask Dropout replace for " + node.Name(),
                       node.MutableInputDefs(), dropout_output, &node.GetAttributes(), kMSDomain);
     bitmask_dropout_node.SetExecutionProviderType(node.GetExecutionProviderType());
 

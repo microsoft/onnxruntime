@@ -53,7 +53,7 @@ __global__ void BiasDropoutKernel(const CUDA_LONG N, const CUDA_LONG mask_elemen
   for (int i = 0; i < steps_per_thread; ++i) {
     CUDA_LONG id = idx * kNumUnroll + i * step_size;
     rand = curand_uniform4(&state);
-    uint32_t thread_bitmask = 0;
+    BitmaskElementType thread_bitmask = 0;
 
 // actual computation
 #pragma unroll
@@ -85,7 +85,7 @@ __global__ void BiasDropoutKernel(const CUDA_LONG N, const CUDA_LONG mask_elemen
 
     if (UseBitmask) {
       SetBitmask<kNumUnroll>(id, mask_element_count, fdm_bits_per_element, thread_bitmask,
-                             reinterpret_cast<uint32_t*>(mask_data));
+                             reinterpret_cast<BitmaskElementType*>(mask_data));
     }
 
     __syncthreads();
@@ -116,7 +116,7 @@ __global__ void BiasDropoutVectorizedKernel(const CUDA_LONG N, const CUDA_LONG m
   for (int i = 0; i < steps_per_thread; ++i) {
     CUDA_LONG id = idx * kNumUnroll + i * step_size;
     rand = curand_uniform4(&state);
-    uint32_t thread_bitmask = 0;
+    BitmaskElementType thread_bitmask = 0;
 
     if (id < N) {
       // vectorized load into storage
@@ -173,23 +173,44 @@ __global__ void BiasDropoutVectorizedKernel(const CUDA_LONG N, const CUDA_LONG m
 
     if (UseBitmask) {
       SetBitmask<kNumUnroll>(id, mask_element_count, fdm_bits_per_element, thread_bitmask,
-                             reinterpret_cast<uint32_t*>(mask_data));
+                             reinterpret_cast<BitmaskElementType*>(mask_data));
     }
 
     __syncthreads();
   }
 }
 
-#define LAUNCH_BIAS_DROPOUT_KERNEL(FuncName, HasSameShapeBias, HasResidual)                               \
+#define LAUNCH_BIAS_DROPOUT_KERNEL(FuncName, HasSameShapeBias, HasResidual, UseBitmask)                   \
   FuncName<T, HasSameShapeBias, HasResidual, UseBitmask><<<grid_size, kBlockSize, 0, stream>>>(           \
       static_cast<CUDA_LONG>(N), static_cast<CUDA_LONG>(mask_element_count), step_size, steps_per_thread, \
       fdm_bits_per_element, fdm_dim, ratio, seeds, X_data, bias_data, residual_data, Y_data, mask_data)
 
-template <typename T, bool UseBitmask>
+#define HANDLE_BIAS_DROPOUT_USE_BITMASK(FuncName, HasSameShapeBias, HasResidual) \
+  if (use_bitmask) {                                                             \
+    LAUNCH_BIAS_DROPOUT_KERNEL(FuncName, HasSameShapeBias, HasResidual, true);   \
+  } else {                                                                       \
+    LAUNCH_BIAS_DROPOUT_KERNEL(FuncName, HasSameShapeBias, HasResidual, false);  \
+  }
+
+#define HANDLE_BIAS_DROPOUT_HAS_RESIDUAL(FuncName, HasSameShapeBias)    \
+  if (residual_data) {                                                  \
+    HANDLE_BIAS_DROPOUT_USE_BITMASK(FuncName, HasSameShapeBias, true);  \
+  } else {                                                              \
+    HANDLE_BIAS_DROPOUT_USE_BITMASK(FuncName, HasSameShapeBias, false); \
+  }
+
+#define HANDLE_BIAS_DROPOUT_HAS_SAME_SHAPE_BIAS(FuncName) \
+  if (has_same_shape_bias) {                              \
+    HANDLE_BIAS_DROPOUT_HAS_RESIDUAL(FuncName, true);     \
+  } else {                                                \
+    HANDLE_BIAS_DROPOUT_HAS_RESIDUAL(FuncName, false);    \
+  }
+
+template <typename T>
 void BiasDropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,
                            const int64_t mask_element_count, const fast_divmod fdm_dim, const float ratio,
                            PhiloxGenerator& generator, const T* X_data, const T* bias_data, const T* residual_data,
-                           T* Y_data, void* mask_data, bool has_same_shape_bias) {
+                           T* Y_data, void* mask_data, bool has_same_shape_bias, bool use_bitmask) {
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / kBlockSize;
   const int grid_size =
       std::min(prop.multiProcessorCount * blocks_per_sm, static_cast<int>(CeilDiv(N, kBlockSize * kNumUnroll)));
@@ -200,56 +221,30 @@ void BiasDropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, cons
   const int steps_per_thread = static_cast<int>(CeilDiv(N, step_size));
   auto seeds = generator.NextPhiloxSeeds(static_cast<uint64_t>(steps_per_thread * kNumUnroll));
 
-  fast_divmod fdm_bits_per_element(kNumBitPerElement);
+  fast_divmod fdm_bits_per_element(kNumBitsPerBitmaskElement);
   if (N % kNumUnroll != 0) {
-    if (has_same_shape_bias) {
-      if (!residual_data) {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutKernel, true, false);
-      } else {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutKernel, true, true);
-      }
-    } else {
-      if (!residual_data) {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutKernel, false, false);
-      } else {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutKernel, false, true);
-      }
-    }
+    HANDLE_BIAS_DROPOUT_HAS_SAME_SHAPE_BIAS(BiasDropoutKernel);
   } else {
-    if (has_same_shape_bias) {
-      if (!residual_data) {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutVectorizedKernel, true, false);
-      } else {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutVectorizedKernel, true, true);
-      }
-    } else {
-      if (!residual_data) {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutVectorizedKernel, false, false);
-      } else {
-        LAUNCH_BIAS_DROPOUT_KERNEL(BiasDropoutVectorizedKernel, false, true);
-      }
-    }
+    HANDLE_BIAS_DROPOUT_HAS_SAME_SHAPE_BIAS(BiasDropoutVectorizedKernel);
   }
 }
 
+#undef HANDLE_BIAS_DROPOUT_HAS_SAME_SHAPE_BIAS
+#undef HANDLE_BIAS_DROPOUT_HAS_RESIDUAL
+#undef HANDLE_BIAS_DROPOUT_USE_BITMASK
 #undef LAUNCH_BIAS_DROPOUT_KERNEL
 
-#define SPECIALIZED_BIAS_DROPOUT_IMPL(T, UseBitmask)                                                                 \
-  template void BiasDropoutKernelImpl<T, UseBitmask>(                                                                \
+#define SPECIALIZED_BIAS_DROPOUT_IMPL(T)                                                                             \
+  template void BiasDropoutKernelImpl<T>(                                                                            \
       const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const int64_t mask_element_count,            \
       const fast_divmod fdm_dim, const float ratio, PhiloxGenerator& generator, const T* X_data, const T* bias_data, \
-      const T* residual_data, T* Y_data, void* mask_data, bool has_same_shape_bias);
+      const T* residual_data, T* Y_data, void* mask_data, bool has_same_shape_bias, bool use_bitmask);
 
-#define SPECIALIZED_BIAS_DROPOUT_IMPL_TYPED(T) \
-  SPECIALIZED_BIAS_DROPOUT_IMPL(T, true)       \
-  SPECIALIZED_BIAS_DROPOUT_IMPL(T, false)
+SPECIALIZED_BIAS_DROPOUT_IMPL(float)
+SPECIALIZED_BIAS_DROPOUT_IMPL(double)
+SPECIALIZED_BIAS_DROPOUT_IMPL(half)
+SPECIALIZED_BIAS_DROPOUT_IMPL(BFloat16)
 
-SPECIALIZED_BIAS_DROPOUT_IMPL_TYPED(float)
-SPECIALIZED_BIAS_DROPOUT_IMPL_TYPED(double)
-SPECIALIZED_BIAS_DROPOUT_IMPL_TYPED(half)
-SPECIALIZED_BIAS_DROPOUT_IMPL_TYPED(BFloat16)
-
-#undef SPECIALIZED_BIAS_DROPOUT_IMPL_TYPED
 #undef SPECIALIZED_BIAS_DROPOUT_IMPL
 
 }  // namespace cuda

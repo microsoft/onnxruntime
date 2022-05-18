@@ -10,7 +10,8 @@ namespace onnxruntime {
 /**
 @Class BitmaskDropoutReplacement
 
-Rewrite Dropout + DropoutGrad to BitmaskDropout + BitmaskDropoutGrad
+Rewrite Dropout->DropoutGrad to BitmaskDropout->BitmaskDropoutGrad, or
+BiasDropout->DropoutGrad to BitmaskBiasDropout->BitmaskDropoutGrad.
 
 */
 class BitmaskDropoutReplacement : public GraphTransformer {

@@ -6,25 +6,30 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
+
+using namespace onnxruntime::test;
 
 namespace {
 
 constexpr int64_t kMaskSeed = 42;
 // If ratio is 0, it will go to inference mode even the training_mode is true.
 const std::vector<float> kRatios{0.25f, 0.50f, 0.75f, 0.99f};
-constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr size_t kNumBitsPerBitmaskElement = static_cast<size_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 template <typename T>
 void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio = false, bool has_training_mode = false,
                          bool has_mask = false) {
   size_t input_size =
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> input_data = onnxruntime::test::ValueRange<T>(input_size, T(1.f), T(1.f));
-  onnxruntime::test::OpTester test("BitmaskDropout", 1, kMSDomain);
+  std::vector<T> input_data = ValueRange<T>(input_size, T(1.f), T(1.f));
+  OpTester test("BitmaskDropout", 1, kMSDomain);
   test.AddInput<T>("data", input_dims, input_data);
   if (has_ratio) {
     // Ratio is ignored in inference mode.
@@ -39,9 +44,9 @@ void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio 
 
   test.AddOutput<T>("output", input_dims, input_data);
   if (has_mask) {
-    size_t mask_size = (input_size + kNumBitsPerElement - 1) / kNumBitsPerElement;
-    std::vector<uint32_t> mask_data(mask_size, 0xFFFFFFFF);
-    test.AddOutput<uint32_t>("mask", {static_cast<int64_t>(mask_size)}, mask_data);
+    size_t mask_size = (input_size + kNumBitsPerBitmaskElement - 1) / kNumBitsPerBitmaskElement;
+    std::vector<BitmaskElementType> mask_data(mask_size, 0xFFFFFFFF);
+    test.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(mask_size)}, mask_data);
   }
   test.Run();
 }
@@ -62,13 +67,13 @@ void RunTestForInferenceWrapper() {
   RunTestForInference<T>({16, 16}, true, true, true);
 }
 
-std::vector<uint32_t> MasksToBitmasks(size_t size, const bool* mask_data) {
-  std::vector<uint32_t> result;
+std::vector<BitmaskElementType> MasksToBitmasks(size_t size, const bool* mask_data) {
+  std::vector<BitmaskElementType> result;
   for (size_t i = 0; i < size; ++i) {
-    size_t bitmask_idx = i / kNumBitsPerElement;
-    size_t bitmask_shift = i % kNumBitsPerElement;
+    size_t bitmask_idx = i / kNumBitsPerBitmaskElement;
+    size_t bitmask_shift = i % kNumBitsPerBitmaskElement;
     if (bitmask_idx >= result.size()) {
-      result.push_back(0);
+      result.emplace_back(0);
     }
 
     if (mask_data[i]) {
@@ -83,9 +88,9 @@ template <typename T>
 void RunTestForTraining(const std::vector<int64_t>& input_dims) {
   size_t input_size =
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> input_data = onnxruntime::test::ValueRange<T>(input_size, T(0.f), T(1.f));
+  std::vector<T> input_data = ValueRange<T>(input_size, T(0.f), T(1.f));
   for (float ratio : kRatios) {
-    onnxruntime::test::OpTester dropout("Dropout", 13, kOnnxDomain, false);
+    OpTester dropout("Dropout", 13, kOnnxDomain, false);
     dropout.AddAttribute<int64_t>("seed", kMaskSeed);
     dropout.AddInput<T>("data", input_dims, input_data);
     dropout.AddInput<float>("ratio", {}, {ratio});
@@ -98,20 +103,36 @@ void RunTestForTraining(const std::vector<int64_t>& input_dims) {
     dropout.AddOutput<T>("output", input_dims, input_data);
     dropout.AddOutput<bool>("mask", input_dims, mask_buffer.get(), input_size);
 
-    dropout.Run();
-    std::vector<OrtValue> dropout_outputs = dropout.GetFetches();
-    const T* output_values = dropout_outputs[0].Get<Tensor>().Data<T>();
-    const bool* mask_values = dropout_outputs[1].Get<Tensor>().Data<bool>();
-    std::vector<uint32_t> bitmask_values = MasksToBitmasks(input_size, mask_values);
+    std::vector<std::unique_ptr<IExecutionProvider>> dropout_eps;
+#ifdef USE_CUDA
+    dropout_eps.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    dropout_eps.emplace_back(DefaultRocmExecutionProvider());
+#endif
+    dropout.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &dropout_eps);
 
-    onnxruntime::test::OpTester bitmask_dropout("BitmaskDropout", 1, kMSDomain);
+    std::vector<OrtValue> dropout_outputs = dropout.GetFetches();
+    ASSERT_EQ(dropout_outputs.size(), 2);
+    const T* output_values = FetchTensor(dropout_outputs[0]).Data<T>();
+    const bool* mask_values = FetchTensor(dropout_outputs[1]).Data<bool>();
+    std::vector<BitmaskElementType> bitmask_values = MasksToBitmasks(input_size, mask_values);
+
+    OpTester bitmask_dropout("BitmaskDropout", 1, kMSDomain);
     bitmask_dropout.AddAttribute<int64_t>("seed", kMaskSeed);
     bitmask_dropout.AddInput<T>("data", input_dims, input_data);
     bitmask_dropout.AddInput<float>("ratio", {}, {ratio});
     bitmask_dropout.AddInput<bool>("training_mode", {}, {true});
     bitmask_dropout.AddOutput<T>("output", input_dims, output_values, input_size);
-    bitmask_dropout.AddOutput<uint32_t>("mask", {static_cast<int64_t>(bitmask_values.size())}, bitmask_values);
-    bitmask_dropout.Run();
+    bitmask_dropout.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(bitmask_values.size())},
+                                                  bitmask_values);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> bitmask_dropout_eps;
+#ifdef USE_CUDA
+    bitmask_dropout_eps.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    bitmask_dropout_eps.emplace_back(DefaultRocmExecutionProvider());
+#endif
+    bitmask_dropout.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &bitmask_dropout_eps);
   }
 }
 

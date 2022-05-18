@@ -28,15 +28,17 @@ enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
 #if defined(USE_CUDA) || defined(USE_ROCM)
 namespace {
 
-constexpr size_t kNumBitsPerElement = sizeof(uint32_t) * CHAR_BIT;
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr size_t kNumBitsPerBitmaskElement = static_cast<size_t>(std::numeric_limits<BitmaskElementType>::digits);
 
-std::vector<uint32_t> MasksToBitmasks(size_t size, const bool* mask_data) {
-  std::vector<uint32_t> result;
+std::vector<BitmaskElementType> MasksToBitmasks(size_t size, const bool* mask_data) {
+  std::vector<BitmaskElementType> result;
   for (size_t i = 0; i < size; i++) {
-    size_t bitmask_idx = i / kNumBitsPerElement;
-    size_t bitmask_shift = i % kNumBitsPerElement;
+    size_t bitmask_idx = i / kNumBitsPerBitmaskElement;
+    size_t bitmask_shift = i % kNumBitsPerBitmaskElement;
     if (bitmask_idx >= result.size()) {
-      result.push_back(0);
+      result.emplace_back(0);
     }
 
     if (mask_data[i]) {
@@ -66,7 +68,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   if (has_same_shape_bias) {
     bias_shape = input_shape;
   } else {
-    bias_shape.push_back(input_shape.back());
+    bias_shape.emplace_back(input_shape.back());
   }
   const auto bias_size = has_same_shape_bias ? input_size : input_shape.back();
   const std::vector<float> bias = ValueRange(bias_size, 2.0f, 1.0f);
@@ -167,22 +169,37 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   };
 
   t.SetCustomOutputVerifier(output_verifier);
-  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> t_eps;
+#ifdef USE_CUDA
+  t_eps.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  t_eps.emplace_back(DefaultRocmExecutionProvider());
+#endif
+  t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &t_eps);
 
   std::vector<OrtValue> dropout_outputs = t.GetFetches();
-  const float* output_values = dropout_outputs[0].Get<Tensor>().Data<float>();
+  ASSERT_GE(dropout_outputs.size(), 1);
+  const float* output_values = FetchTensor(dropout_outputs[0]).Data<float>();
   t_bitmask.AddOutput<float>("output", input_shape, output_values, input_size);
   if (use_mask) {
-    const bool* mask_values = dropout_outputs[1].Get<Tensor>().Data<bool>();
-    std::vector<uint32_t> bitmask_values = MasksToBitmasks(input_size, mask_values);
-    t_bitmask.AddOutput<uint32_t>("mask", {static_cast<int64_t>(bitmask_values.size())}, bitmask_values);
+    ASSERT_GE(dropout_outputs.size(), 2);
+    const bool* mask_values = FetchTensor(dropout_outputs[1]).Data<bool>();
+    std::vector<BitmaskElementType> bitmask_values = MasksToBitmasks(input_size, mask_values);
+    t_bitmask.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(bitmask_values.size())}, bitmask_values);
   } else {
-    t_bitmask.AddOptionalOutputEdge<uint32_t>();
+    t_bitmask.AddOptionalOutputEdge<BitmaskElementType>();
   }
 
   // Use BiasDropout result to verify the BitmaskBiasDropout result as the seed are set the same value.
-  t_bitmask.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::vector<std::unique_ptr<IExecutionProvider>> t_bitmask_eps;
+#ifdef USE_CUDA
+  t_bitmask_eps.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  t_bitmask_eps.emplace_back(DefaultRocmExecutionProvider());
+#endif
+  t_bitmask.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &t_bitmask_eps);
 }
+
 }  // namespace
 
 // N % 4 != 0

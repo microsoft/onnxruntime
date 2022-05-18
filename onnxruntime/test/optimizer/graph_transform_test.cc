@@ -20,7 +20,6 @@
 #include "core/graph/model.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
-#include "core/optimizer/bitmask_dropout_replacement.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
@@ -81,6 +80,9 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -3662,21 +3664,16 @@ static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_d
 }
 
 TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_grad_basic.onnx", false, *logger_, 0, 0, 1, 0, 0, 0, 1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_grad_multiple_mask_uses.onnx", false, *logger_, 0, 1, 0,
-                           0, 0, 1, 0);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_basic.onnx", true, *logger_, 0, 0, 0, 0, 1, 0,
-                           1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_basic_2.onnx", true, *logger_, 0, 0, 0, 0, 1,
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 1, 0, 0,
                            0, 1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_multiple_mask_uses.onnx", true, *logger_, 0,
-                           0, 0, 1, 0, 1, 0);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_residual.onnx", true, *logger_, 0, 0, 0, 0, 1,
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_multiple_mask_uses.onnx", false, *logger_,
+                           0, 1, 0, 0, 0, 1, 0);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 0,
+                           0, 1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_basic.onnx", true, *logger_, 0, 0, 0, 0, 1,
                            0, 1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_residual_2.onnx", true, *logger_, 0, 0, 0, 0,
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0,
                            1, 0, 1);
-  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_grad_residual_multiple_consumers.onnx", true,
-                           *logger_, 1, 0, 0, 0, 1, 0, 1);
 }
 #endif
 

@@ -33,7 +33,7 @@ __global__ void DropoutGradientKernel(const int64_t N, const fast_divmod fdm_bit
   CUDA_LONG id = (blockDim.x * blockIdx.x + threadIdx.x) * kNumUnroll;
   bool masks[kNumUnroll];
   if (UseBitmask && id < N) {
-    GetMasks<kNumUnroll>(id, fdm_bits_per_element, reinterpret_cast<const uint32_t*>(mask_data), masks);
+    GetMasks<kNumUnroll>(id, fdm_bits_per_element, reinterpret_cast<const BitmaskElementType*>(mask_data), masks);
   }
 
 #pragma unroll
@@ -65,7 +65,7 @@ __global__ void DropoutGradientVectorizedKernel(const int64_t N, const fast_divm
 
     bool masks[kNumUnroll];
     if (UseBitmask) {
-      GetMasks<kNumUnroll>(id, fdm_bits_per_element, reinterpret_cast<const uint32_t*>(mask_data), masks);
+      GetMasks<kNumUnroll>(id, fdm_bits_per_element, reinterpret_cast<const BitmaskElementType*>(mask_data), masks);
     } else {
       MaskLoadT* value2 = reinterpret_cast<MaskLoadT*>(&masks);
       *value2 = *reinterpret_cast<const MaskLoadT*>(&reinterpret_cast<const bool*>(mask_data)[id]);
@@ -84,9 +84,20 @@ __global__ void DropoutGradientVectorizedKernel(const int64_t N, const fast_divm
   }
 }
 
-template <typename T, bool UseBitmask>
+#define LAUNCH_DROPOUT_GRAD_KERNEL(FuncName, UseBitmask) \
+  FuncName<T, UseBitmask>                                \
+      <<<blocksPerGrid, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, dY_data, mask_data, scale, dX_data)
+
+#define HANDLE_DROPOUT_GRAD_USE_BITMASK(FuncName) \
+  if (use_bitmask) {                              \
+    LAUNCH_DROPOUT_GRAD_KERNEL(FuncName, true);   \
+  } else {                                        \
+    LAUNCH_DROPOUT_GRAD_KERNEL(FuncName, false);  \
+  }
+
+template <typename T>
 void DropoutGradientKernelImpl(cudaStream_t stream, const int64_t N, const T* dY_data, const void* mask_data,
-                               const float ratio, T* dX_data) {
+                               const float ratio, T* dX_data, bool use_bitmask) {
   if (ratio == 0.0f) {
     if (dY_data != dX_data) {
       CUDA_CALL_THROW(cudaMemcpyAsync(dX_data, dY_data, N * sizeof(T), cudaMemcpyDeviceToDevice, stream));
@@ -94,31 +105,27 @@ void DropoutGradientKernelImpl(cudaStream_t stream, const int64_t N, const T* dY
   } else {
     const float scale = 1.f / (1.f - ratio);
     const int blocksPerGrid = static_cast<int>(CeilDiv(N, kBlockSize * kNumUnroll));
-    fast_divmod fdm_bits_per_element(kNumBitPerElement);
+    fast_divmod fdm_bits_per_element(kNumBitsPerBitmaskElement);
     if (N % kNumUnroll != 0) {
-      DropoutGradientKernel<T, UseBitmask>
-          <<<blocksPerGrid, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, dY_data, mask_data, scale, dX_data);
+      HANDLE_DROPOUT_GRAD_USE_BITMASK(DropoutGradientKernel);
     } else {
-      DropoutGradientVectorizedKernel<T, UseBitmask>
-          <<<blocksPerGrid, kBlockSize, 0, stream>>>(N, fdm_bits_per_element, dY_data, mask_data, scale, dX_data);
+      HANDLE_DROPOUT_GRAD_USE_BITMASK(DropoutGradientVectorizedKernel);
     }
   }
 }
 
-#define SPECIALIZED_DROPOUT_GRAD_IMPL(T, UseBitmask)                                                             \
-  template void DropoutGradientKernelImpl<T, UseBitmask>(cudaStream_t stream, const int64_t N, const T* dY_data, \
-                                                         const void* mask_data, const float scale, T* dX_data);
+#undef HANDLE_DROPOUT_GRAD_USE_BITMASK
+#undef LAUNCH_DROPOUT_GRAD_KERNEL
 
-#define SPECIALIZED_DROPOUT_GRAD_IMPL_TYPED(T) \
-  SPECIALIZED_DROPOUT_GRAD_IMPL(T, true)       \
-  SPECIALIZED_DROPOUT_GRAD_IMPL(T, false)
+#define SPECIALIZED_DROPOUT_GRAD_IMPL(T)                                                             \
+  template void DropoutGradientKernelImpl<T>(cudaStream_t stream, const int64_t N, const T* dY_data, \
+                                             const void* mask_data, const float scale, T* dX_data, bool use_bitmask);
 
-SPECIALIZED_DROPOUT_GRAD_IMPL_TYPED(float)
-SPECIALIZED_DROPOUT_GRAD_IMPL_TYPED(double)
-SPECIALIZED_DROPOUT_GRAD_IMPL_TYPED(half)
-SPECIALIZED_DROPOUT_GRAD_IMPL_TYPED(BFloat16)
+SPECIALIZED_DROPOUT_GRAD_IMPL(float)
+SPECIALIZED_DROPOUT_GRAD_IMPL(double)
+SPECIALIZED_DROPOUT_GRAD_IMPL(half)
+SPECIALIZED_DROPOUT_GRAD_IMPL(BFloat16)
 
-#undef SPECIALIZED_DROPOUT_GRAD_IMPL_TYPED
 #undef SPECIALIZED_DROPOUT_GRAD_IMPL
 
 }  // namespace cuda

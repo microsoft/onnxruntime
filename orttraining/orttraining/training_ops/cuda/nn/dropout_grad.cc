@@ -12,13 +12,27 @@ namespace cuda {
 
 namespace {
 
-constexpr int64_t kNumBitsPerElement = static_cast<int64_t>(sizeof(uint32_t) * CHAR_BIT);
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr int64_t kNumBitsPerBitmaskElement = static_cast<int64_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 template <typename T>
 struct GetRatioDataImpl {
   void operator()(const Tensor* ratio, float& ratio_data) const {
     ratio_data = static_cast<float>(*(ratio->template Data<T>()));
     ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
+template <typename T>
+struct DropoutGradComputeImpl {
+  void operator()(cudaStream_t stream, const int64_t N, const Tensor& dY, const void* mask_data, const float ratio_data,
+                  Tensor& dX, bool use_bitmask) const {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+
+    const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY.template Data<T>());
+    CudaT* dX_data = reinterpret_cast<CudaT*>(dX.template MutableData<T>());
+    DropoutGradientKernelImpl<CudaT>(stream, N, dY_data, mask_data, ratio_data, dX_data, use_bitmask);
   }
 };
 
@@ -37,26 +51,10 @@ ONNX_OPERATOR_KERNEL_EX(BitmaskDropoutGrad, kMSDomain, 1, kCudaExecutionProvider
                             .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
                             .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
                             .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint32_t>())
+                            .TypeConstraint("T3", DataTypeImpl::GetTensorType<BitmaskElementType>())
                             .InputMemoryType(OrtMemTypeCPUInput, 2)
                             .InputMemoryType(OrtMemTypeCPUInput, 3),
                         DropoutGrad<true>);
-
-template <typename T>
-struct DropoutGradComputeImpl {
-  void operator()(cudaStream_t stream, const int64_t N, const Tensor& dY, const void* mask_data, const float ratio_data,
-                  Tensor& dX, bool use_bitmask) const {
-    typedef typename ToCudaType<T>::MappedType CudaT;
-
-    const CudaT* dY_data = reinterpret_cast<const CudaT*>(dY.template Data<T>());
-    CudaT* dX_data = reinterpret_cast<CudaT*>(dX.template MutableData<T>());
-    if (use_bitmask) {
-      DropoutGradientKernelImpl<CudaT, true>(stream, N, dY_data, mask_data, ratio_data, dX_data);
-    } else {
-      DropoutGradientKernelImpl<CudaT, false>(stream, N, dY_data, mask_data, ratio_data, dX_data);
-    }
-  }
-};
 
 template <bool UseBitmask>
 Status DropoutGrad<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
@@ -66,7 +64,7 @@ Status DropoutGrad<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
 
   auto mask = context->Input<Tensor>(1);
   if (UseBitmask) {
-    ORT_ENFORCE(mask->Shape().Size() == (N + kNumBitsPerElement - 1) / kNumBitsPerElement);
+    ORT_ENFORCE(mask->Shape().Size() == (N + kNumBitsPerBitmaskElement - 1) / kNumBitsPerBitmaskElement);
   } else {
     ORT_ENFORCE(mask->Shape().Size() == N);
   }

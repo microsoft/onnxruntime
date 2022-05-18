@@ -6,7 +6,6 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/bias_dropout_fusion.h"
-#include "core/optimizer/bitmask_dropout_replacement.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
@@ -55,6 +54,7 @@
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 
 namespace onnxruntime {
 namespace training {
