@@ -1453,14 +1453,15 @@ if (onnxruntime_USE_XNNPACK)
   add_compile_definitions(USE_XNNPACK=1)
 
   file(GLOB_RECURSE onnxruntime_providers_xnnpack_cc_srcs
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"
     # utils for handling QDQ models
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
   )
-
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_xnnpack_cc_srcs})
+  
+  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
     onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool
@@ -1468,10 +1469,8 @@ if (onnxruntime_USE_XNNPACK)
 
   add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
-  # ??? is this handled already by onnxruntime_add_include_to_target processing the XNNPACK target?
-  target_include_directories(onnxruntime_providers_xnnpack PRIVATE ${ONNXRUNTIME_ROOT} ${XNNPACK_INCLUDE_DIR})
 
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/xnnpack
+  install(DIRECTORY ${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
   )
 

@@ -752,7 +752,6 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
 
 #endif
 
-
 #if !defined(DISABLE_CONTRIB_OPS)
 // Conv->Add->Relu will be transformed to FusedConv
 TEST_F(GraphTransformationTests, FuseCpuConvAddRelu) {
@@ -822,6 +821,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
   std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"}};
 #else
   std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
+                                                               {ORT_TSTR("fusion/conv_relu_opset12.onnx"), "Relu"},
                                                                {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
                                                                {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
                                                                {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},

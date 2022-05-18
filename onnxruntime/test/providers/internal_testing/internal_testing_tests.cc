@@ -86,7 +86,6 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
   }
 }
 
-#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "mnist.internal_testing_ep.test_output.ort";
@@ -151,8 +150,9 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "transform/fusion/conv_relu.onnx";
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "transform/fusion/conv_relu_opset12.onnx";
 
   SessionOptions so;
   InferenceSessionWrapper session(so, GetEnvironment());
@@ -237,8 +237,8 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
               ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
                                    "Status Message: TODO: add NHWC implementation here."));
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)
-#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // test to validate a minimal build
 TEST(InternalTestingEP, TestLoadOrtModel) {
