@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include <vector>
-
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
+
+#include <vector>
 
 namespace onnxruntime {
 namespace cuda {
@@ -22,10 +22,8 @@ class Adam final : public CudaKernel {
     info.GetAttrOrDefault("adam_mode", &adam_mode_, static_cast<int64_t>(0));
     info.GetAttrOrDefault("correct_bias", &correct_bias_, static_cast<int64_t>(1));
 
-    ORT_ENFORCE(CheckIntAttributeValid(adam_mode_, {0, 1}),
-                "The value of adam_mode is invalid.");
-    ORT_ENFORCE(CheckIntAttributeValid(correct_bias_, {0, 1}),
-                "The value of adam_mode is invalid.");
+    ORT_ENFORCE(adam_mode_ == 0 || adam_mode_ == 1, "The value of adam_mode is invalid.");
+    ORT_ENFORCE(correct_bias_ == 0 || correct_bias_ == 1, "The value of adam_mode is invalid.");
 
     // For make sure to have torch adamw equivlance, correct_bias must be 1 for adam_mode=0.
     ORT_ENFORCE(adam_mode_ != 0 || correct_bias_ == 1, "The correct_bias should be 1 for adam_mode = 0.");
@@ -34,12 +32,6 @@ class Adam final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  bool CheckIntAttributeValid(
-      int64_t int_attr_val,
-      const std::vector<int64_t>& valid_values) {
-    return std::find(valid_values.begin(), valid_values.end(), int_attr_val) != valid_values.end();
-  }
-
   float alpha_;
   float beta_;
   float epsilon_;

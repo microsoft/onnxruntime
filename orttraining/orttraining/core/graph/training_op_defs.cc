@@ -1263,6 +1263,26 @@ void RegisterTrainingOpSchemas() {
           {"tensor(bool)"},
           "Constrain types to boolean tensors.");
 
+  /**
+   * Adam operator, taking multiple parameters as inputs (seq<tensor>).
+   * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single Adam.
+   * Implementation-wise, this bring portunaties for better performance.
+   *
+   * The differences with AdamOptimizer:
+   * > Adam can accept multiple parameters and other states related to them as inputs, in format of seq<tensor>.
+   *   This make multi-tensor-apply applicable to implement on GPUs. Existing LambOptimizer has similar capability,
+   *   while it is using many fixed-length optional vardaric inputs, which is not clean in terms of op definition.
+   *
+   *   AdamOptimizer takes one single parameter and its other states.
+   *
+   * > Despite of normal adam computation, for better perf in ORTTrainer, AdamOptimizer also fused gradient norm
+   *   clipping in its implementation. This sometimes make it hard to align the optimizer with other frameworks during
+   *   model onboarding, on the other hand, the fusion is not bring very significant gains actually.
+   *
+   *   Adam has more simplified definitions, excluding inputs/attributes not related to optimizer computations.
+   *
+   * Adam is recommended for new usage, AdamOptimizer is left as it is to support exiting ORTTrainer solution.
+   */
   ONNX_CONTRIB_OPERATOR_SCHEMA(Adam)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1332,6 +1352,10 @@ void RegisterTrainingOpSchemas() {
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
           "Constrain momentums' types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        if (!hasNInputShapes(ctx, 5)) {
+          fail_shape_inference("missing input shapes for Adam.");
+        }
+
         if (ctx.getNumOutputs() >= 2) {
           propagateElemTypeFromInputToOutput(ctx, 2, 1);
           propagateShapeFromInputToOutput(ctx, 2, 1);

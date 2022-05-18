@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/optimizer/adam/adam_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+
+#include "orttraining/training_ops/cuda/optimizer/adam/adam_impl.h"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
+
+#include <algorithm>
 
 namespace onnxruntime {
 namespace cuda {
@@ -40,7 +42,7 @@ __device__ void PrepareMTAData(
 
 // Torch Adam equivalence.
 template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
-__global__ void AdamComputeMode0(
+__global__ void AdamWComputeMode0(
     ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,
     const float alpha,
     const float beta,
@@ -93,7 +95,7 @@ __global__ void AdamComputeMode0(
 
 // Huggingface AdamW equivalence.
 template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
-__global__ void AdamComputeMode1(
+__global__ void AdamWComputeMode1(
     ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,
     const float alpha,
     const float beta,
@@ -171,49 +173,49 @@ void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
   //         bias correction is applied on m and v individually,
   //         weight decay is applied before weight is updated.
   // Mode 1: Huggingface https://github.com/huggingface/transformers/blob/d91841315aab55cf1347f4eb59332858525fad0f/src/transformers/optimization.py,
-  //         bias correction is applied on learning rate, then use lr_corrected for subsquent computations.
+  //         bias correction is applied on learning rate, then use lr_corrected for subsequent computations.
   //         weight decay is applied after weight is updated.
   if (adam_mode == 0) {
-    AdamComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM><<<block_count, thread_count, 0, stream>>>(
+    AdamWComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM><<<block_count, thread_count, 0, stream>>>(
         chunks, alpha, beta, epsilon, lr, alpha_correction, beta_correction, decay);
   } else if (adam_mode == 1) {
-    AdamComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM><<<block_count, thread_count, 0, stream>>>(
+    AdamWComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM><<<block_count, thread_count, 0, stream>>>(
         chunks, alpha, beta, epsilon, lr, lr_corrected, decay);
   } else {
     ORT_THROW("Unsupported Adamw optimizer mode.");
   }
 }
 
-#define INSTANTIATE_ADAMMTA_FUNCTOR(T_WEIGHT, T_GRAD, T_MOMENTUM)          \
-  template void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(  \
-      cudaStream_t stream,                                                 \
-      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                              \
-      const float alpha,                                                   \
-      const float beta,                                                    \
-      const float epsilon,                                                 \
-      const float lr,                                                      \
-      const float decay,                                                   \
-      const int64_t adam_mode,                                             \
-      const int64_t correct_bias,                                          \
-      const int64_t update_count);                                         \
-                                                                           \
-  template __global__ void AdamComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
-      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                              \
-      const float alpha,                                                   \
-      const float beta,                                                    \
-      const float epsilon,                                                 \
-      const float lr,                                                      \
-      const float alpha_correction,                                        \
-      const float beta_correction,                                         \
-      const float decay);                                                  \
-                                                                           \
-  template __global__ void AdamComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
-      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                              \
-      const float alpha,                                                   \
-      const float beta,                                                    \
-      const float epsilon,                                                 \
-      const float lr,                                                      \
-      const float lr_corrected,                                            \
+#define INSTANTIATE_ADAMMTA_FUNCTOR(T_WEIGHT, T_GRAD, T_MOMENTUM)           \
+  template void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(   \
+      cudaStream_t stream,                                                  \
+      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                               \
+      const float alpha,                                                    \
+      const float beta,                                                     \
+      const float epsilon,                                                  \
+      const float lr,                                                       \
+      const float decay,                                                    \
+      const int64_t adam_mode,                                              \
+      const int64_t correct_bias,                                           \
+      const int64_t update_count);                                          \
+                                                                            \
+  template __global__ void AdamWComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
+      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                               \
+      const float alpha,                                                    \
+      const float beta,                                                     \
+      const float epsilon,                                                  \
+      const float lr,                                                       \
+      const float alpha_correction,                                         \
+      const float beta_correction,                                          \
+      const float decay);                                                   \
+                                                                            \
+  template __global__ void AdamWComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
+      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                               \
+      const float alpha,                                                    \
+      const float beta,                                                     \
+      const float epsilon,                                                  \
+      const float lr,                                                       \
+      const float lr_corrected,                                             \
       const float decay);
 
 INSTANTIATE_ADAMMTA_FUNCTOR(float, float, float);

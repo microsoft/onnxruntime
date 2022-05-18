@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
-#include <utility>
-
 #include "orttraining/training_ops/cuda/optimizer/adam/adam.h"
 #include "orttraining/training_ops/cuda/optimizer/adam/adam_impl.h"
+
+#include <memory>
+#include <utility>
 
 namespace onnxruntime {
 namespace cuda {
@@ -134,7 +134,7 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   *updated_flag_ptr = 1;
 
   launch_multi_tensor_functor<MTA_ADAM_GROUP_SIZE, TFunctor>(
-      Stream(), 2048 * 32, tensor_sizes, grouped_tensor_pointers, functor,
+      Stream(), MTA_ADAM_CHUNK_SIZE, tensor_sizes, grouped_tensor_pointers, functor,
       alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
 
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
