@@ -59,16 +59,15 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   OrtValue input, target;
   // hard coded each sample to have 4 elements so far.
   // todo: we can make it support more generic once we are clear what our offline process graph needed.
-  CreateInputOrtValue({2, 784}, std::vector<float_t>(1568, 1), &input);
-  CreateInputOrtValue({2}, std::vector<int32_t>(2, 1), &target);
+  CreateInputOrtValue<float>(std::array<int64_t, 2>{2, 784}, std::vector<float_t>(1568, 1), &input);
+  CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
   size_t step = 0;
-  std::vector<float> before_train_vec, single_bias_grad_vec, current_bias_grad_vec, single_grad_vec, accumulated_grad_vec;
+  std::vector<float> single_bias_grad_vec, current_bias_grad_vec;
   std::string param_name = "fc2.weight";
   std::shared_ptr<Parameter> bias_param = module_sess->named_parameters()[param_name];
   OrtValue& bias_grad = bias_param->Gradient();
-  OrtValueToVec(bias_grad, before_train_vec);
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
     step += 1;
@@ -96,6 +95,56 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   OrtValueToVec(bias_grad, current_bias_grad_vec);
   for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
     ORT_ENFORCE(current_bias_grad_vec[i] == single_bias_grad_vec[i]);
+  }
+}
+
+TEST(TrainingApiTest, OptimStep) {
+  auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
+  auto optim_uri = MODEL_FOLDER "adamw.onnx";
+
+  CheckpointState state;
+  auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
+  ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
+  auto module_sess = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
+  auto optim_sess = std::make_unique<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+
+  OrtValue input, target;
+  // hard coded each sample to have 4 elements so far.
+  // todo: we can make it support more generic once we are clear what our offline process graph needed.
+  CreateInputOrtValue<float>(std::array<int64_t, 2>{2, 784}, std::vector<float_t>(1568, 1), &input);
+  CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
+  auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
+
+  size_t step = 0;
+  std::string param_name = "fc2.weight";
+
+  // before training, check if optim state is initialized to 0
+  OptimizerCheckpointState optimizer_states;
+  ORT_ENFORCE(optim_sess->GetStateDict(optimizer_states).IsOK());
+  ParameterOptimizerState& param_state = optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
+  OrtValue& moment_1 = param_state.momentum_named_states.at(MOMENT_STATE_NAMES[0]);
+
+  std::vector<float> moment_1_vec;
+  OrtValueToVec(moment_1, moment_1_vec);
+  for (size_t i = 0; i < moment_1_vec.size(); i++) {
+    ORT_ENFORCE(moment_1_vec[i] == 0.0f);
+  }
+
+  for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
+    step += 1;
+    std::vector<OrtValue>& inputs = *it;
+    std::vector<OrtValue> fetches;
+    ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
+    ORT_ENFORCE(optim_sess->Step().IsOK());
+
+    // get optim state and check if it is updated
+    OrtValueToVec(moment_1, moment_1_vec);
+    for (size_t i = 0; i < moment_1_vec.size(); i++) {
+      if (moment_1_vec[i] != 0.0f){
+        // moment was updated
+        break;
+      }
+    }
   }
 }
 

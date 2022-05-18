@@ -6,9 +6,11 @@ namespace training {
 namespace api {
 
 // static std::unique_ptr<Environment> env;
-const std::vector<std::string> GRAD_SUFFIX{"_grad.accumulation.buffer", "_grad"};
-const std::string MOMENT_1{".exp_avg"};
-const std::string MOMENT_2{".exp_avg_sq"};
+const std::vector<std::string> GRAD_SUFFIX{"_grad.accumulation.buffer", "_grad", "_grad.accumulation.out"};
+const std::string MOMENT_1_SUFFIX{".exp_avg"};
+const std::string MOMENT_2_SUFFIX{".exp_avg_sq"};
+// TODO: don't hard code the state names, should get the state names according to the optimizer types.
+const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
 
 void GetGraphInputOutputNames(const Graph& graph,
                               std::vector<std::string>& input_names,
