@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # This file is used to generate test data for Adam optimizer tests in
-# orttraining/orttraining/test/training_ops/cuda/optimizer/adam_test.cc.
+# orttraining/orttraining/test/training_ops/cuda/optimizer/adamw_test.cc.
 
 import torch
 
@@ -131,15 +131,15 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 def generate_torch_adamw_single_weight_tests(adam_mode, run_step_count):
     seed=8888
     device = "cuda"
-    batch_size, dimention_in, dimention_hidden = 2, 2, 3
+    batch_size, dimension_in, dimension_hidden = 2, 2, 3
 
     def _model_setup_func():
-        pt_model = SingleParameterModule(dimention_in, dimention_hidden).to(device)
+        pt_model = SingleParameterModule(dimension_in, dimension_hidden).to(device)
         return pt_model
 
     def _data_func():
-        x1 = torch.randn(batch_size, dimention_in, device=device, dtype=torch.float32)
-        target = torch.randn(batch_size, dimention_hidden, device=device, dtype=torch.float32)
+        x1 = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
+        target = torch.randn(batch_size, dimension_hidden, device=device, dtype=torch.float32)
         return x1, target
 
     generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode)
@@ -147,20 +147,25 @@ def generate_torch_adamw_single_weight_tests(adam_mode, run_step_count):
 def generate_torch_adamw_multiple_weights_tests(adam_mode, run_step_count):
     seed=6666
     device = "cuda"
-    batch_size, dimention_in, dimention_hidden, DIM_OUT = 2, 2, 3, 2
+    batch_size, dimension_in, dimension_hidden, DIM_OUT = 2, 2, 3, 2
 
     def _model_setup_func():
-        pt_model = MultipleParametersModule(dimention_in, dimention_hidden, DIM_OUT).to(device)
+        pt_model = MultipleParametersModule(dimension_in, dimension_hidden, DIM_OUT).to(device)
         return pt_model
 
     def data_func():
-        x1 = torch.randn(batch_size, dimention_in, device=device, dtype=torch.float32)
+        x1 = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
         target = torch.randn(batch_size, DIM_OUT, device=device, dtype=torch.float32)
         return x1, target
 
     generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode)
 
-test_data_step_count = 11
-for adam_mode in range(0, 2):
-    generate_torch_adamw_single_weight_tests(adam_mode, test_data_step_count)
-    generate_torch_adamw_multiple_weights_tests(adam_mode, test_data_step_count)
+def main():
+    test_data_step_count = 11
+    for adam_mode in range(0, 2):
+        generate_torch_adamw_single_weight_tests(adam_mode, test_data_step_count)
+        generate_torch_adamw_multiple_weights_tests(adam_mode, test_data_step_count)
+
+
+if __name__ == "__main__":
+    main()

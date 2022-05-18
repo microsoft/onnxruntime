@@ -4,7 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
-#include "orttraining/training_ops/cuda/optimizer/adam/adam_impl.h"
+#include "orttraining/training_ops/cuda/optimizer/adamw/adamw_impl.h"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 
@@ -15,7 +15,7 @@ namespace cuda {
 
 template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
 __device__ void PrepareMTAData(
-    const ChunkGroup<MTA_ADAM_GROUP_SIZE>& chunks,
+    const ChunkGroup<MTA_ADAMW_GROUP_SIZE>& chunks,
     const int& block_idx,
     T_WEIGHT*& weight_chunk_ptr,
     T_GRAD*& grad_chunk_ptr,
@@ -43,7 +43,7 @@ __device__ void PrepareMTAData(
 // Torch Adam equivalence.
 template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
 __global__ void AdamWComputeMode0(
-    ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,
+    ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,
     const float alpha,
     const float beta,
     const float epsilon,
@@ -96,7 +96,7 @@ __global__ void AdamWComputeMode0(
 // Huggingface AdamW equivalence.
 template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
 __global__ void AdamWComputeMode1(
-    ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,
+    ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,
     const float alpha,
     const float beta,
     const float epsilon,
@@ -143,9 +143,9 @@ __global__ void AdamWComputeMode1(
 }
 
 template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
-void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
+void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
     cudaStream_t stream,
-    ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,
+    ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,
     const float alpha,
     const float beta,
     const float epsilon,
@@ -155,7 +155,7 @@ void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
     const int64_t correct_bias,
     const int64_t update_count) {
   const int block_count = chunks.chunk_count;
-  const int thread_count = ChunkGroup<MTA_ADAM_GROUP_SIZE>::thread_count_per_block;
+  const int thread_count = ChunkGroup<MTA_ADAMW_GROUP_SIZE>::thread_count_per_block;
 
   // Update the steps for each param group update.
   int64_t increased_update_count = update_count + 1;
@@ -187,9 +187,9 @@ void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
 }
 
 #define INSTANTIATE_ADAMMTA_FUNCTOR(T_WEIGHT, T_GRAD, T_MOMENTUM)           \
-  template void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(   \
+  template void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(  \
       cudaStream_t stream,                                                  \
-      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                               \
+      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                              \
       const float alpha,                                                    \
       const float beta,                                                     \
       const float epsilon,                                                  \
@@ -200,7 +200,7 @@ void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
       const int64_t update_count);                                          \
                                                                             \
   template __global__ void AdamWComputeMode0<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
-      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                               \
+      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                              \
       const float alpha,                                                    \
       const float beta,                                                     \
       const float epsilon,                                                  \
@@ -210,7 +210,7 @@ void AdamMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
       const float decay);                                                   \
                                                                             \
   template __global__ void AdamWComputeMode1<T_WEIGHT, T_GRAD, T_MOMENTUM>( \
-      ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,                               \
+      ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,                              \
       const float alpha,                                                    \
       const float beta,                                                     \
       const float epsilon,                                                  \

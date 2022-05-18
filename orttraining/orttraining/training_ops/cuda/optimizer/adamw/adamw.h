@@ -11,9 +11,9 @@
 namespace onnxruntime {
 namespace cuda {
 
-class Adam final : public CudaKernel {
+class AdamWOptimizer final : public CudaKernel {
  public:
-  Adam(const OpKernelInfo& info) : CudaKernel(info) {
+  AdamWOptimizer(const OpKernelInfo& info) : CudaKernel(info) {
     info.GetAttrOrDefault("alpha", &alpha_, 0.9f);
     info.GetAttrOrDefault("beta", &beta_, 0.999f);
     info.GetAttrOrDefault("epsilon", &epsilon_, 1e-8f);

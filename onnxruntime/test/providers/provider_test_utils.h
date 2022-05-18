@@ -5,9 +5,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include <variant>
 #include <gsl/gsl>
-#include <utility>
 
 #include "core/common/logging/logging.h"
 #include "core/common/optional.h"
@@ -30,6 +28,9 @@
 #include "test/framework/TestAllocatorManager.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+
+#include <utility>
+#include <variant>
 
 namespace onnxruntime {
 class InferenceSession;

@@ -19,7 +19,7 @@ TensorInfo::TensorInfo(const VectorInt64& shapes, const std::vector<float>& valu
     total_size *= shapes_[i];
   }
 
-  EXPECT_TRUE(fp32_values_.size() == total_size) << "Number of elements mismtach betwen shapes and values."
+  EXPECT_TRUE(fp32_values_.size() == total_size) << "Number of elements mismatch betwen shapes and values."
                                                  << "fp32_values_.size():" << fp32_values_.size()
                                                  << ", total_size: " << total_size;
 }

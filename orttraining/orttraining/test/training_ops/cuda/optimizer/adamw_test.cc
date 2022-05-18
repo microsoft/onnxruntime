@@ -143,11 +143,11 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
   );
 }
 
-TEST(AdamTest, TorchAdamWSingleWeightTest_Loop10Steps) {
+TEST(AdamWTest, TorchAdamWSingleWeightTest_Loop10Steps) {
   TorchAdamWSingleWeightTestLoop10Steps(false);
 }
 
-TEST(AdamTest, TorchAdamWSingleWeightStrictTest_Loop10Steps) {
+TEST(AdamWTest, TorchAdamWSingleWeightStrictTest_Loop10Steps) {
   TorchAdamWSingleWeightTestLoop10Steps(true);
 }
 
@@ -467,11 +467,11 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iterati
   );
 }
 
-TEST(AdamTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
+TEST(AdamWTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
   TorchAdamWMultipleWeightsTestLoop10Steps(true);
 }
 
-TEST(AdamTest, TorchAdamWMultipleWeightsStrictTest_Loop10Steps) {
+TEST(AdamWTest, TorchAdamWMultipleWeightsStrictTest_Loop10Steps) {
   TorchAdamWMultipleWeightsTestLoop10Steps(false);
 }
 
@@ -599,11 +599,11 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
   );
 }
 
-TEST(AdamTest, HFAdamWSingleWeightTest_Loop10Steps) {
+TEST(AdamWTest, HFAdamWSingleWeightTest_Loop10Steps) {
   HFAdamWSingleWeightTestLoop10Steps(false);
 }
 
-TEST(AdamTest, HFAdamWSingleWeightStrictTest_Loop10Steps) {
+TEST(AdamWTest, HFAdamWSingleWeightStrictTest_Loop10Steps) {
   HFAdamWSingleWeightTestLoop10Steps(true);
 }
 
@@ -924,11 +924,11 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
   );
 }
 
-TEST(AdamTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
+TEST(AdamWTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
   HFAdamWMultipleWeightsTestLoop10Steps(false);
 }
 
-TEST(AdamTest, HFAdamWMultipleWeightsStrictTest_Loop10Steps) {
+TEST(AdamWTest, HFAdamWMultipleWeightsStrictTest_Loop10Steps) {
   HFAdamWMultipleWeightsTestLoop10Steps(true);
 }
 

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/optimizer/adam/adam.h"
-#include "orttraining/training_ops/cuda/optimizer/adam/adam_impl.h"
+#include "orttraining/training_ops/cuda/optimizer/adamw/adamw.h"
+#include "orttraining/training_ops/cuda/optimizer/adamw/adamw_impl.h"
 
 #include <memory>
 #include <utility>
@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
-    Adam,
+    AdamWOptimizer,
     kMSDomain,
     1,
     kCudaExecutionProvider,
@@ -27,12 +27,12 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S_WEIGHT", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("S_GRAD", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
         .TypeConstraint("S_MOMENT", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
-    Adam);
+    AdamWOptimizer);
 
 AllocatorPtr CreateAllocatorPtr(OpKernelContext* ctx) {
   AllocatorPtr alloc;
   ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(),
-              "Adam GPU: Unable to get an allocator.");
+              "AdamWOptimizer GPU: Unable to get an allocator.");
   return alloc;
 }
 
@@ -68,7 +68,7 @@ Status GenerateOutputs(OpKernelContext* ctx, cudaStream_t steam,
   return Status::OK();
 }
 
-Status Adam::ComputeInternal(OpKernelContext* ctx) const {
+Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* learning_rate = ctx->Input<Tensor>(0);
   const Tensor* step = ctx->Input<Tensor>(1);
   const TensorSeq* weights = ctx->Input<TensorSeq>(2);
@@ -123,7 +123,7 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   TensorSeq* updated_momentums_2 = ctx->Output<TensorSeq>(3);
 
   typedef typename ToCudaType<float>::MappedType CudaT_FLOAT;
-  typedef AdamMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
+  typedef AdamWMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
   TFunctor functor;
 
   const float* lr_ptr = learning_rate->template Data<float>();
@@ -133,8 +133,8 @@ Status Adam::ComputeInternal(OpKernelContext* ctx) const {
   int64_t* updated_flag_ptr = updated_flag->template MutableData<int64_t>();
   *updated_flag_ptr = 1;
 
-  launch_multi_tensor_functor<MTA_ADAM_GROUP_SIZE, TFunctor>(
-      Stream(), MTA_ADAM_CHUNK_SIZE, tensor_sizes, grouped_tensor_pointers, functor,
+  launch_multi_tensor_functor<MTA_ADAMW_GROUP_SIZE, TFunctor>(
+      Stream(), MTA_ADAMW_CHUNK_SIZE, tensor_sizes, grouped_tensor_pointers, functor,
       alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
 
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));

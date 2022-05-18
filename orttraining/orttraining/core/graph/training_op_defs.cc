@@ -1264,12 +1264,12 @@ void RegisterTrainingOpSchemas() {
           "Constrain types to boolean tensors.");
 
   /**
-   * Adam operator, taking multiple parameters as inputs (seq<tensor>).
-   * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single Adam.
+   * AdamWOptimizer operator, taking multiple parameters as inputs (seq<tensor>).
+   * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single AdamWOptimizer.
    * Implementation-wise, this bring portunaties for better performance.
    *
    * The differences with AdamOptimizer:
-   * > Adam can accept multiple parameters and other states related to them as inputs, in format of seq<tensor>.
+   * > AdamWOptimizer can accept multiple parameters and other states related to them as inputs (seq<tensor>).
    *   This make multi-tensor-apply applicable to implement on GPUs. Existing LambOptimizer has similar capability,
    *   while it is using many fixed-length optional vardaric inputs, which is not clean in terms of op definition.
    *
@@ -1279,11 +1279,12 @@ void RegisterTrainingOpSchemas() {
    *   clipping in its implementation. This sometimes make it hard to align the optimizer with other frameworks during
    *   model onboarding, on the other hand, the fusion is not bring very significant gains actually.
    *
-   *   Adam has more simplified definitions, excluding inputs/attributes not related to optimizer computations.
+   *   AdamWOptimizer has simplified definitions, excludes inputs/attributes not related to optimizer computations.
    *
-   * Adam is recommended for new usage, AdamOptimizer is left as it is to support exiting ORTTrainer solution.
+   * AdamWOptimizer is recommended for new usage, AdamOptimizer is left as it is to support existing ORTTrainer
+   * solutions.
    */
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Adam)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AdamWOptimizer)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "lr", "The initial learning rate.", "T1")

@@ -8,13 +8,13 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define MTA_ADAM_GROUP_SIZE 4
-#define MTA_ADAM_CHUNK_SIZE 2048 * 32
+#define MTA_ADAMW_GROUP_SIZE 4
+#define MTA_ADAMW_CHUNK_SIZE 2048 * 32
 
 template <typename T_WEIGHT, typename T_GRAD, typename T_MOMENTUM>
-struct AdamMTAFunctor {
+struct AdamWMTAFunctor {
   void operator()(cudaStream_t stream,
-                  ChunkGroup<MTA_ADAM_GROUP_SIZE> chunks,
+                  ChunkGroup<MTA_ADAMW_GROUP_SIZE> chunks,
                   const float alpha,
                   const float beta,
                   const float epsilon,
