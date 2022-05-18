@@ -1469,6 +1469,7 @@ using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
@@ -1489,7 +1490,8 @@ using ShapeInferenceHelper_RandomNormalLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Multinomial = MultinomialHelper;
 
 using ShapeInferenceHelper_ReverseSequence = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_CumSum = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum11 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_FusedConv = ConvHelper;

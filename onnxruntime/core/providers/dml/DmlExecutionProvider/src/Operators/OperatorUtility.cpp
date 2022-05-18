@@ -163,6 +163,7 @@ namespace Dml
             // The filter for activation functions maps to what DML's fused op internally fuses at the shader level.
             OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
             OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
+            OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
             OperatorInfo{ "Sum",                       onnxruntime::kOnnxDomain, OnnxOperatorSet8::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
             OperatorInfo{ "Sum",                       onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
         };
@@ -179,6 +180,7 @@ namespace Dml
             OperatorInfo{ "ScaledTanh",         onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ScaledTanh },
             OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Relu },
             OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Relu },
+            OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_Relu },
             OperatorInfo{ "LeakyRelu",          onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_LeakyRelu },
             OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_PRelu },
             OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_PRelu },
