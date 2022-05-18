@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef TVM_EXECUTION_PROVIDER_H
-#define TVM_EXECUTION_PROVIDER_H
+#ifndef ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_SO_EXECUTION_PROVIDER_H_
+#define ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_SO_EXECUTION_PROVIDER_H_
 
 #include <string>
 #include <vector>
@@ -13,24 +13,24 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 
-#include "tvm_compiler.h"
-#include "tvm_runner.h"
+#include "tvm_compiler.h"  // NOLINT(build/include_subdir)
+#include "tvm_runner.h"  // NOLINT(build/include_subdir)
 
 
 namespace onnxruntime {
-  class Graph;
-  class NodeArg;
+class Graph;
+class NodeArg;
 namespace tvm {
 
-class TvmExecutionProvider : public IExecutionProvider {
+class TvmSoExecutionProvider : public IExecutionProvider {
   using Compiler = TVMCompilerBase;
   using Compilers = std::unordered_map<std::string, std::shared_ptr<Compiler>>;
   using Runner = TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
 
  public:
-  explicit TvmExecutionProvider(const TvmEPOptions& options);
-  virtual ~TvmExecutionProvider();
+  explicit TvmSoExecutionProvider(const TvmEPOptions& options);
+  virtual ~TvmSoExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
@@ -54,8 +54,7 @@ class TvmExecutionProvider : public IExecutionProvider {
                                     InputsInfoMap& all_input_shapes);     // NOLINT
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
-  void prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
-                            std::vector<DLTensor>& output_tensors, size_t num);  // NOLINT
+  void prepareOutputTensors(std::vector<DLTensor>& output_tensors);  // NOLINT
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 
@@ -63,11 +62,10 @@ class TvmExecutionProvider : public IExecutionProvider {
   TvmEPOptions options_;
   Compilers compilers_;
   Runners runners_;
-  bool dump_subgraphs_ = false;
   AllocatorPtr allocator_;
 };
 
 }  // namespace tvm
 }  // namespace onnxruntime
 
-#endif  // TVM_EXECUTION_PROVIDER_H
+#endif  // ONNXRUNTIME_CORE_PROVIDERS_TVM_TVM_SO_EXECUTION_PROVIDER_H_
