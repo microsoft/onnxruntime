@@ -211,7 +211,7 @@ class T5DecoderInputs:
 
     def to_fp32(self):
         encoder_hidden_state = self.encoder_hidden_states.to(dtype=torch.float32)
-        past = [p.to(dtype=torch.float32) for p in self.past_key_values]
+        past = [p.to(dtype=torch.float32) for p in self.past_key_values] if self.past_key_values else None
         return T5DecoderInputs(
             self.decoder_input_ids.clone(),
             self.encoder_attention_mask.clone(),
