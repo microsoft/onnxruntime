@@ -274,16 +274,16 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
       const std::string& param_name = param_named_optimizer_state.first;
       const auto& param_optimizer_state = param_named_optimizer_state.second;
 
-      for (const std::pair<std::string, std::shared_ptr<OrtValue>>&
+      for (const std::pair<std::string, OrtValue>&
                momentum_named_state : param_optimizer_state.momentum_named_states) {
         const std::string& momentum_name = momentum_named_state.first;
-        const std::shared_ptr<OrtValue>& m_state_val = momentum_named_state.second;
+        const OrtValue& m_state_val = momentum_named_state.second;
 
         if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
-          std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, *(m_state_val)}};
+          std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, m_state_val}};
           optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});
         } else {
-          optimizer_state_ort_values[momentum_name].insert({param_name, *(m_state_val)});
+          optimizer_state_ort_values[momentum_name].insert({param_name, m_state_val});
         }
       }
     }
@@ -447,7 +447,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
         ParameterOptimizerState param_state;
         param_optimizer_states.insert({param_name, param_state});
       }
-      param_optimizer_states[param_name].momentum_named_states.insert({momentum_name, std::make_shared<OrtValue>(pair.second)});
+      param_optimizer_states[param_name].momentum_named_states.insert({momentum_name, std::move(pair.second)});
     }
   }
 

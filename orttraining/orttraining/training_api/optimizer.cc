@@ -12,37 +12,34 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
-namespace {
-
-Status CreateOrtValueFromOrtValue(
-    const OrtValue& src_ort_value,
-    OrtValue& dest_ort_value,
-    onnxruntime::InferenceSession* sess) {
-  const Tensor& tensor = src_ort_value.Get<Tensor>();
-  AllocatorPtr allocator = sess->GetAllocator(tensor.Location());
-  const TensorShape& tensor_shape = tensor.Shape();
-  MLDataType element_type = tensor.DataType();
-
-  auto p_tensor = std::make_unique<Tensor>(element_type, tensor_shape, allocator);
-  dest_ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-
-  return Status::OK();
-}
-
-}  // namespace
-
 Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters) {
+  parameters_ = parameters;
   std::unordered_map<std::string, ParameterOptimizerState>&
       param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
 
+  // TODO: share threadpool with module session
   const SessionOptions session_options;
   std::unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
   optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, *env));
 
-  ORT_ENFORCE(optim_sess_->Load(optim_path_or_bytes).IsOK());
-  ORT_ENFORCE(optim_sess_->Initialize().IsOK());
+  ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
+  ORT_THROW_IF_ERROR(optim_sess_->Initialize());
+  auto& optim_sess_state = optim_sess_->GetSessionState();
+
+  for (auto& pair : parameters) {
+    if (pair.second->RequiresGrad()) {
+      param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
+      ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
+      for (auto& state_name : MOMENT_STATE_NAMES) {
+        OrtValue param_state;
+        // TODO: should reset the state to zero (for both CPU or CUDA Tensors.)
+        ORT_ENFORCE(OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK());
+        cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
+      }
+    }
+  }
 
   std::shared_ptr<onnxruntime::Model> model;
   ORT_THROW_IF_ERROR(onnxruntime::Model::Load(optim_path_or_bytes, model, nullptr, env->GetLoggingManager()->DefaultLogger()));
@@ -50,47 +47,52 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   ORT_ENFORCE(input_names_[0] == "learning_rate");  // TODO: make this better
   ORT_ENFORCE(input_names_[1] == "step");           // TODO: make this better
 
-  std::vector<std::string> param_names, grad_names, moment1_names, moment2_names, empty_names;
   std::string param_name;
+  std::vector<std::string> param_names, grad_names, moment1_names, moment2_names, user_inputs;
   for (size_t i = 2; i < input_names_.size(); i++) {
     std::string& name = input_names_[i];
     auto it = parameters_.find(name);
     if (it != parameters_.end()) {  // is param
       param_names.push_back(name);
-      weights_.push_back(it->second->Data());
+      inputs_.push_back(it->second->Data());
     } else if (GetParamNameFromGradient(name, param_name)) {
       grad_names.emplace_back(name);
-      // create gradient buffer
       // assert param_name is valid.
       auto it = parameters_.find(param_name);
-      if (it != parameters_.end()) {
-        gradients_.push_back(it->second->Gradient());
-      } else {
-        // raise error here.
-      }
-    } else if (GetParamNameFromSuffix(name, MOMENT_1, param_name)) {
+      ORT_ENFORCE(it != parameters_.end(), "Unknown param: ", param_name, " for field: ", name);
+      inputs_.push_back(it->second->Gradient());
+    } else if (GetParamNameFromSuffix(name, MOMENT_1_SUFFIX, param_name)) {
       moment1_names.push_back(name);
-    } else if (GetParamNameFromSuffix(name, MOMENT_2, param_name)) {
-      moment1_names.push_back(name);
+      auto it = parameters_.find(param_name);
+      ORT_ENFORCE(it != parameters_.end(), "Unknown param: ", param_name, " for field: ", name);
+      inputs_.push_back(param_named_optimizer_states.at(param_name).momentum_named_states.at(MOMENT_STATE_NAMES[0]));
+    } else if (GetParamNameFromSuffix(name, MOMENT_2_SUFFIX, param_name)) {
+      moment2_names.push_back(name);
+      auto it = parameters_.find(param_name);
+      ORT_ENFORCE(it != parameters_.end(), "Unknown param: ", param_name, " for field: ", name);
+      inputs_.push_back(param_named_optimizer_states.at(param_name).momentum_named_states.at(MOMENT_STATE_NAMES[1]));
     } else {
-      empty_names.push_back(name);
+      ORT_THROW("This is an invalid graph. Optimizer graph contains unknown user input:",name);
     }
   }
+}
 
-  // TODO: don't hard code the state names, should get the state names according to the optimizer types.
-  std::vector<std::string> state_names{"momentum0", "momentum1"};
-  for (auto& pair : parameters) {
-    if (pair.second->RequiresGrad()) {
-      param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
-      ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
-      for (auto& state_name : state_names) {
-        OrtValue param_state;
-        // TODO: should reset the state to zero (for both CPU or CUDA Tensors.)
-        ORT_ENFORCE(CreateOrtValueFromOrtValue(pair.second->Data(), param_state, optim_sess_.get()).IsOK());
-        cur_param_optimizer_states.momentum_named_states.insert({state_name, std::make_shared<OrtValue>(param_state)});
-      }
-    }
-  }
+Status Optimizer::Step() {
+  OrtValue learning_rate_input, step_input;
+  WarpInOrtValue<float>(optimizer_state_.learning_rate, &learning_rate_input);
+  WarpInOrtValue<int64_t>(optimizer_state_.step, &step_input);
+  std::vector<OrtValue> feeds({learning_rate_input, step_input});
+  feeds.insert(feeds.end(), inputs_.begin(), inputs_.end());
+
+  std::vector<OrtValue> outputs;
+  auto status = optim_sess_->Run(RunOptions(), input_names_, feeds, output_names_, &outputs);
+  ORT_THROW_IF_ERROR(status);
+
+  // extract step output and update
+  // TODO: need to remove hardcoding
+  optimizer_state_.step = GetValue<int64_t>(outputs[0]);
+
+  return status;
 }
 
 Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_state) {

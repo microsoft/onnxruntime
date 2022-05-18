@@ -22,15 +22,15 @@ namespace api {
  *     }.
  */
 struct ParameterOptimizerState {
-  std::unordered_map<std::string, std::shared_ptr<OrtValue>> momentum_named_states;
+  std::unordered_map<std::string, OrtValue> momentum_named_states;
 };
 
 /**
  * @brief States belong to one specific group of trainable Parameters.
  */
 struct GroupOptimizerState {
-  int64_t step;
-  float learning_rate;
+  int64_t step = 0;
+  float learning_rate = 0.1;
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
@@ -54,31 +54,26 @@ struct Optimizer {
             const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters);
 
   // Optimizer Step.
-  Status Step() {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return Status::OK();
-  }
+  Status Step();
 
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
  protected:
   int64_t GetStep() const {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return 0;
+    return optimizer_state_.step;
   }
-  Status SetLearningRate(float /*lr*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
+  Status SetLearningRate(float& lr) {
+    optimizer_state_.learning_rate = lr;
     return Status::OK();
   }
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  std::map<std::string, std::shared_ptr<Parameter>> parameters_;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;
   GroupOptimizerState optimizer_state_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
-  std::vector<OrtValue> weights_;
-  std::vector<OrtValue> gradients_;
+  std::vector<OrtValue> inputs_;
 };
 
 class LearningRateScheduler {

@@ -42,7 +42,8 @@ Status Parameter::ResetGrad() {
 Module::Module(const std::string& train_model_path_or_bytes,
                std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
                const std::optional<std::string>& eval_model_path_or_bytes) {
-  parameters_ = std::move(parameters);
+  // create value copy as same params are passed to Optimizer constructor
+  parameters_ = parameters;
 
   auto so = onnxruntime::SessionOptions();
   std::unique_ptr<Environment> env;
@@ -115,7 +116,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
   // TODO: consider maintaining this as ortvalue instead of bool
   OrtValue reset_grad_input;
-  CreateInputOrtValue<bool>(lazy_reset_grad_, &reset_grad_input);
+  WarpInOrtValue<bool>(lazy_reset_grad_, &reset_grad_input);
   feeds.push_back(reset_grad_input);
 
   // TODO: need to filter out the grads from the output ortvalues

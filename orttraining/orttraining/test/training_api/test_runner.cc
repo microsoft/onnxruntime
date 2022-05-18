@@ -164,17 +164,6 @@ std::vector<std::vector<OrtValue>> CreateSyntheticDataLoader(size_t batch_size,
   return std::vector<std::vector<OrtValue>>(batch_size, std::vector<OrtValue>{input, positions});
 }
 
-float GetLossValue(OrtValue& ort_value) {
-  const Tensor& loss_tensor = ort_value.Get<Tensor>();
-  float loss = 0;
-  if (DataTypeImpl::GetType<float>() == loss_tensor.DataType()) {
-    loss = *(loss_tensor.template Data<float>());
-  } else {
-    ORT_THROW("loss data type not supported.");
-  }
-  return loss;
-}
-
 Status RunTraining(const TestRunnerParameters& params) {
   std::string tensorboard_file = params.output_dir + "/tb.event";
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
@@ -210,7 +199,7 @@ Status RunTraining(const TestRunnerParameters& params) {
       std::vector<OrtValue> fetches;
       ORT_ENFORCE(module.TrainStep(inputs, fetches).IsOK());
 
-      float loss = GetLossValue(fetches[3]);
+      float loss = GetValue<float>(fetches[3]);
       tensorboard->AddSummary(std::to_string(loss), batch_idx, tag);
       std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
 
