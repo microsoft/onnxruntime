@@ -105,7 +105,7 @@ def parse_arguments():
         "--separate_encoder_and_decoder_init",
         required=False,
         action="store_true",
-        help="do not merge encode and decoder init",
+        help="Do not merge encode and decoder init. Output 3 instead of 2 onnx models.",
     )
     parser.set_defaults(separate_encoder_and_decoder_init=False)
 
