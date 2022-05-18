@@ -2,6 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 #include "test/providers/provider_test_utils.h"

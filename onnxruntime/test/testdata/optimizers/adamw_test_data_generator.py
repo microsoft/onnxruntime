@@ -58,13 +58,14 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
     pt_model.zero_grad()
 
     # Prepare optimizer.
-    assert adam_mode in [0, 1]
     adamw_optimizer = None
     if adam_mode == 0:
         adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
     elif adam_mode == 1:
         from transformers import AdamW
         adamw_optimizer = AdamW(pt_model.parameters(), lr=1e-3)
+    else:
+        raise ValueError(f"invalid adam_model: {adam_mode}")
 
     # Build index to name mapping, which is used to retrieve data from optimizer group.
     param_index_to_name_mapping = {}
