@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "beam_search_shared.h"  // for DEBUG_BEAM_SEARCH
 #include "beam_search_impl_base.h"
 #include "subgraph_t5_encoder.h"
 #include "subgraph_t5_decoder.h"
@@ -115,6 +116,14 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_, encoder_feeds_fetches_manager, encoder_feeds, encoder_fetches, {},
                                              ExecutionMode::ORT_SEQUENTIAL, this->context_.GetTerminateFlag(), this->context_.Logger()));
 
+#ifdef DEBUG_BEAM_SEARCH
+  const IConsoleDumper* dumper = this->GetConsoleDumper();
+  for (size_t i = 0; i < encoder_fetches.size(); i++) {
+    dumper->Print("encoder_fetches", static_cast<int>(i), true);
+    dumper->Print("", encoder_fetches[i]);
+  }
+#endif
+
   // ------------------------------------
   // Initialize resources
   // ------------------------------------
@@ -123,15 +132,15 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
   this->beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters->batch_size),
-                                                    static_cast<size_t>(parameters->num_beams),
-                                                    static_cast<size_t>(parameters->max_length),
-                                                    parameters->length_penalty,
-                                                    parameters->early_stopping,
-                                                    static_cast<size_t>(parameters->num_return_sequences),
-                                                    parameters->pad_token_id,
-                                                    parameters->eos_token_id,
-                                                    hypothesis_score_allocator,
-                                                    beam_hyps_allocator);
+                                                          static_cast<size_t>(parameters->num_beams),
+                                                          static_cast<size_t>(parameters->max_length),
+                                                          parameters->length_penalty,
+                                                          parameters->early_stopping,
+                                                          static_cast<size_t>(parameters->num_return_sequences),
+                                                          parameters->pad_token_id,
+                                                          parameters->eos_token_id,
+                                                          hypothesis_score_allocator,
+                                                          beam_hyps_allocator);
   this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
 
   BeamSearchState<T> beam_state;
@@ -167,6 +176,12 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              encoder_feeds,
                                                              encoder_fetches,
                                                              decoder_feeds));
+#ifdef DEBUG_BEAM_SEARCH
+    for (size_t i = 0; i < decoder_feeds.size(); i++) {
+      dumper->Print("decoder_feeds", static_cast<int>(i), true);
+      dumper->Print("", decoder_feeds[i]);
+    }
+#endif
   }
 
   // TODO: allocate fetches. use ping-pong buffers for past state.
@@ -217,9 +232,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   }
 
   this->beam_scorer_->Finalize(&(cpu_state.sequences),
-                         final_beam_scores,
-                         output_sequences,
-                         output_sequences_scores);
+                               final_beam_scores,
+                               output_sequences,
+                               output_sequences_scores);
 
   // Output per token scores
   if (output_scores != nullptr) {

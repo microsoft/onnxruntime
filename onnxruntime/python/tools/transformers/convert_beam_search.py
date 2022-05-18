@@ -6,13 +6,17 @@
 This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
-   python convert_beam_search.py -m gpt2 --decoder_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
+   python convert_beam_search.py -m gpt2 --decoder_onnx ./onnx_models/gpt2_past_fp32.onnx         \
+          --output ./onnx_models/gpt2_beam_search.onnx --output_sequences_scores
 
 Example 2: convert T5 model with beam search:
    cd ./models/t5
    python convert_to_onnx.py -m t5-small
    cd ../..
-   python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+   python convert_beam_search.py -m t5-small --model_type t5                                      \
+          --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
+          --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
+          --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 """
 
 import argparse
@@ -905,8 +909,8 @@ def main(argv=None, sentences=None):
 
     convert_model(args)
 
-    print("You have 30 seconds to attach a debugger...")
-    time.sleep(30)
+    # print("You have 30 seconds to attach a debugger...")
+    # time.sleep(30)
 
     if args.model_type == "t5":
         return test_t5_model(args, use_vocab_mask=True, sentences=sentences)

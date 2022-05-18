@@ -92,7 +92,15 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   return Status::OK();
 }
 
-// Create inputs for decoder: input_ids, encoder_attention_mask and encoder_hidden_states.
+// Create inputs for decoder from the following data sources:
+// encoder feeds: encoder_input_ids, encoder_attention_mask, decoder_input_ids (with start tokens)
+// encoder fetches: logits,
+//                  encoder_hidden_states,
+//                  present_key_self_0, present_value_self_0, ..., present_key_cross_0, present_value_cross_0, ...
+// decoder_feeds: input_ids,
+//                encoder_attention_mask,
+//                encoder_hidden_states,
+//                present_key_self_0, present_value_self_0, ..., present_key_cross_0, present_value_cross_0, ...
 Status T5DecoderSubgraph::CreateInitialFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     const std::vector<const OrtValue*>& implicit_inputs,
@@ -123,8 +131,11 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // encoder_attention_mask is copied from the second input of encoder.
   decoder_feeds.push_back(encoder_feeds[1]);
 
-  // encoder_hidden_states is copied from the second output of encoder.
-  decoder_feeds.push_back(encoder_fetches[1]);
+  // encoder_hidden_states and past states are copied from the second output of encoder.
+  for (size_t j = 1; j < encoder_fetches.size(); j++)
+  {
+    decoder_feeds.push_back(encoder_fetches[j]);
+  }
 
   // pass through implicit inputs
   for (const auto* entry : implicit_inputs) {
