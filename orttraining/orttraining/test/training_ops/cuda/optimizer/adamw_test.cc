@@ -6,8 +6,6 @@
 #include "test/providers/provider_test_utils.h"
 #include "orttraining/test/training_ops/cuda/optimizer/common.h"
 
-using namespace onnxruntime::test::optimizer;
-
 namespace onnxruntime {
 namespace test {
 namespace optimizer {
@@ -66,7 +64,6 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
               {0.06727458, 0.71261775, 0.5345064, 0.13658585, 0.27908903, 0.8989311},
           },
       },
-
   };
 
   // 11 steps of momentum1 values before applying optimization.
@@ -88,7 +85,6 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
                   {-0.0753413, 0.3576338, -0.025158612, 0.11277413, -0.16968626, 0.13380629},
               },
           },
-
       };
 
   // 11 steps of momentum2 values before applying optimization.
@@ -110,18 +106,17 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
                   {0.0010698811, 0.0053280517, 0.0012366908, 0.0040538833, 0.001727819, 0.004129814},
               },
           },
-
       };
 
-  ASSERT_TRUE(named_weights.size() == 1);
-  ASSERT_TRUE(named_gradients.size() == 1);
-  ASSERT_TRUE(named_momentum1s.size() == 1);
-  ASSERT_TRUE(named_momentum2s.size() == 1);
+  ASSERT_EQ(named_weights.size(), 1);
+  ASSERT_EQ(named_gradients.size(), 1);
+  ASSERT_EQ(named_momentum1s.size(), 1);
+  ASSERT_EQ(named_momentum2s.size(), 1);
 
-  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
-  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
+  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
 
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}};
@@ -138,9 +133,7 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
                 weight_name_shape_mapping,
                 weight_tolerance,
                 momentum1_tolerance,
-                momentum2_tolerance
-
-  );
+                momentum2_tolerance);
 }
 
 TEST(AdamWTest, TorchAdamWSingleWeightTest_Loop10Steps) {
@@ -437,15 +430,15 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iterati
           },
       };
 
-  ASSERT_TRUE(named_weights.size() == 4);
-  ASSERT_TRUE(named_gradients.size() == 4);
-  ASSERT_TRUE(named_momentum1s.size() == 4);
-  ASSERT_TRUE(named_momentum2s.size() == 4);
+  ASSERT_EQ(named_weights.size(), 4);
+  ASSERT_EQ(named_gradients.size(), 4);
+  ASSERT_EQ(named_momentum1s.size(), 4);
+  ASSERT_EQ(named_momentum2s.size(), 4);
 
-  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
-  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
+  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
 
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
@@ -462,9 +455,7 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iterati
                 weight_name_shape_mapping,
                 weight_tolerance,
                 momentum1_tolerance,
-                momentum2_tolerance
-
-  );
+                momentum2_tolerance);
 }
 
 TEST(AdamWTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
@@ -522,7 +513,6 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
               {0.06728999, 0.71267974, 0.53454334, 0.13664238, 0.27906644, 0.8989229},
           },
       },
-
   };
 
   // 11 steps of momentum1 values before applying optimization.
@@ -544,7 +534,6 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
                   {-0.075343326, 0.35765445, -0.025152696, 0.11278799, -0.16969301, 0.13380808},
               },
           },
-
       };
 
   // 11 steps of momentum2 values before applying optimization.
@@ -566,18 +555,17 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
                   {0.001069976, 0.005328468, 0.0012367324, 0.0040539773, 0.0017278712, 0.004129886},
               },
           },
-
       };
 
-  ASSERT_TRUE(named_weights.size() == 1);
-  ASSERT_TRUE(named_gradients.size() == 1);
-  ASSERT_TRUE(named_momentum1s.size() == 1);
-  ASSERT_TRUE(named_momentum2s.size() == 1);
+  ASSERT_EQ(named_weights.size(), 1);
+  ASSERT_EQ(named_gradients.size(), 1);
+  ASSERT_EQ(named_momentum1s.size(), 1);
+  ASSERT_EQ(named_momentum2s.size(), 1);
 
-  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
-  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
+  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
 
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}};
@@ -594,9 +582,7 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
                 weight_name_shape_mapping,
                 weight_tolerance,
                 momentum1_tolerance,
-                momentum2_tolerance
-
-  );
+                momentum2_tolerance);
 }
 
 TEST(AdamWTest, HFAdamWSingleWeightTest_Loop10Steps) {
@@ -894,15 +880,15 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
           },
       };
 
-  ASSERT_TRUE(named_weights.size() == 4);
-  ASSERT_TRUE(named_gradients.size() == 4);
-  ASSERT_TRUE(named_momentum1s.size() == 4);
-  ASSERT_TRUE(named_momentum2s.size() == 4);
+  ASSERT_EQ(named_weights.size(), 4);
+  ASSERT_EQ(named_gradients.size(), 4);
+  ASSERT_EQ(named_momentum1s.size(), 4);
+  ASSERT_EQ(named_momentum2s.size(), 4);
 
-  ASSERT_TRUE(named_weights["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_gradients["fc1.weight"].size() == total_step);
-  ASSERT_TRUE(named_momentum1s["fc1.weight"].size() == total_step + 1);
-  ASSERT_TRUE(named_momentum2s["fc1.weight"].size() == total_step + 1);
+  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
 
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
@@ -919,9 +905,7 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
                 weight_name_shape_mapping,
                 weight_tolerance,
                 momentum1_tolerance,
-                momentum2_tolerance
-
-  );
+                momentum2_tolerance);
 }
 
 TEST(AdamWTest, HFAdamWMultipleWeightsTest_Loop10Steps) {

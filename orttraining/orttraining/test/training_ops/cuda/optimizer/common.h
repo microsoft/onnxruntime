@@ -18,7 +18,8 @@ struct TensorInfo {
     if (std::is_same<OutT, MLFloat16>::value) {
       std::vector<OutT> fp16_values;
       fp16_values.reserve(fp32_values_.size());
-      ConvertFloatToMLFloat16(fp32_values_.data(), reinterpret_cast<onnxruntime::MLFloat16*>(fp16_values.data()), fp32_values_.size());
+      ConvertFloatToMLFloat16(fp32_values_.data(),
+                              reinterpret_cast<onnxruntime::MLFloat16*>(fp16_values.data()), fp32_values_.size());
       return fp16_values;
     } else if (std::is_same<OutT, float>::value) {
       return std::vector<OutT>(fp32_values_);

@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 #include "test/providers/provider_test_utils.h"
@@ -19,7 +25,7 @@ TensorInfo::TensorInfo(const VectorInt64& shapes, const std::vector<float>& valu
     total_size *= shapes_[i];
   }
 
-  EXPECT_TRUE(fp32_values_.size() == total_size) << "Number of elements mismatch betwen shapes and values."
+  EXPECT_TRUE(fp32_values_.size() == total_size) << "Number of elements mismatch between shapes and values."
                                                  << "fp32_values_.size():" << fp32_values_.size()
                                                  << ", total_size: " << total_size;
 }
@@ -112,7 +118,8 @@ void AdamWTestLoop(
   std::vector<std::string> ordered_weight_names;
   for (auto it = weight_name_shape_mapping.begin(); it != weight_name_shape_mapping.end(); ++it) {
     const std::string& weight_name = it->first;
-    ASSERT_TRUE(std::find(ordered_weight_names.begin(), ordered_weight_names.end(), weight_name) == ordered_weight_names.end());
+    ASSERT_TRUE(
+        std::find(ordered_weight_names.begin(), ordered_weight_names.end(), weight_name) == ordered_weight_names.end());
     ordered_weight_names.push_back(weight_name);
   }
 
@@ -196,13 +203,16 @@ void AdamWTestLoop(
         ASSERT_TRUE(momentum2_to_train.find(weight_name) != momentum2_to_train.end());
 
         const float* updated_weight_buffer = updated_seq_weight.Get(weight_index).Data<float>();
-        std::copy(updated_weight_buffer, updated_weight_buffer + weights_to_train[weight_name].size(), weights_to_train[weight_name].begin());
+        std::copy(updated_weight_buffer, updated_weight_buffer + weights_to_train[weight_name].size(),
+                  weights_to_train[weight_name].begin());
 
         const float* updated_momentum1_buffer = updated_seq_momentum1.Get(weight_index).Data<float>();
-        std::copy(updated_momentum1_buffer, updated_momentum1_buffer + momentum1_to_train[weight_name].size(), momentum1_to_train[weight_name].begin());
+        std::copy(updated_momentum1_buffer, updated_momentum1_buffer + momentum1_to_train[weight_name].size(),
+                  momentum1_to_train[weight_name].begin());
 
         const float* updated_momentum2_buffer = updated_seq_momentum2.Get(weight_index).Data<float>();
-        std::copy(updated_momentum2_buffer, updated_momentum2_buffer + momentum2_to_train[weight_name].size(), momentum2_to_train[weight_name].begin());
+        std::copy(updated_momentum2_buffer, updated_momentum2_buffer + momentum2_to_train[weight_name].size(),
+                  momentum2_to_train[weight_name].begin());
 
         weight_index += 1;
       }

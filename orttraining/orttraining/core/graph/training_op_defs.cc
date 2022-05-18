@@ -1357,8 +1357,8 @@ void RegisterTrainingOpSchemas() {
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
           "Constrain momentums' types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        if (hasInputShape(ctx, 0)) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (hasInputShape(ctx, 1)) {
+          propagateElemTypeFromInputToOutput(ctx, 1, 0);
           updateOutputShape(ctx, 0, {});
         }
 

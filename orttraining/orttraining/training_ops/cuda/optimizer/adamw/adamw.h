@@ -3,10 +3,10 @@
 
 #pragma once
 
+#include <vector>
+
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
-
-#include <vector>
 
 namespace onnxruntime {
 namespace cuda {

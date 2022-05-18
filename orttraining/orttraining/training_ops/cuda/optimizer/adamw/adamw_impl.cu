@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 #include "orttraining/training_ops/cuda/optimizer/adamw/adamw_impl.h"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
-
-#include <algorithm>
 
 namespace onnxruntime {
 namespace cuda {
@@ -64,8 +64,6 @@ __global__ void AdamWComputeMode0(
   PrepareMTAData(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
                  momentum_1_chunk_ptr, momentum_2_chunk_ptr, chunk_size);
 
-  // A shared constant.
-  const float one = 1.0f;
 #pragma unroll(4)
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
     float w = static_cast<float>(weight_chunk_ptr[i]);
@@ -114,8 +112,6 @@ __global__ void AdamWComputeMode1(
   PrepareMTAData(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,
                  momentum_1_chunk_ptr, momentum_2_chunk_ptr, chunk_size);
 
-  // A shared constant.
-  const float one = 1.0f;
 #pragma unroll(4)
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
     float w = static_cast<float>(weight_chunk_ptr[i]);
