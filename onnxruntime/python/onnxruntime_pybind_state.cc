@@ -24,6 +24,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
 #include "core/providers/get_execution_providers.h"
+#include "core/session/ort_env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1603,18 +1604,18 @@ void InitArray() {
 }
 
 // static variable used to create inference session and training session.
-static std::unique_ptr<Environment> session_env;
+static std::unique_ptr<OrtEnv> session_env;
 
 void InitializeEnv() {
   auto initialize = [&]() {
     // Initialization of the module
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                  std::make_unique<CLogSink>(),
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &SessionObjectInitializer::default_logger_id),
-                                              session_env));
+    Status status;
+    OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING, "Python Application"};
+
+    session_env.reset(OrtEnv::GetInstance(lm_info, status));
+    OrtPybindThrowIfError(status);
 
     static bool initialized = false;
     if (initialized) {
@@ -1629,7 +1630,7 @@ onnxruntime::Environment& GetEnv() {
   if (!session_env) {
     InitializeEnv();
   }
-  return *session_env;
+  return const_cast<onnxruntime::Environment&>(session_env->GetEnvironment());
 }
 
 }  // namespace python
