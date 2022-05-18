@@ -115,7 +115,6 @@ class T5EncoderDecoderInitHelper:
             device=device,
         )
         input_list = inputs.to_list()
-        outputs = model(*input_list)
 
         present_names = PastKeyValuesHelper.get_past_names(model.config.num_layers, present=True)
 
@@ -180,25 +179,28 @@ class T5EncoderDecoderInitHelper:
                     3: head_size,
                 }
 
-        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-        torch_onnx_export(
-            model,
-            args=tuple(input_list),
-            f=onnx_model_path,
-            export_params=True,
-            input_names=input_names,
-            output_names=output_names,
-            dynamic_axes=dynamic_axes,
-            opset_version=12,
-            do_constant_folding=True,
-            use_external_data_format=use_external_data_format,
-            verbose=verbose,
-        )
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            temp_onnx_model_path = path.join(tmp_dir_name, "model.onnx")
+            torch_onnx_export(
+                model,
+                args=tuple(temp_onnx_model_path),
+                f=onnx_model_path,
+                export_params=True,
+                input_names=input_names,
+                output_names=output_names,
+                dynamic_axes=dynamic_axes,
+                opset_version=12,
+                do_constant_folding=True,
+                use_external_data_format=use_external_data_format,
+                verbose=verbose,
+            )
 
         import onnx
 
         # Walkaround as mentioned earlier: change numeric dim_param to dim_value
-        model = onnx.load(onnx_model_path)
+        model = onnx.load(temp_onnx_model_path)
         for tensor in model.graph.output:
             for dim_proto in tensor.type.tensor_type.shape.dim:
                 if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
@@ -211,7 +213,17 @@ class T5EncoderDecoderInitHelper:
                     dim_value = int(dim_proto.dim_param)
                     dim_proto.Clear()
                     dim_proto.dim_value = dim_value
-        onnx.save(model, onnx_model_path)
+
+        Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
+        onnx.save_model(
+            model,
+            onnx_model_path,
+            save_as_external_data=use_external_data_format,
+            all_tensors_to_one_file=True,
+            location=onnx_model_path + ".data",
+            size_threshold=4096,
+            convert_attribute=False,
+        )
 
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: T5EncoderDecoderInitInputs):

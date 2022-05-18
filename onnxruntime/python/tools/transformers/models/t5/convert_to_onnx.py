@@ -101,6 +101,14 @@ def parse_arguments():
     )
     parser.set_defaults(disable_auto_mixed_precision=False)
 
+    parser.add_argument(
+        "--separate_encoder_and_decoder_init",
+        required=False,
+        action="store_true",
+        help="do not merge encode and decoder init",
+    )
+    parser.set_defaults(separate_encoder_and_decoder_init=False)
+
     args = parser.parse_args()
 
     return args
@@ -126,7 +134,7 @@ def export_onnx_models(
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):
-        logger.info(f"Try use_external_data_format when model size > 2GB")
+        logger.info("Try use_external_data_format when model size > 2GB")
 
     output_paths = []
     for name, model in models.items():
@@ -188,7 +196,7 @@ def export_onnx_models(
         max_diff = T5Helper.verify_onnx(model, ort_session, device)
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
         if max_diff > 1e-4:
-            logger.warn(f"PyTorch and OnnxRuntime results are NOT close")
+            logger.warn("PyTorch and OnnxRuntime results are NOT close")
 
         output_paths.append(output_path)
 
@@ -212,10 +220,9 @@ def main():
         assert args.use_gpu, "fp16 requires --use_gpu"
 
     if args.optimize_onnx:
-        logger.warn(f"Graph optimization for T5 is not implemented yet.")
+        logger.warn("Graph optimization for T5 is not implemented yet.")
 
     with torch.no_grad():
-        merge_encoder_and_decoder_init = True  # Merge encoder and decoder initialization into one model is recommended.
         output_paths = export_onnx_models(
             args.model_name_or_path,
             cache_dir,
@@ -226,7 +233,7 @@ def main():
             args.precision,
             args.verbose,
             args.use_decoder_start_token,
-            merge_encoder_and_decoder_init,
+            not args.separate_encoder_and_decoder_init,
             args.overwrite,
             args.disable_auto_mixed_precision,
         )
