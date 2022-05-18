@@ -26,7 +26,7 @@ from optimizer import optimize_model
 
 logger = logging.getLogger(__name__)
 
-PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3B", "t5-11B"]
+PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b"]
 
 
 class T5Helper:
