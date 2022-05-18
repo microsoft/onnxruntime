@@ -105,10 +105,17 @@ void AdamWTestLoop(
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_gradients,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_momentums_1,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_momentums_2,
-    const std::unordered_map<std::string, VectorInt64>& weight_name_shape_mapping,
+    std::unordered_map<std::string, VectorInt64>& weight_name_shape_mapping,
     std::pair<float, float> weight_tolerance,
     std::pair<float, float> momentum_1_tolerance,
     std::pair<float, float> momentum_2_tolerance) {
+  std::vector<std::string> ordered_weight_names;
+  for (auto it = weight_name_shape_mapping.begin(); it != weight_name_shape_mapping.end(); ++it) {
+    const std::string& weight_name = it->first;
+    ASSERT_TRUE(std::find(ordered_weight_names.begin(), ordered_weight_names.end(), weight_name) == ordered_weight_names.end());
+    ordered_weight_names.push_back(weight_name);
+  }
+
   std::unordered_map<std::string, std::vector<float>> weights_to_train;
   std::unordered_map<std::string, std::vector<float>> momentum1_to_train;
   std::unordered_map<std::string, std::vector<float>> momentum2_to_train;
@@ -123,23 +130,21 @@ void AdamWTestLoop(
     std::vector<TensorInfo> momentum1_tensor_infos;
     std::vector<TensorInfo> momentum2_tensor_infos;
     std::vector<TensorInfo> gradient_tensor_infos;
-    for (auto it = weight_name_shape_mapping.begin(); it != weight_name_shape_mapping.end(); ++it) {
-      const std::string& weight_name = it->first;
-      weight_tensor_infos.emplace_back(TensorInfo(it->second, weights_to_train[weight_name]));
-      momentum1_tensor_infos.emplace_back(TensorInfo(it->second, momentum1_to_train[weight_name]));
-      momentum2_tensor_infos.emplace_back(TensorInfo(it->second, momentum2_to_train[weight_name]));
-      gradient_tensor_infos.emplace_back(TensorInfo(it->second, named_gradients[weight_name][step]));
-    }
 
     // Updated weights/momentums values for validation.
     std::vector<TensorInfo> updated_weight_tensor_infos;
     std::vector<TensorInfo> updated_momentum1_tensor_infos;
     std::vector<TensorInfo> updated_momentum2_tensor_infos;
-    for (auto it = weight_name_shape_mapping.begin(); it != weight_name_shape_mapping.end(); ++it) {
-      const std::string& weight_name = it->first;
-      updated_weight_tensor_infos.emplace_back(TensorInfo(it->second, named_weights[weight_name][step + 1]));
-      updated_momentum1_tensor_infos.emplace_back(TensorInfo(it->second, named_momentums_1[weight_name][step + 1]));
-      updated_momentum2_tensor_infos.emplace_back(TensorInfo(it->second, named_momentums_2[weight_name][step + 1]));
+    for (auto& weight_name : ordered_weight_names) {
+      VectorInt64 weight_shape = weight_name_shape_mapping[weight_name];
+      weight_tensor_infos.emplace_back(TensorInfo(weight_shape, weights_to_train[weight_name]));
+      momentum1_tensor_infos.emplace_back(TensorInfo(weight_shape, momentum1_to_train[weight_name]));
+      momentum2_tensor_infos.emplace_back(TensorInfo(weight_shape, momentum2_to_train[weight_name]));
+      gradient_tensor_infos.emplace_back(TensorInfo(weight_shape, named_gradients[weight_name][step]));
+
+      updated_weight_tensor_infos.emplace_back(TensorInfo(weight_shape, named_weights[weight_name][step + 1]));
+      updated_momentum1_tensor_infos.emplace_back(TensorInfo(weight_shape, named_momentums_1[weight_name][step + 1]));
+      updated_momentum2_tensor_infos.emplace_back(TensorInfo(weight_shape, named_momentums_2[weight_name][step + 1]));
     }
 
     AdamTestInputOutput<float> data(
@@ -183,10 +188,9 @@ void AdamWTestLoop(
       const TensorSeq& updated_seq_weight = outputs[1].Get<TensorSeq>();
       const TensorSeq& updated_seq_momentum1 = outputs[2].Get<TensorSeq>();
       const TensorSeq& updated_seq_momentum2 = outputs[3].Get<TensorSeq>();
-      size_t weight_index = 0;
-      for (auto it = weights_to_train.begin(); it != weights_to_train.end(); ++it, ++weight_index) {
-        const std::string& weight_name = it->first;
 
+      size_t weight_index = 0;
+      for (auto& weight_name : ordered_weight_names) {
         ASSERT_TRUE(weights_to_train.find(weight_name) != weights_to_train.end());
         ASSERT_TRUE(momentum1_to_train.find(weight_name) != momentum1_to_train.end());
         ASSERT_TRUE(momentum2_to_train.find(weight_name) != momentum2_to_train.end());
@@ -199,6 +203,8 @@ void AdamWTestLoop(
 
         const float* updated_momentum2_buffer = updated_seq_momentum2.Get(weight_index).Data<float>();
         std::copy(updated_momentum2_buffer, updated_momentum2_buffer + momentum2_to_train[weight_name].size(), momentum2_to_train[weight_name].begin());
+
+        weight_index += 1;
       }
     }
   }

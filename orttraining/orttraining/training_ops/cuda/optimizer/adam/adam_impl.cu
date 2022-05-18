@@ -7,6 +7,7 @@
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -55,7 +56,7 @@ __global__ void AdamComputeMode0(
   T_MOMENTUM* momentum_1_chunk_ptr;
   T_MOMENTUM* momentum_2_chunk_ptr;
 
-  // TODO: unroll this one for better perf.
+  // TODO(pengwa): unroll this one for better perf.
   int chunk_size;
 
   PrepareMTAData(chunks, block_idx, weight_chunk_ptr, grad_chunk_ptr,

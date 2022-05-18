@@ -1,13 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# orttraining_test_ortmodule_api.py
+# This is used to generate test data for Adam optimizer tests in
+# orttraining/orttraining/test/training_ops/cuda/optimizer/adam_test.cc.
+
 
 import numpy as np
 import torch
 
-# PyTorch model definitions for tests
-np.set_printoptions(precision=10)
-torch.set_printoptions(precision=10)
 
 class SingleParamterModule(torch.nn.Module):
     def __init__(self, input_size, hidden_size):
@@ -129,7 +128,7 @@ def GenerateAdamWTestData(seed, model_setup_func, data_func, train_step_count, a
     for name, val in m2_list.items():
         print("{{ \"{}\", {{ {} }}, }},".format(name, str_list_to_str(val)))
 
-adam_mode = 1
+
 def TorchAdamSingleWeightTests(adam_mode):
     def gen(run_step_count):
         seed=8888
@@ -149,8 +148,6 @@ def TorchAdamSingleWeightTests(adam_mode):
 
     # Generate data for TorchAdamSingleWeightTest_Loop10Steps.
     gen(11)
-
-TorchAdamSingleWeightTests(adam_mode)
 
 def TorchAdamMultipleWeightTests(adam_mode):
     def gen(run_step_count):
@@ -172,4 +169,6 @@ def TorchAdamMultipleWeightTests(adam_mode):
     # Generate data for TorchAdamMultipleWeightsTest_Loop10Steps.
     gen(11)
 
-TorchAdamMultipleWeightTests(adam_mode)
+for adam_mode in range(0, 2):
+    TorchAdamSingleWeightTests(adam_mode)
+    TorchAdamMultipleWeightTests(adam_mode)

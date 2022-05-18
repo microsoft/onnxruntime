@@ -97,7 +97,7 @@ void AdamWTestLoop(
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_gradients,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_momentums_1,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_momentums_2,
-    const std::unordered_map<std::string, VectorInt64>& weight_name_shape_mapping,
+    std::unordered_map<std::string, VectorInt64>& weight_name_shape_mapping,
     std::pair<float, float> weight_tolerance,
     std::pair<float, float> momentum_1_tolerance,
     std::pair<float, float> momentum_2_tolerance);
