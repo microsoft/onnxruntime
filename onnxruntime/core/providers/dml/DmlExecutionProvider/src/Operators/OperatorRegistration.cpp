@@ -454,7 +454,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,       DmlGraphSupport::Supported)},
     {REG_INFO(      9,  EyeLike,                            typeNameListEyeLike,            supportedTypeListScalars8to32,          DmlGraphSupport::Supported)},
     // TODO: Add Trilu-14 to fill diagonal matrix https://github.com/onnx/onnx/pull/3291
-    // {REG_INFO(  14,  EyeLike,                            typeNameListEyeLike,            supportedTypeListScalars8to32,          DmlGraphSupport::Supported)},
+    // {REG_INFO(  14,  Trilu,                              typeNameListTrilu,              supportedTypeListScalars8to32,          DmlGraphSupport::Supported)},
 
     // Data reorganization that merely changes the dimensions while keeping the data identical.
     {REG_INFO_ID(   7,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
@@ -667,7 +667,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     // TODO: Add CastLike-15 https://github.com/onnx/onnx/pull/3558
-    // {REG_INFO(  15,  CastLike,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
+    // {REG_INFO(  15,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MemcpyFromHost,                     typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO(      7,  MemcpyToHost,                       typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,                  DmlGraphSupport::Supported)},
