@@ -221,11 +221,13 @@ struct StandaloneCustomKernel {
   void InitGru(Ort::CustomOpApi ort, const OrtExecutionProvider* ep);
   void InvokeGru(OrtKernelContext* context);
 
+  void InitInvokeConv(OrtKernelContext* context); // create Conv and invoke in Compute(...)
+
   Ort::CustomOpApi ort_;
   OrtExecutionProvider* ep_{};
-  OrtOp* op_add{};
-  OrtOp* op_topk{};
-  OrtOp* op_gru{};
+  OrtOp* op_add_{};
+  OrtOp* op_topk_{};
+  OrtOp* op_gru_{};
 };
 
 struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {

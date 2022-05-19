@@ -421,8 +421,7 @@ TEST(CApiTest, standalone_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&standalone_op);
 
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
 }
 #endif
 

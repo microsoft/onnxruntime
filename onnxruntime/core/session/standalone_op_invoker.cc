@@ -68,7 +68,6 @@ namespace standalone {
 
 void ReleaseNode(onnxruntime::Node* node) {
   if (node) {
-    std::cout << "releasing " << node->OpType() << std::endl;
     for (auto* input_arg : node->InputDefs()) {
       delete input_arg;
     }
@@ -101,7 +100,6 @@ void AddNode(const onnxruntime::OpKernel* kernel, NodeHolder& node_holder) {
     ORT_THROW("kernel mapped twice to a node!");
   }
   nodes.insert({kernel, std::move(node_holder)});
-  //nodes[kernel] = std::move(node_holder);
 }
 
 void DelNode(const onnxruntime::OpKernel* kernel) {
@@ -298,7 +296,7 @@ onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, Or
   auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>();
   onnxruntime::Status status = onnxruntime::Status::OK();
   attr->set_name(std::string{name});
-  const int* ints = reinterpret_cast<const int*>(data);
+  const int64_t* ints = reinterpret_cast<const int64_t*>(data);
   const float* floats = reinterpret_cast<const float*>(data);
   auto str = reinterpret_cast<const char*>(data);
   auto strs = reinterpret_cast<const char* const*>(data);
