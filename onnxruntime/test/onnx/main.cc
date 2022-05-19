@@ -352,7 +352,22 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_dnnl) {
 #ifdef USE_DNNL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
+      // We set the intra op threads to default
+      int minimum_threads = 0;
+      // Generate dnnl_options to optimize dnnl performance
+      OrtDnnlProviderOptions dnnl_options;
+      dnnl_options.use_arena = enable_cpu_mem_arena ? 1 : 0;
+      dnnl_options.optimize_threads = true;
+      dnnl_options.ort_intra_op_threads = &minimum_threads;
+      // Get ideal thread config if possible
+      std::vector<size_t> cpu_list = Env::Default().GetThreadAffinityMasks();
+      if (!cpu_list.empty() && cpu_list.size() > 1) {
+        dnnl_options.onednn_threads = static_cast<int>(cpu_list.size());
+      }
+
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, &dnnl_options));
+      // Set intra op threads
+      sf.SetIntraOpNumThreads(minimum_threads);
 #else
       fprintf(stderr, "DNNL is not supported in this build");
       return -1;

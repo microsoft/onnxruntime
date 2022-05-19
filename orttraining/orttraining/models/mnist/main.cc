@@ -25,7 +25,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 #include <tuple>
 
 namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* provider_options);
 }
 
 using namespace onnxruntime;
@@ -177,7 +177,10 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
 
     bool use_dnnl = flags.count("use_dnnl") > 0;
     if (use_dnnl) {
-      params.providers.emplace(kDnnlExecutionProvider, CreateExecutionProviderFactory_Dnnl(1));
+      OrtDnnlProviderOptions dnnl_options;
+      dnnl_options.use_arena = 1;
+      dnnl_options.optimize_threads = 0;
+      params.providers.emplace(kDnnlExecutionProvider, CreateExecutionProviderFactory_Dnnl(&dnnl_options));
     }
 
     std::string model_type = flags["model_type"].as<std::string>();

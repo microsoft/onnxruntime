@@ -5,6 +5,8 @@
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include <atomic>
 #include <cassert>
+#include <omp.h>
+#include <math.h>
 #include "dnnl_execution_provider.h"
 
 using namespace onnxruntime;
@@ -28,7 +30,7 @@ std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
 }
 
 struct Dnnl_Provider : Provider {
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* options) override {
 #if defined(_WIN32)
     {
       // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
@@ -44,7 +46,31 @@ struct Dnnl_Provider : Provider {
       assert(handle);  // It should exist
     }
 #endif
-    return std::make_shared<DnnlProviderFactory>(use_arena != 0);
+    // Cast options
+    const OrtDnnlProviderOptions* dnnl_options = reinterpret_cast<const OrtDnnlProviderOptions*>(options);
+
+    if (dnnl_options->optimize_threads) {
+      // Set up threads for optimal performance
+      int num_threads = dnnl_options->onednn_threads ? dnnl_options->onednn_threads : omp_get_max_threads();
+      int ort_num_threads = dnnl_options->ort_threads;
+      if (!ort_num_threads) {
+        // Avoid over subscription
+        ort_num_threads = static_cast<int>(ceil(num_threads / 4.0f));
+        num_threads -= ort_num_threads;
+      }
+
+      // Check for nullptr to avoid undefined behavior
+      if (dnnl_options->ort_intra_op_threads != nullptr) {
+        // Override default value
+        *dnnl_options->ort_intra_op_threads = ort_num_threads;
+      }
+
+      // Set number of threads
+      omp_set_num_threads(num_threads);
+      fprintf(stdout, "Setting OMP to %d threads\n", num_threads);
+    }
+
+    return std::make_shared<DnnlProviderFactory>(dnnl_options->use_arena != 0);
   }
 
   void Initialize() override {

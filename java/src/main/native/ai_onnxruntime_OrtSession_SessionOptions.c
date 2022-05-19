@@ -403,10 +403,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
  * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnnl
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong optsHandle) {
     (void)jobj;
   #ifdef USE_DNNL
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*) handle,useArena));
+    checkOrtStatus(jniEnv, (const OrtApi*)apiHandle, OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*)handle, (const OrtDnnlProviderOptions*) optsHandle));
   #else
     (void)apiHandle;(void)handle;(void)useArena; // Parameters used when DNNL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");

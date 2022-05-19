@@ -107,10 +107,23 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
 #ifdef USE_DNNL
-  if (auto factory = CreateExecutionProviderFactory_Dnnl(enable_arena ? 1 : 0))
+  OrtDnnlProviderOptions dnnl_options;
+  dnnl_options.use_arena = enable_arena ? 1 : 0;
+  dnnl_options.optimize_threads = false;
+  if (auto factory = CreateExecutionProviderFactory_Dnnl(&dnnl_options))
     return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(const OrtDnnlProviderOptions* provider_options) {
+#ifdef USE_DNNL
+  if (auto factory = CreateExecutionProviderFactory_Dnnl(provider_options))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
 #endif
   return nullptr;
 }
