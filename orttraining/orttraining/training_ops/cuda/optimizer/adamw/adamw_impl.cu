@@ -75,10 +75,10 @@ __global__ void AdamWComputeMode0(
     w = w - (w * lr * decay);
 
     // Compute exponentially-averaged historical gradient.
-    m1 = alpha * m1 + (1 - alpha) * g;
+    m1 = alpha * m1 + (1.f - alpha) * g;
 
     // Compute exponentially-averaged historical squared gradient.
-    m2 = beta * m2 + (1 - beta) * g * g;
+    m2 = beta * m2 + (1.f - beta) * g * g;
 
     // Compute the new weight.
     const float denom = (_Sqrt(m2) / _Sqrt(beta_correction)) + epsilon;
@@ -120,10 +120,10 @@ __global__ void AdamWComputeMode1(
     float m2 = static_cast<float>(momentum_2_chunk_ptr[i]);
 
     // Compute exponentially-averaged historical gradient.
-    m1 = alpha * m1 + (1 - alpha) * g;
+    m1 = alpha * m1 + (1.f - alpha) * g;
 
     // Compute exponentially-averaged historical squared gradient.
-    m2 = beta * m2 + (1 - beta) * g * g;
+    m2 = beta * m2 + (1.f - beta) * g * g;
 
     float denom = _Sqrt(m2) + epsilon;
     w = w - (lr_corrected * m1 / denom);
@@ -156,11 +156,13 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
   // Update the steps for each param group update.
   int64_t increased_update_count = update_count + 1;
 
-  float alpha_correction = 1.0, beta_correction = 1.0;
+  float alpha_correction = 1.f, beta_correction = 1.f;
   float lr_corrected = lr;
   if (correct_bias == 1) {
-    alpha_correction = 1.0 - std::pow(alpha, increased_update_count);
-    beta_correction = 1.0 - std::pow(beta, increased_update_count);
+    // Be noted, there is a minor difference compared with Apex's implementation,
+    // which uses double storing corrections before casting to float passing to kernels.
+    alpha_correction = 1.f - std::pow(alpha, increased_update_count);
+    beta_correction = 1.f - std::pow(beta, increased_update_count);
     lr_corrected *= std::sqrt(beta_correction) / alpha_correction;
   }
 

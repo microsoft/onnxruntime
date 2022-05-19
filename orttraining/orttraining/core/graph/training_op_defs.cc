@@ -1358,7 +1358,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain momentums' types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         size_t num_of_outputs = ctx.getNumOutputs();
-        std::unordered_map<int, int> output_to_input_index_map{{0, 1}, {1, 2}, {2, 4}, {3, 5}};
+        std::unordered_map<size_t, size_t> output_to_input_index_map{{0, 1}, {1, 2}, {2, 4}, {3, 5}};
         assert(output_to_input_index_map.size() >= num_of_outputs);
 
         for (size_t output_index = 0; output_index < num_of_outputs; ++output_index) {
