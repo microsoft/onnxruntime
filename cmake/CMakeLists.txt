@@ -903,7 +903,9 @@ if (onnxruntime_ENABLE_CPUINFO)
       message(FATAL_ERROR "universal binary is not supported for apple framework")
     endif()
   else()
-    if (onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_USE_XNNPACK)
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
+    # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
+    if (onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_USE_XNNPACK) 
       set(CPUINFO_SUPPORTED FALSE)
     else()
       set(CPUINFO_SUPPORTED TRUE)
@@ -934,8 +936,12 @@ if (CPUINFO_SUPPORTED)
     set(IOS ON CACHE INTERNAL "")
     set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
   endif()
-
-  string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  
+  # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved) 
+  # we do not use cpuinfo in ORT code, so don't set the.
+  if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+    string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  endif()
 
   if (onnxruntime_PREFER_SYSTEM_LIB)
     find_package(cpuinfo)
@@ -1530,36 +1536,33 @@ if (onnxruntime_USE_XNNPACK)
       target_compile_options(XNNPACK PRIVATE "-pthread")
     endif()
 
-    # TODO: Is this always the case if onnxruntime_BUILD_WEBASSEMBLY is true?
-    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      MESSAGE("Adding WebAssembly Source Files to XNNPACK")
-      set(wasm_src_patterns "${XNNPACK_DIR}/src/wasm-*.c"
-                            "${XNNPACK_DIR}/src/*-wasm-*.c"
-                            "${XNNPACK_DIR}/src/*-wasm.c")  
-      set(wasm32_asm_src_patterns "${XNNPACK_DIR}/src/wasm_shr_*.S")
+    message("Adding WebAssembly Source Files to XNNPACK")
+    set(wasm_src_patterns "${XNNPACK_DIR}/src/wasm-*.c"
+                          "${XNNPACK_DIR}/src/*-wasm-*.c"
+                          "${XNNPACK_DIR}/src/*-wasm.c")  
+    set(wasm32_asm_src_patterns "${XNNPACK_DIR}/src/wasm_shr_*.S")
 
-      file(GLOB_RECURSE XNNPACK_WASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm_src_patterns})
-      file(GLOB_RECURSE XNNPACK_WASM32_ASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm32_asm_src_patterns})
+    file(GLOB_RECURSE XNNPACK_WASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm_src_patterns})
+    file(GLOB_RECURSE XNNPACK_WASM32_ASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm32_asm_src_patterns})
+    
+    message(DEBUG "XNNPACK_WASM_MICROKERNEL_SRCS:${XNNPACK_WASM_MICROKERNEL_SRCS}")
+    message(DEBUG "XNNPACK_WASM32_ASM_MICROKERNEL_SRCS:${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS}")
+
+    target_sources(XNNPACK PRIVATE ${XNNPACK_WASM_MICROKERNEL_SRCS}
+                                    ${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS})
+
+    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)        
+      target_compile_options(XNNPACK PRIVATE "-msimd128")
+
+      set(wasmsimd_src_patterns "${XNNPACK_DIR}/src/wasmsimd-*.c"
+                                "${XNNPACK_DIR}/src/*-wasmsimd-*.c"
+                                "${XNNPACK_DIR}/src/*-wasmsimd.c")
+
+      file(GLOB_RECURSE XNNPACK_WASMSIMD_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasmsimd_src_patterns})
+      message(DEBUG "XNNPACK_WASMSIMD_MICROKERNEL_SRCS:${XNNPACK_WASMSIMD_MICROKERNEL_SRCS}")
       
-      message(DEBUG "XNNPACK_WASM_MICROKERNEL_SRCS:${XNNPACK_WASM_MICROKERNEL_SRCS}")
-      message(DEBUG "XNNPACK_WASM32_ASM_MICROKERNEL_SRCS:${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS}")
-
-      target_sources(XNNPACK PRIVATE ${XNNPACK_WASM_MICROKERNEL_SRCS}
-                                     ${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS})
-
-      if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)        
-        target_compile_options(XNNPACK PRIVATE "-msimd128")
-
-        set(wasmsimd_src_patterns "${XNNPACK_DIR}/src/wasmsimd-*.c"
-                                  "${XNNPACK_DIR}/src/*-wasmsimd-*.c"
-                                  "${XNNPACK_DIR}/src/*-wasmsimd.c")
-
-        file(GLOB_RECURSE XNNPACK_WASMSIMD_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasmsimd_src_patterns})
-        message(DEBUG "XNNPACK_WASMSIMD_MICROKERNEL_SRCS:${XNNPACK_WASMSIMD_MICROKERNEL_SRCS}")
-        
-        target_sources(XNNPACK PRIVATE ${XNNPACK_WASMSIMD_MICROKERNEL_SRCS})
-      endif()
-    endif()  
+      target_sources(XNNPACK PRIVATE ${XNNPACK_WASMSIMD_MICROKERNEL_SRCS})
+    endif()
   endif()
 endif()
 
