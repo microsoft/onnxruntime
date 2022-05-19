@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This is fast cuda kernels for longformer attention softmax.
+// This is cuda kernels for longformer attention softmax that does not use compact memory.
 // It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
+// Its logic is simpler with less constraints (like number of global tokens could be larger than attention windows).
 
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
@@ -41,16 +42,16 @@ namespace cuda {
 
 template <typename T, int blockSize>
 __launch_bounds__(blockSize)
-    __global__ void LongformerSoftmaxFastKernel(const int* global_attention,
-                                                const int* global_index,
-                                                const int* batch_global_num,
-                                                const T* input,
-                                                const T* attention_mask,
-                                                T* output,
-                                                float scaler,
-                                                int dim0,
-                                                int sequence_length,
-                                                int attention_window) {
+    __global__ void LongformerSoftmaxSimpleKernel(const int* global_attention,
+                                                  const int* global_index,
+                                                  const int* batch_global_num,
+                                                  const T* input,
+                                                  const T* attention_mask,
+                                                  T* output,
+                                                  float scaler,
+                                                  int dim0,
+                                                  int sequence_length,
+                                                  int attention_window) {
   typedef cub::BlockReduce<float, blockSize> BlockReduce;
   __shared__ typename BlockReduce::TempStorage block_reduce_temp;
   __shared__ float max_shared;
@@ -190,7 +191,7 @@ __launch_bounds__(blockSize)
 }
 
 // Launch the softmax kernel for non compact memory.
-bool launchSoftmaxFastKernel(
+bool LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,              // softmax space
@@ -201,7 +202,7 @@ bool launchSoftmaxFastKernel(
     const void* global_q,         // Q for global tokens with shape (B, N, S, H)
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)
-    const int* global_attention,  // global attention with shape (B, S), with value 0 for local attention and 1 for global attention.
+    const int* global_attention,  // global attention flags with shape (B, S), with value 0 for local and 1 for global.
     const int* global_index,      // Global index with shape (B, S)
     const int* batch_global_num,  // Number of global tokens per batch with shape (B, 1)
     void* pinned_buffer,          // Pinned memory in CPU. Number of global tokens per batch with shape (B, 1)
@@ -216,7 +217,8 @@ bool launchSoftmaxFastKernel(
 
   bool is_fp16 = (element_size == 2);
   void* scratch1 = reinterpret_cast<char*>(workspace);
-  void* scratch2 = reinterpret_cast<char*>(scratch1) + GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+  size_t scratch1_size = GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+  void* scratch2 = reinterpret_cast<char*>(scratch1) + scratch1_size;
 
   // setup shared parameters for two strided batched matrix multiplies
   cudaDataType_t Atype;
@@ -264,7 +266,7 @@ bool launchSoftmaxFastKernel(
   //      [W][W][W]
   //         [W][W]
   // The first and last rows have 2 blocks, and the remaining has 3 blocks per row.
-  // The calculation are splited into 3 parts. Firstly, fill the middle rows,  then the first row and finally the last row.
+  // The calculation are splited into 3 parts: Fill the middle rows, then the first row and finally the last row.
   // The results are stored in scratch1.
 
   int w = attention_window;
@@ -306,9 +308,11 @@ bool launchSoftmaxFastKernel(
   } else {  // sequence_length > 2 * w
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
-        void* q_head = (char*)q + (i * x_offset + j * sequence_length * head_size + w * head_size) * element_size;
-        void* k_head = (char*)k + (i * x_offset + j * sequence_length * head_size) * element_size;
-        void* qk_head = (char*)scratch1 + (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
+        const void* q_head = reinterpret_cast<const char*>(q) + \
+                             (i * x_offset + j * sequence_length * head_size + w * head_size) * element_size;
+        const void* k_head = reinterpret_cast<const char*>(k) + (i * x_offset + j * sequence_length * head_size) * element_size;
+        void* qk_head = reinterpret_cast<char*>(scratch1) + \
+                        (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
                                          CUBLAS_OP_T,
@@ -360,9 +364,10 @@ bool launchSoftmaxFastKernel(
                                      resultType,
                                      algo));
 
-    void* q_head = (char*)q + (last_block * w * head_size) * element_size;
-    void* k_head = (char*)k + ((last_block - 1) * w * head_size) * element_size;
-    void* qk_head = (char*)scratch1 + (last_block * w * sequence_length + (last_block - 1) * w) * element_size;
+    const void* q_head = reinterpret_cast<const char*>(q) + (last_block * w * head_size) * element_size;
+    const void* k_head = reinterpret_cast<const char*>(k) + ((last_block - 1) * w * head_size) * element_size;
+    void* qk_head = reinterpret_cast<char*>(scratch1) + \
+                    (last_block * w * sequence_length + (last_block - 1) * w) * element_size;
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_T,
                                      CUBLAS_OP_N,
@@ -392,9 +397,9 @@ bool launchSoftmaxFastKernel(
   // Global attention part
   for (int i = 0; i < batch_size; ++i) {
     if (batch_global_count[i] > 0) {
-      void* q_batch = (char*)q + (i * x_offset) * element_size;
-      void* k_batch = (char*)k + (i * x_offset) * element_size;
-      void* qk_batch = (char*)scratch1 + (i * y_offset) * element_size;
+      const void* q_batch = reinterpret_cast<const char*>(q) + (i * x_offset) * element_size;
+      const void* k_batch = reinterpret_cast<const char*>(k) + (i * x_offset) * element_size;
+      void* qk_batch = reinterpret_cast<char*>(scratch1) + (i * y_offset) * element_size;
       // Local tokens attending global tokens
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_T,
@@ -420,8 +425,9 @@ bool launchSoftmaxFastKernel(
                                        resultType,
                                        algo));
 
-      void* global_q_batch = (char*)global_q + (i * num_heads * sequence_length * head_size) * element_size;
-      void* global_k_batch = (char*)global_k + (i * x_offset) * element_size;
+      const void* global_q_batch = reinterpret_cast<const char*>(global_q) + \
+                                   (i * num_heads * sequence_length * head_size) * element_size;
+      const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * x_offset) * element_size;
       int strideB_global = sequence_length * head_size;
 
       // Global tokens attending everything
@@ -459,7 +465,7 @@ bool launchSoftmaxFastKernel(
   const int blockSize = 64;
   const int gridSize = batch_size * num_heads * sequence_length;
   if (is_fp16) {
-    LongformerSoftmaxFastKernel<__half, blockSize><<<gridSize, blockSize, 0, stream>>>(
+    LongformerSoftmaxSimpleKernel<__half, blockSize><<<gridSize, blockSize, 0, stream>>>(
         global_attention,
         global_index,
         batch_global_num,
@@ -467,7 +473,7 @@ bool launchSoftmaxFastKernel(
         static_cast<const __half*>(attention_mask),
         static_cast<__half*>(softmax_out), scaler, dim0, dim1, attention_window);
   } else {
-    LongformerSoftmaxFastKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(
+    LongformerSoftmaxSimpleKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(
         global_attention,
         global_index,
         batch_global_num,
@@ -510,9 +516,12 @@ bool launchSoftmaxFastKernel(
   } else {  // sequence_length > 2 * w
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
-        void* v_head = (char*)v + (i * x_offset + j * head_size * sequence_length) * element_size;
-        void* prob_head = (char*)softmax_out + (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
-        void* out_head = (char*)output + (i * x_offset + j * head_size * sequence_length + w * head_size) * element_size;
+        const void* v_head = reinterpret_cast<const char*>(v) + \
+                             (i * x_offset + j * head_size * sequence_length) * element_size;
+        const void* prob_head = reinterpret_cast<const char*>(softmax_out) + \
+                            (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
+        void* out_head = reinterpret_cast<char*>(output) + \
+                         (i * x_offset + j * head_size * sequence_length + w * head_size) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
                                          CUBLAS_OP_N,
@@ -564,9 +573,10 @@ bool launchSoftmaxFastKernel(
                                      resultType,
                                      algo));
 
-    void* v_head = (char*)v + (last_block - 1) * w * head_size * element_size;
-    void* prob_head = (char*)softmax_out + (sequence_length * last_block * w + (last_block - 1) * w) * element_size;
-    void* out_head = (char*)output + last_block * w * head_size * element_size;
+    const void* v_head = reinterpret_cast<const char*>(v) + (last_block - 1) * w * head_size * element_size;
+    const void* prob_head = reinterpret_cast<const char*>(softmax_out) + \
+                            (sequence_length * last_block * w + (last_block - 1) * w) * element_size;
+    void* out_head = reinterpret_cast<char*>(output) + last_block * w * head_size * element_size;
 
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_N,
@@ -597,9 +607,10 @@ bool launchSoftmaxFastKernel(
     if (batch_global_count[i] > 0) {
       int glob_longdim_mm = (last_block - 1) * w;
 
-      void* v_head = (char*)v + (i * x_offset) * element_size;
-      void* prob_head = (char*)softmax_out + (i * y_offset + 2 * w * sequence_length) * element_size;
-      void* out_head = (char*)output + (i * x_offset + 2 * w * head_size) * element_size;
+      const void* v_head = reinterpret_cast<const char*>(v) + (i * x_offset) * element_size;
+      const void* prob_head = reinterpret_cast<const char*>(softmax_out) + \
+                              (i * y_offset + 2 * w * sequence_length) * element_size;
+      void* out_head = reinterpret_cast<char*>(output) + (i * x_offset + 2 * w * head_size) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
@@ -626,9 +637,9 @@ bool launchSoftmaxFastKernel(
                                        algo));
 
       // Global tokens
-      v_head = (char*)global_v + (i * x_offset) * element_size;
-      prob_head = (char*)softmax_out + (i * y_offset) * element_size;
-      out_head = (char*)output + (i * x_offset) * element_size;
+      v_head = reinterpret_cast<const char*>(global_v) + (i * x_offset) * element_size;
+      prob_head = reinterpret_cast<const char*>(softmax_out) + (i * y_offset) * element_size;
+      out_head = reinterpret_cast<char*>(output) + (i * x_offset) * element_size;
 
       CHECK(cublasGemmStridedBatchedEx(cublas,
                                        CUBLAS_OP_N,
