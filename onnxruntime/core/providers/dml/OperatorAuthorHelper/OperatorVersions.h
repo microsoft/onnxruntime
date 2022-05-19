@@ -349,6 +349,11 @@ namespace OperatorHelper
         static const int sc_sinceVer_Sub = 14;
     } // namespace OnnxOperatorSet14
 
+    namespace OnnxOperatorSet15
+    {
+        static const int sc_sinceVer_CastLike = 15;
+    } // namespace OnnxOperatorSet14
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_FusedConv = 1;

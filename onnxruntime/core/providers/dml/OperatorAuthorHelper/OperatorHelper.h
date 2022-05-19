@@ -1494,6 +1494,8 @@ using ShapeInferenceHelper_CumSum11 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
 
+using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
+
 using ShapeInferenceHelper_FusedConv = ConvHelper;
 using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_FusedInstanceNormalization = GetOutputShapeAsInputShapeHelper;
