@@ -346,6 +346,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Identity = 14;
         static const int sc_sinceVer_Mul = 14;
         static const int sc_sinceVer_Relu = 14;
+        static const int sc_sinceVer_Reshape = 14;
         static const int sc_sinceVer_Sub = 14;
     } // namespace OnnxOperatorSet14
 

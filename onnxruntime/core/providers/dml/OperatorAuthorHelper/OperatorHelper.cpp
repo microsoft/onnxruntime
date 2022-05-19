@@ -1971,32 +1971,45 @@ namespace OperatorHelper
         int inferDim = -1;
 
         DimensionType inElementCount = ComputeElementCountFromDimensions(inputDimensions);
+        bool allowZero = shapeInfo.template GetOptionalAttribute<int32_t>(AttrName::AllowZero, 0);
 
-        for (int i = 0, ci = gsl::narrow_cast<int>(m_shapeDims.size()); i < ci; ++i)
+        if (allowZero)
         {
-            switch (m_shapeDims[i])
+            // Just take the shape directly.
+            // Special handling where 0 size means to copy the corresponding input tensor dimension.
+            for (int i = 0, ci = gsl::narrow_cast<int>(m_shapeDims.size()); i < ci; ++i)
             {
-            case -1:
-                ML_CHECK_VALID_ARGUMENT(inferDim == -1, "Only one dimension can be inferred.");
-                inferDim = i;
-                break;
-
-            case 0:
-                outputDimensions[i] = inputDimensions[i];
-                outElementCount *= outputDimensions[i];
-                break;
-
-            default:
                 outputDimensions[i] = m_shapeDims[i];
-                outElementCount *= outputDimensions[i];
-                break;
             }
         }
-
-        if (inferDim != -1)
+        else
         {
-            outputDimensions[inferDim] = inElementCount / outElementCount;
-            outElementCount *= outputDimensions[inferDim];
+            // Special handling where 0 size means to copy the corresponding input tensor dimension.
+            for (int i = 0, ci = gsl::narrow_cast<int>(m_shapeDims.size()); i < ci; ++i)
+            {
+                switch (m_shapeDims[i])
+                {
+                case -1:
+                    ML_CHECK_VALID_ARGUMENT(inferDim == -1, "Only one dimension can be inferred.");
+                    inferDim = i;
+                    break;
+
+                case 0:
+                    outputDimensions[i] = inputDimensions[i];
+                    outElementCount *= outputDimensions[i];
+                    break;
+
+                default:
+                    outputDimensions[i] = m_shapeDims[i];
+                    outElementCount *= outputDimensions[i];
+                    break;
+                }
+            }
+
+            if (inferDim != -1)
+            {
+                outputDimensions[inferDim] = inElementCount / outElementCount;
+            }
         }
         
         return { EdgeShapes(outputDimensions) };
