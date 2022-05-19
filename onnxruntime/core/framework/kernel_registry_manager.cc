@@ -24,6 +24,7 @@ Status KernelRegistryManager::CreateKernel(const onnxruntime::Node& node,
                            session_state.GetConstantInitializedTensors(),
                            session_state.GetOrtValueNameIdxMap(),
                            session_state.GetDataTransferMgr(),
+                           session_state.GetPerAllocPlan(),
                            stream);
 
   return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);

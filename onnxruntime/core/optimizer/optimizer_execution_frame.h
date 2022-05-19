@@ -87,6 +87,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     std::unique_ptr<NodeIndexInfo> node_index_info_;
     const IExecutionProvider& execution_provider_;
     const std::function<bool(const std::string&)>& is_sparse_initializer_func_;
+    // allocation plan
+    std::vector<AllocPlanPerValue> allocation_plan_;
 
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Info);
   };

@@ -16,6 +16,7 @@ namespace onnxruntime {
 class OrtValueNameIdxMap;
 class FuncManager;
 class DataTransferManager;
+struct AllocPlanPerValue;
 
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.
@@ -28,6 +29,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
                         const DataTransferManager& data_transfer_mgr,
+                        // the allocation plan for all the tensors, indexed by the ortvalue index which you can lookup from mlvalue_name_idx_map
+                        const std::vector<AllocPlanPerValue>& allocation_plan,
                         Stream* stream);
 
   OpKernelInfo(const OpKernelInfo& other);
@@ -48,6 +51,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   Stream* GetComputeStream() const noexcept; 
 
+  const OrtMemoryInfo& GetInputLocation(int input_index) const;
+  const OrtMemoryInfo& GetOutputLocation(int output_index) const;
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -63,6 +69,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   ProtoHelperNodeContext proto_helper_context_;
   // which stream this kernel will be placed
   Stream* stream_;
+  // reference to the allocation plan for all the tensors
+  const std::vector<AllocPlanPerValue>& allocation_plan_;
 };
 
 }  // namespace onnxruntime

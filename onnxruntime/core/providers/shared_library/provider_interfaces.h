@@ -726,6 +726,9 @@ struct ProviderHost {
   virtual const Node& OpKernelInfo__node(const OpKernelInfo* p) = 0;
   virtual Stream* OpKernelInfo__GetComputeStream(const OpKernelInfo* p) = 0;
 
+  virtual const OrtMemoryInfo& OpKernelInfo__GetInputLocation(const OpKernelInfo* p, int input_index) = 0;
+  virtual const OrtMemoryInfo& OpKernelInfo__GetOutputLocation(const OpKernelInfo* p, int output_index) = 0;
+
   // SessionState
   virtual const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) = 0;
 

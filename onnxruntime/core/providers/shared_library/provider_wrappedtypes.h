@@ -837,6 +837,9 @@ struct OpKernelInfo final {
 
   Stream* GetComputeStream() const noexcept { return g_host->OpKernelInfo__GetComputeStream(this); }
 
+  const OrtMemoryInfo& GetInputLocation(int input_index) const { return g_host->OpKernelInfo__GetInputLocation(this, input_index); }
+  const OrtMemoryInfo& GetOutputLocation(int output_index) const { return g_host->OpKernelInfo__GetOutputLocation(this, output_index); }
+
   OpKernelInfo() = delete;
   OpKernelInfo(const OpKernelInfo&) = delete;
   void operator=(const OpKernelInfo&) = delete;

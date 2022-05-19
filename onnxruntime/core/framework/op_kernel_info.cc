@@ -5,6 +5,7 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_info.h"
+#include "core/framework/sequential_execution_plan.h"
 
 namespace onnxruntime {
 
@@ -14,6 +15,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
                            const DataTransferManager& data_transfer_mgr,
+                           const std::vector<AllocPlanPerValue>& allocation_plan,
                            // which stream this kernel will be placed
                            Stream* stream)
     : OpNodeProtoHelper(&proto_helper_context_),
@@ -24,11 +26,12 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
       proto_helper_context_(node),
-      stream_(stream){}
+      stream_(stream),
+      allocation_plan_(allocation_plan){}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
-                   other.ort_value_name_idx_map_, other.data_transfer_mgr_, other.stream_) {}
+                   other.ort_value_name_idx_map_, other.data_transfer_mgr_, other.allocation_plan_, other.stream_) {}
 
 const OrtMemoryInfo& OpKernelInfo::GetMemoryInfo(int device_id, OrtMemType mem_type) const {
   AllocatorPtr alloc = GetAllocator(device_id, mem_type);
@@ -82,6 +85,22 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
 
 Stream* OpKernelInfo::GetComputeStream() const noexcept {
   return stream_;
+}
+
+const OrtMemoryInfo& OpKernelInfo::GetInputLocation(int input_index) const {
+  auto& input_arg_name = node_.InputDefs()[input_index]->Name();
+  int input_arg_index = -1;
+  ORT_ENFORCE(ort_value_name_idx_map_.GetIdx(input_arg_name, input_arg_index).IsOK());
+  ORT_ENFORCE(input_arg_index < allocation_plan_.size());
+  return allocation_plan_[input_arg_index].location;
+}
+
+const OrtMemoryInfo& OpKernelInfo::GetOutputLocation(int output_index) const {
+  auto& output_arg_name = node_.OutputDefs()[output_index]->Name();
+  int output_arg_index = -1;
+  ORT_ENFORCE(ort_value_name_idx_map_.GetIdx(output_arg_name, output_arg_index).IsOK());
+  ORT_ENFORCE(output_arg_index < allocation_plan_.size());
+  return allocation_plan_[output_arg_index].location;
 }
 
 }  // namespace onnxruntime

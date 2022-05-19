@@ -39,6 +39,7 @@ class KernelRegistry {
                          const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                          const OrtValueNameIdxMap& mlvalue_name_idx_map, FuncManager& funcs_mgr,
                          const DataTransferManager& data_transfer_mgr,
+                         const std::vector<AllocPlanPerValue>& allocation_plan,
                          Stream* stream,
                          std::unique_ptr<OpKernel>& op_kernel) const;
 

@@ -260,6 +260,7 @@ class PlannerTest : public ::testing::Test {
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
         state_->GetDataTransferMgr(),
+        state_->GetPerAllocPlan(),
         //stream
         nullptr);
 
