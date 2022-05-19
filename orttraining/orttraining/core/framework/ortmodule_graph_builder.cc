@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/graph_partitioner.h"
 #include "core/graph/graph_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
@@ -93,7 +94,7 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
     modified_graph = false;
     Graph& graph = gradient_model_->MainGraph();
-    ORT_RETURN_IF_ERROR(graph.InlineNodes(modified_graph));
+    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {
