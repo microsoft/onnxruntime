@@ -1,23 +1,28 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This file is used to generate test data for Adam optimizer tests in
-# orttraining/orttraining/test/training_ops/cuda/optimizer/adamw_test.cc.
+"""This file is used to generate test data for Adam optimizer tests in
+   orttraining/orttraining/test/training_ops/cuda/optimizer/adamw_test.cc."""
 
 import torch
 
 
 class SingleParameterModule(torch.nn.Module):
+    """A dumpy module containing only one trainable parameter."""
+
     def __init__(self, input_size, hidden_size):
         super().__init__()
         self.fc1 = torch.nn.Linear(input_size, hidden_size, bias=False)
 
     def forward(self, input1):
+        """Module forward call."""
         out = self.fc1(input1)
         return out
 
 
 class MultipleParametersModule(torch.nn.Module):
+    """A dumpy module containing multiple trainable parameters."""
+
     def __init__(self, input_size, hidden_size, num_classes):
         super().__init__()
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
@@ -25,6 +30,7 @@ class MultipleParametersModule(torch.nn.Module):
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
 
     def forward(self, input1):
+        """Module forward call."""
         out = self.fc1(input1)
         out = self.relu(out)
         out = self.fc2(out)
@@ -32,25 +38,37 @@ class MultipleParametersModule(torch.nn.Module):
 
 
 def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode):
-    def _run_step(model, x, target):
-        prediction = model(x)
+    """Generate test data using specified model/data and other configs."""
+
+    def _run_step(model, input, target):
+        prediction = model(input)
         criterion = torch.nn.MSELoss()
         loss = criterion(prediction, target)
         loss.backward()
 
-    def _torch_tensor_to_str(t):
-        return str(t.detach().cpu().numpy().round(10).astype(str).tolist()).replace("'", "")
+    def _torch_tensor_to_str(torch_tensor):
+        """Torch tensor to string."""
+        return str(torch_tensor.detach().cpu().numpy().round(10).astype(str).tolist()).replace("'", "")
 
     def _str_list_to_str(val_list):
-        ss = ""
+        """List of string combined into single string."""
+        str_ret = ""
         for val in val_list:
-            ss += val.replace("[", "{").replace("]", "},")
-        return ss
+            str_ret += val.replace("[", "{").replace("]", "},")
+        return str_ret
 
     def _to_adam_test_format(data, name_of_the_data):
+        """Dump string representation of data, used for adamw test."""
         print(f"{name_of_the_data} ==================")
         for name, val in data.items():
             print('{{ "{}", {{ {} }}, }},'.format(name, _str_list_to_str(val)))
+
+    def _build_param_index_to_name_mapping(model, map_result):
+        """Build index to name mapping, which is used to retrieve data from optimizer group."""
+        index = 0
+        for param in model.named_parameters():
+            map_result[index] = param[0]
+            index += 1
 
     torch.manual_seed(seed)
 
@@ -69,12 +87,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
     else:
         raise ValueError(f"invalid adam_model: {adam_mode}")
 
-    # Build index to name mapping, which is used to retrieve data from optimizer group.
     param_index_to_name_mapping = {}
-    index = 0
-    for param in pt_model.named_parameters():
-        param_index_to_name_mapping[index] = param[0]
-        index += 1
+    _build_param_index_to_name_mapping(pt_model, param_index_to_name_mapping)
 
     # Dump the optimizer configs, our adam tests should align with these.
     for group in adamw_optimizer.param_groups:
@@ -88,8 +102,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
     m1_dict = {}
     m2_dict = {}
     for step in range(train_step_count):
-        x1, target = data_func()
-        _run_step(pt_model, x1, target)
+        input, target = data_func()
+        _run_step(pt_model, input, target)
         torch.cuda.synchronize()
 
         for name, param in pt_model.named_parameters():
@@ -111,13 +125,13 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 
         for group in adamw_optimizer.param_groups:
             p_index = 0
-            for p in group["params"]:
-                state = adamw_optimizer.state[p]
+            for param in group["params"]:
+                state = adamw_optimizer.state[param]
                 name = param_index_to_name_mapping[p_index]
                 # Collect flattened optimizer state data.
                 if len(state) == 0:
-                    m1_dict[name].append(_torch_tensor_to_str(torch.zeros_like(p).view(-1)))
-                    m2_dict[name].append(_torch_tensor_to_str(torch.zeros_like(p).view(-1)))
+                    m1_dict[name].append(_torch_tensor_to_str(torch.zeros_like(param).view(-1)))
+                    m2_dict[name].append(_torch_tensor_to_str(torch.zeros_like(param).view(-1)))
                 else:
                     m1_dict[name].append(_torch_tensor_to_str(state["exp_avg"].view(-1)))
                     m2_dict[name].append(_torch_tensor_to_str(state["exp_avg_sq"].view(-1)))
@@ -133,7 +147,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
     _to_adam_test_format(m2_dict, "Momentum2s")
 
 
-def generate_torch_adamw_single_weight_tests(adam_mode, run_step_count):
+def generate_adamw_single_weight_tests(adam_mode, run_step_count):
+    """Generate test data using specified mode of adamw."""
     seed = 8888
     device = "cuda"
     batch_size, dimension_in, dimension_hidden = 2, 2, 3
@@ -143,14 +158,15 @@ def generate_torch_adamw_single_weight_tests(adam_mode, run_step_count):
         return pt_model
 
     def _data_func():
-        x1 = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
+        input = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
         target = torch.randn(batch_size, dimension_hidden, device=device, dtype=torch.float32)
-        return x1, target
+        return input, target
 
     generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode)
 
 
-def generate_torch_adamw_multiple_weights_tests(adam_mode, run_step_count):
+def generate_adamw_multiple_weights_tests(adam_mode, run_step_count):
+    """Generate test data using specified mode of adamw."""
     seed = 6666
     device = "cuda"
     batch_size, dimension_in, dimension_hidden, DIM_OUT = 2, 2, 3, 2
@@ -160,18 +176,19 @@ def generate_torch_adamw_multiple_weights_tests(adam_mode, run_step_count):
         return pt_model
 
     def data_func():
-        x1 = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
+        input = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
         target = torch.randn(batch_size, DIM_OUT, device=device, dtype=torch.float32)
-        return x1, target
+        return input, target
 
     generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode)
 
 
 def main():
+    """Main entry."""
     test_data_step_count = 11
     for adam_mode in range(0, 2):
-        generate_torch_adamw_single_weight_tests(adam_mode, test_data_step_count)
-        generate_torch_adamw_multiple_weights_tests(adam_mode, test_data_step_count)
+        generate_adamw_single_weight_tests(adam_mode, test_data_step_count)
+        generate_adamw_multiple_weights_tests(adam_mode, test_data_step_count)
 
 
 if __name__ == "__main__":

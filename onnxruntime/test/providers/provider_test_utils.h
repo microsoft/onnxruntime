@@ -966,10 +966,6 @@ class OpTester {
       tensors.resize(num_tensors);
       auto elem_type = DataTypeImpl::GetType<T>();
 
-      auto* output_tensor_type = sequence_tensor_proto.proto.mutable_sequence_type()
-                                     ->mutable_elem_type()
-                                     ->mutable_tensor_type();
-      ONNX_NAMESPACE::TensorShapeProto* seq_input_shape = output_tensor_type->mutable_shape();
       for (size_t i = 0; i < num_tensors; ++i) {
         TensorShape shape{seq_tensors->tensors[i].shape};
         auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
@@ -989,7 +985,11 @@ class OpTester {
         }
 
         if (add_shape_to_tensor_data_) {
+          auto* output_tensor_type = sequence_tensor_proto.proto.mutable_sequence_type()
+                                         ->mutable_elem_type()
+                                         ->mutable_tensor_type();
           if (i == 0) {
+            ONNX_NAMESPACE::TensorShapeProto* seq_input_shape = output_tensor_type->mutable_shape();
             output_tensor_type->set_elem_type(utils::ToTensorProtoElementType<T>());
             for (size_t j = 0; j < shape.NumDimensions(); ++j) {
               auto dim = seq_input_shape->add_dim();

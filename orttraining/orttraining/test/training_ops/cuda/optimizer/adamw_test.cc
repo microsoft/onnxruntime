@@ -9,6 +9,9 @@
 namespace onnxruntime {
 namespace test {
 namespace optimizer {
+
+#if USE_CUDA
+
 namespace {
 
 void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
@@ -917,6 +920,9 @@ TEST(AdamWTest, HFAdamWMultipleWeightsStrictTest_Loop10Steps) {
 }
 
 }  // namespace
+
+#endif  // USE_CUDA
+
 }  // namespace optimizer
 }  // namespace test
 }  // namespace onnxruntime

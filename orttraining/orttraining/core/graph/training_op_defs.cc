@@ -1266,14 +1266,14 @@ void RegisterTrainingOpSchemas() {
   /**
    * AdamWOptimizer operator, taking multiple parameters as inputs (seq<tensor>).
    * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single AdamWOptimizer.
-   * Implementation-wise, this bring portunaties for better performance.
+   * Implementation-wise, this bring opportunities for achieving better performance.
    *
    * The differences with AdamOptimizer:
    * > Different inputs.
    *
    *   AdamWOptimizer can accept multiple parameters and other states related to them as inputs (seq<tensor>).
-   *   This make multi-tensor-apply applicable to implement on GPUs. Existing LambOptimizer has similar capability,
-   *   while it is using many fixed-length optional vardaric inputs, which is not a clean op definition.
+   *   This make multi-tensor-apply applicable to the GPU implementation. Existing LambOptimizer has similar
+   *   capability, while it is using many fixed-length optional vardaric inputs, which is not a clean op definition.
    *
    *   AdamOptimizer takes one single parameter and its other states.
    *
@@ -1357,23 +1357,16 @@ void RegisterTrainingOpSchemas() {
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
           "Constrain momentums' types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        if (hasInputShape(ctx, 1)) {
-          propagateElemTypeFromInputToOutput(ctx, 1, 0);
-          updateOutputShape(ctx, 0, {});
-        }
+        size_t num_of_outputs = ctx.getNumOutputs();
+        std::unordered_map<int, int> output_to_input_index_map{{0, 1}, {1, 2}, {2, 4}, {3, 5}};
+        assert(output_to_input_index_map.size() >= num_of_outputs);
 
-        if (ctx.getNumOutputs() >= 2 && hasInputShape(ctx, 2)) {
-          propagateElemTypeFromInputToOutput(ctx, 2, 1);
-          propagateShapeFromInputToOutput(ctx, 2, 1);
-        }
-        if (ctx.getNumOutputs() >= 3 && hasInputShape(ctx, 4)) {
-          propagateElemTypeFromInputToOutput(ctx, 4, 2);
-          propagateShapeFromInputToOutput(ctx, 4, 2);
-        }
-
-        if (ctx.getNumOutputs() >= 4 && hasInputShape(ctx, 5)) {
-          propagateElemTypeFromInputToOutput(ctx, 5, 3);
-          propagateShapeFromInputToOutput(ctx, 5, 3);
+        for (size_t output_index = 0; output_index < num_of_outputs; ++output_index) {
+          auto& input_index = output_to_input_index_map[output_index];
+          propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+          if (hasInputShape(ctx, input_index)) {
+            propagateShapeFromInputToOutput(ctx, input_index, output_index);
+          }
         }
       });
 
