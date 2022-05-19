@@ -83,7 +83,7 @@ struct ExecutionContext {
     for (auto& i : release_plan.node_ref_count_map[node_index]) {
       if (--release_plan.ref_counts[i] == 0) {
         ORT_THROW_IF_ERROR(frame->ReleaseMLValue(i));
-        std::cout << "value " << i << " released" << std::endl; 
+        //std::cout << "value " << i << " released" << std::endl; 
       }
     }
   }
@@ -270,10 +270,10 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         OpKernelContext kernel_ctx(ctx.frame, p_kernel, intra_tp, *ctx.logger);
-        if (p_kernel->IsAsync(&kernel_ctx)) {
+        if (p_kernel->IsAsync()) {
           ExecutionContext* ctx_ptr = &ctx;
           ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, [node_index, i, ctx_ptr]() {
-                std::cout << "Kernel for node index: " << node_index << " on logic stream: " << i << " execution is done. " << std::endl;
+                //std::cout << "Kernel for node index: " << node_index << " on logic stream: " << i << " execution is done. " << std::endl;
                 ctx_ptr->RecycleNodeInputs(node_index);
               }).IsOK(), MakeString("kernel fail!"));
         } else {

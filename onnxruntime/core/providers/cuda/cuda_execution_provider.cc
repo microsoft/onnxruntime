@@ -35,16 +35,9 @@ class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
 
-  bool IsAsync(OpKernelContext* ctx) const override {
-    // TODO: should we support async copy for sparse tensor / seq tensor?
-    if (!ctx->InputType(0)->IsTensorType())
-      return false;
-    
-    const auto* X = ctx->Input<Tensor>(0);
-    Tensor* Y = ctx->Output(0, X->Shape());
-
-    auto& src_device = X->Location().device;
-    auto& dst_device = Y->Location().device;
+  bool IsAsync() const override {
+    auto& src_device = Info().GetInputLocation(0).device;
+    auto& dst_device = Info().GetOutputLocation(0).device;
 
     return !((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
            (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED));

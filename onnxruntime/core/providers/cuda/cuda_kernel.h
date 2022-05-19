@@ -22,7 +22,7 @@ class CudaKernel : public OpKernel {
         provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
   }
   // make all the cuda kernels async
-  bool IsAsync(OpKernelContext*) const override {
+  bool IsAsync() const override {
     return true;
   }
 
