@@ -1365,6 +1365,7 @@ using ShapeInferenceHelper_EyeLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape13 = ReshapeHelper;
+using ShapeInferenceHelper_Reshape14 = ReshapeHelper;
 using ShapeInferenceHelper_ConstantOfShape = ConstantOfShapeHelper;
 using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
@@ -1493,6 +1494,8 @@ using ShapeInferenceHelper_ReverseSequence = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_CumSum11 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
+
+using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_FusedConv = ConvHelper;
 using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
