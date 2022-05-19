@@ -36,6 +36,10 @@ bool TestCaseRequestContext::SetupSession() {
   ORT_TRY {
     const auto* test_case_name = test_case_.GetTestCaseName().c_str();
     session_opts_.SetLogId(test_case_name);
+    void* lib_handle;
+    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(session_opts_,
+                                                             "/home/hasesh/libcustom_op_library_fp126.so",
+                                                             &lib_handle));
     Ort::Session session{env_, test_case_.GetModelUrl(), session_opts_};
     session_ = std::move(session);
     LOGF_DEFAULT(INFO, "Testing %s\n", test_case_name);
