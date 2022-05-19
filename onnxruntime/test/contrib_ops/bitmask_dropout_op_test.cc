@@ -48,7 +48,14 @@ void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio 
     std::vector<BitmaskElementType> mask_data(mask_size, 0xFFFFFFFF);
     test.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(mask_size)}, mask_data);
   }
-  test.Run();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> test_eps;
+#ifdef USE_CUDA
+  test_eps.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  test_eps.emplace_back(DefaultRocmExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_eps);
 }
 
 template <typename T>
