@@ -108,7 +108,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
   if (res.first == COMPARE_RESULT::SUCCESS) return res;
 
   std::ostringstream oss;
-  oss << res.second << " " << diff_count << " of " << size1 << " differ";
+  oss << res.second << " " << diff_count << " of " << size1 << " differ. "
+      << "Max diff: " << max_diff;
   res.second = oss.str();
   return res;
 }

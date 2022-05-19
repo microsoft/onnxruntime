@@ -213,7 +213,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
       LOGS_DEFAULT(ERROR) << test_case_.GetTestCaseName() << ":output=" << output_name << ":" << ret.second;
     }
     if (compare_result != COMPARE_RESULT::SUCCESS) {
-      break;
+      //break;
     }
   }
   return std::make_pair(res, spent_time_);
