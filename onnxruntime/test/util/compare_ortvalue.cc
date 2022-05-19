@@ -451,6 +451,16 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
     oss << "', real output is ";
     VectorToString(shape, oss);
     return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
+  } else {
+    int64_t size = 1;
+    for (const e : shape) {
+      size *= e;
+    }
+
+    std::ostringstream oss;
+    oss << size;
+
+    return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
   }
 
   return std::make_pair(COMPARE_RESULT::SUCCESS, "");
