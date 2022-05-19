@@ -159,10 +159,12 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
   float alpha_correction = 1.f, beta_correction = 1.f;
   float lr_corrected = lr;
   if (correct_bias == 1) {
-    // Be noted, there is a minor difference compared with Apex's implementation,
-    // which uses double storing corrections before casting to float passing to kernels.
-    alpha_correction = 1.f - std::pow(alpha, increased_update_count);
-    beta_correction = 1.f - std::pow(beta, increased_update_count);
+    // Notes:
+    // > there is a minor difference compared with Apex's implementation,
+    //   which uses double storing corrections before casting to float passing to kernels.
+    // > std::pow(float, int) return double since C++11, so we cast back to float.
+    alpha_correction = 1.f - static_cast<float>(std::pow(alpha, increased_update_count));
+    beta_correction = 1.f - static_cast<float>(std::pow(beta, increased_update_count));
     lr_corrected *= std::sqrt(beta_correction) / alpha_correction;
   }
 
