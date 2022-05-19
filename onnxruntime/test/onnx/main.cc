@@ -42,6 +42,7 @@ void usage() {
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-l: register a customop lib.\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\n"
       "\t-h: help\n"
@@ -105,6 +106,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_rocm = false;
   bool enable_migraphx = false;
   int device_id = 0;
+  std::basic_string<PATH_CHAR_TYPE> custom_op_lib_path;
+  bool custom_op_lib_exists = false;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   bool set_denormal_as_zero = false;
@@ -115,7 +118,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:l:e:xvo:d:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -143,6 +146,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
+          break;
+        case 'l':
+          custom_op_lib_path = optarg;
+          custom_op_lib_exists = true;
           break;
         case 'M':
           enable_mem_pattern = false;
@@ -295,6 +302,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
                                                                                  : 1e-3;
 
     Ort::SessionOptions sf;
+
+    if (custom_op_lib_exists) {
+      void* lib_handle = nullptr;
+
+#ifdef _MSC_VER
+      const std::string str_lib_path = ToUTF8String(custom_op_lib_path);
+#else
+      const std::string str_lib_path = custom_op_lib_path;
+#endif
+      Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary(sf, str_lib_path.c_str(), &lib_handle));
+      std::cout << "Done";
+    }
 
     if (enable_cpu_mem_arena)
       sf.EnableCpuMemArena();
