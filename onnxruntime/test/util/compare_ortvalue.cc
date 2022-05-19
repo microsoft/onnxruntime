@@ -453,7 +453,7 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
     return std::make_pair(COMPARE_RESULT::SHAPE_MISMATCH, oss.str());
   } else {
     int64_t size = 1;
-    for (const e : shape) {
+    for (auto e : shape) {
       size *= e;
     }
 
