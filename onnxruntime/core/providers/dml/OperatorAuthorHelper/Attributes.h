@@ -9,6 +9,7 @@ namespace AttrName
     static constexpr const char* ActivationAlpha = "activation_alpha";
     static constexpr const char* ActivationBeta = "activation_beta";
     static constexpr const char* Activations = "activations";
+    static constexpr const char* AllowZero = "allowzero";
     static constexpr const char* Alpha = "alpha";
     static constexpr const char* AutoPad = "auto_pad";
     static constexpr const char* Axes = "axes";
