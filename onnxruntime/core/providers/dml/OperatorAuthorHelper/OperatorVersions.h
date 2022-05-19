@@ -338,6 +338,17 @@ namespace OperatorHelper
         static const int sc_sinceVer_ReduseSum = 13;
     } // namespace OnnxOperatorSet13
 
+    namespace OnnxOperatorSet14
+    {
+        static const int sc_sinceVer_Add = 14;
+        static const int sc_sinceVer_CumSum = 14;
+        static const int sc_sinceVer_Div = 14;
+        static const int sc_sinceVer_Identity = 14;
+        static const int sc_sinceVer_Mul = 14;
+        static const int sc_sinceVer_Relu = 14;
+        static const int sc_sinceVer_Sub = 14;
+    } // namespace OnnxOperatorSet14
+
     namespace MsftOperatorSet1
     {
         static const int sc_sinceVer_FusedConv = 1;
