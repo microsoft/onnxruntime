@@ -1342,7 +1342,7 @@ void RegisterTrainingOpSchemas() {
           "Constrain learning rate to float")
       .TypeConstraint(
           "T2",
-          {"int64"},
+          {"tensor(int64)"},
           "Constrain step count to 64-bit integer")
       .TypeConstraint(
           "S_WEIGHT",
