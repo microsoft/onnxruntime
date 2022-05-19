@@ -1963,7 +1963,8 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
   static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
                                                                       "AveragePool", "GlobalAveragePool", "MaxPool",
-                                                                      "GlobalMaxPool", "LRN", "GridSample"};
+                                                                      "GlobalMaxPool", "LRN", "GridSample",
+                                                                      "DepthToSpace", "SpaceToDepth"};
 
   return layout_sensitive_ops;
 }

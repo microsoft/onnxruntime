@@ -4,28 +4,29 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import argparse
+import csv
+import logging
 import os
 import sys
-import csv
-import numpy
 import time
 import timeit
 from datetime import datetime
-import argparse
-import logging
-import coloredlogs
-import torch
-import onnx
 from enum import Enum
+
+import coloredlogs
+import numpy
+import onnx
+import torch
 from packaging import version
 
 logger = logging.getLogger(__name__)
 
 
 class Precision(Enum):
-    FLOAT32 = 'fp32'
-    FLOAT16 = 'fp16'
-    INT8 = 'int8'
+    FLOAT32 = "fp32"
+    FLOAT16 = "fp16"
+    INT8 = "int8"
 
     def __str__(self):
         return self.value
@@ -34,28 +35,28 @@ class Precision(Enum):
 class OptimizerInfo(Enum):
     # no_opt means using the raw ONNX model, but OnnxRuntime might still apply optimization as long as
     # graph optimization level is not 0 (disable all).
-    NOOPT = 'no_opt'
-    BYORT = 'by_ort'
-    BYSCRIPT = 'by_script'
+    NOOPT = "no_opt"
+    BYORT = "by_ort"
+    BYSCRIPT = "by_script"
 
     def __str__(self):
         return self.value
 
 
-class ConfigModifier():
+class ConfigModifier:
     def __init__(self, num_layers):
         self.num_layers = num_layers
 
     def modify(self, config):
         if self.num_layers is None:
             return
-        if hasattr(config, 'num_hidden_layers'):
+        if hasattr(config, "num_hidden_layers"):
             config.num_hidden_layers = self.num_layers
             logger.info(f"Modifying pytorch model's number of hidden layers to: {self.num_layers}")
-        if hasattr(config, 'encoder_layers'):
+        if hasattr(config, "encoder_layers"):
             config.encoder_layers = self.num_layers
             logger.info(f"Modifying pytorch model's number of encoder layers to: {self.num_layers}")
-        if hasattr(config, 'decoder_layers '):
+        if hasattr(config, "decoder_layers "):
             config.decoder_layers = self.num_layers
             logger.info(f"Modifying pytorch model's number of decoder layers to: {self.num_layers}")
 
@@ -69,16 +70,20 @@ IO_BINDING_DATA_TYPE_MAP = {
 }
 
 
-def create_onnxruntime_session(onnx_model_path,
-                               use_gpu,
-                               provider=None,
-                               enable_all_optimization=True,
-                               num_threads=-1,
-                               enable_profiling=False,
-                               verbose=False):
+def create_onnxruntime_session(
+    onnx_model_path,
+    use_gpu,
+    provider=None,
+    enable_all_optimization=True,
+    num_threads=-1,
+    enable_profiling=False,
+    verbose=False,
+    provider_options={},  # map execution provider name to its option
+):
     session = None
     try:
-        from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
+        from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+
         sess_options = SessionOptions()
 
         if enable_all_optimization:
@@ -100,21 +105,33 @@ def create_onnxruntime_session(onnx_model_path,
 
         logger.debug(f"Create session for onnx model: {onnx_model_path}")
         if use_gpu:
-            if provider == 'dml':
-                execution_providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
-            elif provider == 'rocm':
-                execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
-            elif provider == 'migraphx':
-                execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
-            elif provider == 'cuda':
-                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-            elif provider == 'tensorrt':
-                execution_providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+            if provider == "dml":
+                providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+            elif provider == "rocm":
+                providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+            elif provider == "migraphx":
+                providers = [
+                    "MIGraphXExecutionProvider",
+                    "ROCMExecutionProvider",
+                    "CPUExecutionProvider",
+                ]
+            elif provider == "cuda":
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            elif provider == "tensorrt":
+                providers = [
+                    "TensorrtExecutionProvider",
+                    "CUDAExecutionProvider",
+                    "CPUExecutionProvider",
+                ]
             else:
-                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         else:
-            execution_providers = ['CPUExecutionProvider']
-        session = InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
+            providers = ["CPUExecutionProvider"]
+
+        if provider_options:
+            providers = [(name, provider_options[name]) if name in provider_options else name for name in providers]
+
+        session = InferenceSession(onnx_model_path, sess_options, providers=providers)
     except:
         logger.error(f"Exception", exc_info=True)
 
@@ -123,9 +140,12 @@ def create_onnxruntime_session(onnx_model_path,
 
 def setup_logger(verbose=True):
     if verbose:
-        coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
+        coloredlogs.install(
+            level="DEBUG",
+            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        )
     else:
-        coloredlogs.install(fmt='%(message)s')
+        coloredlogs.install(fmt="%(message)s")
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
@@ -137,25 +157,30 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
         os.makedirs(output_dir)
 
     import onnxruntime
+
     if use_gpu:
-        if provider == 'dml':
-            assert 'DmlExecutionProvider' in onnxruntime.get_available_providers(
+        if provider == "dml":
+            assert (
+                "DmlExecutionProvider" in onnxruntime.get_available_providers()
             ), "Please install onnxruntime-directml package to test GPU inference."
 
         else:
-            assert 'CUDAExecutionProvider' in onnxruntime.get_available_providers(
+            assert (
+                "CUDAExecutionProvider" in onnxruntime.get_available_providers()
             ), "Please install onnxruntime-gpu package to test GPU inference."
 
     import transformers
-    logger.info(f'PyTorch Version:{torch.__version__}')
-    logger.info(f'Transformers Version:{transformers.__version__}')
-    logger.info(f'Onnxruntime Version:{onnxruntime.__version__}')
+
+    logger.info(f"PyTorch Version:{torch.__version__}")
+    logger.info(f"Transformers Version:{transformers.__version__}")
+    logger.info(f"Onnxruntime Version:{onnxruntime.__version__}")
 
     # Support three major versions of PyTorch and OnnxRuntime, and up to 6 months of transformers.
     from packaging import version
-    assert version.parse(torch.__version__) >= version.parse('1.5.0')
-    assert version.parse(transformers.__version__) >= version.parse('3.0.0')
-    assert version.parse(onnxruntime.__version__) >= version.parse('1.4.0')
+
+    assert version.parse(torch.__version__) >= version.parse("1.5.0")
+    assert version.parse(transformers.__version__) >= version.parse("3.0.0")
+    assert version.parse(onnxruntime.__version__) >= version.parse("1.4.0")
 
 
 def get_latency_result(runtimes, batch_size):
@@ -175,12 +200,29 @@ def get_latency_result(runtimes, batch_size):
 
 
 def output_details(results, csv_filename):
-    with open(csv_filename, mode="a", newline='') as csv_file:
+    with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = [
-            "engine", "version", "providers", "device", "precision", "optimizer", "io_binding", "model_name", "inputs",
-            "threads", "batch_size", "sequence_length", "custom_layer_num", "datetime", "test_times", "QPS",
-            "average_latency_ms", "latency_variance", "latency_90_percentile", "latency_95_percentile",
-            "latency_99_percentile"
+            "engine",
+            "version",
+            "providers",
+            "device",
+            "precision",
+            "optimizer",
+            "io_binding",
+            "model_name",
+            "inputs",
+            "threads",
+            "batch_size",
+            "sequence_length",
+            "custom_layer_num",
+            "datetime",
+            "test_times",
+            "QPS",
+            "average_latency_ms",
+            "latency_variance",
+            "latency_90_percentile",
+            "latency_95_percentile",
+            "latency_99_percentile",
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -192,10 +234,19 @@ def output_details(results, csv_filename):
 
 
 def output_summary(results, csv_filename, args):
-    with open(csv_filename, mode="a", newline='') as csv_file:
+    with open(csv_filename, mode="a", newline="") as csv_file:
         header_names = [
-            "model_name", "inputs", "custom_layer_num", "engine", "version", "providers", "device", "precision",
-            "optimizer", "io_binding", "threads"
+            "model_name",
+            "inputs",
+            "custom_layer_num",
+            "engine",
+            "version",
+            "providers",
+            "device",
+            "precision",
+            "optimizer",
+            "io_binding",
+            "threads",
         ]
         data_names = []
         for batch_size in args.batch_sizes:
@@ -211,9 +262,13 @@ def output_summary(results, csv_filename, args):
                         for threads in args.num_threads:
                             row = {}
                             for result in results:
-                                if result["model_name"] == model_name and result["inputs"] == input_count and result[
-                                        "engine"] == engine_name and result["io_binding"] == io_binding and result[
-                                            "threads"] == threads:
+                                if (
+                                    result["model_name"] == model_name
+                                    and result["inputs"] == input_count
+                                    and result["engine"] == engine_name
+                                    and result["io_binding"] == io_binding
+                                    and result["threads"] == threads
+                                ):
                                     headers = {k: v for k, v in result.items() if k in header_names}
                                     if not row:
                                         row.update(headers)
@@ -232,9 +287,11 @@ def output_summary(results, csv_filename, args):
 
 def output_fusion_statistics(model_fusion_statistics, csv_filename):
     from transformers import __version__ as transformers_version
-    with open(csv_filename, mode="a", newline='') as csv_file:
+
+    with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = ["model_filename", "datetime", "transformers", "torch"] + list(
-            next(iter(model_fusion_statistics.values())).keys())
+            next(iter(model_fusion_statistics.values())).keys()
+        )
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
         for key in model_fusion_statistics.keys():
@@ -256,18 +313,20 @@ def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_
     return result
 
 
-def inference_ort_with_io_binding(ort_session,
-                                  ort_inputs,
-                                  result_template,
-                                  repeat_times,
-                                  ort_output_names,
-                                  ort_outputs,
-                                  output_buffers,
-                                  output_buffer_max_sizes,
-                                  batch_size,
-                                  device,
-                                  data_type=numpy.longlong,
-                                  warm_up_repeat=0):
+def inference_ort_with_io_binding(
+    ort_session,
+    ort_inputs,
+    result_template,
+    repeat_times,
+    ort_output_names,
+    ort_outputs,
+    output_buffers,
+    output_buffer_max_sizes,
+    batch_size,
+    device,
+    data_type=numpy.longlong,
+    warm_up_repeat=0,
+):
     result = {}
 
     # Bind inputs and outputs to onnxruntime session
@@ -275,18 +334,42 @@ def inference_ort_with_io_binding(ort_session,
     # Bind inputs to device
     for name in ort_inputs.keys():
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
-        input_type = IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)] if str(
-            ort_inputs[name].dtype) in IO_BINDING_DATA_TYPE_MAP else data_type
-        io_binding.bind_input(name, np_input.device.type, 0, input_type, np_input.shape, np_input.data_ptr())
+        input_type = (
+            IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)]
+            if str(ort_inputs[name].dtype) in IO_BINDING_DATA_TYPE_MAP
+            else data_type
+        )
+        io_binding.bind_input(
+            name,
+            np_input.device.type,
+            0,
+            input_type,
+            np_input.shape,
+            np_input.data_ptr(),
+        )
     # Bind outputs buffers with the sizes needed if not allocated already
     if len(output_buffers) == 0:
         allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device)
 
     for i in range(len(ort_output_names)):
-        io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32,
-                               ort_outputs[i].shape, output_buffers[i].data_ptr())
-    timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=warm_up_repeat)  # Dry run
-    runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+        io_binding.bind_output(
+            ort_output_names[i],
+            output_buffers[i].device.type,
+            0,
+            numpy.float32,
+            ort_outputs[i].shape,
+            output_buffers[i].data_ptr(),
+        )
+    timeit.repeat(
+        lambda: ort_session.run_with_iobinding(io_binding),
+        number=1,
+        repeat=warm_up_repeat,
+    )  # Dry run
+    runtimes = timeit.repeat(
+        lambda: ort_session.run_with_iobinding(io_binding),
+        number=1,
+        repeat=repeat_times,
+    )
     result.update(result_template)
     result.update({"io_binding": True})
     result.update(get_latency_result(runtimes, batch_size))
@@ -304,20 +387,22 @@ def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
 def set_random_seed(seed=123):
     """Set random seed manully to get deterministic results"""
     import random
+
     random.seed(seed)
     numpy.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    #torch.backends.cudnn.enabled = False
-    #torch.backends.cudnn.benchmark = False
-    #torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.enabled = False
+    # torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.deterministic = True
 
 
 def measure_memory(is_gpu, func):
     import os
-    import psutil
     from time import sleep
+
+    import psutil
 
     class MemoryMonitor:
         def __init__(self, keep_measuring=True):
@@ -333,8 +418,16 @@ def measure_memory(is_gpu, func):
             return max_usage
 
         def measure_gpu_usage(self):
-            from py3nvml.py3nvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, \
-                                 nvmlDeviceGetMemoryInfo, nvmlDeviceGetName, nvmlShutdown, NVMLError
+            from py3nvml.py3nvml import (
+                NVMLError,
+                nvmlDeviceGetCount,
+                nvmlDeviceGetHandleByIndex,
+                nvmlDeviceGetMemoryInfo,
+                nvmlDeviceGetName,
+                nvmlInit,
+                nvmlShutdown,
+            )
+
             max_gpu_usage = []
             gpu_name = []
             try:
@@ -350,11 +443,14 @@ def measure_memory(is_gpu, func):
                     if not self.keep_measuring:
                         break
                 nvmlShutdown()
-                return [{
-                    "device_id": i,
-                    "name": gpu_name[i],
-                    "max_used_MB": max_gpu_usage[i]
-                } for i in range(deviceCount)]
+                return [
+                    {
+                        "device_id": i,
+                        "name": gpu_name[i],
+                        "max_used_MB": max_gpu_usage[i],
+                    }
+                    for i in range(deviceCount)
+                ]
             except NVMLError as error:
                 if not self.silent:
                     self.logger.error("Error fetching GPU information using nvml: %s", error)
@@ -365,6 +461,7 @@ def measure_memory(is_gpu, func):
     memory_before_test = monitor.measure_gpu_usage() if is_gpu else monitor.measure_cpu_usage()
 
     from concurrent.futures import ThreadPoolExecutor
+
     with ThreadPoolExecutor() as executor:
         monitor = MemoryMonitor()
         mem_thread = executor.submit(monitor.measure_gpu_usage if is_gpu else monitor.measure_cpu_usage)

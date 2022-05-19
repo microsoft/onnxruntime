@@ -1547,6 +1547,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
+        // release GIL to allow multiple python threads to invoke Run() in parallel.
+        py::gil_scoped_release release;
         if (!run_options)
           status = sess->GetSessionHandle()->Run(*io_binding.Get());
         else
@@ -1560,9 +1562,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
 }
-
-// static variable used to create inference session and training session.
-static std::unique_ptr<Environment> session_env;
 
 void CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
@@ -1594,10 +1593,6 @@ void CreateInferencePybindStateModule(py::module& m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
-  auto atexit = py::module_::import("atexit");
-  atexit.attr("register")(py::cpp_function([]() {
-    session_env = nullptr;
-  }));
 }
 
 void InitArray() {
@@ -1606,6 +1601,9 @@ void InitArray() {
     import_array1();
   })();
 }
+
+// static variable used to create inference session and training session.
+static std::unique_ptr<Environment> session_env;
 
 void InitializeEnv() {
   auto initialize = [&]() {

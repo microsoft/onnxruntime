@@ -3,14 +3,16 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
+
 import numpy as np
+from helper import get_name
 from numpy.testing import assert_allclose
+
 import onnxruntime as onnxrt
 import onnxruntime.backend as backend
-from helper import get_name
+
 
 class TestBackend(unittest.TestCase):
-
     def testRunModel(self):
         name = get_name("mul_1.onnx")
         rep = backend.prepare(name)
@@ -45,12 +47,12 @@ class TestBackend(unittest.TestCase):
         run_options.only_execute_path_to_fetches = True
         inp0, inp1 = np.ones((10,), dtype=np.float32), np.ones((10,), dtype=np.float32)
 
-        session_run_results = sess.run(['outp0'], {'inp0': inp0, 'inp1': inp1}, run_options)
+        session_run_results = sess.run(["outp0"], {"inp0": inp0, "inp1": inp1}, run_options)
         assert_allclose(session_run_results[0], -(inp0 + inp1))
 
-        session_run_results = sess.run(['outp1'], {'inp0': inp0, 'inp1': inp1}, run_options)
+        session_run_results = sess.run(["outp1"], {"inp0": inp0, "inp1": inp1}, run_options)
         assert_allclose(session_run_results[0], -(inp0 - inp1))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main(module=__name__, buffer=True)

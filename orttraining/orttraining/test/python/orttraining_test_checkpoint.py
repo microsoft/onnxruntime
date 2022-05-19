@@ -9,7 +9,7 @@ import sys
 from checkpoint._test_helpers import makedir
 from _test_commons import _single_run, _distributed_run
 
-checkpoint_dir = os.path.abspath('checkpoint/checkpoint_dir/')
+checkpoint_dir = os.path.abspath("checkpoint/checkpoint_dir/")
 makedir(checkpoint_dir)
 
 # test workflow:
@@ -51,116 +51,408 @@ makedir(checkpoint_dir)
 #             - Load all states and aggregate them into 1 state dictionary fpr both the configs.
 #             - Compare this aggregated state dictionaries against one another.
 
-save_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_save_checkpoint.py')
-load_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_load_checkpoint.py')
-aggregate_checkpoint_file = os.path.join('checkpoint', 'orttraining_test_checkpoint_aggregation.py')
-optim_state_file = os.path.join('checkpoint', 'orttraining_test_load_optimizer_state.py')
-backend_api_file = os.path.join('checkpoint', 'orttraining_test_backend_api.py')
+save_checkpoint_file = os.path.join("checkpoint", "orttraining_test_save_checkpoint.py")
+load_checkpoint_file = os.path.join("checkpoint", "orttraining_test_load_checkpoint.py")
+aggregate_checkpoint_file = os.path.join("checkpoint", "orttraining_test_checkpoint_aggregation.py")
+optim_state_file = os.path.join("checkpoint", "orttraining_test_load_optimizer_state.py")
+backend_api_file = os.path.join("checkpoint", "orttraining_test_backend_api.py")
 
-single_node_full_precision_path = os.path.join(checkpoint_dir, 'single_node', 'full_precision')
-single_node_mixed_precision_path = os.path.join(checkpoint_dir, 'single_node', 'mixed_precision')
-distributed_zero_full_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'full_precision', 'lamb')
-distributed_zero_mixed_precision_lamb_path = os.path.join(checkpoint_dir, 'distributed_zero', 'mixed_precision', 'lamb')
+single_node_full_precision_path = os.path.join(checkpoint_dir, "single_node", "full_precision")
+single_node_mixed_precision_path = os.path.join(checkpoint_dir, "single_node", "mixed_precision")
+distributed_zero_full_precision_lamb_path = os.path.join(checkpoint_dir, "distributed_zero", "full_precision", "lamb")
+distributed_zero_mixed_precision_lamb_path = os.path.join(checkpoint_dir, "distributed_zero", "mixed_precision", "lamb")
 
 # megatron saving and loading uses a different model
-single_node_full_precision_bart_path = os.path.join(checkpoint_dir, 'bart', 'single_node', 'full_precision')
-single_node_mixed_precision_bart_path = os.path.join(checkpoint_dir, 'bart', 'single_node', 'mixed_precision')
-distributed_zero_full_precision_lamb_bart_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero', 'full_precision', 'lamb')
-distributed_zero_mixed_precision_lamb_bart_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero', 'mixed_precision', 'lamb')
-distributed_megatron_full_precision_lamb_path = os.path.join(checkpoint_dir, 'bart', 'distributed_megatron', 'full_precision', 'lamb')
-distributed_megatron_mixed_precision_lamb_path = os.path.join(checkpoint_dir, 'bart', 'distributed_megatron', 'mixed_precision', 'lamb')
-distributed_zero_megatron_full_precision_adam_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero_megatron', 'full_precision', 'adam')
-distributed_zero_megatron_mixed_precision_adam_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero_megatron', 'mixed_precision', 'adam')
-distributed_zero_megatron_full_precision_lamb_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero_megatron', 'full_precision', 'lamb')
-distributed_zero_megatron_mixed_precision_lamb_path = os.path.join(checkpoint_dir, 'bart', 'distributed_zero_megatron', 'mixed_precision', 'lamb')
+single_node_full_precision_bart_path = os.path.join(checkpoint_dir, "bart", "single_node", "full_precision")
+single_node_mixed_precision_bart_path = os.path.join(checkpoint_dir, "bart", "single_node", "mixed_precision")
+distributed_zero_full_precision_lamb_bart_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_zero", "full_precision", "lamb"
+)
+distributed_zero_mixed_precision_lamb_bart_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_zero", "mixed_precision", "lamb"
+)
+distributed_megatron_full_precision_lamb_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_megatron", "full_precision", "lamb"
+)
+distributed_megatron_mixed_precision_lamb_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_megatron", "mixed_precision", "lamb"
+)
+distributed_zero_megatron_full_precision_adam_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_zero_megatron", "full_precision", "adam"
+)
+distributed_zero_megatron_mixed_precision_adam_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_zero_megatron", "mixed_precision", "adam"
+)
+distributed_zero_megatron_full_precision_lamb_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_zero_megatron", "full_precision", "lamb"
+)
+distributed_zero_megatron_mixed_precision_lamb_path = os.path.join(
+    checkpoint_dir, "bart", "distributed_zero_megatron", "mixed_precision", "lamb"
+)
 
 # save all checkpoint files (pre-checkpoint)
-_single_run(save_checkpoint_file, 'single_node_full_precision', single_node_full_precision_path)
-_single_run(save_checkpoint_file, 'single_node_mixed_precision', single_node_mixed_precision_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_full_precision_lamb', distributed_zero_full_precision_lamb_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision_lamb', distributed_zero_mixed_precision_lamb_path)
+_single_run(save_checkpoint_file, "single_node_full_precision", single_node_full_precision_path)
+_single_run(save_checkpoint_file, "single_node_mixed_precision", single_node_mixed_precision_path)
+_distributed_run(
+    save_checkpoint_file, "distributed_zero_full_precision_lamb", distributed_zero_full_precision_lamb_path
+)
+_distributed_run(
+    save_checkpoint_file, "distributed_zero_mixed_precision_lamb", distributed_zero_mixed_precision_lamb_path
+)
 
-_single_run(save_checkpoint_file, 'single_node_full_precision_bart', single_node_full_precision_bart_path)
-_single_run(save_checkpoint_file, 'single_node_mixed_precision_bart', single_node_mixed_precision_bart_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_full_precision_lamb_bart', distributed_zero_full_precision_lamb_bart_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_mixed_precision_lamb_bart', distributed_zero_mixed_precision_lamb_bart_path)
+_single_run(save_checkpoint_file, "single_node_full_precision_bart", single_node_full_precision_bart_path)
+_single_run(save_checkpoint_file, "single_node_mixed_precision_bart", single_node_mixed_precision_bart_path)
+_distributed_run(
+    save_checkpoint_file, "distributed_zero_full_precision_lamb_bart", distributed_zero_full_precision_lamb_bart_path
+)
+_distributed_run(
+    save_checkpoint_file, "distributed_zero_mixed_precision_lamb_bart", distributed_zero_mixed_precision_lamb_bart_path
+)
 
-_distributed_run(save_checkpoint_file, 'distributed_megatron_full_precision_lamb', distributed_megatron_full_precision_lamb_path)
-_distributed_run(save_checkpoint_file, 'distributed_megatron_mixed_precision_lamb', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_megatron_full_precision_lamb', distributed_zero_megatron_full_precision_lamb_path)
-_distributed_run(save_checkpoint_file, 'distributed_zero_megatron_mixed_precision_lamb', distributed_zero_megatron_mixed_precision_lamb_path)
+_distributed_run(
+    save_checkpoint_file, "distributed_megatron_full_precision_lamb", distributed_megatron_full_precision_lamb_path
+)
+_distributed_run(
+    save_checkpoint_file, "distributed_megatron_mixed_precision_lamb", distributed_megatron_mixed_precision_lamb_path
+)
+_distributed_run(
+    save_checkpoint_file,
+    "distributed_zero_megatron_full_precision_lamb",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    save_checkpoint_file,
+    "distributed_zero_megatron_mixed_precision_lamb",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
 
 # load checkpoint files (post-checkpoint)
 # going to single node trainer
-_single_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_single_node_full_precision', single_node_full_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_single_node_full_precision', single_node_mixed_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_single_node_mixed_precision', single_node_mixed_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_single_node_mixed_precision', single_node_full_precision_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_single_node_full_precision', distributed_zero_full_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_single_node_full_precision', distributed_zero_mixed_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_single_node_mixed_precision', distributed_zero_mixed_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_single_node_mixed_precision', distributed_zero_full_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_single_node_full_precision', distributed_megatron_full_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_single_node_full_precision', distributed_megatron_mixed_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_single_node_mixed_precision', distributed_megatron_mixed_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_single_node_mixed_precision', distributed_megatron_full_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_single_node_full_precision', distributed_zero_megatron_full_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_single_node_full_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_single_node_mixed_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_single_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_single_node_mixed_precision', distributed_zero_megatron_full_precision_lamb_path)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_single_node_full_precision",
+    single_node_full_precision_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_single_node_full_precision",
+    single_node_mixed_precision_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_single_node_mixed_precision",
+    single_node_mixed_precision_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_single_node_mixed_precision",
+    single_node_full_precision_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_single_node_full_precision",
+    distributed_zero_full_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_single_node_full_precision",
+    distributed_zero_mixed_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_single_node_mixed_precision",
+    distributed_zero_mixed_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_single_node_mixed_precision",
+    distributed_zero_full_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_single_node_full_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_single_node_full_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_single_node_mixed_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_single_node_mixed_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_single_node_full_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_single_node_full_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_single_node_mixed_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_single_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_single_node_mixed_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
 
 # going to distributed zero trainer
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_distributed_zero_full_precision', single_node_full_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_distributed_zero_full_precision', single_node_mixed_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_distributed_zero_mixed_precision', single_node_mixed_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_distributed_zero_mixed_precision', single_node_full_precision_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_full_precision', distributed_zero_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_precision', distributed_zero_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_precision', distributed_zero_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_mixed_precision', distributed_zero_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_distributed_zero_full_precision', distributed_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_full_precision', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_mixed_precision', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_distributed_zero_mixed_precision', distributed_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_full_precision', distributed_zero_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_full_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_mixed_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_mixed_precision', distributed_zero_megatron_full_precision_lamb_path)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_distributed_zero_full_precision",
+    single_node_full_precision_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_distributed_zero_full_precision",
+    single_node_mixed_precision_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_distributed_zero_mixed_precision",
+    single_node_mixed_precision_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_distributed_zero_mixed_precision",
+    single_node_full_precision_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_distributed_zero_full_precision",
+    distributed_zero_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_distributed_zero_full_precision",
+    distributed_zero_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_distributed_zero_mixed_precision",
+    distributed_zero_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_distributed_zero_mixed_precision",
+    distributed_zero_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_distributed_zero_full_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_full_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_mixed_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_distributed_zero_mixed_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_full_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_full_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_mixed_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_mixed_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
 
 # going to distributed zero+megatron trainer
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_distributed_megatron_full_precision', single_node_full_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_distributed_megatron_full_precision', single_node_mixed_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_distributed_megatron_mixed_precision', single_node_mixed_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_distributed_megatron_mixed_precision', single_node_full_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_megatron_full_precision', distributed_zero_full_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_megatron_full_precision', distributed_zero_mixed_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_megatron_mixed_precision', distributed_zero_mixed_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_megatron_mixed_precision', distributed_zero_full_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_distributed_megatron_full_precision', distributed_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_distributed_megatron_full_precision', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_distributed_megatron_mixed_precision', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_distributed_megatron_mixed_precision', distributed_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_distributed_megatron_full_precision', distributed_zero_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_megatron_full_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_megatron_mixed_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_distributed_megatron_mixed_precision', distributed_zero_megatron_full_precision_lamb_path)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_distributed_megatron_full_precision",
+    single_node_full_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_distributed_megatron_full_precision",
+    single_node_mixed_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_distributed_megatron_mixed_precision",
+    single_node_mixed_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_distributed_megatron_mixed_precision",
+    single_node_full_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_distributed_megatron_full_precision",
+    distributed_zero_full_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_distributed_megatron_full_precision",
+    distributed_zero_mixed_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_distributed_megatron_mixed_precision",
+    distributed_zero_mixed_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_distributed_megatron_mixed_precision",
+    distributed_zero_full_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_distributed_megatron_full_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_distributed_megatron_full_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_distributed_megatron_mixed_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_distributed_megatron_mixed_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_distributed_megatron_full_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_megatron_full_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_megatron_mixed_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_distributed_megatron_mixed_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
 
 # going to distributed zero+megatron trainer
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_distributed_zero_megatron_full_precision', single_node_full_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_distributed_zero_megatron_full_precision', single_node_mixed_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_mixed_precision_into_distributed_zero_megatron_mixed_precision', single_node_mixed_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_single_node_full_precision_into_distributed_zero_megatron_mixed_precision', single_node_full_precision_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_megatron_full_precision', distributed_zero_full_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_megatron_full_precision', distributed_zero_mixed_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_mixed_precision_into_distributed_zero_megatron_mixed_precision', distributed_zero_mixed_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_full_precision_into_distributed_zero_megatron_mixed_precision', distributed_zero_full_precision_lamb_bart_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_distributed_zero_megatron_full_precision', distributed_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_megatron_full_precision', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_megatron_mixed_precision', distributed_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_megatron_full_precision_into_distributed_zero_megatron_mixed_precision', distributed_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_megatron_full_precision', distributed_zero_megatron_full_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_megatron_full_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_megatron_mixed_precision', distributed_zero_megatron_mixed_precision_lamb_path)
-_distributed_run(load_checkpoint_file, 'test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_megatron_mixed_precision', distributed_zero_megatron_full_precision_lamb_path)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_distributed_zero_megatron_full_precision",
+    single_node_full_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_distributed_zero_megatron_full_precision",
+    single_node_mixed_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_mixed_precision_into_distributed_zero_megatron_mixed_precision",
+    single_node_mixed_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_single_node_full_precision_into_distributed_zero_megatron_mixed_precision",
+    single_node_full_precision_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_distributed_zero_megatron_full_precision",
+    distributed_zero_full_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_distributed_zero_megatron_full_precision",
+    distributed_zero_mixed_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_mixed_precision_into_distributed_zero_megatron_mixed_precision",
+    distributed_zero_mixed_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_full_precision_into_distributed_zero_megatron_mixed_precision",
+    distributed_zero_full_precision_lamb_bart_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_distributed_zero_megatron_full_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_megatron_full_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_mixed_precision_into_distributed_zero_megatron_mixed_precision",
+    distributed_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_megatron_full_precision_into_distributed_zero_megatron_mixed_precision",
+    distributed_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_megatron_full_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_megatron_full_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_mixed_precision_into_distributed_zero_megatron_mixed_precision",
+    distributed_zero_megatron_mixed_precision_lamb_path,
+)
+_distributed_run(
+    load_checkpoint_file,
+    "test_load_from_distributed_zero_megatron_full_precision_into_distributed_zero_megatron_mixed_precision",
+    distributed_zero_megatron_full_precision_lamb_path,
+)
 
 shutil.rmtree(checkpoint_dir)

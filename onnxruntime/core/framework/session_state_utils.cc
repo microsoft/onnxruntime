@@ -59,7 +59,10 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
 // released with the deleter of the ORT value which holds the ext data tensor
 struct ExtDataNullAllocator : public IAllocator {
   ExtDataNullAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
-  void* Alloc(size_t size) override { ORT_UNUSED_PARAMETER(size); return nullptr; }
+  void* Alloc(size_t size) override {
+    ORT_UNUSED_PARAMETER(size);
+    return nullptr;
+  }
   void Free(void* p) override { ORT_UNUSED_PARAMETER(p); }
 };
 
@@ -79,10 +82,9 @@ struct ExtDataValueDeleter {
 // by the OrtValue's deleter
 static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                        OrtValue& ort_value)
-{
+                                                        OrtValue& ort_value) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  ORT_ENFORCE(! proto_path.empty());
+  ORT_ENFORCE(!proto_path.empty());
 
   void* ext_data_buf = nullptr;
   size_t ext_data_len = 0;
@@ -96,12 +98,12 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const st
   AllocatorPtr ext_data_alloc = std::make_shared<ExtDataNullAllocator>();
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  TensorShape tensor_shape {tensor_shape_vec};
+  TensorShape tensor_shape{tensor_shape_vec};
   MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
 
   auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, ext_data_alloc);
 
-  ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get() };
+  ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
 
   ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
   return common::Status::OK();
@@ -297,7 +299,7 @@ common::Status SaveInitializedTensors(
     } else if (utils::HasExternalData(*entry.second)) {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
       Status st = ExtDataTensorProtoToTensor(env, graph_loc, tensor_proto, ort_value);
-      if (! st.IsOK()) {
+      if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Load of external data tensor " << name << " failed." << st.ErrorMessage();
         return Status(st.Category(), st.Code(), oss.str());
@@ -392,10 +394,20 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
     // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
     const auto& node_implicit_inputs = node.ImplicitInputDefs();
     if (!node_implicit_inputs.empty()) {
+      // In the main graph, the location of the implicit input(s) is the location it
+      // is consumed in the main graph if there is an explicit consumer.
+      // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes and
+      // all of them have been partitioned to the same EP, its location is the
+      // location of the non-CPU device corresponding to the EP.
+      // If multiple EPs are involved, then the planned location for such implicit inputs
+      // just default to CPU (as there is ambiguity involved as to which non-CPU device is
+      // most optimal)
+
       // In nested subgraphs, the location of the implicit input(s) is the location it
       // is consumed in the subgraph if there is an explicit consumer.
       // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes, its
       // location is the location of the value in the enclosing outer scope.
+
       // All this is setup in the planner, we just use the location from the plan here.
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
