@@ -1975,8 +1975,7 @@ namespace OperatorHelper
 
         if (allowZero)
         {
-            // Just take the shape directly.
-            // Special handling where 0 size means to copy the corresponding input tensor dimension.
+            // Just take the shape directly (no special handling for 0).
             for (int i = 0, ci = gsl::narrow_cast<int>(m_shapeDims.size()); i < ci; ++i)
             {
                 outputDimensions[i] = m_shapeDims[i];
