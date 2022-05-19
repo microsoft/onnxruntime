@@ -48,7 +48,9 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 
     def _torch_tensor_to_str(torch_tensor):
         """Torch tensor to string."""
-        return str(torch_tensor.detach().cpu().numpy().round(10).astype(str).tolist()).replace("'", "")
+        return str([f"{v}f" for v in torch_tensor.detach().cpu().numpy().round(10).astype(str).tolist()]).replace(
+            "'", ""
+        )
 
     def _str_list_to_str(val_list):
         """List of string combined into single string."""
