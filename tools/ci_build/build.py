@@ -1902,6 +1902,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if onnxml_test:
                     run_subprocess([sys.executable, "onnxruntime_test_python_keras.py"], cwd=cwd, dll_path=dll_path)
 
+
 def tvm_run_python_tests(build_dir, configs):
     for config in configs:
         if config == "Debug":

@@ -116,7 +116,6 @@ void GradientOpTester::Run(
         kCudaExecutionProvider,
         kRocmExecutionProvider,
         kDnnlExecutionProvider,
-        kNupharExecutionProvider,
         kTensorrtExecutionProvider,
     };
     bool has_run = false;
@@ -147,8 +146,6 @@ void GradientOpTester::Run(
           execution_provider = DefaultCudaExecutionProvider();
         else if (entry->Type() == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider(1);
-        else if (entry->Type() == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         // skip if execution provider is disabled
@@ -173,8 +170,6 @@ void GradientOpTester::Run(
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kRocmExecutionProvider)
