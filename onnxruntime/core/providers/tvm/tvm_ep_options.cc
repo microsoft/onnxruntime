@@ -16,6 +16,7 @@ namespace tvm {
 
 namespace provider_option_names {
 constexpr const char* kExecutor = "executor";
+constexpr const char* kSoFolder = "so_folder";
 constexpr const char* kTarget = "target";
 constexpr const char* kTargetHost = "target_host";
 constexpr const char* kOptLevel = "opt_level";
@@ -111,6 +112,7 @@ TvmEPOptions TvmEPOptionsHelper::FromProviderOptions(const ProviderOptions& pr_o
   ORT_THROW_IF_ERROR(
     ProviderOptionsParser{}
       .AddAssignmentToReference(tvm::provider_option_names::kExecutor, options.executor)
+      .AddAssignmentToReference(tvm::provider_option_names::kSoFolder, options.so_folder)
       .AddAssignmentToReference(tvm::provider_option_names::kTarget, options.target)
       .AddAssignmentToReference(tvm::provider_option_names::kTargetHost, options.target_host)
       .AddAssignmentToReference(tvm::provider_option_names::kOptLevel, options.opt_level)
