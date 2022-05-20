@@ -26,7 +26,7 @@ thread_local std::map<OpKernel*, armnn::NetworkId> Conv<T>::convLayers;
 template <typename T>
 armnn::IRuntimePtr Conv<T>::run = armnn::IRuntimePtr(nullptr, nullptr);
 
-armnn::Convolution2dDescriptor createConvDescriptor(std::vector<int64_t> pads, std::vector<int64_t> dilations, std::vector<int64_t> strides, bool biasEnabled) {
+armnn::Convolution2dDescriptor createConvDescriptor(ConvAttributes::ConvPadVector pads, TensorShapeVector dilations, TensorShapeVector strides, bool biasEnabled) {
   std::vector<int64_t> armnnStrides(2);
   armnnStrides[0] = (strides.size() == 2) ? strides[1] : 1;
   armnnStrides[1] = strides[0];
@@ -118,23 +118,23 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
   if (B != nullptr) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
 
-  std::vector<int64_t> kernel_shape;
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
   ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_shape.size(), 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> Y_dims;
+  TensorShapeVector Y_dims;
   Y_dims.insert(Y_dims.begin(), {N, M});
   TensorShape input_shape = X->Shape().Slice(2);
   ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));

@@ -702,7 +702,7 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_ARMNN
       else if (provider_name == "armnn") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ArmNN(ortso));
+        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ArmNN(ortso, 0));
       }
 #endif
       OrtSession* ort_session;
