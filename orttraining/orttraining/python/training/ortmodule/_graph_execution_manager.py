@@ -392,19 +392,23 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._flattened_module = self._flattened_module.to(self._export_on_device)
             inputs_dev = [value.to(self._export_on_device) for value in sample_inputs_copy]
             kwargs_dev = {}
-            for name, value  in sample_kwargs_copy.items():
+            for name, value in sample_kwargs_copy.items():
                 if isinstance(value, torch.Tensor):
                     kwargs_dev[name] = value.to(self._export_on_device)
             sample_inputs_copy = inputs_dev
             sample_kwargs_copy = kwargs_dev
 
         # Setup dynamic axes for onnx model
-        self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy)
+        self._input_info = _io.parse_inputs_for_onnx_export(
+            self._module_parameters, None, input_schema, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy
+        )
         (
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
-        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy)
+        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
+            self._original_module, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy
+        )
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
