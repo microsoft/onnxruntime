@@ -82,7 +82,6 @@ Status OrtModuleGraphBuilder::InlineFunctions(Graph& graph, bool& modified_graph
   }
 
   for (auto* node : nodes_to_inline) {
-    std::cout << "Inlining node " << node->Name() << " with missing gradient builder." << std::endl;
     LOGS(*logger_, INFO) << "Inlining node " << node->Name() << " of type " << node->OpType()
                          << " with missing gradient builder.";
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
