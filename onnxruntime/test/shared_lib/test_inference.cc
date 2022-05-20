@@ -417,11 +417,20 @@ TEST(CApiTest, standalone_op_handler) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
+#ifdef USE_CUDA
+  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider, nullptr};
+#else
   StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider, nullptr};
+#endif
+
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&standalone_op);
 
+#ifdef USE_CUDA
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+#else
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+#endif
 }
 #endif
 

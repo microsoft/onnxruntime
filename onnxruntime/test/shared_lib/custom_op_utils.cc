@@ -239,7 +239,7 @@ void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtExecutionPr
   ort.CreateOpAttr("sorted", &sorted_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &sorted);
 
   if (!axis || !largest || !sorted) {
-    ORT_THROW("Failed to create attributes for topk.");
+    ORT_THROW("Failed to create attributes for topk");
   }
 
   OrtOpAttr* top_attrs[3] = {axis, largest, sorted};
@@ -407,11 +407,8 @@ void StandaloneCustomKernel::InvokeGru(OrtKernelContext* context) {
   }
 }
 
-#include <iostream>
-
 void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   auto mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeCPU);
-
   const char* type_constraint_names[] = {"T"};
   int type_constraint_values[] = {1}; //float
 
@@ -491,8 +488,6 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
       ORT_THROW("Conv op give unexpected output.");
     }
   }
-
-  std::cout << "test on Conv passed" << std::endl;
 }
 
 void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
@@ -503,9 +498,11 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   const OrtValue* inputs[2] = {input_X, input_Y};
   OrtValue* outputs[1] = {output};
   ort_.InvokeOp(context, op_add_, inputs, 2, outputs, 1);
+#ifndef USE_CUDA
   InvokeTopK(context);
   InvokeGru(context);
   InitInvokeConv(context);
+#endif
 }
 
 StandaloneCustomKernel::~StandaloneCustomKernel() {
