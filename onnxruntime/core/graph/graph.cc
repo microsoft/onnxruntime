@@ -1277,16 +1277,16 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             parent_graph.strict_shape_type_inference_) {
 }
 
-Graph::Graph(const Model& owning_model, 
-    IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
-    ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+Graph::Graph(const Model& owning_model,
+    IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+    ONNX_NAMESPACE::GraphProto& subgraph_proto,
     const std::unordered_map<std::string, int>& domain_version_map,
     const logging::Logger& logger,
     bool strict_shape_type_inference)
     : Graph(owning_model,
             &subgraph_proto,
-            domain_version_map, 
-            owning_model.IrVersion(), 
+            domain_version_map,
+            owning_model.IrVersion(),
             schema_registry,
             nullptr,
             nullptr,
@@ -2553,8 +2553,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (node.since_version_ == -1) {
         node.since_version_ = node.op_->since_version();
       }
-    } 
-   
+    }
+
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
@@ -4026,49 +4026,17 @@ Status Graph::InlineFunction(Node& node) {
       ONNX_NAMESPACE::NodeProto subgraph_node_proto{};
       subgraph_node.ToProto(subgraph_node_proto);
       const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-      ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, model_path, *tensor, subgraph_node_proto.output(0) + uniq_identifier));
+      ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(subgraph_node_proto, model_path, *tensor, subgraph_node_proto.output(0)));
       name_to_initial_tensor_[tensor->name()] = tensor;
     } else {
       std::vector<NodeArg*> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
-        if (input->Name().empty()) {
-          // This is a missing (optional) input. No need to rename.
           auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
           inputs.push_back(&n_input);
-        } else if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
-          auto it = remap_input_output.find(input->Name());
-          if (it != remap_input_output.end()) {
-            // This is a function input/output and needs to be remapped to node input for correctness
-            inputs.push_back(it->second);
-          } else {
-            // This is a function input/output so preserve the existing name
-            auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-            inputs.push_back(&n_input);
-          }
-        } else {
-          // This is an intermediate input. Add a unique identifier as suffix to make sure
-          // there is no name collision with names in parent graph
-          auto& n_input = GetOrCreateNodeArg(input->Name() + uniq_identifier, input->TypeAsProto());
-          inputs.push_back(&n_input);
-        }
       }
       for (auto* output : subgraph_node.OutputDefs()) {
-        if (output->Name().empty()) {
-          // Create empty arg (no renaming) for missing optional-outputs
           auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
           outputs.push_back(&n_output);
-        } else if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
-          auto it = remap_input_output.find(output->Name());
-          if (it != remap_input_output.end()) {
-            outputs.push_back(it->second);
-          } else {
-            auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-            outputs.push_back(&n_output);
-          }
-        } else {
-          auto& n_output = GetOrCreateNodeArg(output->Name() + uniq_identifier, output->TypeAsProto());
-          outputs.push_back(&n_output);
-        }
       }
 
       AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
@@ -4081,7 +4049,10 @@ Status Graph::InlineFunction(Node& node) {
 
   RemoveNode(node.Index());
 
+  std::cout << "Graph after inlining\n\n" << *this;
+
   ORT_RETURN_IF_ERROR(this->Resolve());
+
   return Status::OK();
 }
 

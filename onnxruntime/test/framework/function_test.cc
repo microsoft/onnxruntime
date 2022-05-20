@@ -124,9 +124,86 @@ TEST(FunctionTest, Renaming) {
   Check(code, input("x", {1.0, 2.0, 3.0}), "y", {4.0, 8.0, 12.0});
 }
 
+// Check variable renaming in subgraphs.
+// Scenario: input lx is used within subgraphs, but not in main graph.
+// Both must be renamed to match the actual parameter name.
+TEST(FunctionTest, InputInSubgraph) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            f = Constant <value = bool {0}> ()
+            t = Constant <value = bool {1}> ()
+            y1 = local.myfun (f, x)
+            y = local.myfun (t, y1)
+        }
 
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun (b, lx) => (ly) {
+            ly = If (b) <
+                then_branch = g1 () => (float[N] z_then)
+                {
+                    two = Constant <value = float[1] {2.0}> ()
+                    z_then =  Mul (lx, two)
+                },
+                else_branch = g2 () => (float[N] z_else)
+                {
+                    three = Constant <value = float[1] {3.0}> ()
+                    z_else =  Mul (lx, three)
+                }
+                >
+        }
+        )";
 
+  Check(code, input("x", {1.0, 2.0, 3.0}), "y", {6.0, 12.0, 18.0});
+}
 
+// Check variable renaming in subgraphs.
+// Scenario: intermediate temp is used within subgraphs, defined in main graph.
+// Both must be renamed with a unique temporary name.
+TEST(FunctionTest, TempInSubgraph) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            f = Constant <value = bool {0}> ()
+            t = Constant <value = bool {1}> ()
+            y1 = local.myfun (f, x)
+            y = local.myfun (t, y1)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun (b, lx) => (ly) {
+            temp = Identity (lx)
+            ly = If (b) <
+                then_branch = g1 () => (float[N] z_then)
+                {
+                    two = Constant <value = float[1] {2.0}> ()
+                    z_then =  Mul (temp, two)
+                },
+                else_branch = g2 () => (float[N] z_else)
+                {
+                    three = Constant <value = float[1] {3.0}> ()
+                    z_else =  Mul (temp, three)
+                }
+                >
+        }
+        )";
+
+  Check(code, input("x", {1.0, 2.0, 3.0}), "y", {6.0, 12.0, 18.0});
+}
 
 }  // namespace test
 }  // namespace onnxruntime
