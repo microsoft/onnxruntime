@@ -1,12 +1,43 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# _graph_utils.py
+
 import copy
-from onnxruntime.capi._pybind_state import GradientGraphBuilder
 import onnx
+import random
 
-from onnxruntime.training import onnxblock
+from onnxruntime.capi._pybind_state import GradientGraphBuilder
 
 
-def build_gradient_model(model, user_args_requiring_grad, user_args_not_requiring_grad):
+def get_output_from_output_name(onnx_model, output_name):
+    """Returns the graph output given the output name"""
+
+    # Iterate over the graph outputs looking for output_name
+    for output in onnx_model.graph.output:
+        if output.name == output_name:
+            return output
+
+    raise LookupError(f"The provided output name {output_name} is not a graph output.")
+
+
+def get_random_number():
+    """Return a random number in the range 0, 1000."""
+
+    return random.randint(0, 1000)
+
+
+def generate_random_graph_name(token):
+    """Return a string that can be used in the graph as a graph attribute name."""
+
+    return f"{get_random_number()}.{token}"
+
+
+def build_gradient_graph(
+    accessor, user_args_requiring_grad, user_args_not_requiring_grad, output_names
+):
     """Builds the gradient graph on top of the given input forward only graph."""
+
+    model = accessor.model
 
     # Collect names of parameters that need gradients computed
     all_args_requiring_gradient = set()
@@ -32,36 +63,65 @@ def build_gradient_model(model, user_args_requiring_grad, user_args_not_requirin
             # All other initializers stay where they were.
             initializers.append(initializer)
 
-    # Graph and model with initializers as inputs.
-    graph_with_initializers_as_inputs = onnx.helper.make_graph(
-        model.graph.node,
-        "Forward Graph with Initilializers as Inputs",
-        graph_inputs,
-        model.graph.output,
-        initializer=initializers,
-    )
-    grad_model = onnx.helper.make_model(
-        graph_with_initializers_as_inputs,
-        producer_name=onnxblock._producer_name,
-        opset_imports=[onnx.helper.make_opsetid("com.microsoft", 1)]
-        + list(model.opset_import),
-    )
+    # Update the initializers in the graph
+    del model.graph.initializer[:]
+    model.graph.initializer.extend(initializers)
+
+    # At this point, we have the eval model
+    accessor.eval_model = copy.deepcopy(model)
 
     # Any graph input that requires gradient, should have been already added to
-    # args_requiring_grad.
+    # args_requiring_grad. So, add these arguments to set of arguments
+    # whose gradient should be built.
     for argument_name in user_args_requiring_grad:
         all_args_requiring_gradient.add(argument_name)
 
-    # Assumption is that the graph has an output called `loss`.
+    # Assumption is that the first graph output is the loss output
+    if isinstance(output_names, str):
+        output_names = [output_names]
     builder = GradientGraphBuilder(
-        grad_model.SerializeToString(), {"loss"}, all_args_requiring_gradient, "loss"
+        model.SerializeToString(),
+        set(output_names),
+        all_args_requiring_gradient,
+        output_names[0],
     )
     builder.build()
-    return onnx.load_from_string(builder.get_model())
+    gradient_model = onnx.load_from_string(builder.get_model())
+
+    # copy the gradient graph into the user's graph
+    model.graph.CopyFrom(gradient_model.graph)
+    del model.opset_import[:]
+    model.opset_import.extend(gradient_model.opset_import)
+
+    return all_args_requiring_gradient
 
 
-def build_gradient_accumulation_model(grad_model):
-    """Builds gradient accumulation nodes on top of a training model."""
+def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_names):
+    """Builds gradient accumulation nodes on top of a training model.
+
+    Adds an InPlaceAccumulator node for every gradient so that the gradients
+    are accumulated in a gradient buffer (which is an input to InPlaceAccumulator).
+
+    For example, if there is a gradient in the graph called fc1.weight_grad,
+    an InPlaceAccumulator will be added for that gradient whose input will
+    be a graph input (fc1.weight_grad.accumulation.buffer) and the newly
+    computed gradient (fc1.weight_grad).
+
+    gradient.accumulation.buffer        gradient
+        |         |                         |
+        |         v                         v
+        |         |_________________________|
+        |                      |
+        |               InPlaceAccumulator
+        |                      |
+        |                      v
+        |______________________|
+    """
+
+    # TODO: Avoid hard coded input/output strings
+    gradient_output_names = {
+        f"{arg_name}_grad" for arg_name in all_args_requiring_gradient_names
+    }
 
     graph_inputs = grad_model.graph.input
     graph_nodes = grad_model.graph.node
@@ -74,9 +134,9 @@ def build_gradient_accumulation_model(grad_model):
     gradient_output_name_suffix = "out"
 
     for idx, graph_output in enumerate(grad_model.graph.output):
-        # if the graph output ends with _grad,
-        # assume that that output is a gradient output
-        if not graph_output.name.endswith(gradient_output_suffix):
+        if graph_output.name not in gradient_output_names:
+            # If graph output is not a gradient, there is no
+            # need to build the gradient accumulator node for it.
             graph_outputs.append(graph_output)
             continue
 
@@ -115,18 +175,8 @@ def build_gradient_accumulation_model(grad_model):
     )
     graph_inputs.append(lazy_reset_grad_input)
 
-    graph = onnx.helper.make_graph(
-        graph_nodes,
-        "Training Graph with Gradient Accumulation Nodes",
-        graph_inputs,
-        graph_outputs,
-        grad_model.graph.initializer,
-    )
-    return onnx.helper.make_model(
-        graph,
-        producer_name=onnxblock._producer_name,
-        opset_imports=list(grad_model.opset_import),
-    )
+    del grad_model.graph.output[:]
+    grad_model.graph.output.extend(graph_outputs)
 
 
 def get_model_parameters(model, args_not_requiring_gradient):
@@ -135,6 +185,18 @@ def get_model_parameters(model, args_not_requiring_gradient):
     trainable_params = []
     non_trainable_params = []
     for initializer in model.graph.initializer:
+        # All model parameters should have their names not begin with
+        # a digit. So, check to see if the initializer's first char
+        # is a digit. If not, it is either a trainable, or a non
+        # trainable parameter.
+        # Note that this assumption can be made because the export logic
+        # does not change the names of the original model parameters.
+        # and the original model parameters don't have their names begin
+        # with a digit.
+        # On the other hand, const initializers are generated by export
+        # logic and have a digit prefix.
+        # TODO: validate this assumption. If assumption is not valid,
+        # the alternative is to enforce the user to provide the parameter names.
         if not initializer.name[0].isdigit():
             if initializer.name in args_not_requiring_gradient:
                 non_trainable_params.append(initializer)

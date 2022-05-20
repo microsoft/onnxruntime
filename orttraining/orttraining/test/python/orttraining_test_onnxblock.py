@@ -29,55 +29,43 @@ class SimpleNet(torch.nn.Module):
         return out
 
 
-# onnxblock Graph definitions
+# onnxblock Model definitions
 
 
-class SimpleGraphWithMSELoss(onnxblock.Graph):
-    def __init__(self, base_model):
-        super(SimpleGraphWithMSELoss, self).__init__()
+class SimpleModelWithMSELoss(onnxblock.Model):
+    def __init__(self):
+        super(SimpleModelWithMSELoss, self).__init__()
         self.loss = onnxblock.loss.MSELoss()
-        self.base_model = base_model
 
-    def build(self):
-        outputs = self.base_model.graph.output
-        lossful_graph = self.loss(self.base_model, outputs[0].name)
-        return lossful_graph
+    def build(self, output_name):
+        return self.loss(output_name)
 
 
-class SimpleGraphWithCrossEntropyLoss(onnxblock.Graph):
-    def __init__(self, base_model):
-        super(SimpleGraphWithCrossEntropyLoss, self).__init__()
+class SimpleModelWithCrossEntropyLoss(onnxblock.Model):
+    def __init__(self):
+        super(SimpleModelWithCrossEntropyLoss, self).__init__()
         self.loss = onnxblock.loss.CrossEntropyLoss()
-        self.base_model = base_model
 
-    def build(self):
-        outputs = self.base_model.graph.output
-        lossful_graph = self.loss(self.base_model, outputs[0].name)
-        return lossful_graph
+    def build(self, output_name):
+        return self.loss(output_name)
 
 
-class SimpleTrainingGraphWithMSELoss(onnxblock.TrainingGraph):
-    def __init__(self, base_model):
-        super(SimpleTrainingGraphWithMSELoss, self).__init__()
+class SimpleTrainingModelWithMSELoss(onnxblock.TrainingModel):
+    def __init__(self):
+        super(SimpleTrainingModelWithMSELoss, self).__init__()
         self.loss = onnxblock.loss.MSELoss()
-        self.base_model = base_model
 
-    def build(self):
-        outputs = self.base_model.graph.output
-        lossful_graph = self.loss(self.base_model, outputs[0].name)
-        return lossful_graph
+    def build(self, output_name):
+        return self.loss(output_name)
 
 
-class SimpleTrainingGraphWithCrossEntropyLoss(onnxblock.TrainingGraph):
-    def __init__(self, base_model):
-        super(SimpleTrainingGraphWithCrossEntropyLoss, self).__init__()
+class SimpleTrainingModelWithCrossEntropyLoss(onnxblock.TrainingModel):
+    def __init__(self):
+        super(SimpleTrainingModelWithCrossEntropyLoss, self).__init__()
         self.loss = onnxblock.loss.CrossEntropyLoss()
-        self.base_model = base_model
 
-    def build(self):
-        outputs = self.base_model.graph.output
-        lossful_graph = self.loss(self.base_model, outputs[0].name)
-        return lossful_graph
+    def build(self, output_name):
+        return self.loss(output_name)
 
 
 # Test utility methods
@@ -127,46 +115,87 @@ def _to_numpy(tensor):
     )
 
 
+def _get_models(device, N, D_in, H, D_out):
+    """Returns the pt and onnx models for SimpleNet"""
+    pt_model = SimpleNet(D_in, H, D_out).to(device)
+    x = torch.randn(N, D_in, device=device)
+    onnx_model = _get_onnx_model(pt_model, (x,))
+
+    return pt_model, onnx_model
+
+
+def _get_training_ort_output_names(pt_model, onnx_model):
+    """Returns the ort output names"""
+    ort_output_names = [onnx_model.graph.output[0].name]
+    for name, _ in pt_model.named_parameters():
+        ort_output_names.append(f"{name}_grad.accumulation.out")
+
+    return ort_output_names
+
+
+def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
+    """Returns the ort inputs"""
+
+    ort_inputs = {
+        onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
+        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target))
+        if target_type is None
+        else _to_numpy(copy.deepcopy(target).type(target_type)),
+    }
+    if target_type is not None:
+        ort_inputs[onnx_model.graph.input[1].name]
+    for name, param in pt_model.named_parameters():
+        ort_inputs[name] = _to_numpy(copy.deepcopy(param))
+        ort_inputs[f"{name}_grad.accumulation.buffer"] = _to_numpy(
+            torch.zeros_like(param)
+        )
+    ort_inputs["lazy_reset_grad"] = np.full(1, True)
+
+    return ort_inputs
+
+
 # All unit tests
 
 
 @pytest.mark.parametrize(
     "graph",
     [
-        SimpleGraphWithMSELoss,
-        SimpleGraphWithCrossEntropyLoss,
-        SimpleTrainingGraphWithMSELoss,
-        SimpleTrainingGraphWithCrossEntropyLoss,
+        SimpleModelWithMSELoss,
+        SimpleModelWithCrossEntropyLoss,
+        SimpleTrainingModelWithMSELoss,
+        SimpleTrainingModelWithCrossEntropyLoss,
     ],
 )
 def test_loss_composition(graph):
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
+    _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
     # When / Then no error occurs
-    simple_graph = graph(onnx_model)
-    lossful_graph = simple_graph()
+    simple_model = graph()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
 
 
 def test_mse_loss_execution():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+
     x = torch.randn(N, D_in, device=device)
     target = torch.randn(N, D_out, device=device)
-    onnx_model = _get_onnx_model(model, (copy.deepcopy(x),))
-    simple_graph = SimpleGraphWithMSELoss(onnx_model)
-    lossful_model = simple_graph()
-    model_name = "model_with_mse_loss.onnx"
-    ort_output_names = [lossful_model.graph.output[0].name]
+
+    # Build the onnx model with loss
+    simple_model = SimpleModelWithMSELoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
+    ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
-        lossful_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        lossful_model.graph.input[1].name: _to_numpy(copy.deepcopy(target)),
+        onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
+        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target)),
     }
 
     def mse_loss(prediction, target):
@@ -174,15 +203,14 @@ def test_mse_loss_execution():
         return loss(prediction, target)
 
     # When
-    with tempfile.TemporaryDirectory() as onnx_dir_name:
-        onnx_file_path = os.path.join(onnx_dir_name, model_name)
-        onnx.save(lossful_model, onnx_file_path)
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(onnx_model, onnx_fo.name)
         ort_session = onnxruntime.InferenceSession(
-            onnx_file_path, providers=C.get_available_providers()
+            onnx_fo.name, providers=C.get_available_providers()
         )
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
-        torch_outs = mse_loss(model(copy.deepcopy(x)), copy.deepcopy(target))
+        torch_outs = mse_loss(pt_model(x), target)
 
         # Then
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
@@ -192,17 +220,20 @@ def test_crossentropy_loss_execution():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+
     x = torch.randn(N, D_in, device=device)
     target = torch.randint(high=D_out, size=(N,), dtype=torch.int64, device=device)
-    onnx_model = _get_onnx_model(model, (copy.deepcopy(x),))
-    simple_graph = SimpleGraphWithCrossEntropyLoss(onnx_model)
-    lossful_model = simple_graph()
-    model_name = "model_with_crossentropy_loss.onnx"
-    ort_output_names = [lossful_model.graph.output[0].name]
+
+    # Build the onnx model with loss
+    simple_model = SimpleModelWithCrossEntropyLoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
+    ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
-        lossful_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        lossful_model.graph.input[1].name: _to_numpy(
+        onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
+        onnx_model.graph.input[1].name: _to_numpy(
             copy.deepcopy(target).type(torch.int32)
         ),
     }
@@ -212,15 +243,14 @@ def test_crossentropy_loss_execution():
         return loss(prediction, target)
 
     # When
-    with tempfile.TemporaryDirectory() as onnx_dir_name:
-        onnx_file_path = os.path.join(onnx_dir_name, model_name)
-        onnx.save(lossful_model, onnx_file_path)
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(onnx_model, onnx_fo.name)
         ort_session = onnxruntime.InferenceSession(
-            onnx_file_path, providers=C.get_available_providers()
+            onnx_fo.name, providers=C.get_available_providers()
         )
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
-        torch_outs = crossentropy_loss(model(copy.deepcopy(x)), copy.deepcopy(target))
+        torch_outs = crossentropy_loss(pt_model(x), target)
 
         # Then
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
@@ -230,41 +260,32 @@ def test_mse_loss_training_graph_execution():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+
     x = torch.randn(N, D_in, device=device)
     target = torch.randn(N, D_out, device=device)
-    onnx_model = _get_onnx_model(model, (copy.deepcopy(x),))
-    simple_graph = SimpleTrainingGraphWithMSELoss(onnx_model)
-    lossful_model = simple_graph()
-    model_name = "model_with_mse_loss.onnx"
-    ort_output_names = [lossful_model.graph.output[0].name]
-    for name, _ in model.named_parameters():
-        ort_output_names.append(f"{name}_grad.accumulation.out")
-    ort_inputs = {
-        lossful_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        lossful_model.graph.input[1].name: _to_numpy(copy.deepcopy(target)),
-    }
-    for name, param in model.named_parameters():
-        ort_inputs[name] = _to_numpy(copy.deepcopy(param))
-        ort_inputs[f"{name}_grad.accumulation.buffer"] = _to_numpy(
-            torch.zeros_like(param)
-        )
-    ort_inputs["lazy_reset_grad"] = np.full(1, True)
+
+    # Build the onnx trainingmodel with loss
+    simple_model = SimpleTrainingModelWithMSELoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
+    ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
+    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model)
 
     def mse_loss(prediction, target):
         loss = torch.nn.MSELoss()
         return loss(prediction, target)
 
     # When
-    with tempfile.TemporaryDirectory() as onnx_dir_name:
-        onnx_file_path = os.path.join(onnx_dir_name, model_name)
-        onnx.save(lossful_model, onnx_file_path)
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(onnx_model, onnx_fo.name)
         ort_session = onnxruntime.InferenceSession(
-            onnx_file_path, providers=C.get_available_providers()
+            onnx_fo.name, providers=C.get_available_providers()
         )
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
-        torch_outs = mse_loss(model(copy.deepcopy(x)), copy.deepcopy(target))
+        torch_outs = mse_loss(pt_model(x), target)
         torch_outs.backward()
 
         # Then
@@ -272,7 +293,7 @@ def test_mse_loss_training_graph_execution():
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
 
         # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], model.parameters()):
+        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
@@ -280,43 +301,34 @@ def test_crossentropy_loss_training_graph_execution():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+
     x = torch.randn(N, D_in, device=device)
     target = torch.randint(high=D_out, size=(N,), dtype=torch.int64, device=device)
-    onnx_model = _get_onnx_model(model, (copy.deepcopy(x),))
-    simple_graph = SimpleTrainingGraphWithCrossEntropyLoss(onnx_model)
-    lossful_model = simple_graph()
-    model_name = "model_with_crossentropy_loss.onnx"
-    ort_output_names = [lossful_model.graph.output[0].name]
-    for name, _ in model.named_parameters():
-        ort_output_names.append(f"{name}_grad.accumulation.out")
-    ort_inputs = {
-        lossful_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        lossful_model.graph.input[1].name: _to_numpy(
-            copy.deepcopy(target).type(torch.int32)
-        ),
-    }
-    for name, param in model.named_parameters():
-        ort_inputs[name] = _to_numpy(copy.deepcopy(param))
-        ort_inputs[f"{name}_grad.accumulation.buffer"] = _to_numpy(
-            torch.zeros_like(param)
-        )
-    ort_inputs["lazy_reset_grad"] = np.full(1, True)
+
+    # Build the onnx trainingmodel with loss
+    simple_model = SimpleTrainingModelWithCrossEntropyLoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
+    ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
+    ort_inputs = _get_training_ort_inputs(
+        x, target, pt_model, onnx_model, target_type=torch.int32
+    )
 
     def crossentropy_loss(prediction, target):
         loss = torch.nn.CrossEntropyLoss()
         return loss(prediction, target)
 
     # When
-    with tempfile.TemporaryDirectory() as onnx_dir_name:
-        onnx_file_path = os.path.join(onnx_dir_name, model_name)
-        onnx.save(lossful_model, onnx_file_path)
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(onnx_model, onnx_fo.name)
         ort_session = onnxruntime.InferenceSession(
-            onnx_file_path, providers=C.get_available_providers()
+            onnx_fo.name, providers=C.get_available_providers()
         )
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
-        torch_outs = crossentropy_loss(model(copy.deepcopy(x)), copy.deepcopy(target))
+        torch_outs = crossentropy_loss(pt_model(x), target)
         torch_outs.backward()
 
         # Then
@@ -324,46 +336,53 @@ def test_crossentropy_loss_training_graph_execution():
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
 
         # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], model.parameters()):
+        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
 @pytest.mark.parametrize(
-    "graph", [SimpleTrainingGraphWithMSELoss, SimpleTrainingGraphWithCrossEntropyLoss]
+    "graph", [SimpleTrainingModelWithMSELoss, SimpleTrainingModelWithCrossEntropyLoss]
 )
 def test_adamw_optimizer_composition(graph):
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
+    _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
     # When / Then no error occurs
-    simple_graph = graph(onnx_model)
-    lossful_graph = simple_graph()
+    simple_model = graph()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
     optimizer = onnxblock.optim.AdamW()
-    optimizer_model = optimizer(lossful_graph)
+    with onnxblock.onnx_model(None) as accessor:
+        _ = optimizer(simple_model.parameters())
+        optimizer_model = accessor.model
+        assert optimizer_model
 
 
 def test_adamw_optimizer_execution():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+
     x = torch.randn(N, D_in, device=device)
     target = torch.randn(N, D_out, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
 
-    simple_graph = SimpleTrainingGraphWithMSELoss(onnx_model)
-    lossful_graph = simple_graph()
+    simple_model = SimpleTrainingModelWithMSELoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
     optimizer = onnxblock.optim.AdamW()
-    optimizer_model = optimizer(lossful_graph)
-    model_name = "optimizer_model.onnx"
+    with onnxblock.onnx_model(None) as accessor:
+        _ = optimizer(simple_model.parameters())
+        optimizer_model = accessor.model
+
     learning_rate = 0.001
     step = 1
     ort_output_names = []
-    for name, _ in model.named_parameters():
+    for name, _ in pt_model.named_parameters():
         ort_output_names.append(f"{name}.out")
 
     def mse_loss(prediction, target):
@@ -371,18 +390,17 @@ def test_adamw_optimizer_execution():
         return loss(prediction, target)
 
     # When
-    with tempfile.TemporaryDirectory() as onnx_dir_name:
-        onnx_file_path = os.path.join(onnx_dir_name, model_name)
-        onnx.save(optimizer_model, onnx_file_path)
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(optimizer_model, onnx_fo.name)
 
-        loss = mse_loss(model(copy.deepcopy(x)), copy.deepcopy(target))
+        loss = mse_loss(pt_model(x), target)
         loss.backward()
 
         ort_inputs = {
             "learning_rate": np.full(1, learning_rate, dtype=np.float32),
             "step": np.full(1, step, dtype=np.int64),
         }
-        for name, param in model.named_parameters():
+        for name, param in pt_model.named_parameters():
             ort_inputs[name] = _to_numpy(copy.deepcopy(param))
             ort_inputs[f"{name}_grad.accumulation.out"] = _to_numpy(
                 copy.deepcopy(param.grad)
@@ -392,29 +410,28 @@ def test_adamw_optimizer_execution():
 
         # Then no error occurs when executing the model
         ort_session = onnxruntime.InferenceSession(
-            onnx_file_path, providers=C.get_available_providers()
+            onnx_fo.name, providers=C.get_available_providers()
         )
-        ort_outs = ort_session.run(ort_output_names, ort_inputs)
+        _ = ort_session.run(ort_output_names, ort_inputs)
 
 
 def test_retrieve_parameters():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
 
-    simple_graph = SimpleTrainingGraphWithMSELoss(onnx_model)
-    training_model = simple_graph()
+    simple_model = SimpleTrainingModelWithMSELoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
 
     # When
-    trainable_params, non_trainable_params = simple_graph.parameters()
+    trainable_params, non_trainable_params = simple_model.parameters()
 
     # Then
     assert not non_trainable_params
     for ort_param, (pt_param_name, pt_param) in zip(
-        trainable_params, model.named_parameters()
+        trainable_params, pt_model.named_parameters()
     ):
         assert ort_param.name == pt_param_name
         assert np.allclose(
@@ -427,17 +444,15 @@ def test_retrieve_parameters_before_building_gradient_graph():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
+    _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
-    simple_graph = SimpleTrainingGraphWithMSELoss(onnx_model)
+    simple_model = SimpleTrainingModelWithMSELoss()
 
     # When / Then
     with pytest.raises(Exception) as ex_info:
-        trainable_params, non_trainable_params = simple_graph.parameters()
+        _, _ = simple_model.parameters()
     assert (
-        "Please build the training graph first before trying to retrieve the parameters."
+        "Please build the training model first before trying to retrieve the parameters."
         in str(ex_info.value)
     )
 
@@ -446,13 +461,12 @@ def test_save_checkpoint():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
+    _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
-    simple_graph = SimpleTrainingGraphWithMSELoss(onnx_model)
-    training_model = simple_graph()
-    trainable_params, non_trainable_params = simple_graph.parameters()
+    simple_model = SimpleTrainingModelWithMSELoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+    trainable_params, non_trainable_params = simple_model.parameters()
 
     # When
     with tempfile.TemporaryDirectory() as checkpoint_dir_name:
@@ -469,17 +483,17 @@ def test_set_requires_grad_on_parameters():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
+    _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
-    simple_graph = SimpleTrainingGraphWithMSELoss(onnx_model)
+    simple_model = SimpleTrainingModelWithMSELoss()
 
     # When
-    simple_graph.requires_grad("fc2.weight", False)
-    simple_graph.requires_grad("fc1.bias", False)
-    training_model = simple_graph()
-    trainable_params, non_trainable_params = simple_graph.parameters()
+    simple_model.requires_grad("fc2.weight", False)
+    simple_model.requires_grad("fc1.bias", False)
+
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+    trainable_params, non_trainable_params = simple_model.parameters()
 
     # Then
     expected_trainable_parameters = {"fc1.weight", "fc2.bias"}
@@ -494,24 +508,19 @@ def test_set_requires_grad_on_inputs():
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = SimpleNet(D_in, H, D_out).to(device)
-    x = torch.randn(N, D_in, device=device)
-    onnx_model = _get_onnx_model(model, (x,))
-
-    simple_graph = SimpleTrainingGraphWithMSELoss(onnx_model)
+    _, onnx_model = _get_models(device, N, D_in, H, D_out)
 
     # When
-    simple_graph.requires_grad("input-0")
-    training_model = simple_graph()
-    trainable_params, non_trainable_params = simple_graph.parameters()
+    simple_model = SimpleTrainingModelWithMSELoss()
+    simple_model.requires_grad("input-0")
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
 
     # Then
     expected_input_gradient_buffer_name = "input-0_grad.accumulation.buffer"
     expected_input_gradient_output_name = "input-0_grad.accumulation.out"
-    graph_input_names = {graph_input.name for graph_input in training_model.graph.input}
-    graph_output_names = {
-        graph_output.name for graph_output in training_model.graph.output
-    }
+    graph_input_names = {graph_input.name for graph_input in onnx_model.graph.input}
+    graph_output_names = {graph_output.name for graph_output in onnx_model.graph.output}
 
     assert expected_input_gradient_buffer_name in graph_input_names
     assert expected_input_gradient_output_name in graph_output_names

@@ -1,17 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# graph.py
+# model.py
 
 from abc import ABC, abstractmethod
 import onnx
-from ._graph_utils import (
-    build_gradient_model,
-    build_gradient_accumulation_model,
-    get_model_parameters,
-)
+import onnxruntime.training.onnxblock.model_accessor as accessor
+import onnxruntime.training.onnxblock._graph_utils as graph_utils
 
 
-class Graph(ABC):
+class Model(ABC):
     """Builds the forward model based on user's build method."""
 
     def __init__(self):
@@ -31,19 +28,19 @@ class Graph(ABC):
         The output onnx model is got by invoking the user's build method.
         """
         # build the user model
-        user_model = self.build(*args, **kwargs)
+        output = self.build(*args, **kwargs)
 
         # validate and check the model
-        onnx.checker.check_model(user_model, True)
+        onnx.checker.check_model(accessor.global_accessor.model, True)
 
-        return user_model
+        return output
 
 
-class TrainingGraph(Graph):
+class TrainingModel(Model):
     """Builds the training model based on user's build method."""
 
     def __init__(self):
-        super(TrainingGraph, self).__init__()
+        super(TrainingModel, self).__init__()
         self._arg_requiring_grad = set()
         self._arg_not_requiring_grad = set()
         self._parameters = None
@@ -79,7 +76,7 @@ class TrainingGraph(Graph):
         """
         if self._parameters is None:
             raise RuntimeError(
-                "Please build the training graph first before trying to "
+                "Please build the training model first before trying to "
                 "retrieve the parameters."
             )
 
@@ -88,32 +85,39 @@ class TrainingGraph(Graph):
     def __call__(self, *args, **kwargs):
         """Calls the user's build method and builds the gradient graph on top.
 
-        The output onnx model contains the user's training model such that:
+        The onnx model contains the user's training model such that:
         1. It contains the gradient graph.
         2. It contains inputs in the order: user inputs, weight parameters,
            gradient inputs.
         3. It contains the outputs in the order: user outputs, gradient outputs.
+        4. Before the gradient is built, the eval model is stored in the global accessor.
 
         Note that the model parameters are moved to be graph inputs.
         """
         # build the user model
-        user_model = self.build(*args, **kwargs)
+        output = self.build(*args, **kwargs)
 
         # get all the model parameters for the user_model
         # and store them in self._parameters
-        self._parameters = get_model_parameters(
-            user_model, self._arg_not_requiring_grad
+        self._parameters = graph_utils.get_model_parameters(
+            accessor.global_accessor.model, self._arg_not_requiring_grad
         )
 
+        # TODO: Perform shape inference before building gradient graph
         # build the gradient graph
-        grad_model = build_gradient_model(
-            user_model, self._arg_requiring_grad, self._arg_not_requiring_grad
+        all_args_requiring_gradient_names = graph_utils.build_gradient_graph(
+            accessor.global_accessor,
+            self._arg_requiring_grad,
+            self._arg_not_requiring_grad,
+            output,
         )
 
         # add gradient accumulation nodes
-        grad_model = build_gradient_accumulation_model(grad_model)
+        graph_utils.build_gradient_accumulation_graph(
+            accessor.global_accessor.model, all_args_requiring_gradient_names
+        )
 
         # validate and check the model
-        onnx.checker.check_model(grad_model, True)
+        onnx.checker.check_model(accessor.global_accessor.model, True)
 
-        return grad_model
+        return output

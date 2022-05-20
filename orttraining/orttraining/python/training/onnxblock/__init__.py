@@ -2,8 +2,12 @@
 # Licensed under the MIT License.
 # __init__.py
 
-from .graph import Graph, TrainingGraph
+from .model import Model, TrainingModel
 from .checkpoint_utils import save_checkpoint
 from . import loss, optim
+from .model_accessor import onnx_model
 
-_producer_name = "onnxblock"
+import onnx
+
+_producer_name = "onnxblock offline tooling"
+_opset_import = onnx.helper.make_opsetid("com.microsoft", 1)

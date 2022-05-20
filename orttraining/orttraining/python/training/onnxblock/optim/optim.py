@@ -5,32 +5,35 @@
 import copy
 import onnx
 
-from ..graph import Graph
-from onnxruntime.training import onnxblock
+import onnxruntime.training.onnxblock as onnxblock
+import onnxruntime.training.onnxblock.model_accessor as accessor
 
 
-class AdamW(Graph):
+class AdamW(onnxblock.Model):
     """Builds AdamW optimizer onnxblock for the given training model."""
 
     def __init__(
         self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0
     ):
         super(AdamW, self).__init__()
-        self.bias_correction = bias_correction
-        self.betas = betas
-        self.eps = eps
-        self.weight_decay = weight_decay
-        self.max_norm_clip = 1.0
+        self._bias_correction = bias_correction
+        self._betas = betas
+        self._eps = eps
+        self._weight_decay = weight_decay
+        self._max_norm_clip = 1.0
 
-    def build(self, base_model):
+    def build(self, parameters):
         """Returns an AdamW optimizer model based on the input training model."""
 
+        # TODO: Avoid hard coded input/output strings
         learning_rate_name = "learning_rate"
         step_name = "step"
         gradient_output_suffix = "_grad.accumulation.out"
         first_order_moment_suffix = "exp_avg"
         second_order_moment_fuffix = "exp_avg_sq"
         output_name_suffix = "out"
+
+        trainable_parameters, _ = parameters
 
         graph_nodes = []
         graph_inputs = [
@@ -42,63 +45,70 @@ class AdamW(Graph):
         graph_outputs = []
 
         # Iterate over all training graph outputs that are gradient outputs
-        for idx, graph_output in enumerate(base_model.graph.output):
-            if not graph_output.name.endswith(gradient_output_suffix):
-                continue
+        for idx, param in enumerate(trainable_parameters):
 
-            weight_name = graph_output.name[: -len(gradient_output_suffix)]
-            grad_name = graph_output.name
-            first_order_moment_name = f"{weight_name}.{first_order_moment_suffix}"
-            second_order_moment_name = f"{weight_name}.{second_order_moment_fuffix}"
+            param_name = param.name
+            grad_name = f"{param_name}{gradient_output_suffix}"
+            first_order_moment_name = f"{param_name}.{first_order_moment_suffix}"
+            second_order_moment_name = f"{param_name}.{second_order_moment_fuffix}"
             # prepare node (and graph) inputs and outputs
             node_input_names = [
                 learning_rate_name,  # learning rate
                 step_name,  # training step (used for beta correction)
-                weight_name,  # weight to be updated
-                grad_name,  # gradient of the weight to be used for update
-                first_order_moment_name,  # first order moment for this weight
-                second_order_moment_name,  # second order moment for this weight
+                param_name,  # param to be updated
+                grad_name,  # gradient of the param to be used for update
+                first_order_moment_name,  # first order moment for this param
+                second_order_moment_name,  # second order moment for this param
             ]
 
-            weight_tensor_value_info = copy.deepcopy(graph_output)
-            weight_tensor_value_info.name = weight_name
-            first_order_moment_tensor_value_info = copy.deepcopy(graph_output)
-            first_order_moment_tensor_value_info.name = first_order_moment_name
-            second_order_moment_tensor_value_info = copy.deepcopy(graph_output)
-            second_order_moment_tensor_value_info.name = second_order_moment_name
+            param_tensor_value_info = onnx.helper.make_tensor_value_info(
+                param_name, param.data_type, param.dims
+            )
+            grad_tensor_value_info = onnx.helper.make_tensor_value_info(
+                grad_name, param.data_type, param.dims
+            )
+            first_order_moment_tensor_value_info = onnx.helper.make_tensor_value_info(
+                first_order_moment_name, param.data_type, param.dims
+            )
+            second_order_moment_tensor_value_info = onnx.helper.make_tensor_value_info(
+                second_order_moment_name, param.data_type, param.dims
+            )
             node_inputs = [
-                weight_tensor_value_info,
-                copy.deepcopy(graph_output),
+                param_tensor_value_info,
+                grad_tensor_value_info,
                 first_order_moment_tensor_value_info,
                 second_order_moment_tensor_value_info,
             ]
             graph_inputs.extend(node_inputs)
 
-            step_output_name = f"{weight_name}.{step_name}.{output_name_suffix}"
+            step_output_name = f"{param_name}.{step_name}.{output_name_suffix}"
+            param_output_name = f"{param_name}.{output_name_suffix}"
             first_order_moment_output_name = (
                 f"{first_order_moment_name}.{output_name_suffix}"
             )
             second_order_moment_output_name = (
                 f"{second_order_moment_name}.{output_name_suffix}"
             )
-            weight_output_name = f"{weight_name}.{output_name_suffix}"
 
-            first_order_moment_output_tensor_value_info = copy.deepcopy(graph_output)
-            first_order_moment_output_tensor_value_info.name = (
-                first_order_moment_output_name
+            param_output_tensor_value_info = onnx.helper.make_tensor_value_info(
+                param_output_name, param.data_type, param.dims
             )
-            second_order_moment_output_tensor_value_info = copy.deepcopy(graph_output)
-            second_order_moment_output_tensor_value_info.name = (
-                second_order_moment_output_name
+            first_order_moment_output_tensor_value_info = (
+                onnx.helper.make_tensor_value_info(
+                    first_order_moment_output_name, param.data_type, param.dims
+                )
             )
-            weight_output_tensor_value_info = copy.deepcopy(graph_output)
-            weight_output_tensor_value_info.name = weight_output_name
+            second_order_moment_output_tensor_value_info = (
+                onnx.helper.make_tensor_value_info(
+                    second_order_moment_output_name, param.data_type, param.dims
+                )
+            )
 
             node_output_names = [
                 step_output_name,  # step out
                 first_order_moment_output_name,  # first order moment output
                 second_order_moment_output_name,  # second order moment output
-                weight_output_name,  # updated weights
+                param_output_name,  # updated weights
             ]
 
             node_outputs = [
@@ -107,21 +117,21 @@ class AdamW(Graph):
                 ),
                 first_order_moment_output_tensor_value_info,
                 second_order_moment_output_tensor_value_info,
-                weight_output_tensor_value_info,
+                param_output_tensor_value_info,
             ]
             graph_outputs.extend(node_outputs)
 
             # AdamOptimizer node attributes
             node_attributes = {
-                "alpha": self.betas[0],  # beta1
-                "beta": self.betas[1],  # beta2
-                "lambda": self.weight_decay,  # weight decay
-                "epsilon": self.eps,  # epsilon
+                "alpha": self._betas[0],  # beta1
+                "beta": self._betas[1],  # beta2
+                "lambda": self._weight_decay,  # weight decay
+                "epsilon": self._eps,  # epsilon
                 "do_bias_correction": 1
-                if self.bias_correction
+                if self._bias_correction
                 else 0,  # bias_correction
                 "weight_decay_mode": 1,  # weight decay mode
-                "max_norm_clip": self.max_norm_clip,  # used for gradient scaling
+                "max_norm_clip": self._max_norm_clip,  # used for gradient scaling
             }
 
             # make the node
@@ -143,6 +153,9 @@ class AdamW(Graph):
         model = onnx.helper.make_model(
             graph,
             producer_name=onnxblock._producer_name,
-            opset_imports=[onnx.helper.make_opsetid("com.microsoft", 1)],
+            opset_imports=[onnxblock._opset_import],
         )
-        return model
+
+        accessor.global_accessor.model = model
+
+        return [output.name for output in graph_outputs]
