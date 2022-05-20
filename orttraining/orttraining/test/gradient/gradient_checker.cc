@@ -87,8 +87,9 @@ inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionA
     std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas) {
   AddDatas(op_session, x_infos, y_infos, x_datas, y_datas);
 
-  // If EPs is not set, the OpTester will run over all possible EPs. Since we just want to get the result
-  // without any output verifier, use CPU EP only.
+  // If EPs is not set, the OpTester will run over all possible EPs and keep the outputs of last run as the
+  // actual output data, which is time wasting. What we need is the forward graph outputs for numeric Jacobian,
+  // using CPU EP only is enough.
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers = GetExecutionProviders(true);
   op_session.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   return op_session.GetFetches();
@@ -175,11 +176,13 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       // inputs is treated as a vector of vectors. The parameters of the function call below, y_idx and c
       // corresponding to which input (dy1, dy2..etc) and which value of the input (dy_flattened_vector[c]]
       // to pertrub to 1.
-
       if (execution_providers) {
         op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
                        execution_providers);
       } else {
+        // If EPs is not set, the OpTester will run over all possible EPs and keep the outputs of last run as the
+        // actual output data, which is time wasting. So if caller doesn't pass in the EPs, we will use the default
+        // EPs according to the environment.
         std::vector<std::unique_ptr<IExecutionProvider>> default_eps = GetExecutionProviders();
         op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
                        &default_eps);
