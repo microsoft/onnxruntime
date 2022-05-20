@@ -51,7 +51,7 @@ if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   if(onnxruntime_ENABLE_TRAINING)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
-  endif()  
+  endif()
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
@@ -131,7 +131,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_util.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/python/orttraining_python_module.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
-  if (MSVC) 
+  if (MSVC)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj" "/wd4275" "/wd4244" "/wd4267" "/wd4067")
   endif()
@@ -309,7 +309,7 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/*.py"
   )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cpu/aten_op_executor/*"
+    "${ONNXRUNTIME_ROOT}/python/torch_cpp_extensions/aten_op_executor/*"
   )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_interop_utils_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils/*"
