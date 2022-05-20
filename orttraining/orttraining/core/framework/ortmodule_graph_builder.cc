@@ -64,6 +64,34 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   return Status::OK();
 }
 
+// Inline functions that do not have a gradient builder registered
+Status OrtModuleGraphBuilder::InlineFunctions(Graph& graph, bool& modified_graph) const {
+  // recurse into nested graphs first so we process from bottom up
+  for (auto& node : graph.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      ORT_RETURN_IF_ERROR(InlineFunctions(*subgraph, modified_graph));
+    }
+  }
+
+  std::vector<Node*> nodes_to_inline;
+  for (auto& node : graph.Nodes()) {
+    bool gradient_registered = GradientDefinitionRegistry::Instance().Contains(GetGradientDefinitionKeyByNode(node));
+    if (node.GetExecutionProviderType().empty() && node.CanBeInlined() && !gradient_registered) {
+      nodes_to_inline.push_back(&node);
+    }
+  }
+
+  for (auto* node : nodes_to_inline) {
+    std::cout << "Inlining node " << node->Name() << " with missing gradient builder." << std::endl;
+    LOGS(*logger_, INFO) << "Inlining node " << node->Name() << " of type " << node->OpType()
+                         << " with missing gradient builder.";
+    ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
+  }
+
+  return Status::OK();
+}
+
 // Build the inference/gradient graphs from original graph.
 // Since the input shapes may differ, and the graph optimizers (mainly constant folding) may fold this
 // shape info to constants, the optimized graph (before gradient graph building) can not be shared.
@@ -91,10 +119,10 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
       return Status::OK();
     }
 
-    // expand any nodes that have an ONNX function definition but no matching ORT kernel.
+    // expand any nodes that have an ONNX function definition but no gradient builder registered.
     modified_graph = false;
     Graph& graph = gradient_model_->MainGraph();
-    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
+    ORT_RETURN_IF_ERROR(InlineFunctions(graph, modified_graph));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {

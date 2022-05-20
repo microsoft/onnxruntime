@@ -53,15 +53,6 @@ class GraphPartitioner {
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
 };
-
-  /**
-  Inline nodes in the graph that have an ONNX function definition but no matching ORT kernel
-  @param graph Graph whose nodes are to be inlined
-  @param modified_graph Flag indicating whether the graph had any function nodes that were inlined
-  @returns Status indicating success or providing an error message.
-  */
-  Status InlineNodes(Graph& graph, bool& modified_graph);
-
 }  // namespace onnxruntime
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

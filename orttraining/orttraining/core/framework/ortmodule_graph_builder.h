@@ -127,6 +127,9 @@ class OrtModuleGraphBuilder {
   // Find the module output that are needed for backward computation
   void FindModuleOutputNeededForBackward();
 
+  // Inline module functions in the graph
+  Status InlineFunctions(Graph& graph, bool& modified_graph) const;
+
   std::shared_ptr<onnxruntime::Model> model_;
   std::shared_ptr<onnxruntime::Model> inference_optimized_model_;
   std::shared_ptr<onnxruntime::Model> gradient_model_;

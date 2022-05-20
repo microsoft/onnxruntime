@@ -463,7 +463,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 }
 
 // expand any nodes that have an ONNX function definition but no matching ORT kernel
-Status InlineNodes(Graph& graph, bool& modified_graph) {
+static Status InlineNodes(Graph& graph, bool& modified_graph) {
   // recurse into nested graphs first so we process from bottom up
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
