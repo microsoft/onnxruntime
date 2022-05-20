@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/graph_partitioner.h"
 #include "core/graph/graph_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
