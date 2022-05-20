@@ -127,7 +127,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
         # Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
-        self._allow_layer_norm_mod_precision = False
+        # This option is used to control SimplifiedLayerNormalization fusion when there is Cast Ops in the sub-graph
+        # for mix-precision training. LayerNorm kernels will use higher precision data type for inside computation
+        # so it's save to fuse to SimplifiedLayerNormalization for better perf.
+        self._allow_layer_norm_mod_precision = True
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
