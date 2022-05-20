@@ -2393,7 +2393,8 @@ void RegisterContribSchemas() {
               /*min_arity*/ 1)
       .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.");
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+                      "Allow inputs and outputs to be any kind of tensor.");
 #endif
 
 #ifndef _OPSCHEMA_LIB_
