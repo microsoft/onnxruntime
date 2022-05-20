@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/cpuid_info.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
@@ -1067,7 +1068,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         } else {
           const bool is_half_pixel = coordinate_transform_mode_ == HALF_PIXEL;
           const bool is_align_corners = coordinate_transform_mode_ == ALIGN_CORNERS;
-          if (!is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
+          if (CPUIDInfo::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd() &&
+	      !is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
               (is_half_pixel || is_align_corners || coordinate_transform_mode_ == ASYMMETRIC)) {
             NhwcUpsampleBilinearInteger(is_half_pixel, is_align_corners,
                                         static_cast<int32_t>(batch_size), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(num_channels),

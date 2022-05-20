@@ -515,6 +515,7 @@ void NhwcUpsampleBilinear(const int64_t batch_size,
   }
 }
 
+// TFLite are referred for the implementation.
 inline void ComputeInterpolationValuesInteger(
     const int32_t value, const int32_t scale_10, const bool is_half_pixel,
     const int32_t input_size, int32_t* scaled_value, int32_t* lower_bound,
@@ -530,11 +531,17 @@ inline void ComputeInterpolationValuesInteger(
       std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
 }
 
+// TFLite are referred for the implementation.
 inline int Offset(const gsl::span<const int64_t>& dims_data, int i0, int i1, int i2, int i3) {
+  assert(dims_data.size() == 4);
+  assert(i0 >= 0 && i0 < dims_data[0]);
+  assert(i1 >= 0 && i1 < dims_data[1]);
+  assert(i2 >= 0 && i2 < dims_data[2]);
+  assert(i3 >= 0 && i3 < dims_data[3]);
   return static_cast<int>(((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3);
 }
 
-// Same as above but doesn't use any floating-point for the resize
+// TFLite are referred for the implementation.
 template <typename T>
 inline void NhwcUpsampleBilinearInteger(
     bool is_half_pixel, bool is_align_corners,
@@ -544,6 +551,9 @@ inline void NhwcUpsampleBilinearInteger(
     const int32_t output_height, const int32_t output_width,
     const gsl::span<const int64_t>& output_dims,
     T* output_data) {
+  assert(!is_half_pixel || !is_align_corners);
+  assert(input_dims.size() == 4);
+  assert(output_dims.size() == 4);
   int32_t height_scale_10 =
       ((1 << 10) * input_height + output_height / 2) / output_height;
   int32_t width_scale_10 =
