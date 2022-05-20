@@ -477,7 +477,7 @@ if (onnxruntime_USE_CUDA)
     )
 
     # minimize the Windows includes. 
-    # this avoids an issue with CUDA 11.4 where 'small' is defined in the windows and cuda headers.
+    # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE "WIN32_LEAN_AND_MEAN")
     
     # disable a warning from the CUDA headers about unreferenced local functions
