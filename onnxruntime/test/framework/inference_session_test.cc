@@ -665,8 +665,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING))
- || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
+#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
@@ -714,11 +713,12 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
-      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
 #ifdef USE_CUDA
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
                                                lines[i].find("cudaLaunch") != string::npos;
 #endif
 #ifdef USE_ROCM
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
                                                lines[i].find("hipLaunch") != string::npos;
 #endif
     }
@@ -726,6 +726,8 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 
 #if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
   ASSERT_TRUE(has_api_info);
+#else
+  ASSERT_TRUE(has_api_info || true);
 #endif
 }
 
