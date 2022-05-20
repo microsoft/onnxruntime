@@ -20,7 +20,7 @@ global_accessor = None
 
 
 @contextmanager
-def onnx_model(model):
+def onnx_model(model=None):
     """Context manager that is the entry point to graph manipulations on model.
 
     Manages the construction and destruction of the global model.
