@@ -730,16 +730,6 @@ void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Nod
   }
 }
 
-const Node::EdgeEnd*
-GetInputEdge(const Node& node, int arg_index) {
-  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    if (arg_index == it->GetDstArgIndex()) {
-      return &(*it);
-    }
-  }
-  return nullptr;
-}
-
 const Node* GetInputNode(const Node& node, int arg_index) {
   const Node::EdgeEnd* edge = GetInputEdge(node, arg_index);
   if (nullptr == edge) {
