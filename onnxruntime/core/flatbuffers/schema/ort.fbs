@@ -22,7 +22,7 @@ enum AttributeType : int32 {
 
 // Shape
 table Shape {
-dim:[Dimension];
+  dim:[Dimension];
 }
 
 table Dimension {
@@ -63,17 +63,17 @@ enum TensorDataType : int32 {
   BFLOAT16 = 16,
 }
 
-table TensorTypeAndShape{
+table TensorTypeAndShape {
   elem_type:TensorDataType;
   shape:Shape;
 }
 
-table MapType{
+table MapType {
   key_type:TensorDataType;
   value_type:onnxruntime.fbs.TypeInfo;
 }
 
-table SequenceType{
+table SequenceType {
   elem_type:onnxruntime.fbs.TypeInfo;
 }
 
@@ -161,7 +161,7 @@ table SparseTensor {
   dims:[int64];
 }
 
-table Attribute{
+table Attribute {
   name:string;
   doc_string:string;
 
@@ -184,7 +184,7 @@ table Attribute{
 
 /// nodes to consider for a runtime optimization
 /// see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
-table NodesToOptimizeIndices{
+table NodesToOptimizeIndices {
   node_indices:[uint32];
   num_inputs:uint32;
   num_outputs:uint32;
@@ -194,30 +194,31 @@ table NodesToOptimizeIndices{
   num_variadic_outputs:uint32;
 }
 
-table NodeIndexAndKernelDefHash{
+table ProducedNodeInfo {
   node_index:uint32;
-  kernel_def_hash:uint64;
+  kernel_def_hash:uint64;  // TODO deprecate // replaced by op_id
+  op_id:string;
 }
 
 /// a single runtime optimization
 /// see corresponding type in onnxruntime/core/graph/runtime_optimization_record.h
-table RuntimeOptimizationRecord{
+table RuntimeOptimizationRecord {
   action_id:string;
   nodes_to_optimize_indices:NodesToOptimizeIndices;
-  produced_nodes:[NodeIndexAndKernelDefHash];
+  produced_nodes:[ProducedNodeInfo];
 }
 
-table RuntimeOptimizationRecordContainerEntry{
+table RuntimeOptimizationRecordContainerEntry {
   optimizer_name:string (key);
   runtime_optimization_records:[RuntimeOptimizationRecord];
 }
 
-table RuntimeOptimizations{
+table RuntimeOptimizations {
   /// mapping from optimizer name to [RuntimeOptimizationRecord]
   records:[RuntimeOptimizationRecordContainerEntry];
 }
 
-table Graph{
+table Graph {
   initializers:[Tensor];
 
   node_args:[ValueInfo];
@@ -270,6 +271,30 @@ table SessionState {
   sub_graph_session_states:[SubGraphSessionState];
 }
 
+enum ArgType : int8 {
+  INPUT = 0,
+  OUTPUT = 1,
+}
+
+table ArgTypeAndIndex {
+  arg_type:ArgType;
+  index:uint32;
+}
+
+table KernelTypeStrArgsEntry {
+  kernel_type_str:string (key);
+  args:[ArgTypeAndIndex];
+}
+
+table OpIdKernelTypeStrArgsEntry {
+  op_id:string (key);
+  kernel_type_str_args:[KernelTypeStrArgsEntry];
+}
+
+table OpInfo {
+  op_kernel_type_str_args:[OpIdKernelTypeStrArgsEntry];
+}
+
 table InferenceSession {
   // This is the ORT format model version
   // The version number is defined as kOrtModelVersion in <repo root>/onnxruntime/core/flatbuffers/ort_format_version.h
@@ -278,6 +303,8 @@ table InferenceSession {
 
   model:Model;
   session_state:SessionState;
+
+  op_info:OpInfo;
 }
 
 root_type InferenceSession;

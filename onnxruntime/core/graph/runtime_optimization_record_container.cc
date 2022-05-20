@@ -66,10 +66,10 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
                                         nodes_to_optimize_indices.num_variadic_inputs,
                                         nodes_to_optimize_indices.num_variadic_outputs);
 
-  const auto fbs_produced_nodes = builder.CreateVector<flatbuffers::Offset<fbs::NodeIndexAndKernelDefHash>>(
+  const auto fbs_produced_nodes = builder.CreateVector<flatbuffers::Offset<fbs::ProducedNodeInfo>>(
       runtime_optimization_record.produced_nodes.size(),
-      [&](size_t i) -> flatbuffers::Offset<fbs::NodeIndexAndKernelDefHash> {
-        return fbs::CreateNodeIndexAndKernelDefHash(
+      [&](size_t i) -> flatbuffers::Offset<fbs::ProducedNodeInfo> {
+        return fbs::CreateProducedNodeInfo(
             builder,
             gsl::narrow<uint32_t>(runtime_optimization_record.produced_nodes[i].node_index),
             runtime_optimization_record.produced_nodes[i].kernel_def_hash);
