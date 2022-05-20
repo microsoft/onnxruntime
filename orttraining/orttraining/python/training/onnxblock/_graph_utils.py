@@ -109,7 +109,7 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
 
     gradient.accumulation.buffer        gradient
         |         |                         |
-        |         v                         v
+        Ʌ         v                         v
         |         |_________________________|
         |                      |
         |               InPlaceAccumulator
@@ -128,7 +128,6 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
     graph_outputs = []
 
     lazy_reset_grad_input_name = "lazy_reset_grad"
-    gradient_output_suffix = "_grad"
     gradient_accumulation_name = "accumulation"
     gradient_buffer_name_suffix = "buffer"
     gradient_output_name_suffix = "out"

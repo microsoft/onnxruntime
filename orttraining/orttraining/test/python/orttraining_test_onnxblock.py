@@ -355,7 +355,7 @@ def test_adamw_optimizer_composition(graph):
         _ = simple_model(onnx_model.graph.output[0].name)
 
     optimizer = onnxblock.optim.AdamW()
-    with onnxblock.onnx_model(None) as accessor:
+    with onnxblock.onnx_model() as accessor:
         _ = optimizer(simple_model.parameters())
         optimizer_model = accessor.model
         assert optimizer_model
@@ -375,7 +375,7 @@ def test_adamw_optimizer_execution():
         _ = simple_model(onnx_model.graph.output[0].name)
 
     optimizer = onnxblock.optim.AdamW()
-    with onnxblock.onnx_model(None) as accessor:
+    with onnxblock.onnx_model() as accessor:
         _ = optimizer(simple_model.parameters())
         optimizer_model = accessor.model
 
