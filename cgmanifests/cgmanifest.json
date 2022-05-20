@@ -19,7 +19,7 @@
       {
         "component": {
           "Type": "maven",
-          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.9.2" },
+          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.20.1" },
           "DevelopmentDependency": true
         }
       },
@@ -46,7 +46,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "fafabc96c1ba1a5f987c2402fcc2ce4d1bad5cc8",
+               "commitHash": "ffd5f70370642c909222f9a4cae8400023dacbdc",
                "repositoryUrl": "https://github.com/apache/tvm.git"
             },
             "comments": "needed for TVM EP"
