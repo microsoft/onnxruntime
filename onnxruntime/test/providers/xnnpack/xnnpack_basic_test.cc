@@ -23,6 +23,10 @@ using namespace onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
+// test uses ONNX model so can't be run in a minimal build.
+// TODO: When we need XNNPACK in a minimal build we should add an ORT format version of the model
+#if !defined(ORT_MINIMAL_BUILD)
+
 // use a snippet from a production model that has NHWC input/output, and Conv nodes with possible Clip and Relu fusion.
 // xnnpack should be able to take all the Conv nodes, and fuse the Conv+Clip and Conv+Relu nodes.
 // That should also mean the Transpose nodes at the start and end of the model can be removed as xnnpack will be
@@ -74,5 +78,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
   auto ep = DefaultXnnpackExecutionProvider();
   RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluClipFusion", std::move(ep), feeds, params);
 }
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
