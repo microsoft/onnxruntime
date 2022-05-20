@@ -58,7 +58,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(std::function<void(ONNX_NAMESPACE::
   // if the operator may be fused with an activation, use the WITH_ACTIVATION variant to add optional attributes
   // for the activation parameters.
   // For now we only register operators from opset 11 on. Models can easily have their opset updated using ONNX tools
-  // so supported older opsets is unnecessary.
+  // so supporting older opsets is unnecessary.
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(Conv, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(MaxPool, 12);

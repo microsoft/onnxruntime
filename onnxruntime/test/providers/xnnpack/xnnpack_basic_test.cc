@@ -68,7 +68,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
 
   EPVerificationParams params;
   params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  params.fp32_abs_err = 0.0001f;
+  params.fp32_abs_err = 0.0002f;
   params.graph_verifier = &verify;
 
   auto ep = DefaultXnnpackExecutionProvider();
