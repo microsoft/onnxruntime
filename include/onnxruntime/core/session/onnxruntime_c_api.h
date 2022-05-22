@@ -3418,13 +3418,18 @@ struct OrtApi {
 
   /* \brief: Release an onnxruntime operator
   *
-  * \param[in] operator created by OrtApi::CreateOp
+  * \param[in] kernel info 
   * 
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(Op);
 
-  /* tod: doc this
+  /* \brief: Get the matching execution provider from kernel info
+  *
+  * \param[in] kernel info 
+  * \param[out] execution provider
+  * 
+  * \since Version 1.12.
   */
   ORT_API2_STATUS(GetExecutionProvider,
       _In_ const OrtKernelInfo* info,
