@@ -3,21 +3,9 @@
 
 #pragma once
 
+#include "orttraining/training_api/include/session.h"
 #include "orttraining/training_api/include/module.h"
 #include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/lr_scheduler.h"
 #include "orttraining/training_api/include/checkpoint_property.h"
 #include "orttraining/training_api/include/checkpoint.h"
-
-namespace onnxruntime {
-namespace training {
-namespace api {
-
-/*
-  module.train_sess.RegisterExecutionProvider(provider);
-  module.eval_sess.RegisterExecutionProvider(provider);
-  optimizer.optim_sess.RegisterExecutionProvider(provider);
-*/
-void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/);
-}  // namespace api
-}  // namespace training
-}  // namespace onnxruntime

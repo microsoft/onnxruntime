@@ -46,6 +46,8 @@ struct OptimizerCheckpointState {
 };
 
 struct Optimizer {
+  friend struct LRSchedulerBase;
+
  public:
   // Initialize an optimizer module from an ORT inference session with loaded
   // training ONNX model For each parameter, initialize the OptimizerState based
@@ -62,8 +64,10 @@ struct Optimizer {
   int64_t GetStep() const {
     return optimizer_state_.step;
   }
-  Status SetLearningRate(float& lr) {
-    optimizer_state_.learning_rate = lr;
+
+  Status SetLearningRate(float lr) {
+    // optimizer_state_.learning_rate = lr;
+    lr_ = lr;
     return Status::OK();
   }
 
@@ -74,43 +78,7 @@ struct Optimizer {
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> inputs_;
-};
-
-class LearningRateScheduler {
- public:
-  LearningRateScheduler(const Optimizer& optim)
-      : optim_(optim) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-  }
-
-  virtual ~LearningRateScheduler() = default;
-
-  // Modify the current learning rate based on current step
-  virtual Status Step(/*int64_t step*/) = 0;
-
-  const Optimizer& optim_;
-};
-
-class LinearScheduler : public LearningRateScheduler {
- public:
-  explicit LinearScheduler(const Optimizer& optim, float start_factor, float end_factor, int64_t total_iters)
-      : LearningRateScheduler(optim),
-        start_factor_(start_factor),
-        end_factor_(end_factor),
-        total_iters_(total_iters) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-  }
-
-  // Fetch the step, calculate next value and set lr in optimizer
-  Status Step(/*int64_t step*/) override {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return Status::OK();
-  }
-
- private:
-  float start_factor_;
-  float end_factor_;
-  int64_t total_iters_;
+  float lr_;
 };
 
 }  // namespace api
