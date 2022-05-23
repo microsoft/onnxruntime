@@ -3418,7 +3418,7 @@ struct OrtApi {
 
   /* \brief: Release an onnxruntime operator
   *
-  * \param[in] kernel info 
+  * \param[in] operator created by OrtApi::CreateOp
   * 
   * \since Version 1.12.
   */
