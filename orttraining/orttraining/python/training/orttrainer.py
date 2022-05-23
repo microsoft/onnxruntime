@@ -586,9 +586,7 @@ class ORTTrainer:
             if n not in [i.name for i in self._onnx_model.graph.initializer]
         ]
         if unused_frozen_weights:
-            raise RuntimeError(
-                f"{unused_frozen_weights} params from 'frozen_weights' not found in the ONNX model."
-            )
+            raise RuntimeError(f"{unused_frozen_weights} params from 'frozen_weights' not found in the ONNX model.")
 
         # Get loss name from model description
         loss_name = [item.name for item in self.model_desc.outputs if item.is_loss]

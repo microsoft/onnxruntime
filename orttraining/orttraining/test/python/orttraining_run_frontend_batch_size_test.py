@@ -30,9 +30,7 @@ configs = [
 
 
 def run_with_config(config):
-    print(
-        f"##### testing name - {'fp16' if config.enable_mixed_precision else 'fp32'}-{config.sequence_length} #####"
-    )
+    print(f"##### testing name - {'fp16' if config.enable_mixed_precision else 'fp32'}-{config.sequence_length} #####")
     print("gelu_recompute: ", config.gelu_recompute)
     print("attn_dropout_recompute: ", config.attn_dropout_recompute)
     print("transformer_layer_recompute: ", config.transformer_layer_recompute)

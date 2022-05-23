@@ -65,9 +65,7 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
                         print(f"rel_diff={rel_diff} abs_diff={abs_diff}")
 
     if diff_count == 0:
-        print(
-            f"100% passed for {len(baseline_results)} random inputs given thresholds (rtol={rtol}, atol={atol})."
-        )
+        print(f"100% passed for {len(baseline_results)} random inputs given thresholds (rtol={rtol}, atol={atol}).")
     else:
         print(
             "WARNING: {} out of {} results NOT passed for thresholds (rtol={}, atol={}).".format(
@@ -119,9 +117,7 @@ def run_test(
         baseline_model, all_inputs, use_gpu, disable_optimization=True
     )
     if verbose:
-        print(
-            f"baseline average latency (all optimizations disabled): {statistics.mean(baseline_latency) * 1000} ms"
-        )
+        print(f"baseline average latency (all optimizations disabled): {statistics.mean(baseline_latency) * 1000} ms")
 
     if output_dir is not None:
         for i, inputs in enumerate(all_inputs):

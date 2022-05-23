@@ -36,9 +36,7 @@ class NeuralNet(torch.nn.Module):
 
 
 def train(args, model, device, optimizer, loss_fn, train_loader, epoch):
-    print(
-        f"\n======== Epoch {epoch + 1} / {args.epochs} with batch size {model.train_batch_size()} ========"
-    )
+    print(f"\n======== Epoch {epoch + 1} / {args.epochs} with batch size {model.train_batch_size()} ========")
     model.train()
     # Measure how long the training epoch takes.
     t0 = time.time()

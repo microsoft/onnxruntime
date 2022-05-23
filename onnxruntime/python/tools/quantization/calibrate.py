@@ -367,9 +367,7 @@ class HistogramCalibrater(CalibraterBase):
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
-        super().__init__(
-            model, op_types_to_calibrate, augmented_model_path, use_external_data_format
-        )
+        super().__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format)
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
@@ -731,9 +729,7 @@ class HistogramCollector(CalibrationDataCollector):
         thresholds_dict = {}  # per tensor thresholds
 
         print(f"Number of tensors : {len(histogram_dict)}")
-        print(
-            f"Number of histogram bins : {self.num_bins} (The number may increase depends on the data it collects)"
-        )
+        print(f"Number of histogram bins : {self.num_bins} (The number may increase depends on the data it collects)")
         print(f"Number of quantized bins : {self.num_quantized_bins}")
 
         for tensor, histogram in histogram_dict.items():

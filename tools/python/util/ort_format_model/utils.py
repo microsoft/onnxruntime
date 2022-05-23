@@ -50,10 +50,7 @@ def create_config_from_models(
                     out.write(f"{domain};{opset};")
                     if enable_type_reduction:
                         # type string is empty if op hasn't been seen
-                        entries = [
-                            f"{op}{op_type_processors.get_config_entry(domain, op) or ''}"
-                            for op in sorted(ops)
-                        ]
+                        entries = [f"{op}{op_type_processors.get_config_entry(domain, op) or ''}" for op in sorted(ops)]
                     else:
                         entries = sorted(ops)
 

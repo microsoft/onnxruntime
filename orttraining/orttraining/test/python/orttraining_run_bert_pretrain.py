@@ -551,9 +551,7 @@ def do_pretrain(args):
 
                     if global_step >= args.max_steps:
                         if args.save_checkpoint:
-                            model.save_checkpoint(
-                                os.path.join(args.output_dir, f"checkpoint-{args.world_rank}.ortcp")
-                            )
+                            model.save_checkpoint(os.path.join(args.output_dir, f"checkpoint-{args.world_rank}.ortcp"))
                         final_loss = average_loss / (args.log_freq * args.gradient_accumulation_steps)
                         return final_loss
 

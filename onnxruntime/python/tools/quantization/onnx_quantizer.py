@@ -898,9 +898,7 @@ class ONNXQuantizer:
                 zero_point_names.append(parent_zero_point_names[0])
                 # node should not be add this child level here
             else:
-                raise ValueError(
-                    f"Invalid tensor name to quantize: {node_input} @graph scope{self.graph_scope}"
-                )
+                raise ValueError(f"Invalid tensor name to quantize: {node_input} @graph scope{self.graph_scope}")
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
 
@@ -1181,9 +1179,7 @@ class ONNXQuantizer:
                     graph.input.remove(name_to_input[ini_tensor.name])
                 except StopIteration:
                     if model.ir_version < 4:
-                        print(
-                            f"Warning: invalid weight name {ini_tensor.name} found in the graph (not a graph input)"
-                        )
+                        print(f"Warning: invalid weight name {ini_tensor.name} found in the graph (not a graph input)")
 
         for input in graph.input:
             if input.name in requesting_tensor_names:

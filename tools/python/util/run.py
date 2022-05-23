@@ -39,9 +39,7 @@ def run(
     """
     cmd = [*args]
 
-    _log.info(
-        f"Running subprocess in '{cwd or os.getcwd()}'\n  {' '.join([shlex.quote(arg) for arg in cmd])}"
-    )
+    _log.info(f"Running subprocess in '{cwd or os.getcwd()}'\n  {' '.join([shlex.quote(arg) for arg in cmd])}")
 
     def output(is_stream_captured):
         return subprocess.PIPE if is_stream_captured else (subprocess.DEVNULL if quiet else None)

@@ -282,9 +282,8 @@ class SymbolicShapeInference:
         self.known_vi_ = {i.name: i for i in list(self.out_mp_.graph.input)}
         self.known_vi_.update(
             {
-                        i.name:
-                        helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))
-                    for i in self.out_mp_.graph.initializer
+                i.name: helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))
+                for i in self.out_mp_.graph.initializer
             }
         )
 
@@ -455,9 +454,7 @@ class SymbolicShapeInference:
 
     def _onnx_infer_subgraph(self, node, subgraph, use_node_input=True, inc_subgraph_id=True):
         if self.verbose_ > 2:
-            logger.debug(
-                f"Inferencing subgraph of node {node.name} with output({node.output[0]}...): {node.op_type}"
-            )
+            logger.debug(f"Inferencing subgraph of node {node.name} with output({node.output[0]}...): {node.op_type}")
         # node inputs are not passed directly to the subgraph
         # it's up to the node dispatcher to prepare subgraph input
         # for example, with Scan/Loop, subgraph input shape would be trimmed from node input shape
@@ -1677,9 +1674,7 @@ class SymbolicShapeInference:
                             if not less_equal(e, new_sympy_shape[i]):
                                 e = new_sympy_shape[i]
                         except Exception:
-                            logger.warning(
-                                f"Unable to determine if {e} <= {new_sympy_shape[i]}, treat as equal"
-                            )
+                            logger.warning(f"Unable to determine if {e} <= {new_sympy_shape[i]}, treat as equal")
                             e = new_sympy_shape[i]
 
                 s = handle_negative_index(s, new_sympy_shape[i])
@@ -2134,9 +2129,7 @@ class SymbolicShapeInference:
             if self.verbose_ > 2:
                 logger.debug(node.op_type + ": " + node.name)
                 for i, name in enumerate(node.input):
-                    logger.debug(
-                        f"  Input {i}: {name} {'initializer' if name in self.initializers_ else ''}"
-                    )
+                    logger.debug(f"  Input {i}: {name} {'initializer' if name in self.initializers_ else ''}")
 
             # onnx automatically merge dims with value, i.e. Mul(['aaa', 'bbb'], [1000, 1]) -> [1000, 'bbb']
             # symbolic shape inference needs to apply merge of 'aaa' -> 1000 in this case

@@ -323,9 +323,7 @@ def compare_two_models(model_1, model_2):
                 init2_arr = numpy_helper.to_array(init_2)
                 if not np.array_equal(init1_arr, init2_arr):
                     check_2 = False
-                    print(
-                        f"Error:  Initializer {init_2.name} in test model dismatches with the expected model."
-                    )
+                    print(f"Error:  Initializer {init_2.name} in test model dismatches with the expected model.")
                 break
 
         if not init_found:

@@ -129,9 +129,7 @@ def container_registry_has_image(full_image_name, docker_path):
 def main():
     args = parse_args()
 
-    log.debug(
-        f"Dockerfile: {args.dockerfile}, context: {args.context}, docker build args: '{args.docker_build_args}'"
-    )
+    log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}, docker build args: '{args.docker_build_args}'")
 
     use_container_registry = args.container_registry is not None
 

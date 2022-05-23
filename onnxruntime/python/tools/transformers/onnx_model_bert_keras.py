@@ -81,14 +81,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                         "SkipLayerNormalization",
                         "EmbedLayerNormalization",
                     ]:
-                        logger.debug(
-                            f"First input for skiplayernorm: {parent.op_type if parent is not None else None}"
-                        )
+                        logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")
                         continue
                 else:
-                    logger.debug(
-                        f"First input for skiplayernorm: {parent.op_type if parent is not None else None}"
-                    )
+                    logger.debug(f"First input for skiplayernorm: {parent.op_type if parent is not None else None}")
                     continue
             else:
                 # TODO: shall we add back the checking of children op types.
@@ -276,9 +272,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 logger.info(f"Found position embedding. name:{pos_initializer.name}, shape:{temp.shape[1:]}")
                 position_embedding = "position_embedding"
             else:
-                logger.info(
-                    f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}"
-                )
+                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")
                 return False
         else:
             pos_embed_path = self.match_parent_path(add_node, ["Gather", "Slice"], [1, 1], output_name_to_node)
@@ -297,9 +291,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 logger.info(f"Found word embedding. name:{pos_initializer.name}, shape:{temp.shape}")
                 position_embedding = pos_initializer.name
             else:
-                logger.info(
-                    f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}"
-                )
+                logger.info(f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}")
                 return False
 
         gather = self.get_parent(skip_node, 1, output_name_to_node)
@@ -317,9 +309,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             logger.info(f"Found segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")
             segment_embedding = segment_initializer.name
         else:
-            logger.info(
-                f"Failed to find segment embedding. name:{segment_initializer.name}, shape:{temp.shape}"
-            )
+            logger.info(f"Failed to find segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")
             return False
 
         logger.info("Create Embedding node")

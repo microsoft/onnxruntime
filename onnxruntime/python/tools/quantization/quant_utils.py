@@ -105,9 +105,7 @@ ONNX_TYPE_TO_NP_TYPE = {
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
+    assert qType in ONNX_TYPE_TO_NP_TYPE, f"Unexpected data type {qType} requested. Only INT8 and UINT8 are supported."
     dtype = ONNX_TYPE_TO_NP_TYPE[qType]
     cliplow = max(0 if dtype == numpy.uint8 else -127, -127 if low is None else low)
     cliphigh = min(255 if dtype == numpy.uint8 else 127, 255 if high is None else high)

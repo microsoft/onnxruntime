@@ -1964,9 +1964,7 @@ class ParseDictArgAction(argparse.Action):
                 parser.error(f"argument {option_string}: Expected '=' between key and value")
 
             if k in dict_arg:
-                parser.error(
-                    f"argument {option_string}: Specified duplicate key '{k}'"
-                )
+                parser.error(f"argument {option_string}: Specified duplicate key '{k}'")
 
             dict_arg[k] = v
 

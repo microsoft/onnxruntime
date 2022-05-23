@@ -841,8 +841,7 @@ class Gpt2Helper:
 
         if max_abs_diff_list:
             result = {
-                f"max_diff_percentile_{p}": f"{numpy.percentile(max_abs_diff_list, p):.5f}"
-                for p in [50, 90, 95, 99]
+                f"max_diff_percentile_{p}": f"{numpy.percentile(max_abs_diff_list, p):.5f}" for p in [50, 90, 95, 99]
             }
         else:
             result = {f"max_diff_percentile_{p}": "nan" for p in [50, 90, 95, 99]}

@@ -255,9 +255,7 @@ def run_onnxruntime(
                         "datetime": str(datetime.now()),
                     }
 
-                    logger.info(
-                        f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}"
-                    )
+                    logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
 
                     if disable_ort_io_binding:
                         result = inference_ort(
@@ -486,9 +484,7 @@ def run_tensorflow(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info(
-                    f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}"
-                )
+                logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
                 import random
 

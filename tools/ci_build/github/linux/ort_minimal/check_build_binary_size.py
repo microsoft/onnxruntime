@@ -28,9 +28,7 @@ def _check_binary_size(path, readelf, threshold, os_str, arch, build_config):
     # Note that the sum of the section is slightly larger than the on-disk size
     # due to packing and/or alignment adjustments.
     with open(os.path.join(os.path.dirname(path), "binary_size_data.txt"), "w") as file:
-        file.writelines(
-            ["os,arch,build_config,size\n", f"{os_str},{arch},{build_config},{sections_total}\n"]
-        )
+        file.writelines(["os,arch,build_config,size\n", f"{os_str},{arch},{build_config},{sections_total}\n"])
 
     if threshold is not None and sections_total > threshold:
         raise RuntimeError(

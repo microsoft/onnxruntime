@@ -183,9 +183,7 @@ def perf_test(
     sess = onnxruntime.InferenceSession(model_name, providers=["CPUExecutionProvider"])
     count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
     avg_rnn = top_n_avg(per_iter_cost, top_n)
-    print(
-        f"perf_rnn (with default threads) {model_name}: run for {count} iterations, top {top_n} avg {avg_rnn:.3f} ms"
-    )
+    print(f"perf_rnn (with default threads) {model_name}: run for {count} iterations, top {top_n} avg {avg_rnn:.3f} ms")
 
     # run converted model in Nuphar, using specified threads
     with ScopedSetNumThreads(num_threads) as scoped_set_num_threads:
