@@ -14,7 +14,7 @@ This allows scenarios such as passing a [Windows.Media.VideoFrame](https://docs.
 
 The WinML API is a WinRT API that shipped inside the Windows OS starting with build 1809 (RS5) in the Windows.AI.MachineLearning namespace. It embedded a version of the ONNX Runtime.
 
-In addition to using the in-box version of WinML, WinML can also be installed as an application redistributable package (see [layered architecture](../execution-providers/DirectML-ExecutionProvider#windows-os-integration) for technical details).
+In addition to using the in-box version of WinML, WinML can also be installed as an application re-distributable package (see [Direct ML Windows OS Integration](../execution-providers/DirectML-ExecutionProvider#windows-os-integration) for technical details).
 
 ## Contents
 {: .no_toc }
