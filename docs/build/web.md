@@ -32,12 +32,26 @@ There are 2 steps to build ONNX Runtime Web:
   ```
 - [Install](https://cmake.org/download/) cmake-3.18 or higher.
 
-- [Install](https://nodejs.org/) Node.js (14.0+)
+- [Install](https://nodejs.org/) Node.js (16.0+)
 
   - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
-- Python (2.7 or 3.6+): https://www.python.org/downloads/
+- Python (3.8+): https://www.python.org/downloads/
   - python should be added to the PATH environment variable
+
+- Prepare emsdk:
+  emsdk should be automatically installed at `<ORT_ROOT>/cmake/external/emsdk/emsdk`. If the folder structure does not exist, run the following commands in `<ORT_ROOT>/` to install git submodules:
+  ```sh
+  git submodule sync --recursive
+  git submodule update --init --recursive
+  ```
+
+  (If you are using Windows, you can skip this step) in `<ORT_ROOT>/cmake/external/emsdk/`, run the following commands to setup emsdk:
+  ```sh
+  ./emsdk install latest
+  ./emsdk activate latest
+  source ./emsdk_env.sh
+  ```
 
 ### Build Instructions
 
@@ -103,7 +117,7 @@ Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runti
 
 ### Prerequisites
 
-- [Install](https://nodejs.org/) Node.js (14.0+)
+- [Install](https://nodejs.org/) Node.js (16.0+)
 
   - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows)/[Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
