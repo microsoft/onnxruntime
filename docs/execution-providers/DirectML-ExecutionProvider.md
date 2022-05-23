@@ -57,14 +57,14 @@ Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [
 
 ## Requirements
 
-The [DirectML](https://github.com/microsoft/DirectML) execution provider requires a [DirectX 12](https://answers.microsoft.com/en-us/windows/forum/all/direct-x-120-download/98d1137a-653d-40eb-9863-3b474665add7) capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Here are some examples of compatible hardware:
+The DirectML execution provider requires a DirectX 12 capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Here are some examples of compatible hardware:
 
 * NVIDIA Kepler (GTX 600 series) and above
 * AMD GCN 1st Gen (Radeon HD 7000 series) and above
 * Intel Haswell (4th-gen core) HD Integrated Graphics and above
 * Qualcomm Adreno 600 and above
 
-[DirectML](https://docs.microsoft.com/en-us/windows/ai/directml/dml) is introduced in Windows 10, version 1903, and in the corresponding version of the Windows SDK.
+DirectML was introduced in Windows 10, version 1903, and in the corresponding version of the Windows SDK.
 
 <p><a href="#">Back to top</a></p>
 
@@ -74,7 +74,7 @@ Requirements for building the DirectML execution provider:
 1. Visual Studio 2017 toolchain
 2. [The Windows 10 SDK (10.0.18362.0) for Windows 10, version 1903](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk) (or newer)
 
-To build onnxruntime with the DML EP included, supply the `--use_dml` parameter to `build.bat`. 
+To build onnxruntime with the DML EP included, supply the `--use_dml` flag to `build.bat`. 
 For example:
 
 ```powershell
@@ -141,7 +141,7 @@ Additionally, as the DirectML execution provider does not support parallel execu
 
 The DirectML execution provider works most efficiently when tensor shapes are known at the time a session is created.  Here are a few performance benefits:
 
-1. Constant folding can occur more often, there by reducing the CPU / GPU copies and stalls during evaluations.
+1. Constant folding can occur more often, reducing the CPU / GPU copies and stalls during evaluations.
 2. More initialization work occurs when sessions are created rather than during the first evaluation.
 3. Weights may be pre-processed within DirectML, enabling more efficient algorithms.
 4. Graph optimization occurs within DirectML. For example, Concat operators may be removed and more optimal tensor layouts may be used for the input and output of operators.
@@ -158,18 +158,7 @@ However, if a model input contains a free dimension (such as for batch size), ad
 
 ## Samples
 
-DirectML and Onnx Runtime can be used to achieve many models. Here are some examples given on [Github](https://github.com/microsoft/DirectML#directml-samples):
-
-- HelloDirectML: A minimal "hello world" application that executes a single DirectML operator.
-- DirectMLSuperResolution: A sample that uses DirectML to execute a basic super-resolution model to upscale video from 540p to 1080p in real time.
-- yolov4: YOLOv4 is an object detection model capable of recognizing up to 80 different classes of objects in an image. This sample contains a complete end-to-end implementation of the model using DirectML, and is able to run in real time on a user-provided video stream.
-- MobileNet: Adapted from the ONNX MobileNet model. MobileNet classifies an image into 1000 different classes. It is highly efficient in speed and size, ideal for mobile applications.
-- MNIST: Adapted from the ONNX MNIST model. MNIST predicts handwritten digits using a convolution neural network.
-- SqueezeNet: Based on the ONNX SqueezeNet model. SqueezeNet performs image classification trained on the ImageNet dataset. It is highly efficient and provides results with good accuracy.
-- FNS-Candy: Adapted from the Windows ML Style Transfer model sample, FNS-Candy re-applies specific artistic styles on regular images.
-- Super Resolution: Adapted from the ONNX Super Resolution model, Super-Res upscales and sharpens the input images to refine the details and improve image quality.
-
-A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](https://github.com/microsoft/onnxruntime/tree/master/samples//c_cxx/fns_candy_style_transfer).
+[The DirectML GitHub repo](https://github.com/microsoft/DirectML/blob/master/README.md#directml-samples) has sample models which can be executed by the DirectML Execution Provider.
 
 ## Additional Resources
 
