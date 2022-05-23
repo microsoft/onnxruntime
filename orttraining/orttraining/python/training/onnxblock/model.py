@@ -5,10 +5,11 @@
 from abc import ABC, abstractmethod
 import onnx
 import onnxruntime.training.onnxblock.model_accessor as accessor
+import onnxruntime.training.onnxblock.building_blocks as building_blocks
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
 
 
-class Model(ABC):
+class Model(building_blocks.Block):
     """Builds the forward model based on user's build method."""
 
     def __init__(self):
@@ -30,13 +31,21 @@ class Model(ABC):
         # build the user model
         output = self.build(*args, **kwargs)
 
+        # Perform shape inference
+        model_with_shapes = onnx.shape_inference.infer_shapes(
+            accessor.global_accessor.model)
+        accessor.global_accessor.model.CopyFrom(model_with_shapes)
+
+        # Build the graph outputs
+        graph_utils.build_graph_outputs(accessor.global_accessor.model, output)
+
         # validate and check the model
         onnx.checker.check_model(accessor.global_accessor.model, True)
 
         return output
 
 
-class TrainingModel(Model):
+class TrainingModel(building_blocks.Block):
     """Builds the training model based on user's build method."""
 
     def __init__(self):
@@ -97,14 +106,20 @@ class TrainingModel(Model):
         # build the user model
         output = self.build(*args, **kwargs)
 
+        # Perform shape inference
+        model_with_shapes = onnx.shape_inference.infer_shapes(
+            accessor.global_accessor.model)
+        accessor.global_accessor.model.CopyFrom(model_with_shapes)
+
+        # Build the graph outputs
+        graph_utils.build_graph_outputs(accessor.global_accessor.model, output)
+
         # get all the model parameters for the user_model
         # and store them in self._parameters
         self._parameters = graph_utils.get_model_parameters(
             accessor.global_accessor.model, self._arg_not_requiring_grad
         )
 
-        # TODO: Perform shape inference before building gradient graph
-        # build the gradient graph
         all_args_requiring_gradient_names = graph_utils.build_gradient_graph(
             accessor.global_accessor,
             self._arg_requiring_grad,

@@ -89,9 +89,7 @@ def build_gradient_graph(
     gradient_model = onnx.load_from_string(builder.get_model())
 
     # copy the gradient graph into the user's graph
-    model.graph.CopyFrom(gradient_model.graph)
-    del model.opset_import[:]
-    model.opset_import.extend(gradient_model.opset_import)
+    model.CopyFrom(gradient_model)
 
     return all_args_requiring_gradient
 
@@ -203,3 +201,56 @@ def get_model_parameters(model, args_not_requiring_gradient):
                 trainable_params.append(initializer)
 
     return trainable_params, non_trainable_params
+
+
+def get_value_info_from_name(model, output_names):
+    """Returns a list of value infos from the model for the given output names"""
+
+    if isinstance(output_names, str):
+        output_names = [output_names]
+
+    output_value_infos = []
+    name_value_info_mapping = {
+        value_info.name: value_info for value_info in model.graph.value_info
+    }
+    for output_name in output_names:
+        if output_name in name_value_info_mapping:
+            output_value_infos.append(name_value_info_mapping[output_name])
+        else:
+            raise LookupError(
+                f"The provided name {output_name} is not a graph value info."
+            )
+
+    return output_value_infos
+
+
+def build_graph_outputs(model, output_names, override_outputs=True):
+    """Append graph outputs for the model for the given output names.
+
+    The graph outputs are extracted from the graph value_infos. The
+    graph output can only be added to the graph for those outputs
+    whose value info is known. If value info is not known, an error
+    will be raised.
+    """
+
+    # Collect the existing graph outputs in a set
+    existing_graph_outputs = {output.name for output in model.graph.output}
+
+    if isinstance(output_names, str):
+        output_names = [output_names]
+
+    # collect all new graph outputs (i.e. graph outputs that are not
+    # already graph outputs)
+    graph_output_names_to_build = []
+    for output_name in output_names:
+        if output_name not in existing_graph_outputs:
+            graph_output_names_to_build.append(output_name)
+    graph_outputs = get_value_info_from_name(model, graph_output_names_to_build)
+
+    # If graph outputs need to be added, clear them before adding them
+    # provided override_outputs is set.
+    if graph_outputs and override_outputs:
+        del model.graph.output[:]
+
+    # Add the new graph outputs.
+    model.graph.output.extend(graph_outputs)

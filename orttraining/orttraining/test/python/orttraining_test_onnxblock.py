@@ -68,6 +68,24 @@ class SimpleTrainingModelWithCrossEntropyLoss(onnxblock.TrainingModel):
         return self.loss(output_name)
 
 
+class SimpleModelWithBCEWithLogitsLoss(onnxblock.Model):
+    def __init__(self):
+        super(SimpleModelWithBCEWithLogitsLoss, self).__init__()
+        self.loss = onnxblock.loss.BCEWithLogitsLoss()
+
+    def build(self, output_name):
+        return self.loss(output_name)
+
+
+class SimpleTrainingModelWithBCEWithLogitsLoss(onnxblock.Model):
+    def __init__(self):
+        super(SimpleTrainingModelWithBCEWithLogitsLoss, self).__init__()
+        self.loss = onnxblock.loss.BCEWithLogitsLoss()
+
+    def build(self, output_name):
+        return self.loss(output_name)
+
+
 # Test utility methods
 
 
@@ -164,6 +182,8 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
         SimpleModelWithCrossEntropyLoss,
         SimpleTrainingModelWithMSELoss,
         SimpleTrainingModelWithCrossEntropyLoss,
+        SimpleModelWithBCEWithLogitsLoss,
+        SimpleTrainingModelWithBCEWithLogitsLoss,
     ],
 )
 def test_loss_composition(graph):
@@ -251,6 +271,44 @@ def test_crossentropy_loss_execution():
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = crossentropy_loss(pt_model(x), target)
+
+        # Then
+        assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
+
+
+def test_bcewithlogits_loss_execution():
+    # Given
+    device = "cuda"
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+
+    x = torch.randn(N, D_in, device=device)
+    target = torch.randn(N, D_out, device=device)
+
+    # Build the onnx model with loss
+    simple_model = SimpleModelWithBCEWithLogitsLoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
+    ort_output_names = [onnx_model.graph.output[0].name]
+    ort_inputs = {
+        onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
+        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target)),
+    }
+
+    def bcewithlogits_loss(prediction, target):
+        loss = torch.nn.BCEWithLogitsLoss()
+        return loss(prediction, target)
+
+    # When
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(onnx_model, onnx_fo.name)
+        ort_session = onnxruntime.InferenceSession(
+            onnx_fo.name, providers=C.get_available_providers()
+        )
+
+        ort_outs = ort_session.run(ort_output_names, ort_inputs)
+        torch_outs = bcewithlogits_loss(pt_model(x), target)
 
         # Then
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))

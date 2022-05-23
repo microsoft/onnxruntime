@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 # __init__.py
 
+from .building_blocks import Block
 from .model import Model, TrainingModel
 from .checkpoint_utils import save_checkpoint
 from . import loss, optim
