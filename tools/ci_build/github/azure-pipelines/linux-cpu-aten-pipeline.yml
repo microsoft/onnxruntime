@@ -59,7 +59,7 @@ jobs:
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuildaten \
             bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /onnxruntime_src/onnxruntime/python/torch_cpp_extensions && \
-              /build/launch_test.py --cmd_line_with_args 'python /onnxruntime_src/onnxruntime/test/python/contrib_ops/aten_op_tests.py' --cmd /build"
+              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/onnxruntime/test/python/contrib_ops/aten_op_tests.py"
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/clean-agent-build-directory-step.yml
