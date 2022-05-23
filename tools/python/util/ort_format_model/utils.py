@@ -51,12 +51,12 @@ def create_config_from_models(
                     if enable_type_reduction:
                         # type string is empty if op hasn't been seen
                         entries = [
-                            "{}{}".format(op, op_type_processors.get_config_entry(domain, op) or "")
+                            f"{op}{op_type_processors.get_config_entry(domain, op) or ''}"
                             for op in sorted(ops)
                         ]
                     else:
                         entries = sorted(ops)
 
-                    out.write("{}\n".format(",".join(entries)))
+                    out.write(f"{','.join(entries)}\n")
 
     log.info("Created config in %s", output_file)

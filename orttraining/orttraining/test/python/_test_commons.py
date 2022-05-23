@@ -140,7 +140,7 @@ def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "samples")
         )
     if not os.path.exists(root):
-        raise FileNotFoundError("Unable to find folder 'samples', tried %r." % root)
+        raise FileNotFoundError(f"Unable to find folder 'samples', tried {root!r}.")
     pytorch_transformer_path = os.path.join(root, "python", "training", "orttrainer", "pytorch_transformer")
     pt_model_path = os.path.join(pytorch_transformer_path, "pt_model.py")
     pt_model = _utils.import_module_from_file(pt_model_path)

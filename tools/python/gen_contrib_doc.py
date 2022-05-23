@@ -175,9 +175,7 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                     default_value = format_value(default_value)
                 opt = f"default is {default_value}"
 
-            s += "<dt><tt>{}</tt> : {}{}</dt>\n".format(
-                attr.name, display_attr_type(attr.type), f" ({opt})" if opt else ""
-            )
+            s += f"<dt><tt>{attr.name}</tt> : {display_attr_type(attr.type)}{f' ({opt})' if opt else ''}</dt>\n"
             s += f"<dd>{attr.description}</dd>\n"
         s += "</dl>\n"
 

@@ -518,7 +518,7 @@ def main():
                 else:
                     data_file = files[f_id % num_files]
 
-                logger.info("file no {} file {}".format(f_id, previous_file))
+                logger.info(f"file no {f_id} file {previous_file}")
 
                 previous_file = data_file
 

@@ -15,11 +15,11 @@ def parse_arguments():
 
 
 args = parse_arguments()
-print("Generating symbol file for %s" % str(args.config))
+print(f"Generating symbol file for {str(args.config)}")
 with open(args.version_file) as f:
     VERSION_STRING = f.read().strip()
 
-print("VERSION:%s" % VERSION_STRING)
+print(f"VERSION:{VERSION_STRING}")
 
 symbols = set()
 for c in args.config:
@@ -48,9 +48,9 @@ with open(args.output, "w") as file:
         if args.style == "vc":
             file.write(" %s @%d\n" % (symbol, symbol_index))
         elif args.style == "xcode":
-            file.write("_%s\n" % symbol)
+            file.write(f"_{symbol}\n")
         else:
-            file.write("  %s;\n" % symbol)
+            file.write(f"  {symbol};\n")
         symbol_index += 1
 
     if args.style == "gcc":
@@ -65,10 +65,10 @@ with open(args.output_source, "w") as file:
         # Exporting OrtGetWinMLAdapter is exported without issues using .def file when compiling for Windows
         # so it isn't necessary to include it in generated_source.c
         if c != "winml" and c != "cuda" and c != "migraphx":
-            file.write("#include <core/providers/{}/{}_provider_factory.h>\n".format(c, c))
+            file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")
     for symbol in symbols:
         if symbol != "OrtGetWinMLAdapter":
-            file.write('if(strcmp(name,"{}") ==0) return (void*)&{};\n'.format(symbol, symbol))
+            file.write(f'if(strcmp(name,"{symbol}") ==0) return (void*)&{symbol};\n')
     file.write("return NULL;\n")
     file.write("}\n")

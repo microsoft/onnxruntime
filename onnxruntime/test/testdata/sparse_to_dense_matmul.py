@@ -68,7 +68,7 @@ def make_sparse_tensor_value_info(
             elif isinstance(d, str):
                 dim.dim_param = d
             else:
-                raise ValueError("Invalid item in shape: {}. " "Needs to be one of `int` or `text`.".format(d))
+                raise ValueError(f"Invalid item in shape: {d}. Needs to be one of `int` or `text`.")
 
             if shape_denotation:
                 dim.denotation = shape_denotation[i]

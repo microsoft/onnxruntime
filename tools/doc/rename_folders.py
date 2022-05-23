@@ -25,7 +25,7 @@ def rename_folder(root):
         full_into = os.path.join(r, into)
         if os.path.exists(full_into):
             raise RuntimeError("%r already exists, previous documentation should be removed.")
-        print("rename %r" % full_src)
+        print(f"rename {full_src!r}")
         os.rename(full_src, full_into)
 
     return renamed
@@ -49,14 +49,14 @@ def replace_files(root, renamed):
                     continue
                 for k, v in subs.items():
                     if k == v:
-                        raise ValueError("{!r} == {!r}".format(k, v))
-                    if ('"%s' % k) in f[0]:
-                        repl.append((f[0], f[0].replace('"%s' % k, '"%s' % v)))
-                    if ("/%s" % k) in f[0]:
-                        repl.append((f[0], f[0].replace("/%s" % k, "/%s" % v)))
+                        raise ValueError(f"{k!r} == {v!r}")
+                    if (f'"{k}') in f[0]:
+                        repl.append((f[0], f[0].replace(f'"{k}', f'"{v}')))
+                    if (f"/{k}") in f[0]:
+                        repl.append((f[0], f[0].replace(f"/{k}", f"/{v}")))
             if len(repl) == 0:
                 continue
-            print("update %r" % full)
+            print(f"update {full!r}")
             for k, v in repl:
                 content = content.replace(k, v)
             with open(full, "w", encoding="utf-8") as f:
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         root = sys.argv[-1]
     else:
         root = "../../build/docs/html"
-    print("look into %r" % root)
+    print(f"look into {root!r}")
     ren = rename_folder(root)
     if len(ren) == 0:
         ren = [

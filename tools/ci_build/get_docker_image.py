@@ -122,7 +122,7 @@ def container_registry_has_image(full_image_name, docker_path):
     env["DOCKER_CLI_EXPERIMENTAL"] = "enabled"  # needed for "docker manifest"
     proc = run(docker_path, "manifest", "inspect", "--insecure", full_image_name, env=env, check=False, quiet=True)
     image_found = proc.returncode == 0
-    log.debug("Image {} in registry".format("found" if image_found else "not found"))
+    log.debug(f"Image {'found' if image_found else 'not found'} in registry")
     return image_found
 
 
@@ -130,9 +130,7 @@ def main():
     args = parse_args()
 
     log.debug(
-        "Dockerfile: {}, context: {}, docker build args: '{}'".format(
-            args.dockerfile, args.context, args.docker_build_args
-        )
+        f"Dockerfile: {args.dockerfile}, context: {args.context}, docker build args: '{args.docker_build_args}'"
     )
 
     use_container_registry = args.container_registry is not None

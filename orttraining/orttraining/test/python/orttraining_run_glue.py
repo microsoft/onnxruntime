@@ -230,7 +230,7 @@ class ORTGlueTest(unittest.TestCase):
             num_labels = glue_tasks_num_labels[data_args.task_name]
             output_mode = glue_output_modes[data_args.task_name]
         except KeyError:
-            raise ValueError("Task not found: %s" % (data_args.task_name))
+            raise ValueError(f"Task not found: {data_args.task_name}")
 
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,

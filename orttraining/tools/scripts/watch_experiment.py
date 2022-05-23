@@ -59,9 +59,7 @@ if args.remote_dir and args.local_dir:
 
     if run.get_status() in ["Completed", "Failed", "Canceled"]:
         print(
-            "Downloading Experiment files from remote directory: '{}' to local directory: '{}'".format(
-                remote_root, local_root
-            )
+            f"Downloading Experiment files from remote directory: '{remote_root}' to local directory: '{local_root}'"
         )
         files = [f for f in run.get_file_names() if f.startswith(remote_root)]
         for remote_path in files:
@@ -73,9 +71,7 @@ if args.remote_dir and args.local_dir:
         session = Session()
 
         print(
-            "Streaming Experiment files from remote directory: '{}' to local directory: '{}'".format(
-                remote_root, local_root
-            )
+            f"Streaming Experiment files from remote directory: '{remote_root}' to local directory: '{local_root}'"
         )
         watcher = RunWatcher(
             run, local_root=local_root, remote_root=remote_root, executor=executor, event=event, session=session

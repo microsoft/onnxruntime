@@ -52,15 +52,15 @@ def _check_python_version():
     # Python 2 is definitely not supported and it should be safer to consider
     # it won't run with python 4:
     if sys.version_info[0] != 3:
-        raise BuildError("Bad python major version: expecting python 3, found version " "'{}'".format(sys.version))
+        raise BuildError(f"Bad python major version: expecting python 3, found version '{sys.version}'")
     if sys.version_info[1] < 6:
-        raise BuildError("Bad python minor version: expecting python 3.6+, found version " "'{}'".format(sys.version))
+        raise BuildError(f"Bad python minor version: expecting python 3.6+, found version '{sys.version}'")
 
 
 def _str_to_bool(s):
     """Convert string to bool (in argparse context)."""
     if s.lower() not in ["true", "false"]:
-        raise ValueError("Need bool; got %r" % s)
+        raise ValueError(f"Need bool; got {s!r}")
     return {"true": True, "false": False}[s.lower()]
 
 
@@ -646,7 +646,7 @@ def resolve_executable_path(command_or_path):
     if command_or_path and command_or_path.strip():
         executable_path = shutil.which(command_or_path)
         if executable_path is None:
-            raise BuildError("Failed to resolve executable path for " "'{}'.".format(command_or_path))
+            raise BuildError(f"Failed to resolve executable path for '{command_or_path}'.")
         return os.path.abspath(executable_path)
     else:
         return None
@@ -723,17 +723,17 @@ def setup_test_data(build_dir, configs):
     if is_windows():
         src_model_dir = os.path.join(build_dir, "models")
         if os.path.exists("C:\\local\\models") and not os.path.exists(src_model_dir):
-            log.debug("creating shortcut {} -> {}".format("C:\\local\\models", src_model_dir))
+            log.debug(f"creating shortcut C:\\local\\models -> {src_model_dir}")
             run_subprocess(["mklink", "/D", "/J", src_model_dir, "C:\\local\\models"], shell=True)
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
             os.makedirs(config_build_dir, exist_ok=True)
             dest_model_dir = os.path.join(config_build_dir, "models")
             if os.path.exists("C:\\local\\models") and not os.path.exists(dest_model_dir):
-                log.debug("creating shortcut {} -> {}".format("C:\\local\\models", dest_model_dir))
+                log.debug(f"creating shortcut C:\\local\\models -> {dest_model_dir}")
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, "C:\\local\\models"], shell=True)
             elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
-                log.debug("creating shortcut {} -> {}".format(src_model_dir, dest_model_dir))
+                log.debug(f"creating shortcut {src_model_dir} -> {dest_model_dir}")
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, src_model_dir], shell=True)
 
 
@@ -979,7 +979,7 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
     if (args.use_nuphar or args.use_tvm) and args.llvm_path is not None:
-        cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
+        cmake_args += [f"-DLLVM_DIR={args.llvm_path}"]
 
     if args.use_cuda and not is_windows():
         nvml_stub_path = cuda_home + "/lib64/stubs"
@@ -1123,7 +1123,7 @@ def generate_build_tree(
             run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
-        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
+        cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
 
     if args.fuzz_testing:
         if not (
@@ -1147,7 +1147,7 @@ def generate_build_tree(
     if args.build_eager_mode:
         import torch
 
-        cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     cmake_args += [f"-D{define}" for define in cmake_extra_defines]
@@ -1286,9 +1286,7 @@ def setup_cuda_vars(args):
         if not cuda_home_valid or not cudnn_home_valid:
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
-                "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(
-                    cuda_home, cuda_home_valid, cudnn_home, cudnn_home_valid
-                ),
+                f"cuda_home='{cuda_home}' valid={cuda_home_valid}. cudnn_home='{cudnn_home}' valid={cudnn_home_valid}",
             )
 
     return cuda_home, cudnn_home
@@ -2205,7 +2203,7 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
             # CMake < 3.18 has a bug setting system arch to arm64 (if not specified) for Xcode 12,
             # protoc for host should be built using host architecture
             # Explicitly specify the CMAKE_OSX_ARCHITECTURES for x86_64 Mac.
-            cmd_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format("arm64" if platform.machine() == "arm64" else "x86_64")]
+            cmd_args += [f"-DCMAKE_OSX_ARCHITECTURES={'arm64' if platform.machine() == 'arm64' else 'x86_64'}"]
 
     run_subprocess(cmd_args, cwd=protoc_build_dir)
     # Build step
@@ -2282,7 +2280,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
-    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+    log.debug(f"Command line arguments:\n  {' '.join(shlex.quote(arg) for arg in sys.argv[1:])}")
 
     args = parse_arguments()
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)

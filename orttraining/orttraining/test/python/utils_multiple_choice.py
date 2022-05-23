@@ -104,12 +104,7 @@ class MultipleChoiceDataset(Dataset):
 
         cached_features_file = os.path.join(
             data_dir,
-            "cached_{}_{}_{}_{}".format(
-                mode.value,
-                tokenizer.__class__.__name__,
-                str(max_seq_length),
-                task,
-            ),
+            f"cached_{mode.value}_{tokenizer.__class__.__name__}_{str(max_seq_length)}_{task}",
         )
 
         # Make sure only the first process in distributed training processes the dataset,
@@ -269,6 +264,6 @@ def convert_examples_to_features(
 
     for f in features[:2]:
         logger.info("*** Example ***")
-        logger.info("feature: %s" % f)
+        logger.info(f"feature: {f}")
 
     return features

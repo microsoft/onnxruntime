@@ -131,9 +131,7 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
         end_version: typing.Optional[int] = None,
         type: typing.Optional[str] = None,
     ):
-        registration_identifier = "{}:{}({}){}".format(
-            constant_for_domain, operator, start_version, f"<{type}>" if type else ""
-        )
+        registration_identifier = f"{constant_for_domain}:{operator}({start_version}){f'<{type}>' if type else ''}"
 
         # convert from the ORT constant name to the domain string used in the config
         domain = op_registration_utils.map_ort_constant_to_domain(constant_for_domain)

@@ -31,9 +31,7 @@ configs = [
 
 def run_with_config(config):
     print(
-        "##### testing name - {}-{} #####".format(
-            "fp16" if config.enable_mixed_precision else "fp32", config.sequence_length
-        )
+        f"##### testing name - {'fp16' if config.enable_mixed_precision else 'fp32'}-{config.sequence_length} #####"
     )
     print("gelu_recompute: ", config.gelu_recompute)
     print("attn_dropout_recompute: ", config.attn_dropout_recompute)

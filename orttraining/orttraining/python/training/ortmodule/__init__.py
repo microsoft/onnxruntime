@@ -23,7 +23,7 @@ def _defined_from_envvar(name, default_value, warn=True):
         new_value = type(default_value)(new_value)
     except (TypeError, ValueError) as e:
         if warn:
-            warnings.warn("Unable to overwrite constant {!r} due to {!r}.".format(name, e))
+            warnings.warn(f"Unable to overwrite constant {name!r} due to {e!r}.")
         return default_value
     return new_value
 

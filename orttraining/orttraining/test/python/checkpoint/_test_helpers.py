@@ -46,7 +46,7 @@ def _save(trainer, checkpoint_dir, state_dict_key_name, world_rank=None):
 
     # save current model parameters as a checkpoint
     makedir(checkpoint_dir)
-    checkpoint_file_name = "checkpoint{}.ortcp".format("" if world_rank is None else str(world_rank))
+    checkpoint_file_name = f"checkpoint{'' if world_rank is None else str(world_rank)}.ortcp"
     trainer.save_checkpoint(os.path.join(checkpoint_dir, checkpoint_file_name))
     state_dict = trainer.state_dict()
     with open(os.path.join(checkpoint_dir, state_dict_key_name + ".pkl"), "wb") as f:

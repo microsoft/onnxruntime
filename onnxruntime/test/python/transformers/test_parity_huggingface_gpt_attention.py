@@ -364,11 +364,11 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
         model.half()
 
     # Do not re-use onnx file from previous test since weights of model are random.
-    onnx_model_path = "./temp/gpt_attention_{}.onnx".format("fp16" if float16 else "fp32")
+    onnx_model_path = f"./temp/gpt_attention_{'fp16' if float16 else 'fp32'}.onnx"
     export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device)
 
     if optimized:
-        optimized_onnx_path = "./temp/gpt_attention_opt_{}.onnx".format("fp16" if float16 else "fp32")
+        optimized_onnx_path = f"./temp/gpt_attention_opt_{'fp16' if float16 else 'fp32'}.onnx"
         optimize_onnx(onnx_model_path, optimized_onnx_path, num_attention_heads, debug)
         onnx_path = optimized_onnx_path
     else:

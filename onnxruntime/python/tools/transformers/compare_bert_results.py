@@ -66,9 +66,7 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
 
     if diff_count == 0:
         print(
-            "100% passed for {} random inputs given thresholds (rtol={}, atol={}).".format(
-                len(baseline_results), rtol, atol
-            )
+            f"100% passed for {len(baseline_results)} random inputs given thresholds (rtol={rtol}, atol={atol})."
         )
     else:
         print(
@@ -122,9 +120,7 @@ def run_test(
     )
     if verbose:
         print(
-            "baseline average latency (all optimizations disabled): {} ms".format(
-                statistics.mean(baseline_latency) * 1000
-            )
+            f"baseline average latency (all optimizations disabled): {statistics.mean(baseline_latency) * 1000} ms"
         )
 
     if output_dir is not None:

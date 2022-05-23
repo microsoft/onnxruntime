@@ -119,7 +119,7 @@ def speed(inst, number=10, repeat=20):
     raw = numpy.array(timer.repeat(repeat, number=number))
     ave = raw.sum() / len(raw) / number
     mi, ma = raw.min() / number, raw.max() / number
-    print("Average {:1.3g} min={:1.3g} max={:1.3g}".format(ave, mi, ma))
+    print(f"Average {ave:1.3g} min={mi:1.3g} max={ma:1.3g}")
     return ave
 
 

@@ -86,7 +86,7 @@ def optimize_by_onnxruntime(
 
     if optimized_model_path is None:
         path_prefix = onnx_model_path[:-5]  # remove .onnx suffix
-        optimized_model_path = "{}_o{}_{}.onnx".format(path_prefix, opt_level, "gpu" if use_gpu else "cpu")
+        optimized_model_path = f"{path_prefix}_o{opt_level}_{'gpu' if use_gpu else 'cpu'}.onnx"
 
     sess_options.optimized_model_filepath = optimized_model_path
 

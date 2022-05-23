@@ -48,7 +48,7 @@ def generate_docs(output_file, required_ops, op_type_impl_filter):
         for domain, op_opsets in domain_op_opsets:
             out.write(f"|**{domain}**||\n")
             for op in sorted(op_opsets.keys()):
-                out.write("|{}|{}|\n".format(op, ", ".join(op_opsets[op])))
+                out.write(f"|{op}|{', '.join(op_opsets[op])}|\n")
             out.write("|||\n")
 
 

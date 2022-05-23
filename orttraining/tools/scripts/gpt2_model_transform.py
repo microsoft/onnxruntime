@@ -129,7 +129,7 @@ def process_concat(model):
                 data = numpy_helper.to_array(attr[0].t)
                 shape.append(np.asscalar(data))
 
-        print("concat node: {}, new_shape is: {}".format(node.name, shape))
+        print(f"concat node: {node.name}, new_shape is: {shape}")
 
         # find out the nodes need to be deleted.
         fuse_nodes = find_all_fused_nodes(model, node)
@@ -203,7 +203,7 @@ def fix_transpose(model):
         weight = numpy_helper.to_array(t[1])
         assert len(weight.shape) == 2
         weight = weight.transpose(perm)
-        new_weight = numpy_helper.from_array(weight, "%s_transposed" % t[1].name)
+        new_weight = numpy_helper.from_array(weight, f"{t[1].name}_transposed")
         model.graph.initializer.extend([new_weight])
         replace_input_arg(model, node.output[0], new_weight.name)
 

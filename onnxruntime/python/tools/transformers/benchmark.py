@@ -769,7 +769,7 @@ def main():
         try:
             os.mkdir(args.cache_dir)
         except OSError:
-            logger.error("Creation of the directory %s failed" % args.cache_dir)
+            logger.error(f"Creation of the directory {args.cache_dir} failed")
 
     enable_torch = "torch" in args.engines
     enable_torchscript = "torchscript" in args.engines

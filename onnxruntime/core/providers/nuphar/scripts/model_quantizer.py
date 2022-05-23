@@ -213,9 +213,7 @@ def quantize_matmul_2d_with_weight(
         input_dim = nf.get_initializer(qparam).shape[0]
         X = in_node.input[0]
         if quantized_inputs is not None:
-            quantized_inputs_key = "{}_{}_{}".format(
-                X, symmetric, "|".join([f"{k}:{v}" for (k, v) in x_qcfg])
-            )
+            quantized_inputs_key = f"{X}_{symmetric}_{'|'.join([f'{k}:{v}' for k, v in x_qcfg])}"
         if quantized_inputs is not None and quantized_inputs_key in quantized_inputs:
             scale_X, bias_X, Q_X, Q_X_sum_int32 = quantized_inputs[quantized_inputs_key]
         else:

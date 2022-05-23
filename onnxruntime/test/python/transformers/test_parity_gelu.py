@@ -96,11 +96,11 @@ def run(
         model.half()
 
     # Do not re-use onnx file from previous test since weights of model are random.
-    onnx_model_path = "./temp/gelu_{}_{}.onnx".format(formula, "fp16" if float16 else "fp32")
+    onnx_model_path = f"./temp/gelu_{formula}_{'fp16' if float16 else 'fp32'}.onnx"
     export_onnx(model, onnx_model_path, float16, hidden_size, device)
 
     if optimized:
-        optimized_onnx_path = "./temp/gelu_{}_opt_{}.onnx".format(formula, "fp16" if float16 else "fp32")
+        optimized_onnx_path = f"./temp/gelu_{formula}_opt_{'fp16' if float16 else 'fp32'}.onnx"
         use_gpu = float16 and not fp32_gelu_op
         optimize_onnx(
             onnx_model_path,

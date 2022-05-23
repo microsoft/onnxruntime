@@ -94,9 +94,7 @@ for submodule_line in submodule_lines:
                 "commitHash": commit,
                 "repositoryUrl": url,
             },
-            "comments": "git submodule at {}".format(
-                normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR))
-            ),
+            "comments": f"git submodule at {normalize_path_separators(os.path.relpath(absolute_path, REPO_DIR))}",
         }
     }
     registrations.append(registration)

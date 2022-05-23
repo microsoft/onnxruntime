@@ -63,9 +63,7 @@ def main():
     # run BERT training
     for config in configs[args.gpu_sku]:
         print(
-            "##### testing name - {}-{} #####".format(
-                "fp16" if config.enable_mixed_precision else "fp32", config.sequence_length
-            )
+            f"##### testing name - {'fp16' if config.enable_mixed_precision else 'fp32'}-{config.sequence_length} #####"
         )
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),

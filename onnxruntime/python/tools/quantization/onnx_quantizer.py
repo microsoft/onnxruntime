@@ -277,9 +277,7 @@ class ONNXQuantizer:
                 succ_nodes = self.model.get_children(next_node)
                 if len(succ_nodes) == 0:
                     raise ValueError(
-                        "Remove fake-quantized node pair Error: No successive nodes found for {}.".format(
-                            next_node.name
-                        )
+                        f"Remove fake-quantized node pair Error: No successive nodes found for {next_node.name}."
                     )
 
                 # TODO: convert it to the specified input_type
@@ -1184,9 +1182,7 @@ class ONNXQuantizer:
                 except StopIteration:
                     if model.ir_version < 4:
                         print(
-                            "Warning: invalid weight name {} found in the graph (not a graph input)".format(
-                                ini_tensor.name
-                            )
+                            f"Warning: invalid weight name {ini_tensor.name} found in the graph (not a graph input)"
                         )
 
         for input in graph.input:

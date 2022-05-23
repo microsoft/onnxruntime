@@ -137,7 +137,7 @@ class TestFusion(unittest.TestCase):
             optimized_model.topological_sort()
             os.remove(model_path)
 
-            model_name = "gpt2_attention_{}.onnx".format("add_opt" if add_order else "opt")
+            model_name = f"gpt2_attention_{'add_opt' if add_order else 'opt'}.onnx"
             self.verify_fusion(optimized_model, model_name)
 
     def test_megatron_gpt2_attention_fusion(self):

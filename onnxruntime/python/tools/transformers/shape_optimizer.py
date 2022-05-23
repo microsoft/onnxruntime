@@ -315,7 +315,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
                 return
 
             with tempfile.TemporaryDirectory() as temp_dir:
-                temp_file_name = "temp_{}.onnx".format(datetime.now().strftime("%m_%d-%H_%M_%S"))
+                temp_file_name = f"temp_{datetime.now().strftime('%m_%d-%H_%M_%S')}.onnx"
                 dir = "." if verbose else temp_dir
                 temp_file = os.path.join(dir, temp_file_name)
                 self.shape_optimization(

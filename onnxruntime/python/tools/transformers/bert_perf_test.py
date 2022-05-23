@@ -271,7 +271,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
     )
 
     print(
-        "Average latency = {} ms, Throughput = {} QPS".format(format(average_latency, ".2f"), format(throughput, ".2f"))
+        f"Average latency = {format(average_latency, '.2f')} ms, Throughput = {format(throughput, '.2f')} QPS"
     )
 
 

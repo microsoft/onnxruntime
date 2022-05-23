@@ -665,7 +665,7 @@ class GloballyAllowedTypesOpTypeImplFilter(OpTypeImplFilterInterface):
 
     def get_cpp_entries(self):
         return [
-            "ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES({});".format(", ".join(sorted(self._globally_allowed_types)))
+            f"ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES({', '.join(sorted(self._globally_allowed_types))});"
         ]
 
     def global_type_list(self):

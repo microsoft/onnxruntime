@@ -596,7 +596,7 @@ class Gpt2Helper:
                 latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug("PyTorch inference time = {} ms".format(format(average_latency, ".2f")))
+        logger.debug(f"PyTorch inference time = {format(average_latency, '.2f')} ms")
 
         return outputs, average_latency
 
@@ -628,7 +628,7 @@ class Gpt2Helper:
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug("OnnxRuntime Inference time = {} ms".format(format(average_latency, ".2f")))
+        logger.debug(f"OnnxRuntime Inference time = {format(average_latency, '.2f')} ms")
 
         return ort_outputs, average_latency
 
@@ -707,7 +707,7 @@ class Gpt2Helper:
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug("OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f")))
+        logger.debug(f"OnnxRuntime with IO binding inference time = {format(average_latency, '.2f')} ms")
 
         return ort_outputs, average_latency
 

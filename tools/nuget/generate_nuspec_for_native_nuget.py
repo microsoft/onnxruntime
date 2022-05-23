@@ -55,7 +55,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                     suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
                     if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name):
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/win-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + f'" target="runtimes/win-{cpu_arch}/native"/>'
                         )
         for cpu_arch in ["x86_64", "arm64"]:
             if child.name == get_package_name("osx", cpu_arch, ep):
@@ -67,7 +67,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                     is_versioned_dylib = re.match(r".*[\.\d+]+\.dylib$", child_file.name)
                     if child_file.is_file() and child_file.suffix == ".dylib" and not is_versioned_dylib:
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/osx.10.14-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + f'" target="runtimes/osx.10.14-{cpu_arch}/native"/>'
                         )
         for cpu_arch in ["x64", "aarch64"]:
             if child.name == get_package_name("linux", cpu_arch, ep):
@@ -81,7 +81,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
                         continue
                     if child_file.suffix == ".so" and is_this_file_needed(ep, child_file.name):
                         files_list.append(
-                            '<file src="' + str(child_file) + '" target="runtimes/linux-%s/native"/>' % cpu_arch
+                            '<file src="' + str(child_file) + f'" target="runtimes/linux-{cpu_arch}/native"/>'
                         )
 
         if child.name == "onnxruntime-android":

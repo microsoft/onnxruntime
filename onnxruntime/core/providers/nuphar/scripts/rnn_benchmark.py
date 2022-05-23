@@ -184,9 +184,7 @@ def perf_test(
     count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
     avg_rnn = top_n_avg(per_iter_cost, top_n)
     print(
-        "perf_rnn (with default threads) {}: run for {} iterations, top {} avg {:.3f} ms".format(
-            model_name, count, top_n, avg_rnn
-        )
+        f"perf_rnn (with default threads) {model_name}: run for {count} iterations, top {top_n} avg {avg_rnn:.3f} ms"
     )
 
     # run converted model in Nuphar, using specified threads

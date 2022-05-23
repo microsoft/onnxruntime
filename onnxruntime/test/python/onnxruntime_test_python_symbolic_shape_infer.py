@@ -111,7 +111,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         inferred_vis_names = {x.name for x in inferred_vis}
         assert vis_names == inferred_vis_names, (vis_names, inferred_vis_names)
         for vi, inferred_vi in zip(vis, inferred_vis):
-            assert vi == inferred_vi, "\n{}\n{}\n".format(vi, inferred_vi)
+            assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         assert False
 
     def test_unsqueeze_opset_11(self):

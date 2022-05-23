@@ -347,7 +347,7 @@ def main(args):
         )
         output_buffers = gpt2helper.get_output_buffers(max_output_shapes, device, args.precision == Precision.FLOAT16)
 
-    csv_filename = args.result_csv or "benchmark_result_{}.csv".format(datetime.now().strftime("%Y%m%d-%H%M%S"))
+    csv_filename = args.result_csv or f"benchmark_result_{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
     with open(csv_filename, mode="a", newline="") as csv_file:
         column_names = [
             "model_name",

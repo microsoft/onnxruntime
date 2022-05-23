@@ -155,7 +155,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             label_list = processor.get_labels()
             num_labels = len(label_list)
         except KeyError:
-            raise ValueError("Task not found: %s" % (data_args.task_name))
+            raise ValueError(f"Task not found: {data_args.task_name}")
 
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,

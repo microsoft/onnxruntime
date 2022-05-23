@@ -510,7 +510,7 @@ def do_pretrain(args):
         )
 
         for f_id in range(1, len(files)):
-            logger.info("data file %s" % (data_file))
+            logger.info(f"data file {data_file}")
 
             dataset_future = pool.submit(
                 create_pretraining_dataset,

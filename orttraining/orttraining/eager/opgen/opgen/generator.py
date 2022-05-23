@@ -283,7 +283,7 @@ class ORTGen:
                         writer.push_indent()
                     cpp_param = cpp_func.get_parameter(op_input)
                     supported_types = ",".join([type for type in onnx_op.input_types[idx]])
-                    writer.write("!IsSupportedType({}, {{{}}})".format(cpp_param.identifier.value, supported_types))
+                    writer.write(f"!IsSupportedType({cpp_param.identifier.value}, {{{supported_types}}})")
                     i += 1
             writer.writeline(") {")
             self._write_cpu_fall_back(writer, mapped_func)

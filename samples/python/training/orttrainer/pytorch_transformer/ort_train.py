@@ -18,9 +18,7 @@ def train(trainer, data_source, device, epoch, args, bptt=35):
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss / args.log_interval
             print(
-                "epoch {:3d} | {:5d}/{:5d} batches | loss {:5.2f}".format(
-                    epoch, batch, len(data_source) // bptt, cur_loss
-                )
+                f"epoch {epoch:3d} | {batch:5d}/{len(data_source) // bptt:5d} batches | loss {cur_loss:5.2f}"
             )
             total_loss = 0
 

@@ -6,7 +6,7 @@ from onnx.helper import make_graph, make_model, make_node, make_tensor, make_ten
 import onnxruntime
 
 if "TvmExecutionProvider" not in onnxruntime.get_available_providers():
-    raise AssertionError("Unable to find 'TvmExecutionProvider' in %r." % onnxruntime.get_available_providers())
+    raise AssertionError(f"Unable to find 'TvmExecutionProvider' in {onnxruntime.get_available_providers()!r}.")
 
 X = make_tensor_value_info("X", TensorProto.FLOAT, [None, None])
 A = make_tensor_value_info("A", TensorProto.FLOAT, [None, None])

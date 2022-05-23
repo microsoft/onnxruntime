@@ -62,7 +62,7 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
     """
 
     if not isinstance(tensor, onnx_proto.TensorProto):
-        raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+        raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
 
     if tensor.data_type == onnx_proto.TensorProto.FLOAT:
         tensor.data_type = onnx_proto.TensorProto.FLOAT16
@@ -179,7 +179,7 @@ def convert_float_to_float16(
             pass
 
     if not isinstance(model, onnx_proto.ModelProto):
-        raise ValueError("Expected model type is an ONNX ModelProto but got %s" % type(model))
+        raise ValueError(f"Expected model type is an ONNX ModelProto but got {type(model)}")
 
     # create blocklists
     if op_block_list is None:
@@ -375,7 +375,7 @@ def convert_float_to_float16(
 def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=65504.0):
     """Measure the maximum absolute difference after converting a float tensor to float16."""
     if not isinstance(tensor, onnx_proto.TensorProto):
-        raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+        raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
     if tensor.data_type != onnx_proto.TensorProto.FLOAT:
         raise ValueError("Expected tensor data type is float.")
 

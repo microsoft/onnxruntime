@@ -356,7 +356,7 @@ def list_files(prefix, path):
 
 def amd_hipify(config_build_dir):
     # determine hipify script path now to avoid doing so concurrently in the thread pool
-    print("Using %s" % get_hipify_path())
+    print(f"Using {get_hipify_path()}")
     with concurrent.futures.ThreadPoolExecutor() as executor:
         cuda_path = os.path.join(contrib_ops_path, "cuda")
         rocm_path = os.path.join(config_build_dir, "amdgpu", contrib_ops_path, "rocm")

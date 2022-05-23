@@ -16,7 +16,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
             abs_other = torch.abs(other)
             max_atol = torch.max(abs_diff - rtol * abs_other)
             max_rtol = torch.max((abs_diff - atol) / abs_other)
-            raise AssertionError("The maximum atol is {!r}, maximum rtol is {!r}.".format(max_atol, max_rtol))
+            raise AssertionError(f"The maximum atol is {max_atol!r}, maximum rtol is {max_rtol!r}.")
 
     def assert_gradients_match_and_reset_gradient(
         self, ort_model, pt_model, none_pt_params=None, reset_gradient=True, rtol=1e-05, atol=1e-06
@@ -69,11 +69,11 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         onnx_graph_inf = ort_model._torch_module._execution_manager._training_manager._onnx_models.exported_model
         onnx_graph_train = ort_model._torch_module._execution_manager._training_manager._onnx_models.optimized_model
         if debug:
-            with open("debug_%s_ortmodule_infer.onnx" % name, "wb") as f:
+            with open(f"debug_{name}_ortmodule_infer.onnx", "wb") as f:
                 f.write(onnx_graph_inf.SerializeToString())
-            with open("debug_%s_ortmodule_train.onnx" % name, "wb") as f:
+            with open(f"debug_{name}_ortmodule_train.onnx", "wb") as f:
                 f.write(onnx_graph_train.SerializeToString())
-        self.assertIn('op_type: "%s"' % name, str(onnx_graph_inf))
+        self.assertIn(f'op_type: "{name}"', str(onnx_graph_inf))
         for onnx_model in [onnx_graph_inf, onnx_graph_train]:
             for oimp in onnx_model.opset_import:
                 if oimp.domain == "":
@@ -81,10 +81,10 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         if op_grad_type is not None:
             if isinstance(op_grad_type, tuple):
                 text = str(onnx_graph_train)
-                if all(map(lambda op: ('op_type: "%s"' % op) not in text, op_grad_type)):
-                    raise AssertionError("Operator {} not found in {}.".format(" or ".join(op_grad_type), text))
+                if all(map(lambda op: (f'op_type: "{op}"') not in text, op_grad_type)):
+                    raise AssertionError(f"Operator {' or '.join(op_grad_type)} not found in {text}.")
             else:
-                self.assertIn('op_type: "%s"' % op_grad_type, str(onnx_graph_train))
+                self.assertIn(f'op_type: "{op_grad_type}"', str(onnx_graph_train))
 
     def get_torch_model_name(self, name, device):
         def from_numpy(v, device=None, requires_grad=False):
@@ -132,7 +132,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
 
             return TestGatherElement, "GatherElementsGrad", dict(rtol=1e-04, atol=1e-05)
 
-        raise AssertionError("Unexpected name=%r." % name)
+        raise AssertionError(f"Unexpected name={name!r}.")
 
     def test_onnx_ops(self):
         for name in ["GatherElements", "Softmax"]:

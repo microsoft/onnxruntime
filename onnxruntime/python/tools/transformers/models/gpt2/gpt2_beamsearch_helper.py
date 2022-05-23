@@ -796,7 +796,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug("OnnxRuntime Inference time = {} ms".format(format(average_latency, ".2f")))
+        logger.debug(f"OnnxRuntime Inference time = {format(average_latency, '.2f')} ms")
 
         return ort_outputs, average_latency
 
@@ -903,7 +903,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             latency.append(time.time() - start)
 
         average_latency = sum(latency) * 1000 / len(latency)
-        logger.debug("OnnxRuntime with IO binding inference time = {} ms".format(format(average_latency, ".2f")))
+        logger.debug(f"OnnxRuntime with IO binding inference time = {format(average_latency, '.2f')} ms")
 
         return ort_outputs, average_latency
 

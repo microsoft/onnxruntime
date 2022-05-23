@@ -87,9 +87,7 @@ def run(arg_list, cwd=None):
     import subprocess
 
     log.info(
-        "Running subprocess in '{}'\n  {}".format(
-            cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list])
-        )
+        f"Running subprocess in '{cwd or os.getcwd()}'\n  {' '.join([shlex.quote(arg) for arg in arg_list])}"
     )
 
     return subprocess.run(arg_list, check=True, cwd=cwd)

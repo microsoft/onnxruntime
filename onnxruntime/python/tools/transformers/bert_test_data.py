@@ -126,11 +126,11 @@ def output_test_data(dir: str, inputs: np.ndarray):
         try:
             os.mkdir(dir)
         except OSError:
-            print("Creation of the directory %s failed" % dir)
+            print(f"Creation of the directory {dir} failed")
         else:
-            print("Successfully created the directory %s " % dir)
+            print(f"Successfully created the directory {dir} ")
     else:
-        print("Warning: directory %s existed. Files will be overwritten." % dir)
+        print(f"Warning: directory {dir} existed. Files will be overwritten.")
 
     index = 0
     for name, data in inputs.items():

@@ -149,11 +149,11 @@ def run(
         model.half()
 
     # Do not re-use onnx file from previous test since weights of model are random.
-    onnx_model_path = "./temp/layer_norm_{}_formula{}.onnx".format("fp16" if float16 else "fp32", formula)
+    onnx_model_path = f"./temp/layer_norm_{'fp16' if float16 else 'fp32'}_formula{formula}.onnx"
     export_onnx(model, onnx_model_path, float16, hidden_size, device)
 
     if optimized:
-        optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format("fp16" if float16 else "fp32", formula)
+        optimized_onnx_path = f"./temp/layer_norm_{'fp16' if float16 else 'fp32'}_formula{formula}_opt.onnx"
         if (not float16) or cast_fp16:
             optimize_onnx(
                 onnx_model_path,

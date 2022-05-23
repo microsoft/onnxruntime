@@ -88,7 +88,7 @@ def create_config_from_onnx_models(model_files: typing.Iterable[pathlib.Path], o
             for opset in sorted(required_ops[domain].keys()):
                 ops = required_ops[domain][opset]
                 if ops:
-                    out.write("{};{};{}\n".format(domain, opset, ",".join(sorted(ops))))
+                    out.write(f"{domain};{opset};{','.join(sorted(ops))}\n")
 
 
 def main():

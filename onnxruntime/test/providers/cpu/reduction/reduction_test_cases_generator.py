@@ -62,7 +62,7 @@ def PrintResult(op, axes, keepdims, res):
     print(" // expected values")
     print("{", end="")
     for i in range(0, res.size):
-        print("%5.6ff," % res.item(i))
+        print(f"{res.item(i):5.6f}f,")
 
     print("})},")
 
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     print("{")
     for i in range(0, input_data.size):
         print(
-            "%5.6ff," % input_data.item(i),
+            f"{input_data.item(i):5.6f}f,",
         )
     print("},")
     print("// input_dims")

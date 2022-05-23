@@ -150,7 +150,7 @@ def main():
 
     subprocess.run(docker_run_cmd, check=True)
 
-    print("Finished building Android package at '{}'.".format(output_dir / "aar_out"))
+    print(f"Finished building Android package at '{output_dir / 'aar_out'}'.")
 
 
 if __name__ == "__main__":
