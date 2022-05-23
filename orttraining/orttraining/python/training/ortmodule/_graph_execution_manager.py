@@ -309,7 +309,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                     # TODO: pass current torch stream into backend.
                     # Currently, fix the compute stream onto default stream, aligned with CUDA EP.
                     default_stream_object_ptr = "0"
+                    fp16_enable = "false"
+                    if os.getenv('ORT_TENSORRT_FP16_ENABLE', 'false').lower() in ['true', '1', 'yes']:
+                        fp16_enable = "true"
                     trt_provider_option_map = {
+                        "trt_fp16_enable": fp16_enable,
                         "device_id": str(self._device.index),
                         "has_user_compute_stream" : "true",
                         "user_compute_stream" : default_stream_object_ptr
