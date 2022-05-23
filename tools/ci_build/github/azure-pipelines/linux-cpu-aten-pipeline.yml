@@ -58,7 +58,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuildaten \
-            bash -c "python3 -m pip install /onnxruntime_src/onnxruntime/python/torch_cpp_extensions && \
+            bash -c "/opt/python/cp38-cp38/bin/python3 -m pip install /onnxruntime_src/onnxruntime/python/torch_cpp_extensions && \
               /build/launch_test.py --cmd_line_with_args 'python /onnxruntime_src/onnxruntime/test/python/contrib_ops/aten_op_tests.py' --cmd /build"
       workingDirectory: $(Build.SourcesDirectory)
 
