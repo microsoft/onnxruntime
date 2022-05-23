@@ -94,7 +94,7 @@ class OrtOpTests(unittest.TestCase):
                     break
 
         # The ONNX graph to run contains ATen Op.
-        assert any(node.op_type == "ATen" for node in exported_model.graph.node)
+        assert all(node.op_type == "ATen" for node in exported_model.graph.node)
 
         init_aten_op_executor()
 
