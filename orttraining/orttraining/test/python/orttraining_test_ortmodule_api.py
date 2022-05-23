@@ -1086,7 +1086,25 @@ def test_export_correctness_pool2d(pool_type, stride):
 @pytest.mark.parametrize("operator", ["min", "max"])
 @pytest.mark.parametrize("dim", [None, 0, -1])
 @pytest.mark.parametrize("keepdim", [True, False])
-def test_gradient_correctness_max(operator, dim, keepdim):
+@pytest.mark.parametrize(
+    "data_type",
+    [
+        torch.float,
+        torch.float16,
+        pytest.param(
+            torch.bfloat16,
+            marks=[
+                pytest.mark.skipif(
+                    LooseVersion(torch.__version__) < LooseVersion("1.10.0"),
+                    reason="PyTorch 1.9 incompatible",
+                )
+            ],
+        ),
+    ],
+)
+def test_gradient_correctness_minmax(operator, dim, keepdim, data_type):
+    if dim is None and data_type == torch.bfloat16:
+        pytest.skip("Where Op that doesn't support BFloat16 before OpSet 16 is in gradient graph for this case.")
     func = getattr(torch, operator)
 
     class NeuralNetMax(torch.nn.Module):
@@ -1108,7 +1126,7 @@ def test_gradient_correctness_max(operator, dim, keepdim):
         return prediction, indices
 
     for _ in range(10):
-        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
+        pt_input = torch.rand((N, C, D), dtype=data_type, device=device, requires_grad=True)
         ort_input = copy.deepcopy(pt_input)
         pt_prediction, pt_indices = run_step(pt_model, pt_input)
         ort_prediction, ort_indices = run_step(ort_model, ort_input)
