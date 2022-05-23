@@ -162,9 +162,9 @@ set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   if (onnxruntime_MINIMAL_BUILD)
     list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs
-      "${ONNXRUNTIME_ROOT}/training_ops/cpu/aten_ops/aten_op.h"
-      "${ONNXRUNTIME_ROOT}/training_ops/cpu/aten_ops/aten_op.cc"
-      "${ONNXRUNTIME_ROOT}/training_ops/cpu/aten_ops/aten_op_executor.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op.h"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
     )
   endif()
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -345,7 +345,7 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
   )
-  
+
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
   file(GLOB_RECURSE onnxruntime_providers_cuda_shared_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
@@ -363,7 +363,7 @@ if (onnxruntime_USE_CUDA)
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     if (onnxruntime_MINIMAL_BUILD)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
-        "${ONNXRUNTIME_ROOT}/training_ops/cuda/aten_ops/aten_op.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -762,12 +762,12 @@ if (onnxruntime_USE_OPENVINO)
   # Header paths
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
- 
+
   if (OPENVINO_2022_1)
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
   list (OV_20_LIBS openvino::frontend::onnx openvino::runtime)
   endif()
- 
+
   if (WIN32)
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()
@@ -1303,7 +1303,7 @@ if (onnxruntime_USE_ROCM)
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     if (onnxruntime_MINIMAL_BUILD)
       list(REMOVE_ITEM onnxruntime_rocm_contrib_ops_cc_srcs
-        "${ONNXRUNTIME_ROOT}/training_ops/rocm/aten_ops/aten_op.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/aten_ops/aten_op.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -1472,4 +1472,3 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
           FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-

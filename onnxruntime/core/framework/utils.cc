@@ -23,7 +23,7 @@
 #include "core/framework/orttraining_partial_executor.h"
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
@@ -788,7 +788,7 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
     return true;
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" &&
       node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();

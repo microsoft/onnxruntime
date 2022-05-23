@@ -30,7 +30,7 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 
-#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
@@ -1015,7 +1015,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
   });
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   m.def("register_aten_op_executor",
         [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
           size_t is_tensor_argument_address_int, aten_op_executor_address_int;
@@ -1253,7 +1253,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
             ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
           })
-      .def("add_external_initializers", [](PySessionOptions* options, py::list& names, 
+      .def("add_external_initializers", [](PySessionOptions* options, py::list& names,
                                                     const py::list& ort_values) -> void {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
           const auto init_num = ort_values.size();

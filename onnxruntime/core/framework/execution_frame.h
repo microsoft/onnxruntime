@@ -51,7 +51,7 @@ class IExecutionFrame {
   const OrtValue* GetNodeInputOrOutputMLValue(int index) const;
   OrtValue* GetMutableNodeInputOrOutputMLValue(int index);
 
-#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
 #endif
@@ -76,7 +76,7 @@ class IExecutionFrame {
 
   /**
    * write the output values to the 'fetches' vector
-   * Don't access the values after SessionState is destroyed 
+   * Don't access the values after SessionState is destroyed
    */
   Status GetOutputs(std::vector<OrtValue>& fetches);
 
