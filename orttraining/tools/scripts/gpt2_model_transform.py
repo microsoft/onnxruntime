@@ -129,7 +129,7 @@ def process_concat(model):
                 data = numpy_helper.to_array(attr[0].t)
                 shape.append(np.asscalar(data))
 
-        print("concat node: %s, new_shape is: %s" % (node.name, shape))
+        print("concat node: {}, new_shape is: {}".format(node.name, shape))
 
         # find out the nodes need to be deleted.
         fuse_nodes = find_all_fused_nodes(model, node)

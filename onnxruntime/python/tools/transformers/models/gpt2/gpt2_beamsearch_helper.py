@@ -220,7 +220,7 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
                 input_unfinished_sents.view(-1).nonzero(as_tuple=False).view(-1)
             ]
 
-            past = tuple([p.index_select(1, unfinished_index_relative_to_last_unfinished) for p in past])
+            past = tuple(p.index_select(1, unfinished_index_relative_to_last_unfinished) for p in past)
 
         result = super().forward(
             input_ids_unfinished_flat.view(-1, input_ids_unfinished_flat.size(-1)),

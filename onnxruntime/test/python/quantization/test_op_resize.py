@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -133,8 +132,8 @@ class TestOpResize(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_uint8_path = "resize_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_uint8_qdq_path = "resize_{}{}_qdq.onnx".format(activation_type_str, weight_type_str)
+        model_uint8_path = f"resize_{activation_type_str}{weight_type_str}.onnx"
+        model_uint8_qdq_path = f"resize_{activation_type_str}{weight_type_str}_qdq.onnx"
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {"input": [1, 2, 26, 42]})

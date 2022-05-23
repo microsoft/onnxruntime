@@ -24,7 +24,7 @@ def parse_args():
     args = parser.parse_args()
 
     if not os.path.isdir(args.ort_root):
-        raise argparse.ArgumentError(root_arg, "{} is not a valid directory".format(args.ort_root))
+        raise argparse.ArgumentError(root_arg, f"{args.ort_root} is not a valid directory")
 
     return args
 
@@ -120,7 +120,7 @@ def find_potential_issues(root_dir, op_to_opset):
             if op.startswith('"') and op.endswith('"'):
                 op = domain + "." + op[1:-1]
             else:
-                log.error("Symbolic name of '{}' found for op. Please check manually. File:{}".format(op, file))
+                log.error(f"Symbolic name of '{op}' found for op. Please check manually. File:{file}")
                 continue
 
             if op in op_to_opset:
@@ -132,7 +132,7 @@ def find_potential_issues(root_dir, op_to_opset):
                         )
                     )
             else:
-                log.error("Failed to find version information for {}. File:{}".format(op, file))
+                log.error(f"Failed to find version information for {op}. File:{file}")
 
 
 if __name__ == "__main__":

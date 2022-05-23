@@ -31,7 +31,7 @@ def SaveData(test_data_dir, prefix, variables, data_list, name_replacements=None
         data_list = [data_list]
     for (i, d), v in zip(enumerate(data_list), variables):
         SaveTensorProto(
-            os.path.join(test_data_dir, "{0}_{1}.pb".format(prefix, i)),
+            os.path.join(test_data_dir, f"{prefix}_{i}.pb"),
             v,
             d,
             name_replacements[v.uid] if name_replacements else None,

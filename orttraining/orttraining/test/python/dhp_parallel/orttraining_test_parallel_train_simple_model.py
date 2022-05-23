@@ -20,7 +20,7 @@ torch.manual_seed(0)
 
 class Mlp(nn.Module):
     def __init__(self, d_in, d_hidden, d_out):
-        super(Mlp, self).__init__()
+        super().__init__()
         self.linear0 = nn.Linear(d_in, d_hidden)
         self.linear1 = nn.Linear(d_hidden, d_hidden)
         self.linear2 = nn.Linear(d_hidden, d_hidden)

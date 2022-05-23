@@ -11,7 +11,7 @@ from .types import FbsTypeInfo, value_name_to_typestr
 
 
 def _create_op_key(domain: str, optype: str):
-    return "{}:{}".format(domain, optype)
+    return f"{domain}:{optype}"
 
 
 def _ort_constant_for_domain(domain: str):
@@ -26,7 +26,7 @@ def _ort_constant_for_domain(domain: str):
     domain_to_constant_map = {"ai.onnx": "kOnnxDomain", "ai.onnx.ml": "kMLDomain", "com.microsoft": "kMSDomain"}
 
     if domain not in domain_to_constant_map:
-        raise ValueError("Domain {} not found in map to ONNX Runtime constant. Please update map.".format(domain))
+        raise ValueError(f"Domain {domain} not found in map to ONNX Runtime constant. Please update map.")
 
     return domain_to_constant_map[domain]
 
@@ -76,7 +76,7 @@ class TypeUsageProcessor(ABC):
         :return: True is required. False if not.
         """
         # Not all operators have typed registrations, so this is optionally implemented by derived classes
-        raise RuntimeError("Did not expect processor for {} to have typed registrations.".format(self.name))
+        raise RuntimeError(f"Did not expect processor for {self.name} to have typed registrations.")
 
     def get_cpp_entry(self):
         """
@@ -196,7 +196,7 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         if 0 not in self._input_types.keys():
             # currently all standard typed registrations are for input 0.
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
-            raise RuntimeError("Expected typed registration to use type from input 0. Node:{}".format(self.name))
+            raise RuntimeError(f"Expected typed registration to use type from input 0. Node:{self.name}")
 
         return self.is_input_type_enabled(type_in_registration, 0, globally_allowed_types)
 
@@ -309,7 +309,7 @@ class OneHotProcessor(TypeUsageProcessor):
         self, type_in_registration: str, globally_allowed_types: typing.Optional[typing.Set[str]]
     ):
         # the OneHot registration involves a concatenation of the 3 types involved
-        reg_types = tuple([_reg_type_to_cpp_type(reg_type) for reg_type in _split_reg_types(type_in_registration)])
+        reg_types = tuple(_reg_type_to_cpp_type(reg_type) for reg_type in _split_reg_types(type_in_registration))
         if globally_allowed_types is not None:
             return all(reg_type in globally_allowed_types for reg_type in reg_types)
         else:
@@ -327,7 +327,7 @@ class OneHotProcessor(TypeUsageProcessor):
         self._triples.clear()
         aggregate_info = json.loads(entry)
         if "custom" in aggregate_info:
-            self._triples = set([tuple(triple) for triple in aggregate_info["custom"]])
+            self._triples = {tuple(triple) for triple in aggregate_info["custom"]}
 
 
 def _create_operator_type_usage_processors():
@@ -597,7 +597,7 @@ class OperatorTypeUsageManager:
         for key in sorted(self._operator_processors.keys()):
             entry = self._operator_processors[key].to_config_entry()
             if entry:
-                print("{} -> {}".format(key, entry))
+                print(f"{key} -> {entry}")
 
                 # roundtrip test to validate that we can initialize the processor from the entry and get the
                 # same values back

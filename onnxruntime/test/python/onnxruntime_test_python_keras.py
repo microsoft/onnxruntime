@@ -16,12 +16,12 @@ import onnxruntime as onnxrt
 
 class ScaledTanh(Layer):
     def __init__(self, alpha=1.0, beta=1.0, **kwargs):
-        super(ScaledTanh, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.alpha = alpha
         self.beta = beta
 
     def build(self, input_shape):
-        super(ScaledTanh, self).build(input_shape)
+        super().build(input_shape)
 
     def call(self, x):
         return self.alpha * K.tanh(self.beta * x)

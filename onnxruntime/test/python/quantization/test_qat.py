@@ -305,12 +305,12 @@ def compare_two_models(model_1, model_2):
                 node_found = True
                 if node_2.input != node_1.input or node_2.output != node_1.output:
                     check_1 = False
-                    print("Error: Node {} in test model dismatch with the expected model.".format(node_2.name))
+                    print(f"Error: Node {node_2.name} in test model dismatch with the expected model.")
                 break
 
         if not node_found:
             check_1 = False
-            print("Error:Node {} in the expected model not found in test model.".format(node_1.name))
+            print(f"Error:Node {node_1.name} in the expected model not found in test model.")
             break
 
     # check initializers:
@@ -324,13 +324,13 @@ def compare_two_models(model_1, model_2):
                 if not np.array_equal(init1_arr, init2_arr):
                     check_2 = False
                     print(
-                        "Error:  Initializer {} in test model dismatches with the expected model.".format(init_2.name)
+                        f"Error:  Initializer {init_2.name} in test model dismatches with the expected model."
                     )
                 break
 
         if not init_found:
             check_2 = False
-            print("Error: Initializer {} in the expected model not found in test model.".format(init_1.name))
+            print(f"Error: Initializer {init_1.name} in the expected model not found in test model.")
             break
 
     return check_1 and check_2
@@ -366,7 +366,7 @@ class TestQAT(unittest.TestCase):
             qat_support_model_actual = quantizer.remove_fake_quantized_nodes()
 
             assert compare_two_models(qat_support_models_expected[i], qat_support_model_actual)
-            print("TEST_MODEL {} finished:  ".format(i) + qat_support_model_names[i])
+            print(f"TEST_MODEL {i} finished:  " + qat_support_model_names[i])
 
 
 if __name__ == "__main__":

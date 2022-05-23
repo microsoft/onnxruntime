@@ -9,7 +9,7 @@ from .debug_options import DebugOptions
 from ._fallback import _FallbackManager
 
 
-class GraphExecutionManagerFactory(object):
+class GraphExecutionManagerFactory:
     def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         self._training_manager = TrainingManager(module, debug_options, fallback_manager)
         self._inference_manager = InferenceManager(module, debug_options, fallback_manager)

@@ -105,7 +105,7 @@ def optimize_by_onnxruntime(
         assert "CUDAExecutionProvider" in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
-    logger.debug("Save optimized model by onnxruntime to {}".format(optimized_model_path))
+    logger.debug(f"Save optimized model by onnxruntime to {optimized_model_path}")
     return optimized_model_path
 
 
@@ -255,7 +255,7 @@ def optimize_model(
     # Remove the temporary model.
     if temp_model_path:
         os.remove(temp_model_path)
-        logger.debug("Remove tempoary model: {}".format(temp_model_path))
+        logger.debug(f"Remove tempoary model: {temp_model_path}")
 
     return optimizer
 

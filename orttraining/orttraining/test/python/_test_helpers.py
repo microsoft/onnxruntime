@@ -57,7 +57,7 @@ def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     assert isinstance(output_a, list) and isinstance(output_b, list), "output_a and output_b must be list of numbers"
     if len(output_a) != len(output_b):
         raise AssertionError(
-            "output_a and output_b must have the same length (%r != %r)." % (len(output_a), len(output_b))
+            "output_a and output_b must have the same length ({!r} != {!r}).".format(len(output_a), len(output_b))
         )
 
     # for idx in range(len(output_a)):
@@ -192,7 +192,7 @@ def _get_name(name):
     res = os.path.join(data, name)
     if os.path.exists(res):
         return res
-    raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+    raise FileNotFoundError(f"Unable to find '{name}' or '{rel}' or '{res}'")
 
 
 # Depending on calling backward() from which outputs, it's possible that grad of some weights are not calculated.
@@ -225,9 +225,9 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
     if not are_close:
         abs_diff = torch.abs(input - other)
         abs_other = torch.abs(other)
-        max_atol = torch.max((abs_diff - rtol * abs_other))
+        max_atol = torch.max(abs_diff - rtol * abs_other)
         max_rtol = torch.max((abs_diff - atol) / abs_other)
-        err_msg = "The maximum atol is {}, maximum rtol is {}".format(max_atol, max_rtol)
+        err_msg = f"The maximum atol is {max_atol}, maximum rtol is {max_rtol}"
         assert False, err_msg
 
 

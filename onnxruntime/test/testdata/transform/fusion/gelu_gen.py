@@ -20,7 +20,7 @@ X = helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", "seqlen"
 Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", "seqlen", 64])
 Z = helper.make_tensor_value_info("div", TensorProto.FLOAT, ["batch", "seqlen", 64])
 
-value = (0.01 * np.arange(64)).astype(np.float32).reshape((64))
+value = (0.01 * np.arange(64)).astype(np.float32).reshape(64)
 bias_initializer = numpy_helper.from_array(value, "input_bias")
 
 value = np.asarray([1.4142099618911743]).astype(np.float32).reshape(())

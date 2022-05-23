@@ -15,7 +15,7 @@ from .model_desc_validation import _ORTTrainerModelDesc
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 
-class TrainStepInfo(object):
+class TrainStepInfo:
     r"""Private class used to store runtime information from current train step.
 
     After every train step, :py:meth:`ORTTrainer.train_step` updates the internal instance of
@@ -59,7 +59,7 @@ class TrainStepInfo(object):
         self.step = step
 
 
-class ORTTrainer(object):
+class ORTTrainer:
     r"""Pytorch frontend for ONNX Runtime training
 
     Entry point that exposes the C++ backend of ORT as a Pytorch frontend.
@@ -587,7 +587,7 @@ class ORTTrainer(object):
         ]
         if unused_frozen_weights:
             raise RuntimeError(
-                "{} params from 'frozen_weights' not found in the ONNX model.".format(unused_frozen_weights)
+                f"{unused_frozen_weights} params from 'frozen_weights' not found in the ONNX model."
             )
 
         # Get loss name from model description
@@ -1256,7 +1256,7 @@ class ORTTrainer(object):
                 if state_key in initializer_names:
                     loaded_initializers[state_key] = state_value
                 elif strict:
-                    raise RuntimeError("Unexpected key: {} in state_dict[model][{}]".format(state_key, precision))
+                    raise RuntimeError(f"Unexpected key: {state_key} in state_dict[model][{precision}]")
 
         # update onnx model from loaded initializers
         self._update_onnx_model_initializers(loaded_initializers)
@@ -1321,9 +1321,9 @@ class ORTTrainer(object):
             missing_keys = list(keys1 - keys2)
             unexpected_keys = list(keys2 - keys1)
             if len(missing_keys) > 0:
-                raise RuntimeError("Missing keys: {} in {}".format(missing_keys, in_error_str))
+                raise RuntimeError(f"Missing keys: {missing_keys} in {in_error_str}")
             if len(unexpected_keys) > 0 and not allow_unexpected:
-                raise RuntimeError("Unexpected keys: {} in {}".format(unexpected_keys, in_error_str))
+                raise RuntimeError(f"Unexpected keys: {unexpected_keys} in {in_error_str}")
 
         def _check_model_key_mismatch(current_state_dict, state_dict, allow_unexpected=False):
             """Check if there is any mismatch in the model sub state dictionary between the two state_dicts"""
@@ -1342,7 +1342,7 @@ class ORTTrainer(object):
                 _mismatch_keys(
                     current_state_dict[_utils.state_dict_model_key()][precision_key],
                     state_dict[_utils.state_dict_model_key()][precision_key],
-                    "state_dict[model][{}]".format(precision_key),
+                    f"state_dict[model][{precision_key}]",
                     allow_unexpected,
                 )
 
@@ -1362,7 +1362,7 @@ class ORTTrainer(object):
                 _mismatch_keys(
                     current_state_dict[_utils.state_dict_optimizer_key()][model_state_key],
                     state_dict[_utils.state_dict_optimizer_key()][model_state_key],
-                    "state_dict[optimizer][{}]".format(model_state_key),
+                    f"state_dict[optimizer][{model_state_key}]",
                     allow_unexpected,
                 )
 
@@ -1517,7 +1517,7 @@ class ORTTrainer(object):
             state_dict = checkpoint.aggregate_checkpoints(paths, pytorch_format=False)
         else:
             # if aggregation is not required, there must only be a single file that needs to be loaded
-            assert len(paths) == 1, "Expected number of files to load: 1, got {}".format(len(paths))
+            assert len(paths) == 1, f"Expected number of files to load: 1, got {len(paths)}"
             state_dict = _checkpoint_storage.load(paths[0])
 
         # extract user dict from the saved checkpoint

@@ -28,7 +28,7 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # https://github.com/huggingface/transformers/blob/5bfcd0485ece086ebcbed2d008813037968a9e58/examples/run_glue.py#L128
 
     # Perform one full pass over the training set.
-    print("\n======== Epoch {:} / {:} with batch size {:} ========".format(epoch + 1, args.epochs, args.batch_size))
+    print(f"\n======== Epoch {epoch + 1} / {args.epochs} with batch size {args.batch_size} ========")
 
     # Measure how long the training epoch takes.
     t0 = time.time()
@@ -122,8 +122,8 @@ def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     avg_train_loss = total_loss / len(train_dataloader)
 
     epoch_time = time.time() - t0
-    print("\n  Average training loss: {0:.2f}".format(avg_train_loss))
-    print("  Training epoch took: {:.4f}s".format(epoch_time))
+    print(f"\n  Average training loss: {avg_train_loss:.2f}")
+    print(f"  Training epoch took: {epoch_time:.4f}s")
     return epoch_time
 
 
@@ -133,7 +133,7 @@ def test(model, validation_dataloader, device, args):
     # ========================================
     # After the completion of each training epoch, measure our performance on
     # our validation set.
-    print("\nRunning Validation with batch size {:} ...".format(args.test_batch_size))
+    print(f"\nRunning Validation with batch size {args.test_batch_size} ...")
 
     # Put the model in evaluation mode--the dropout layers behave differently
     # during evaluation.
@@ -189,8 +189,8 @@ def test(model, validation_dataloader, device, args):
     # Report the final accuracy for this validation run.
     epoch_time = time.time() - t0
     accuracy = eval_accuracy / nb_eval_steps
-    print("  Accuracy: {0:.2f}".format(accuracy))
-    print("  Validation took: {:.4f}s".format(epoch_time))
+    print(f"  Accuracy: {accuracy:.2f}")
+    print(f"  Validation took: {epoch_time:.4f}s")
     return epoch_time, accuracy
 
 
@@ -316,7 +316,7 @@ def flat_accuracy(preds, labels):
 def format_time(elapsed):
     """Takes a time in seconds and returns a string hh:mm:ss"""
     # Round to the nearest second.
-    elapsed_rounded = int(round((elapsed)))
+    elapsed_rounded = int(round(elapsed))
 
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))
@@ -452,12 +452,12 @@ def main():
         estimated_export = 0
         if args.epochs > 1:
             estimated_export = epoch_0_training - (total_training_time - epoch_0_training) / (args.epochs - 1)
-            print("  Estimated ONNX export took:               {:.4f}s".format(estimated_export))
+            print(f"  Estimated ONNX export took:               {estimated_export:.4f}s")
         else:
             print("  Estimated ONNX export took:               Estimate available when epochs > 1 only")
-        print("  Accumulated training without export took: {:.4f}s".format(total_training_time - estimated_export))
-    print("  Accumulated training took:                {:.4f}s".format(total_training_time))
-    print("  Accumulated validation took:              {:.4f}s".format(total_test_time))
+        print(f"  Accumulated training without export took: {total_training_time - estimated_export:.4f}s")
+    print(f"  Accumulated training took:                {total_training_time:.4f}s")
+    print(f"  Accumulated validation took:              {total_test_time:.4f}s")
 
 
 if __name__ == "__main__":

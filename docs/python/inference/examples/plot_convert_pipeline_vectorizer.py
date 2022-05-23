@@ -78,8 +78,8 @@ sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available
 import numpy
 
 inp, out = sess.get_inputs()[0], sess.get_outputs()[0]
-print("input name='{}' and shape={} and type={}".format(inp.name, inp.shape, inp.type))
-print("output name='{}' and shape={} and type={}".format(out.name, out.shape, out.type))
+print(f"input name='{inp.name}' and shape={inp.shape} and type={inp.type}")
+print(f"output name='{out.name}' and shape={out.shape} and type={out.type}")
 
 ##################################
 # We compute the predictions.

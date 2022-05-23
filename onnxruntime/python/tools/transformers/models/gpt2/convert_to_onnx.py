@@ -258,7 +258,7 @@ def get_onnx_model_size(onnx_path: str, use_external_data_format: bool):
     if not use_external_data_format:
         return os.path.getsize(onnx_path)
     else:
-        return sum([f.stat().st_size for f in Path(onnx_path).parent.rglob("*")])
+        return sum(f.stat().st_size for f in Path(onnx_path).parent.rglob("*"))
 
 
 def get_latency_name():
@@ -531,7 +531,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "nan_rate": parity_result["nan_rate"],
                 "top1_match_rate": parity_result["top1_match_rate"],
                 "top1_match_rate_per_run": parity_result["top1_match_rate_per_run"],
-                "onnx_size_in_MB": "{}".format(model_size_in_MB),
+                "onnx_size_in_MB": f"{model_size_in_MB}",
             }
             logger.info(f"result: {row}")
             result.update(row)

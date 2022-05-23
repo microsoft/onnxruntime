@@ -303,10 +303,10 @@ class BertOnnxModelTF(BertOnnxModel):
 
             temp = numpy_helper.to_array(initializer)
             if len(temp.shape) == 2:
-                logger.info("Found position embedding. name:{}, shape:{}".format(initializer.name, temp.shape))
+                logger.info(f"Found position embedding. name:{initializer.name}, shape:{temp.shape}")
                 position_embedding = initializer.name
             else:
-                logger.info("Failed to find position embedding. name:{}, shape:{}".format(initializer.name, temp.shape))
+                logger.info(f"Failed to find position embedding. name:{initializer.name}, shape:{temp.shape}")
                 return
 
             first_parent = self.get_parent(add_node, 0, output_name_to_node)
@@ -314,7 +314,7 @@ class BertOnnxModelTF(BertOnnxModel):
                 embeddings = self.get_2d_initializers_from_parent_subgraphs(first_parent)
                 if len(embeddings) != 2:
                     logger.warning(
-                        "Failed to find two embeddings (word and segment) from Add node. Found {}".format(embeddings)
+                        f"Failed to find two embeddings (word and segment) from Add node. Found {embeddings}"
                     )
                     return
 
@@ -323,10 +323,10 @@ class BertOnnxModelTF(BertOnnxModel):
                 for name, shape in embeddings.items():
                     if shape[0] == 2:
                         segment_embedding = name
-                        logger.info("Found segment embedding. name:{}, shape:{}".format(name, shape))
+                        logger.info(f"Found segment embedding. name:{name}, shape:{shape}")
                     else:
                         word_embedding = name
-                        logger.info("Found words embedding. name:{}, shape:{}".format(name, shape))
+                        logger.info(f"Found words embedding. name:{name}, shape:{shape}")
 
                 if word_embedding is None or segment_embedding is None:
                     logger.info("Failed to find both word and segment embedding")

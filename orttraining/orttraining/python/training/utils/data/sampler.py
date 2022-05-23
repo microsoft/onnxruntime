@@ -149,7 +149,7 @@ class LoadBalancingDistributedSampler:
         self.ordered_sample_complexities = None
 
         if random_level < 0.0 or random_level > 1.0:
-            raise ValueError("Invalid random level {}, shoule be in the range [0.0, 1.0]".format(random_level))
+            raise ValueError(f"Invalid random level {random_level}, shoule be in the range [0.0, 1.0]")
 
         self.random_level = random_level
         self.random_number = None
@@ -329,7 +329,7 @@ class LoadBalancingDistributedBatchSampler(Sampler):
             sub_indices = [index_chunks[i][rank] for i in chunk_indices]
             batches.append(self.batch_fn(sub_indices))
 
-        self.total_batch = max([len(b) for b in batches]) if not self.drop_last else min([len(b) for b in batches])
+        self.total_batch = max(len(b) for b in batches) if not self.drop_last else min(len(b) for b in batches)
 
         # here {len(batches[self.rank]) - self.total_batch} batches dropped for
         # rank {self.rank}

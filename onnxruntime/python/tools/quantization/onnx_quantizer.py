@@ -125,7 +125,7 @@ class ONNXQuantizer:
         self.opset_version = self.check_opset_version()
 
         if not self.mode in QuantizationMode:
-            raise ValueError("unsupported quantization mode {}".format(self.mode))
+            raise ValueError(f"unsupported quantization mode {self.mode}")
 
         self.quantization_params = self.calculate_quantization_params()
 
@@ -172,7 +172,7 @@ class ONNXQuantizer:
             self.extra_options,
         )
         sub_quanitzer.parent = self
-        sub_quanitzer.graph_scope = "{}{}/".format(self.graph_scope, graph_key)
+        sub_quanitzer.graph_scope = f"{self.graph_scope}{graph_key}/"
         sub_quanitzer.quantize_model()
         return sub_quanitzer.model.model.graph
 
@@ -188,11 +188,11 @@ class ONNXQuantizer:
         ]
         if len(graph_attrs) == 0:
             return node
-        node_name = node.name if node.name != "" else "{}_node_count_{}".format(node.op_type, len(self.new_nodes))
+        node_name = node.name if node.name != "" else f"{node.op_type}_node_count_{len(self.new_nodes)}"
         kwargs = {}
         for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
-                kv = {attr.name: self.quantize_subgraph(attr.g, "{}:{}".format(node_name, attr.name))}
+                kv = {attr.name: self.quantize_subgraph(attr.g, f"{node_name}:{attr.name}")}
             elif attr.type == onnx.AttributeProto.GRAPHS:
                 value = []
                 for subgraph in attr.graphs:
@@ -200,7 +200,7 @@ class ONNXQuantizer:
                         [
                             self.quantize_subgraph(
                                 subgraph,
-                                "{}:{}:{}".format(node_name, attr.name, len(value)),
+                                f"{node_name}:{attr.name}:{len(value)}",
                             )
                         ]
                     )
@@ -271,7 +271,7 @@ class ONNXQuantizer:
                 prev_node = self.model.get_parent(curr_node, 0)
                 if prev_node is None:
                     raise ValueError(
-                        "Remove fake-quantized node pair Error: Parent node is not found for {}.".format(curr_node.name)
+                        f"Remove fake-quantized node pair Error: Parent node is not found for {curr_node.name}."
                     )
 
                 succ_nodes = self.model.get_children(next_node)
@@ -346,7 +346,7 @@ class ONNXQuantizer:
         # do not quantize non-constant B matrices for matmul
         if self.q_matmul_const_b_only:
             if node.op_type == "MatMul" and (not self.find_initializer_in_path(node.input[1])):
-                print("Ignore MatMul due to non constant B: {}[{}]".format(self.graph_scope, node.name))
+                print(f"Ignore MatMul due to non constant B: {self.graph_scope}[{node.name}]")
                 return False
 
         return True
@@ -623,7 +623,7 @@ class ONNXQuantizer:
         """
         if use_scale is None or use_zeropoint is None:
             if self.quantization_params is None or param_name not in self.quantization_params:
-                logging.info('Quantization parameters for tensor:"{}" not specified'.format(param_name))
+                logging.info(f'Quantization parameters for tensor:"{param_name}" not specified')
                 return False, "", "", "", ""
 
             params = self.quantization_params[param_name]
@@ -747,7 +747,7 @@ class ONNXQuantizer:
         elif input_name in self.quantization_params:
             _, input_scale_name, _, _, _ = self._get_quantization_params(input_name)
         else:
-            raise ValueError("Expected {} to be in quantized value map for static quantization".format(input_name))
+            raise ValueError(f"Expected {input_name} to be in quantized value map for static quantization")
 
         inputscale_initializer = find_by_name(input_scale_name, self.model.initializer())
         input_scale = self.tensor_proto_to_array(inputscale_initializer)
@@ -901,7 +901,7 @@ class ONNXQuantizer:
                 # node should not be add this child level here
             else:
                 raise ValueError(
-                    "Invalid tensor name to quantize: {} @graph scope{}".format(node_input, self.graph_scope)
+                    f"Invalid tensor name to quantize: {node_input} @graph scope{self.graph_scope}"
                 )
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)

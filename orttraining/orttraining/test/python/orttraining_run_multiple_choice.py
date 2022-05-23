@@ -271,7 +271,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
 
             result = trainer.evaluate()
 
-            logger.info("***** Eval results {} *****".format(data_args.task_name))
+            logger.info(f"***** Eval results {data_args.task_name} *****")
             for key, value in result.items():
                 logger.info("  %s = %s", key, value)
 

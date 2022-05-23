@@ -277,19 +277,15 @@ class SymbolicShapeInference:
     def _preprocess(self, in_mp):
         self.out_mp_ = onnx.ModelProto()
         self.out_mp_.CopyFrom(in_mp)
-        self.graph_inputs_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
-        self.initializers_ = dict([(i.name, i) for i in self.out_mp_.graph.initializer])
-        self.known_vi_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
+        self.graph_inputs_ = {i.name: i for i in list(self.out_mp_.graph.input)}
+        self.initializers_ = {i.name: i for i in self.out_mp_.graph.initializer}
+        self.known_vi_ = {i.name: i for i in list(self.out_mp_.graph.input)}
         self.known_vi_.update(
-            dict(
-                [
-                    (
-                        i.name,
-                        helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)),
-                    )
+            {
+                        i.name:
+                        helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))
                     for i in self.out_mp_.graph.initializer
-                ]
-            )
+            }
         )
 
     def _merge_symbols(self, dims):
@@ -311,7 +307,7 @@ class SymbolicShapeInference:
                     return unique_dims[int_dim]
                 else:
                     if self.verbose_ > 0:
-                        logger.debug("dim {} has been mergd with dim {}".format(unique_dims[1:], unique_dims[0]))
+                        logger.debug(f"dim {unique_dims[1:]} has been mergd with dim {unique_dims[0]}")
                     return dims[0]
             else:
                 return None
@@ -460,14 +456,14 @@ class SymbolicShapeInference:
     def _onnx_infer_subgraph(self, node, subgraph, use_node_input=True, inc_subgraph_id=True):
         if self.verbose_ > 2:
             logger.debug(
-                "Inferencing subgraph of node {} with output({}...): {}".format(node.name, node.output[0], node.op_type)
+                f"Inferencing subgraph of node {node.name} with output({node.output[0]}...): {node.op_type}"
             )
         # node inputs are not passed directly to the subgraph
         # it's up to the node dispatcher to prepare subgraph input
         # for example, with Scan/Loop, subgraph input shape would be trimmed from node input shape
         # besides, inputs in subgraph could shadow implicit inputs
-        subgraph_inputs = set([i.name for i in list(subgraph.initializer) + list(subgraph.input)])
-        subgraph_implicit_input = set([name for name in self.known_vi_.keys() if not name in subgraph_inputs])
+        subgraph_inputs = {i.name for i in list(subgraph.initializer) + list(subgraph.input)}
+        subgraph_implicit_input = {name for name in self.known_vi_.keys() if not name in subgraph_inputs}
         tmp_graph = helper.make_graph(
             list(subgraph.node),
             "tmp",
@@ -506,9 +502,9 @@ class SymbolicShapeInference:
         subgraph.node.extend(symbolic_shape_inference.out_mp_.graph.node)
         # for new symbolic dims from subgraph output, add to main graph symbolic dims
         subgraph_shapes = [get_shape_from_value_info(o) for o in symbolic_shape_inference.out_mp_.graph.output]
-        subgraph_new_symbolic_dims = set(
-            [d for s in subgraph_shapes if s for d in s if type(d) == str and not d in self.symbolic_dims_]
-        )
+        subgraph_new_symbolic_dims = {
+            d for s in subgraph_shapes if s for d in s if type(d) == str and not d in self.symbolic_dims_
+        }
         new_dims = {}
         for d in subgraph_new_symbolic_dims:
             assert d in symbolic_shape_inference.symbolic_dims_
@@ -577,7 +573,7 @@ class SymbolicShapeInference:
         )
 
     def _new_symbolic_dim(self, prefix, dim):
-        new_dim = "{}_d{}".format(prefix, dim)
+        new_dim = f"{prefix}_d{dim}"
         if new_dim in self.suggested_merge_:
             v = self.suggested_merge_[new_dim]
             new_symbolic_dim = sympy.Integer(int(v)) if is_literal(v) else v
@@ -1632,7 +1628,7 @@ class SymbolicShapeInference:
                         return index
                     return bound + index
             except TypeError:
-                logger.warning("Cannot determine if {} < 0".format(index))
+                logger.warning(f"Cannot determine if {index} < 0")
             return index
 
         if get_opset(self.out_mp_) <= 9:
@@ -1689,7 +1685,7 @@ class SymbolicShapeInference:
                                 e = new_sympy_shape[i]
                         except Exception:
                             logger.warning(
-                                "Unable to determine if {} <= {}, treat as equal".format(e, new_sympy_shape[i])
+                                f"Unable to determine if {e} <= {new_sympy_shape[i]}, treat as equal"
                             )
                             e = new_sympy_shape[i]
 
@@ -2073,7 +2069,7 @@ class SymbolicShapeInference:
         prereq_for_node = {}  # map from node to all its inputs, including implicit ones in subgraph
 
         def get_prereq(node):
-            names = set(i for i in node.input if i)
+            names = {i for i in node.input if i}
             subgraphs = []
             if "If" == node.op_type:
                 subgraphs = [
@@ -2101,7 +2097,7 @@ class SymbolicShapeInference:
 
         # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
-        sorted_known_vi = set([i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)])
+        sorted_known_vi = {i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)}
         if any([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
             # Loop/Scan will have some graph output in graph inputs, so don't do topological sort
             sorted_nodes = self.out_mp_.graph.node
@@ -2191,9 +2187,9 @@ class SymbolicShapeInference:
                                     )
                                 )
                             else:
-                                logger.debug("  {}: sequence of {}".format(node.output[i_o], seq_cls_type))
+                                logger.debug(f"  {node.output[i_o]}: sequence of {seq_cls_type}")
                         else:
-                            logger.debug("  {}: {}".format(node.output[i_o], out_type_kind))
+                            logger.debug(f"  {node.output[i_o]}: {out_type_kind}")
                     continue
 
                 out_shape = get_shape_from_value_info(vi)

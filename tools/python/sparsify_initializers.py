@@ -17,7 +17,7 @@ from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 
-real_types = set((int(TensorProto.FLOAT), int(TensorProto.DOUBLE)))
+real_types = {int(TensorProto.FLOAT), int(TensorProto.DOUBLE)}
 
 
 def parse_arguments():

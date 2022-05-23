@@ -32,7 +32,7 @@ class _SupportedOpsChecker:
         self._ops = {}  # op to caveats
         self._ops_seen = set()
 
-        with open(filename, "r") as f:
+        with open(filename) as f:
             for line in f.readlines():
                 # we're looking for a markdown table with 2 columns. first is op name. second is caveats
                 # op name is domain:op

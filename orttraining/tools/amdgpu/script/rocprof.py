@@ -50,15 +50,15 @@ def get_seconds(time):
 
 
 def gpu_percent_time(activities):
-    return sum([float(a[4].replace("%", "")) for a in activities])
+    return sum(float(a[4].replace("%", "")) for a in activities)
 
 
 def gpu_absolute_time(activities):
-    return sum([get_seconds(a[2]) for a in activities])
+    return sum(get_seconds(a[2]) for a in activities)
 
 
 def gpu_kernel_calls(activities):
-    return sum([int(a[1]) for a in activities])
+    return sum(int(a[1]) for a in activities)
 
 
 lines = get_gpu_lines(args.input)

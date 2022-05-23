@@ -4,7 +4,6 @@
 
 ## Model testing is not complete.
 
-from __future__ import print_function
 import argparse
 import torch
 import onnxruntime_pybind11_state as torch_ort
@@ -20,7 +19,7 @@ dataset_root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "da
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)

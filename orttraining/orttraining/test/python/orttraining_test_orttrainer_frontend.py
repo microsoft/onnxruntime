@@ -1791,7 +1791,7 @@ def testORTTrainerOptionsDisabledAdasumFlag(test_input):
 def testORTTrainerUnusedInput():
     class UnusedInputModel(torch.nn.Module):
         def __init__(self):
-            super(UnusedInputModel, self).__init__()
+            super().__init__()
 
         def forward(self, x, y):
             return torch.mean(x)

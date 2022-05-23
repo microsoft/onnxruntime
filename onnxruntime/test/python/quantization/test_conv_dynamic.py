@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -74,7 +73,7 @@ class TestONNXModel(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8
         activation_type_str = "u8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "conv_bias.quant.{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"conv_bias.quant.{activation_type_str}{weight_type_str}.onnx"
 
         quantize_dynamic(
             model_fp32_path,

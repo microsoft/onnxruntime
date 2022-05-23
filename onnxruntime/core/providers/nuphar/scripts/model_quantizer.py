@@ -214,7 +214,7 @@ def quantize_matmul_2d_with_weight(
         X = in_node.input[0]
         if quantized_inputs is not None:
             quantized_inputs_key = "{}_{}_{}".format(
-                X, symmetric, "|".join(["{}:{}".format(k, v) for (k, v) in x_qcfg])
+                X, symmetric, "|".join([f"{k}:{v}" for (k, v) in x_qcfg])
             )
         if quantized_inputs is not None and quantized_inputs_key in quantized_inputs:
             scale_X, bias_X, Q_X, Q_X_sum_int32 = quantized_inputs[quantized_inputs_key]
@@ -368,7 +368,7 @@ def convert_matmul_model(
 
     qcfg_dict = {}
     if qcfg_json and not export_qcfg_json:
-        with open(qcfg_json, "r") as f:
+        with open(qcfg_json) as f:
             qcfg_dict = json.load(f)
 
     out_mp = onnx.ModelProto()

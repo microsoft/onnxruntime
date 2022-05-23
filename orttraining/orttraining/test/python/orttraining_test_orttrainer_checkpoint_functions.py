@@ -32,7 +32,7 @@ def _create_trainer(zero_enabled=False):
     return trainer
 
 
-class _training_session_mock(object):
+class _training_session_mock:
     """Mock object for the ORTTrainer _training_session member"""
 
     def __init__(self, model_states, optimizer_states, partition_info):
@@ -319,7 +319,7 @@ def test_load_state_dict_warns_when_model_optimizer_key_missing(state_dict, inpu
         with pytest.warns(UserWarning) as user_warning:
             trainer.load_state_dict(input_state_dict)
 
-    assert user_warning[0].message.args[0] == "Missing key: {} in state_dict".format(error_key)
+    assert user_warning[0].message.args[0] == f"Missing key: {error_key} in state_dict"
 
 
 @pytest.mark.parametrize("state_dict, input_state_dict, error_keys", _get_load_state_dict_strict_error_arguments())

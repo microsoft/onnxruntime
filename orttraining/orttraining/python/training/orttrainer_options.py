@@ -7,7 +7,7 @@ from . import PropagateCastOpsStrategy
 import onnxruntime as ort
 
 
-class ORTTrainerOptions(object):
+class ORTTrainerOptions:
     r"""Settings used by ONNX Runtime training backend
 
     The parameters are hierarchically organized to facilitate configuration through semantic groups
@@ -489,7 +489,7 @@ class ORTTrainerOptions(object):
     def __repr__(self):
         return "{%s}" % str(
             ", ".join(
-                "'%s': %s" % (k, repr(v))
+                "'{}': {}".format(k, repr(v))
                 for (k, v) in self.__dict__.items()
                 if k not in ["_original_opts", "_validated_opts", "_main_class_name"]
             )

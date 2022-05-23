@@ -61,7 +61,7 @@ print(prof_file)
 # Let's see what it contains.
 import json
 
-with open(prof_file, "r") as f:
+with open(prof_file) as f:
     sess_time = json.load(f)
 import pprint
 

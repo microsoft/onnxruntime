@@ -241,7 +241,7 @@ def dtype_torch_to_numpy(torch_dtype):
 
 class model_loss_cls(torch.nn.Module):
     def __init__(self, model, loss_fn):
-        super(model_loss_cls, self).__init__()
+        super().__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
 
@@ -254,7 +254,7 @@ class model_loss_cls(torch.nn.Module):
 
 class WrapModel(torch.nn.Module):
     def __init__(self, model, loss_fn, input_names):
-        super(WrapModel, self).__init__()
+        super().__init__()
         self.model_ = model
         self.loss_fn_ = loss_fn
         self.input_names_ = input_names
@@ -483,7 +483,7 @@ def create_ort_training_session_with_optimizer(
 
     unused_frozen_weights = [n for n in frozen_weights if n not in [i.name for i in model.graph.initializer]]
     if unused_frozen_weights:
-        raise RuntimeError("{} in frozen_weights not found in model weights.".format(unused_frozen_weights))
+        raise RuntimeError(f"{unused_frozen_weights} in frozen_weights not found in model weights.")
 
     weights_to_train = set()
     for initializer in model.graph.initializer:
@@ -562,7 +562,7 @@ def save_checkpoint(
     else:
         checkpoint_state_dict.update({"model": model.state_dict(include_optimizer_state)})
 
-    assert os.path.exists(checkpoint_dir), "ERROR: Checkpoint directory doesn't exist: {}".format(checkpoint_dir)
+    assert os.path.exists(checkpoint_dir), f"ERROR: Checkpoint directory doesn't exist: {checkpoint_dir}"
 
     checkpoint_name = get_checkpoint_name(
         checkpoint_prefix, model.deepspeed_zero_stage_, model.world_rank, model.world_size
@@ -570,7 +570,7 @@ def save_checkpoint(
     checkpoint_file = os.path.join(checkpoint_dir, checkpoint_name)
 
     if os.path.exists(checkpoint_file):
-        warnings.warn("{} already exists, overwriting.".format(checkpoint_file))
+        warnings.warn(f"{checkpoint_file} already exists, overwriting.")
 
     torch.save(checkpoint_state_dict, checkpoint_file)
 
@@ -586,7 +586,7 @@ def _load_single_checkpoint(model, checkpoint_dir, checkpoint_prefix, is_partiti
             + "checkpoint file exists for rank {} of {}."
         ).format(checkpoint_file, model.world_rank, model.world_size)
     else:
-        assert_msg = "Couldn't find checkpoint file {}.".format(checkpoint_file)
+        assert_msg = f"Couldn't find checkpoint file {checkpoint_file}."
 
     assert os.path.exists(checkpoint_file), assert_msg
 
@@ -660,7 +660,7 @@ class ORTTrainer:
         enable_adasum=False,
         optimized_model_filepath="",
     ):
-        super(ORTTrainer, self).__init__()
+        super().__init__()
         """
         Initialize ORTTrainer.
 
@@ -973,7 +973,7 @@ class ORTTrainer:
             if name in cur_initializers_names:
                 new_initializers[name] = state_dict[name].numpy()
             elif strict:
-                raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+                raise RuntimeError(f"Checkpoint tensor: {name} is not present in the model.")
 
         self._update_onnx_model_initializers(new_initializers)
 
@@ -1205,7 +1205,7 @@ class LossScaler:
         min_loss_scale=1.0,
         max_loss_scale=float(1 << 24),
     ):
-        super(LossScaler, self).__init__()
+        super().__init__()
         self.loss_scale_input_name_ = loss_scale_input_name
         self.is_dynamic_scale_ = is_dynamic_scale
         self.initial_loss_scale_ = loss_scale

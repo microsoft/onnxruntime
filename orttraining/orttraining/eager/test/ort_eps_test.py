@@ -18,7 +18,7 @@ import threading
 import time
 
 
-class OutputGrabber(object):
+class OutputGrabber:
     """
     Class used to grab standard output or another stream.
     """

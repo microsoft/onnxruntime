@@ -400,11 +400,11 @@ class TestNuphar(unittest.TestCase):
         # prepare feed
         feed = {}
         for i in range(4):
-            tp = onnx.load_tensor(os.path.join(bidaf_dir, "test_data_set_0", "input_{}.pb".format(i)))
+            tp = onnx.load_tensor(os.path.join(bidaf_dir, "test_data_set_0", f"input_{i}.pb"))
             feed[tp.name] = numpy_helper.to_array(tp)
 
         for model in [bidaf_opt_scan_model, bidaf_int8_scan_only_model]:
-            nuphar_settings = "nuphar_cache_path:{}".format(cache_dir)
+            nuphar_settings = f"nuphar_cache_path:{cache_dir}"
             for isa in ["avx", "avx2", "avx512"]:
                 # JIT cache happens when initializing session
                 sess = onnxrt.InferenceSession(

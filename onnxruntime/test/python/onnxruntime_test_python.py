@@ -911,22 +911,22 @@ class TestInferenceSession(unittest.TestCase):
         if sys.platform.startswith("win"):
             shared_library = "custom_op_library.dll"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         elif sys.platform.startswith("darwin"):
             shared_library = "libcustom_op_library.dylib"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         else:
             shared_library = "./libcustom_op_library.so"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
         if not os.path.exists(custom_op_model):
-            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
 
         so1 = onnxrt.SessionOptions()
         so1.register_custom_ops_library(shared_library)
@@ -1271,12 +1271,12 @@ class TestInferenceSession(unittest.TestCase):
             shared_library = "./libtest_execution_provider.so"
 
         if not os.path.exists(shared_library):
-            raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+            raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
         if not os.path.exists(custom_op_model):
-            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
 
         session_options = C.get_default_session_options()
         sess = C.InferenceSession(session_options, custom_op_model, True, True)

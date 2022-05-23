@@ -82,12 +82,12 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                         "EmbedLayerNormalization",
                     ]:
                         logger.debug(
-                            "First input for skiplayernorm: {}".format(parent.op_type if parent is not None else None)
+                            f"First input for skiplayernorm: {parent.op_type if parent is not None else None}"
                         )
                         continue
                 else:
                     logger.debug(
-                        "First input for skiplayernorm: {}".format(parent.op_type if parent is not None else None)
+                        f"First input for skiplayernorm: {parent.op_type if parent is not None else None}"
                     )
                     continue
             else:
@@ -261,10 +261,10 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(word_initializer)
         if len(temp.shape) == 2:
-            logger.info("Found word embedding. name:{}, shape:{}".format(word_initializer.name, temp.shape))
+            logger.info(f"Found word embedding. name:{word_initializer.name}, shape:{temp.shape}")
             word_embedding = word_initializer.name
         else:
-            logger.info("Failed to find word embedding. name:{}, shape:{}".format(word_initializer.name, temp.shape))
+            logger.info(f"Failed to find word embedding. name:{word_initializer.name}, shape:{temp.shape}")
             return False
 
         pos_initializer = self.get_initializer(add_node.input[1])
@@ -273,11 +273,11 @@ class BertOnnxModelKeras(BertOnnxModelTF):
             if len(temp.shape) == 3 and temp.shape[0] == 1:
                 tensor = numpy_helper.from_array(temp.reshape((temp.shape[1], temp.shape[2])), "position_embedding")
                 self.add_initializer(tensor)
-                logger.info("Found position embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape[1:]))
+                logger.info(f"Found position embedding. name:{pos_initializer.name}, shape:{temp.shape[1:]}")
                 position_embedding = "position_embedding"
             else:
                 logger.info(
-                    "Failed to find position embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape)
+                    f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}"
                 )
                 return False
         else:
@@ -294,11 +294,11 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
             temp = numpy_helper.to_array(pos_initializer)
             if len(temp.shape) == 2:
-                logger.info("Found word embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape))
+                logger.info(f"Found word embedding. name:{pos_initializer.name}, shape:{temp.shape}")
                 position_embedding = pos_initializer.name
             else:
                 logger.info(
-                    "Failed to find position embedding. name:{}, shape:{}".format(pos_initializer.name, temp.shape)
+                    f"Failed to find position embedding. name:{pos_initializer.name}, shape:{temp.shape}"
                 )
                 return False
 
@@ -314,11 +314,11 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
         temp = numpy_helper.to_array(segment_initializer)
         if len(temp.shape) == 2:
-            logger.info("Found segment embedding. name:{}, shape:{}".format(segment_initializer.name, temp.shape))
+            logger.info(f"Found segment embedding. name:{segment_initializer.name}, shape:{temp.shape}")
             segment_embedding = segment_initializer.name
         else:
             logger.info(
-                "Failed to find segment embedding. name:{}, shape:{}".format(segment_initializer.name, temp.shape)
+                f"Failed to find segment embedding. name:{segment_initializer.name}, shape:{temp.shape}"
             )
             return False
 
@@ -349,7 +349,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
 
                 mask_input_name = self.attention_mask.get_first_mask()
                 if unsqueeze_node.input[0] != mask_input_name:
-                    print("Cast input {} is not mask input {}".format(unsqueeze_node.input[0], mask_input_name))
+                    print(f"Cast input {unsqueeze_node.input[0]} is not mask input {mask_input_name}")
                     continue
 
                 unsqueeze_added_1 = onnx.helper.make_node(

@@ -86,7 +86,7 @@ def main():
         elif args.gpu_sku == "V100_16G":
             reference_csv = "bert_base.convergence.baseline.csv"
         else:
-            raise ValueError("Unrecognized gpu_sku {}".format(args.gpu_sku))
+            raise ValueError(f"Unrecognized gpu_sku {args.gpu_sku}")
 
         # verify output
         comparison_result = compare_results_files(

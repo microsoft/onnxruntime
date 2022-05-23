@@ -52,7 +52,7 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
 
     class UnsupportedInputModel(torch.nn.Module):
         def __init__(self):
-            super(UnsupportedInputModel, self).__init__()
+            super().__init__()
 
         def forward(self, point):
             return point.x * point.y

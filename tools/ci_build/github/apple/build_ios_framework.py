@@ -203,12 +203,12 @@ def parse_args():
     args = parser.parse_args()
 
     if not args.build_settings_file.resolve().is_file():
-        raise FileNotFoundError("Build config file {} is not a file.".format(args.build_settings_file.resolve()))
+        raise FileNotFoundError(f"Build config file {args.build_settings_file.resolve()} is not a file.")
 
     if args.include_ops_by_config is not None:
         include_ops_by_config_file = args.include_ops_by_config.resolve()
         if not include_ops_by_config_file.is_file():
-            raise FileNotFoundError("Include ops config file {} is not a file.".format(include_ops_by_config_file))
+            raise FileNotFoundError(f"Include ops config file {include_ops_by_config_file} is not a file.")
 
     return args
 

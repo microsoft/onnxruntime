@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 import shutil
 import pytest
@@ -21,7 +17,7 @@ import torch
 
 
 class BertModelTest(unittest.TestCase):
-    class BertModelTester(object):
+    class BertModelTester:
         def __init__(
             self,
             parent,

@@ -47,7 +47,7 @@ def check_op_type_order(testcase, model_to_check, ops):
         testcase.assertEqual(
             ops[node_idx],
             node.op_type,
-            "op {} is not in order. Expected: {}, Actual: {}".format(node_idx, ops[node_idx], node.op_type),
+            f"op {node_idx} is not in order. Expected: {ops[node_idx]}, Actual: {node.op_type}",
         )
 
 
@@ -63,7 +63,7 @@ def check_op_type_count(testcase, model_path, **kwargs):
         testcase.assertEqual(
             kwargs[op_type],
             optype2count[op_type],
-            "op_type {} count not same".format(op_type),
+            f"op_type {op_type} count not same",
         )
 
 

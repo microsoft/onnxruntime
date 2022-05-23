@@ -52,7 +52,7 @@ class _FallbackPolicy(IntFlag):
         return _FallbackPolicy.FALLBACK_DISABLE in self
 
 
-class _FallbackManager(object):
+class _FallbackManager:
     """Manages fallbacks based on incoming exceptions and specified policies
 
     The basic algorithm is based on a dictionary whose keys are the supported fallback policies

@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright (c) 2019 NVIDIA CORPORATION. All rights reserved.
 # Copyright 2018 The Google AI Language Team Authors and The HugginFace Inc. team.
 
@@ -15,9 +14,6 @@
 # limitations under the License.
 """BERT finetuning runner."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 # ==================
 import csv
@@ -240,7 +236,7 @@ def setup_training(args):
 
     if args.gradient_accumulation_steps < 1:
         raise ValueError(
-            "Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(args.gradient_accumulation_steps)
+            f"Invalid gradient_accumulation_steps parameter: {args.gradient_accumulation_steps}, should be >= 1"
         )
     if args.train_batch_size % args.gradient_accumulation_steps != 0:
         raise ValueError(
@@ -259,7 +255,7 @@ def setup_training(args):
         and os.path.exists(args.output_dir)
         and (os.listdir(args.output_dir) and os.listdir(args.output_dir) != ["logfile.txt"])
     ):
-        raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+        raise ValueError(f"Output directory ({args.output_dir}) already exists and is not empty.")
 
     if not args.resume_from_checkpoint:
         os.makedirs(args.output_dir, exist_ok=True)
@@ -283,10 +279,10 @@ def prepare_model_and_optimizer(args, device):
     else:
         if args.resume_step == -1:
             model_names = [f for f in os.listdir(args.output_dir) if f.endswith(".pt")]
-            args.resume_step = max([int(x.split(".pt")[0].split("_")[1].strip()) for x in model_names])
+            args.resume_step = max(int(x.split(".pt")[0].split("_")[1].strip()) for x in model_names)
         global_step = args.resume_step
 
-        checkpoint = torch.load(os.path.join(args.output_dir, "ckpt_{}.pt".format(global_step)), map_location="cpu")
+        checkpoint = torch.load(os.path.join(args.output_dir, f"ckpt_{global_step}.pt"), map_location="cpu")
         model.load_state_dict(checkpoint["model"], strict=False)
         if args.phase2:
             global_step -= args.phase1_end_step
@@ -439,7 +435,7 @@ def main():
     is_model_exported = False
 
     if is_main_process():
-        print("SEED {}".format(args.seed))
+        print(f"SEED {args.seed}")
 
     if args.do_train:
         if is_main_process():
@@ -494,7 +490,7 @@ def main():
 
             previous_file = data_file
 
-            print("Create pretraining_dataset with file {}...".format(data_file))
+            print(f"Create pretraining_dataset with file {data_file}...")
             train_data = pretraining_dataset(data_file, args.max_predictions_per_seq)
             train_sampler = RandomSampler(train_data)
             train_dataloader = DataLoader(
@@ -522,7 +518,7 @@ def main():
                 else:
                     data_file = files[f_id % num_files]
 
-                logger.info("file no %s file %s" % (f_id, previous_file))
+                logger.info("file no {} file {}".format(f_id, previous_file))
 
                 previous_file = data_file
 
@@ -534,7 +530,7 @@ def main():
                 #     args=(data_file, args.max_predictions_per_seq, shared_file_list, args, n_gpu)
                 # )
                 # thread.start()
-                print("Submit new data file {0} for the next iteration...".format(data_file))
+                print(f"Submit new data file {data_file} for the next iteration...")
                 dataset_future = pool.submit(
                     create_pretraining_dataset, data_file, args.max_predictions_per_seq, shared_file_list, args
                 )
@@ -639,7 +635,7 @@ def main():
                             average_loss /= torch.distributed.get_world_size()
                             torch.distributed.all_reduce(average_loss)
                         if is_main_process():
-                            logger.info("Total Steps:{} Final Loss = {}".format(training_steps, average_loss.item()))
+                            logger.info(f"Total Steps:{training_steps} Final Loss = {average_loss.item()}")
                     elif training_steps % (args.log_freq * args.gradient_accumulation_steps) == 0:
                         if is_main_process():
                             print(
@@ -663,10 +659,10 @@ def main():
                                 model.module if hasattr(model, "module") else model
                             )  # Only save the model it-self
                             if args.resume_step < 0 or not args.phase2:
-                                output_save_file = os.path.join(args.output_dir, "ckpt_{}.pt".format(global_step))
+                                output_save_file = os.path.join(args.output_dir, f"ckpt_{global_step}.pt")
                             else:
                                 output_save_file = os.path.join(
-                                    args.output_dir, "ckpt_{}.pt".format(global_step + args.phase1_end_step)
+                                    args.output_dir, f"ckpt_{global_step + args.phase1_end_step}.pt"
                                 )
                             if args.do_train:
                                 torch.save(
@@ -708,4 +704,4 @@ if __name__ == "__main__":
     now = time.time()
     args = main()
     if is_main_process():
-        print("Total time taken {}".format(time.time() - now))
+        print(f"Total time taken {time.time() - now}")

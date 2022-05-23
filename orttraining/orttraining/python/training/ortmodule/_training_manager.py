@@ -357,7 +357,7 @@ class TrainingManager(GraphExecutionManager):
         return False
 
     def __getstate__(self):
-        state = super(TrainingManager, self).__getstate__()
+        state = super().__getstate__()
 
         # Only top level classes are pickleable. So, _ORTModuleFunction is
         # not pickleable. So, let's not pickle it, and redefine it when
@@ -366,6 +366,6 @@ class TrainingManager(GraphExecutionManager):
         return state
 
     def __setstate__(self, state):
-        super(TrainingManager, self).__setstate__(state)
+        super().__setstate__(state)
 
         _utils.reinitialize_training_manager(self)

@@ -26,7 +26,7 @@ class GRU_Helper:
 
         required_inputs = ["X", "W", "R"]
         for i in required_inputs:
-            assert i in params, "Missing Required Input: {0}".format(i)
+            assert i in params, f"Missing Required Input: {i}"
 
         num_directions = params["W"].shape[0]
         sequence_length = params["X"].shape[0]

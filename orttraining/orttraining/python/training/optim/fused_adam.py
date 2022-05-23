@@ -77,7 +77,7 @@ class FusedAdam(torch.optim.Optimizer):
         # transformers AdamW. The input arguments also have the same defaults.
 
         defaults = dict(lr=lr, bias_correction=bias_correction, betas=betas, eps=eps, weight_decay=weight_decay)
-        super(FusedAdam, self).__init__(params, defaults)
+        super().__init__(params, defaults)
         self._adam_w_mode = adam_w_mode
         self._set_grad_none = set_grad_none
 
@@ -96,7 +96,7 @@ class FusedAdam(torch.optim.Optimizer):
                 for p in group["params"]:
                     p.grad = None
         else:
-            super(FusedAdam, self).zero_grad()
+            super().zero_grad()
 
     def step(self, closure=None):
         """Performs a single optimization step.

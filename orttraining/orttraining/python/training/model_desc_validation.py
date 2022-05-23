@@ -10,7 +10,7 @@ LOSS_SCALE_INPUT_IO_DESCRIPTION_NAME = "__loss_scale_input_name"
 GRADIENT_ACCUMULATION_IO_DESCRIPTION_NAME = "__gradient_accumulation_name"
 
 
-class _ORTTrainerModelDesc(object):
+class _ORTTrainerModelDesc:
     def __init__(self, model_desc):
         # Keep a copy of original input for debug
         self._original = dict(model_desc)

@@ -82,9 +82,9 @@ class FusionEmbedLayerNoMask(Fusion):
                         if node.op_type == "Attention":
                             self.attention = node
                             return True
-                    children_types = sorted([child.op_type for child in nodes])
+                    children_types = sorted(child.op_type for child in nodes)
             else:
-                children_types = sorted([child.op_type for child in children])
+                children_types = sorted(child.op_type for child in children)
 
             # Two Shape nodes might be merged by ORT
             if is_distil_bert:
@@ -229,11 +229,11 @@ class FusionEmbedLayerNoMask(Fusion):
                             /                  Add (optional, B=0)
                            /                    |
                         Gather (segment_ids) Unsqueeze (axes=0)
-                           \        |           |
-                            \     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
-                              \    /            |
+                           \\        |           |
+                            \\     Gather      Slice (data[1,512], starts=0, ends=*, axes=1, steps=1)
+                              \\    /            |
                                 Add          Gather 
-                                   \       /
+                                   \\       /
                                       Add
                                        |
                                 LayerNormalization

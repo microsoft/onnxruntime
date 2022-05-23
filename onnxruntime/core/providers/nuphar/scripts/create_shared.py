@@ -46,7 +46,7 @@ def gen_cache_version(input_dir):
     name = "ORTInternal_cache_version"
     with open(os.path.join(input_dir, name + ".cc"), "w") as cache_version_cc:
         header_file = os.path.join(os.path.dirname(os.path.realpath(__file__)), "NUPHAR_CACHE_VERSION")
-        print('#include "{}"'.format(header_file), file=cache_version_cc)
+        print(f'#include "{header_file}"', file=cache_version_cc)
         print('extern "C"', file=cache_version_cc)
         if is_windows():
             print("__declspec(dllexport)", file=cache_version_cc)

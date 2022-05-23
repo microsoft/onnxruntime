@@ -497,7 +497,7 @@ def export_onnx_model_from_pt(
     )
 
     if overwrite or not os.path.exists(onnx_model_path):
-        logger.info("Exporting ONNX model to {}".format(onnx_model_path))
+        logger.info(f"Exporting ONNX model to {onnx_model_path}")
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
@@ -631,7 +631,7 @@ def export_onnx_model_from_tf(
     tf_internal_model_path = onnx_model_path[:-5] if use_external_data_format else onnx_model_path
 
     if overwrite or not os.path.exists(tf_internal_model_path):
-        logger.info("Exporting ONNX model to {}".format(onnx_model_path))
+        logger.info(f"Exporting ONNX model to {onnx_model_path}")
         if not use_external_data_format:
             Path(tf_internal_model_path).parent.mkdir(parents=True, exist_ok=True)
 

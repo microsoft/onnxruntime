@@ -58,7 +58,7 @@ def run_with_ort(model_path, symbolic_dims={}, feeds=None, ort_test_case_dir=Non
             for i, (input_name, input) in enumerate(feeds.items()):
                 onnx.save_tensor(
                     onnx.numpy_helper.from_array(input, input_name),
-                    os.path.join(test_data_set_dir, "input_{0}.pb".format(i)),
+                    os.path.join(test_data_set_dir, f"input_{i}.pb"),
                 )
 
             output_names = [output.name for output in model.graph.output]
@@ -66,7 +66,7 @@ def run_with_ort(model_path, symbolic_dims={}, feeds=None, ort_test_case_dir=Non
             for i, (output_name, output) in enumerate(output_dict.items()):
                 onnx.save_tensor(
                     onnx.numpy_helper.from_array(output, output_name),
-                    os.path.join(test_data_set_dir, "output_{0}.pb".format(i)),
+                    os.path.join(test_data_set_dir, f"output_{i}.pb"),
                 )
 
         save_ort_test_case(ort_test_case_dir)

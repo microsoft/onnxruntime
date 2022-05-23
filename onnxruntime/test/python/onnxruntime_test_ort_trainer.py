@@ -685,9 +685,9 @@ class TestOrtTrainer(unittest.TestCase):
 
         loss, _ = trainer.train_step(data, target, torch.tensor([learningRate]))
 
-        assert (set([n.name for n in trainer.onnx_model_.graph.initializer]) - set(["bias_buffer"])) == set(
-            [n for n, t in model.named_parameters()]
-        )
+        assert ({n.name for n in trainer.onnx_model_.graph.initializer} - {"bias_buffer"}) == {
+            n for n, t in model.named_parameters()
+        }
 
     def testMNISTInitializerNamesWithInternalLoss(self):
         torch.manual_seed(1)
@@ -716,9 +716,9 @@ class TestOrtTrainer(unittest.TestCase):
 
         loss, _ = trainer.train_step(data, target)
 
-        assert set([n.name for n in trainer.onnx_model_.graph.initializer]) == set(
-            [n for n, t in model.named_parameters()]
-        )
+        assert {n.name for n in trainer.onnx_model_.graph.initializer} == {
+            n for n, t in model.named_parameters()
+        }
 
     def testMNISTFrozenWeight(self):
         torch.manual_seed(1)

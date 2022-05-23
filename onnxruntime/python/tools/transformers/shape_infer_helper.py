@@ -50,19 +50,15 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
     # override _preprocess() to avoid unnecessary model copy since ctor copies the model
     def _preprocess(self, in_mp):
         self.out_mp_ = in_mp
-        self.graph_inputs_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
-        self.initializers_ = dict([(i.name, i) for i in self.out_mp_.graph.initializer])
-        self.known_vi_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
+        self.graph_inputs_ = {i.name: i for i in list(self.out_mp_.graph.input)}
+        self.initializers_ = {i.name: i for i in self.out_mp_.graph.initializer}
+        self.known_vi_ = {i.name: i for i in list(self.out_mp_.graph.input)}
         self.known_vi_.update(
-            dict(
-                [
-                    (
-                        i.name,
-                        onnx.helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)),
-                    )
+            {
+                        i.name:
+                        onnx.helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))
                     for i in self.out_mp_.graph.initializer
-                ]
-            )
+            }
         )
 
     # Override _get_sympy_shape() in symbolic_shape_infer.py to ensure shape inference by giving the actual value of dynamic axis

@@ -17,7 +17,6 @@ registrations = []
 
 with open(
     os.path.join(REPO_DIR, "tools", "ci_build", "github", "linux", "docker", "Dockerfile.manylinux2014_cuda11"),
-    mode="r",
 ) as f:
     for line in f:
         if not line.strip():

@@ -293,7 +293,7 @@ def main():
     elif args.package_type == "zip":
         validate_zip(args)
     else:
-        print("Package type {} is not supported".format(args.package_type))
+        print(f"Package type {args.package_type} is not supported")
 
 
 if __name__ == "__main__":

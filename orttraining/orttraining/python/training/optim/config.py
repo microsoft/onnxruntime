@@ -1,7 +1,7 @@
 from enum import IntEnum, unique
 
 
-class _OptimizerConfig(object):
+class _OptimizerConfig:
     r"""Base class for optimizer configuration
 
     This class is not an optimizer, but a means to configure existing ones from ORT backend.

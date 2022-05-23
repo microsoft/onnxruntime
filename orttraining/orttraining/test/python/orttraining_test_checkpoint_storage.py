@@ -98,7 +98,7 @@ def _get_dict(separated_key):
     return test_dict, {"key": key} if len(separated_key) > 0 else dict(), expected_val
 
 
-class _CustomClass(object):
+class _CustomClass:
     """Custom object that encpsulates dummy values for loss, epoch and train_step"""
 
     def __init__(self):

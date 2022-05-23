@@ -61,12 +61,12 @@ class Gpt2Metric:
             for key in sorted(self.seq_len_latency.keys()):
                 average = statistics.mean(self.seq_len_latency[key]) * 1000.0
                 if key == 0:
-                    print("\t{}:         \t{:.2f} ms".format(key, average))
+                    print(f"\t{key}:         \t{average:.2f} ms")
                 else:
-                    print("\t[{}, {}]:\t{:.2f} ms".format(2**key, 2 ** (key + 1) - 1, average))
+                    print(f"\t[{2**key}, {2 ** (key + 1) - 1}]:\t{average:.2f} ms")
                 total += average * len(self.seq_len_latency[key])
                 count += len(self.seq_len_latency[key])
-            print("Average Latency: {:.2f} ms".format(total / count))
+            print(f"Average Latency: {total / count:.2f} ms")
 
     def diff_logits(self, baseline_logits, treatment_logits, is_empty_past: bool):
         diff = (baseline_logits - treatment_logits).abs().max()
@@ -190,7 +190,7 @@ class Gpt2Tester:
             add_tensor(input_tensors, self.past[i], "past_" + str(i))
 
         for i, tensor in enumerate(input_tensors):
-            with open(os.path.join(path, "input_{}.pb".format(i)), "wb") as f:
+            with open(os.path.join(path, f"input_{i}.pb"), "wb") as f:
                 f.write(tensor.SerializeToString())
 
         output_names = [output.name for output in session.get_outputs()]
@@ -198,7 +198,7 @@ class Gpt2Tester:
             tensor = numpy_helper.from_array(
                 output[i] if isinstance(output[i], numpy.ndarray) else output[i].clone().cpu().numpy()
             )
-            with open(os.path.join(path, "output_{}.pb".format(i)), "wb") as f:
+            with open(os.path.join(path, f"output_{i}.pb"), "wb") as f:
                 f.write(tensor.SerializeToString())
 
         print(f"Test data saved to directory {path}")

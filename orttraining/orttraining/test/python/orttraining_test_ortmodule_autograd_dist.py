@@ -44,7 +44,7 @@ class ReduceWithMarkDirtyFunction(torch.autograd.Function):
 
 class ReduceWithMarkDirtyModel(torch.nn.Module):
     def __init__(self, dim):
-        super(ReduceWithMarkDirtyModel, self).__init__()
+        super().__init__()
         self.reduce_op_ = ReduceWithMarkDirtyFunction.apply
         self.bias = Parameter(torch.empty(dim, device=torch.cuda.current_device(), dtype=torch.float))
 

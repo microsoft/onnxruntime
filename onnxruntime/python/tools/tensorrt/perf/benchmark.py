@@ -187,7 +187,7 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
     avg_latency_match = re.search("mean = (.*?) ms", target)
     if avg_latency_match:
         result["average_latency_ms"] = avg_latency_match.group(1)  # extract number
-    percentile_match = re.search("percentile\(90%\) = (.*?) ms", target)
+    percentile_match = re.search(r"percentile\(90%\) = (.*?) ms", target)
     if percentile_match:
         result["latency_90_percentile"] = percentile_match.group(1)  # extract number
     if mem_usage:
@@ -204,12 +204,12 @@ def get_latency_result(runtimes, batch_size):
 
     result = {
         "test_times": len(runtimes),
-        "latency_variance": "{:.2f}".format(latency_variance),
-        "latency_90_percentile": "{:.2f}".format(np.percentile(runtimes, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(np.percentile(runtimes, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(np.percentile(runtimes, 99) * 1000.0),
-        "average_latency_ms": "{:.2f}".format(latency_ms),
-        "QPS": "{:.2f}".format(throughput),
+        "latency_variance": f"{latency_variance:.2f}",
+        "latency_90_percentile": f"{np.percentile(runtimes, 90) * 1000.0:.2f}",
+        "latency_95_percentile": f"{np.percentile(runtimes, 95) * 1000.0:.2f}",
+        "latency_99_percentile": f"{np.percentile(runtimes, 99) * 1000.0:.2f}",
+        "average_latency_ms": f"{latency_ms:.2f}",
+        "QPS": f"{throughput:.2f}",
     }
     return result
 
@@ -453,7 +453,7 @@ def get_acl_version():
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
-    logger.info("Parsing test data in {} ...".format(path))
+    logger.info(f"Parsing test data in {path} ...")
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = split_and_sort_output(output)
     logger.info(test_data_set_dir)
@@ -491,7 +491,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.info(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        logger.info("Loaded {} inputs successfully.".format(len(inputs)))
+        logger.info(f"Loaded {len(inputs)} inputs successfully.")
 
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
@@ -513,7 +513,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
 
                     logger.info(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            logger.info("Loaded {} outputs successfully.".format(len(outputs)))
+            logger.info(f"Loaded {len(outputs)} outputs successfully.")
 
         os.chdir(pwd)
     return inputs, outputs
@@ -569,9 +569,9 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
         logger.info("No reference output provided.")
         return True, None
 
-    logger.info("Reference {} results.".format(len(all_ref_outputs)))
-    logger.info("Predicted {} results.".format(len(all_outputs)))
-    logger.info("rtol: {}, atol: {}".format(rtol, atol))
+    logger.info(f"Reference {len(all_ref_outputs)} results.")
+    logger.info(f"Predicted {len(all_outputs)} results.")
+    logger.info(f"rtol: {rtol}, atol: {atol}")
 
     for i in range(len(all_outputs)):
         ref_outputs = all_ref_outputs[i]
@@ -1182,13 +1182,13 @@ def run_onnxruntime(args, models):
             if not is_standalone(ep):
                 ep_ = ep_to_provider_list[ep][0]
                 if ep_ not in onnxruntime.get_available_providers():
-                    logger.error("No {} support".format(ep_))
+                    logger.error(f"No {ep_} support")
                     continue
 
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
+            logger.info(f"[Initialize]  model = {name}, ep = {ep} ...")
 
             # Set environment variables for ort-trt benchmarking
             trt_ep_options = copy.deepcopy(args.trt_ep_options)
@@ -1282,7 +1282,7 @@ def run_onnxruntime(args, models):
                     if second_creation_time:
                         model_to_session[name] = copy.deepcopy({ep + second: second_creation_time})
 
-                    logger.info("start to inference {} with {} ...".format(name, ep))
+                    logger.info(f"start to inference {name} with {ep} ...")
                     logger.info(sess.get_providers())
                     logger.info(sess.get_provider_options())
 
@@ -1377,7 +1377,7 @@ def run_onnxruntime(args, models):
 
                 sess.disable_fallback()
 
-                logger.info("start to inference {} with {} ...".format(name, ep))
+                logger.info(f"start to inference {name} with {ep} ...")
                 logger.info(sess.get_providers())
                 logger.info(sess.get_provider_options())
 
@@ -1469,16 +1469,16 @@ def add_improvement_information(model_to_latency):
     for key, value in model_to_latency.items():
         if trt in value and cuda in value:
             gain = calculate_gain(value, trt, cuda)
-            value[trt_cuda_gain] = "{:.2f} %".format(gain)
+            value[trt_cuda_gain] = f"{gain:.2f} %"
         if trt_fp16 in value and cuda_fp16 in value:
             gain = calculate_gain(value, trt_fp16, cuda_fp16)
-            value[trt_cuda_fp16_gain] = "{:.2f} %".format(gain)
+            value[trt_cuda_fp16_gain] = f"{gain:.2f} %"
         if trt in value and standalone_trt in value:
             gain = calculate_gain(value, trt, standalone_trt)
-            value[trt_native_gain] = "{:.2f} %".format(gain)
+            value[trt_native_gain] = f"{gain:.2f} %"
         if trt_fp16 in value and standalone_trt_fp16 in value:
             gain = calculate_gain(value, trt_fp16, standalone_trt_fp16)
-            value[trt_native_fp16_gain] = "{:.2f} %".format(gain)
+            value[trt_native_fp16_gain] = f"{gain:.2f} %"
 
 
 def output_details(results, csv_filename):
@@ -1961,11 +1961,11 @@ class ParseDictArgAction(argparse.Action):
             try:
                 k, v = kv.split("=")
             except ValueError:
-                parser.error("argument {opt_str}: Expected '=' between key and value".format(opt_str=option_string))
+                parser.error(f"argument {option_string}: Expected '=' between key and value")
 
             if k in dict_arg:
                 parser.error(
-                    "argument {opt_str}: Specified duplicate key '{dup_key}'".format(opt_str=option_string, dup_key=k)
+                    f"argument {option_string}: Specified duplicate key '{k}'"
                 )
 
             dict_arg[k] = v
@@ -2174,17 +2174,17 @@ def main():
     perf_end_time = datetime.now()
 
     logger.info("Done running the perf.")
-    logger.info("\nTotal time for benchmarking all models: {}".format(perf_end_time - perf_start_time))
+    logger.info(f"\nTotal time for benchmarking all models: {perf_end_time - perf_start_time}")
     logger.info(list(models.keys()))
 
-    logger.info("\nTotal models: {}".format(len(models)))
+    logger.info(f"\nTotal models: {len(models)}")
 
     fail_model_cnt = 0
     for key, value in models.items():
         if key in model_to_fail_ep:
             fail_model_cnt += 1
-    logger.info("Fail models: {}".format(fail_model_cnt))
-    logger.info("Success models: {}".format(len(models) - fail_model_cnt))
+    logger.info(f"Fail models: {fail_model_cnt}")
+    logger.info(f"Success models: {len(models) - fail_model_cnt}")
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):

@@ -19,7 +19,7 @@ pytest_plugins = ("onnx.backend.test.report",)
 
 class OrtBackendTest(onnx.backend.test.BackendTest):
     def __init__(self, backend, parent_module=None):
-        super(OrtBackendTest, self).__init__(backend, parent_module)
+        super().__init__(backend, parent_module)
 
     @classmethod
     def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):

@@ -40,7 +40,7 @@ def replace_files(root, renamed):
             if os.path.splitext(name)[-1] != ".html":
                 continue
             full = os.path.join(r, name)
-            with open(full, "r", encoding="utf-8") as f:
+            with open(full, encoding="utf-8") as f:
                 content = f.read()
             find = reg.findall(content)
             repl = []
@@ -49,7 +49,7 @@ def replace_files(root, renamed):
                     continue
                 for k, v in subs.items():
                     if k == v:
-                        raise ValueError("%r == %r" % (k, v))
+                        raise ValueError("{!r} == {!r}".format(k, v))
                     if ('"%s' % k) in f[0]:
                         repl.append((f[0], f[0].replace('"%s' % k, '"%s' % v)))
                     if ("/%s" % k) in f[0]:

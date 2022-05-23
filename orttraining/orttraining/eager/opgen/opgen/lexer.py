@@ -6,7 +6,7 @@ from abc import ABC
 from typing import List, Optional, Union, Tuple
 
 
-class SourceLocation(object):
+class SourceLocation:
     def __init__(self, offset: int = 0, line: int = 1, column: int = 1):
         self.offset = offset
         self.line = line
@@ -63,7 +63,7 @@ class TokenKind(Enum):
     ARROW = 27
 
 
-class Token(object):
+class Token:
     def __init__(
         self,
         location: Union[SourceLocation, Tuple[int, int, int]],
@@ -158,7 +158,7 @@ class StringReader(Reader):
         return None
 
 
-class Lexer(object):
+class Lexer:
     _peek: str
     _next_token: Token
     _first_token_leading_trivia: List[Token]

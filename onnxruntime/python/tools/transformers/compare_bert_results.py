@@ -60,9 +60,9 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
                     diff_count += 1
 
                     if verbose:
-                        print("case {} output {}".format(test_case_id, i))
-                        print("baseline={}\ntreatment={}".format(results[i].tolist(), treatment_output))
-                        print("rel_diff={} abs_diff={}".format(rel_diff, abs_diff))
+                        print(f"case {test_case_id} output {i}")
+                        print(f"baseline={results[i].tolist()}\ntreatment={treatment_output}")
+                        print(f"rel_diff={rel_diff} abs_diff={abs_diff}")
 
     if diff_count == 0:
         print(
@@ -77,9 +77,9 @@ def compare(baseline_results, treatment_results, verbose, rtol=1e-3, atol=1e-4):
             )
         )
 
-    print("maximum absolute difference={}".format(max_abs_diff))
+    print(f"maximum absolute difference={max_abs_diff}")
 
-    print("maximum relative difference={}".format(max_rel_diff))
+    print(f"maximum relative difference={max_rel_diff}")
 
 
 def run_test(
@@ -135,7 +135,7 @@ def run_test(
         optimized_model, all_inputs, use_gpu, disable_optimization=False
     )
     if verbose:
-        print("treatment average latency: {} ms".format(statistics.mean(treatment_latency) * 1000))
+        print(f"treatment average latency: {statistics.mean(treatment_latency) * 1000} ms")
 
     # Validate the output of baseline and treatment, to make sure the results are similar.
     compare(baseline_results, treatment_results, verbose, rtol, atol)

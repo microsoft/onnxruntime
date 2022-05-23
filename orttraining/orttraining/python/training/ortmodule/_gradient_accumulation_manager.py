@@ -6,7 +6,7 @@ from . import _utils
 from onnxruntime.capi import _pybind_state as C
 
 
-class GradientAccumulationManager(object):
+class GradientAccumulationManager:
     """Handles Gradient accumulation optimization during training
 
     This feature must be enabled once before training and cannot be turned off within a training run.

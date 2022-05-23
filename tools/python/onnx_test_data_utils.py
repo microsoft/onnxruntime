@@ -20,8 +20,8 @@ def dump_tensorproto_pb_file(filename):
     """Dump the data from a pb file containing a TensorProto."""
 
     name, data = read_tensorproto_pb_file(filename)
-    print("Name: {}".format(name))
-    print("Shape: {}".format(data.shape))
+    print(f"Name: {name}")
+    print(f"Shape: {data.shape}")
     print(data)
 
 

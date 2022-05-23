@@ -1000,7 +1000,7 @@ def optimize_input_projection(input_model, output_model):
     out_mp.ir_version = 5  # update ir version to avoid requirement of initializer in graph input
     out_mp.graph.ClearField("node")
     nf = NodeFactory(out_mp.graph, prefix="opt_inproj_")
-    initializers = dict([(i.name, i) for i in in_mp.graph.initializer])
+    initializers = {i.name: i for i in in_mp.graph.initializer}
     # first find possible fused SVD and do constant folding on MatMul of initializers
     const_matmuls = [n for n in in_mp.graph.node if n.op_type == "MatMul" and all([i in initializers for i in n.input])]
     for mm in const_matmuls:
@@ -1014,7 +1014,7 @@ def optimize_input_projection(input_model, output_model):
         if not [n for n in in_mp.graph.node if n != mm and mm.input[1] in n.input]:
             nf.remove_initializer(mm.input[1])
 
-    initializers = dict([(i.name, i) for i in out_mp.graph.initializer])
+    initializers = {i.name: i for i in out_mp.graph.initializer}
 
     # remove const_matmul output from graph outputs
     new_outputs = [i for i in out_mp.graph.output if not [m for m in const_matmuls if m.output[0] == i.name]]

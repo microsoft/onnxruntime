@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 from typing import Any, Tuple
 
@@ -35,7 +34,7 @@ class LSTM_Helper:
 
         required_inputs = ["X", "W", "R"]
         for i in required_inputs:
-            assert i in params, "Missing Required Input: {0}".format(i)
+            assert i in params, f"Missing Required Input: {i}"
 
         X = params["X"]
         W = params["W"]

@@ -520,7 +520,7 @@ class Gpt2Helper:
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
-        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
@@ -841,7 +841,7 @@ class Gpt2Helper:
 
         if max_abs_diff_list:
             result = {
-                f"max_diff_percentile_{p}": "{:.5f}".format(numpy.percentile(max_abs_diff_list, p))
+                f"max_diff_percentile_{p}": f"{numpy.percentile(max_abs_diff_list, p):.5f}"
                 for p in [50, 90, 95, 99]
             }
         else:

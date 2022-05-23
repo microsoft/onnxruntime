@@ -36,7 +36,7 @@ from enum import IntFlag
 from torch.utils.cpp_extension import ROCM_HOME
 
 
-class _RunStateInfo(object):
+class _RunStateInfo:
     def __init__(self, state, output_info):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
@@ -72,7 +72,7 @@ class GraphExecutionManager(GraphExecutionInterface):
     def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         """Manages construction and execution of ONNX graphs"""
 
-        super(GraphExecutionManager, self).__init__(module._original_module)
+        super().__init__(module._original_module)
 
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options

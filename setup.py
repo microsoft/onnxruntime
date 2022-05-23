@@ -495,7 +495,7 @@ if nightly_build:
             try:
                 count = int(count_str)
                 if count >= 0 and count < 1000:
-                    return "{:03}".format(count)
+                    return f"{count:03}"
                 elif count >= 1000:
                     raise RuntimeError(f"Too many builds for the same day: {count}")
                 return ""
@@ -534,7 +534,7 @@ if local_version:
 if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):
         # for training packages, local version is used to indicate device types
-        package_name = "{}-{}".format(package_name, wheel_name_suffix)
+        package_name = f"{package_name}-{wheel_name_suffix}"
 
 cmd_classes = {}
 if bdist_wheel is not None:
@@ -559,16 +559,16 @@ if enable_training:
 
         version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
         with open(version_path, "w") as f:
-            f.write("package_name = '{}'\n".format(package_name))
-            f.write("__version__ = '{}'\n".format(version_number))
+            f.write(f"package_name = '{package_name}'\n")
+            f.write(f"__version__ = '{version_number}'\n")
 
             if cuda_version:
-                f.write("cuda_version = '{}'\n".format(cuda_version))
+                f.write(f"cuda_version = '{cuda_version}'\n")
 
                 # cudart_versions are integers
                 cudart_versions = find_cudart_versions(build_env=True)
                 if cudart_versions and len(cudart_versions) == 1:
-                    f.write("cudart_version = {}\n".format(cudart_versions[0]))
+                    f.write(f"cudart_version = {cudart_versions[0]}\n")
                 else:
                     print(
                         "Error getting cudart version. ",
@@ -577,7 +577,7 @@ if enable_training:
                         else "found multiple cudart libraries",
                     )
             elif rocm_version:
-                f.write("rocm_version = '{}'\n".format(rocm_version))
+                f.write(f"rocm_version = '{rocm_version}'\n")
 
     save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 

@@ -130,7 +130,7 @@ if args.tags:
 container_image = args.container
 registry_details = None
 
-acr = re.match("^((\w+).azurecr.io)/(.*)", args.container)
+acr = re.match(r"^((\w+).azurecr.io)/(.*)", args.container)
 if acr:
     # Extract the relevant parts from the container image
     #   e.g. onnxtraining.azurecr.io/azureml/bert:latest
@@ -169,4 +169,4 @@ estimator = Estimator(
 # Start the AzureML Experiment
 experiment = Experiment(workspace=ws, name=args.experiment)
 run = experiment.submit(estimator, tags)
-print("Experiment running at: {}".format(run.get_portal_url()))
+print(f"Experiment running at: {run.get_portal_url()}")

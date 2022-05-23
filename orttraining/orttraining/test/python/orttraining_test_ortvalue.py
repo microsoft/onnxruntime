@@ -207,7 +207,7 @@ class TestOrtValue(unittest.TestCase):
     def test_ortmodule_dlpack(self):
         class NeuralNetTanh(torch.nn.Module):
             def __init__(self, input_size, hidden_size, num_classes):
-                super(NeuralNetTanh, self).__init__()
+                super().__init__()
 
                 self.fc1 = torch.nn.Linear(input_size, hidden_size)
                 self.tanh = torch.nn.Tanh()
@@ -239,7 +239,7 @@ class TestOrtValue(unittest.TestCase):
     def test_bool_input_and_output(self):
         class NeuralNetBoolInputOutput(torch.nn.Module):
             def __init__(self, input_size, num_classes):
-                super(NeuralNetBoolInputOutput, self).__init__()
+                super().__init__()
                 self.fc = torch.nn.Linear(input_size, num_classes)
                 self.relu = torch.nn.ReLU()
 

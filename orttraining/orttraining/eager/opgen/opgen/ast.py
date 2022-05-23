@@ -6,7 +6,7 @@ from typing import TextIO, List, Union
 from opgen.lexer import Token
 
 
-class Node(object):
+class Node:
     def __init__(self):
         self.tokens = []
 

@@ -83,7 +83,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
 
             deprecated = key in deprecated_ops and opset_to == deprecated_ops[key] - 1
             if opset_to and not deprecated:
-                log.error("Missing unversioned registration for {}".format(key))
+                log.error(f"Missing unversioned registration for {key}")
                 self.failed = True
 
 
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     registration_files = op_registration_utils.get_kernel_registration_files(ort_root, include_cuda)
 
     for file in registration_files:
-        log.info("Processing {}".format(file))
+        log.info(f"Processing {file}")
 
         processor = RegistrationValidator()
         op_registration_utils.process_kernel_registration_file(file, processor)

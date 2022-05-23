@@ -266,7 +266,7 @@ class ORTTransformerTrainer:
                             if self.args.evaluate_during_training:
                                 results = self.evaluate()
                                 for key, value in results.items():
-                                    eval_key = "eval_{}".format(key)
+                                    eval_key = f"eval_{key}"
                                     logs[eval_key] = value
 
                             loss_scalar = (tr_loss - logging_loss) / self.args.logging_steps

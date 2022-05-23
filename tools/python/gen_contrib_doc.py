@@ -2,7 +2,6 @@
 
 # This file is copied and adapted from https://github.com/onnx/onnx repository.
 # There was no copyright statement on the file at the time of copying.
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
 import io
@@ -32,7 +31,7 @@ else:
 def display_number(v):  # type: (int) -> Text
     if OpSchema.is_infinite(v):
         return "&#8734;"
-    return Text(v)
+    return str(v)
 
 
 def should_render_domain(domain, domain_filter):  # type: (Text) -> bool
@@ -47,18 +46,18 @@ def should_render_domain(domain, domain_filter):  # type: (Text) -> bool
 
 def format_name_with_domain(domain, schema_name):  # type: (Text, Text) -> Text
     if domain:
-        return "{}.{}".format(domain, schema_name)
+        return f"{domain}.{schema_name}"
     else:
         return schema_name
 
 
 def format_name_with_version(schema_name, version):  # type: (Text, Text) -> Text
-    return "{}-{}".format(schema_name, version)
+    return f"{schema_name}-{version}"
 
 
 def display_attr_type(v):  # type: (OpSchema.AttrType) -> Text
     assert isinstance(v, OpSchema.AttrType)
-    s = Text(v)
+    s = str(v)
     s = s[s.rfind(".") + 1 :].lower()
     if s[-1] == "s":
         s = "list of " + s
@@ -67,7 +66,7 @@ def display_attr_type(v):  # type: (OpSchema.AttrType) -> Text
 
 def display_domain(domain):  # type: (Text) -> Text
     if domain:
-        return "the '{}' operator set".format(domain)
+        return f"the '{domain}' operator set"
     else:
         return "the default ONNX operator set"
 
@@ -81,14 +80,14 @@ def display_domain_short(domain):  # type: (Text) -> Text
 
 def display_version_link(name, version):  # type: (Text, int) -> Text
     changelog_md = "Changelog" + ext
-    name_with_ver = "{}-{}".format(name, version)
-    return '<a href="{}#{}">{}</a>'.format(changelog_md, name_with_ver, name_with_ver)
+    name_with_ver = f"{name}-{version}"
+    return f'<a href="{changelog_md}#{name_with_ver}">{name_with_ver}</a>'
 
 
 def display_function_version_link(name, version):  # type: (Text, int) -> Text
     changelog_md = "FunctionsChangelog" + ext
-    name_with_ver = "{}-{}".format(name, version)
-    return '<a href="{}#{}">{}</a>'.format(changelog_md, name_with_ver, name_with_ver)
+    name_with_ver = f"{name}-{version}"
+    return f'<a href="{changelog_md}#{name_with_ver}">{name_with_ver}</a>'
 
 
 def get_attribute_value(attr):  # type: (AttributeProto) -> Any
@@ -113,7 +112,7 @@ def get_attribute_value(attr):  # type: (AttributeProto) -> Any
     elif len(attr.graphs):
         return list(attr.graphs)
     else:
-        raise ValueError("Unsupported ONNX attribute: {}".format(attr))
+        raise ValueError(f"Unsupported ONNX attribute: {attr}")
 
 
 def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) -> Text
@@ -134,9 +133,9 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
         s += (
             "\nThis version of the operator has been "
             + ("deprecated" if schema.deprecated else "available")
-            + " since version {}".format(schema.since_version)
+            + f" since version {schema.since_version}"
         )
-        s += " of {}.\n".format(display_domain(schema.domain))
+        s += f" of {display_domain(schema.domain)}.\n"
         if len(versions) > 1:
             # TODO: link to the Changelog.md
             s += "\nOther versions of this operator: {}\n".format(
@@ -174,18 +173,18 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                     default_value = [format_value(val) for val in default_value]
                 else:
                     default_value = format_value(default_value)
-                opt = "default is {}".format(default_value)
+                opt = f"default is {default_value}"
 
             s += "<dt><tt>{}</tt> : {}{}</dt>\n".format(
-                attr.name, display_attr_type(attr.type), " ({})".format(opt) if opt else ""
+                attr.name, display_attr_type(attr.type), f" ({opt})" if opt else ""
             )
-            s += "<dd>{}</dd>\n".format(attr.description)
+            s += f"<dd>{attr.description}</dd>\n"
         s += "</dl>\n"
 
     # inputs
     s += "\n#### Inputs"
     if schema.min_input != schema.max_input:
-        s += " ({} - {})".format(display_number(schema.min_input), display_number(schema.max_input))
+        s += f" ({display_number(schema.min_input)} - {display_number(schema.max_input)})"
     s += "\n\n"
 
     inputs = schema.inputs
@@ -200,15 +199,15 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                     option_str = " (variadic)"
                 else:
                     option_str = " (variadic, heterogeneous)"
-            s += "<dt><tt>{}</tt>{} : {}</dt>\n".format(inp.name, option_str, inp.typeStr)
-            s += "<dd>{}</dd>\n".format(inp.description)
+            s += f"<dt><tt>{inp.name}</tt>{option_str} : {inp.typeStr}</dt>\n"
+            s += f"<dd>{inp.description}</dd>\n"
 
     s += "</dl>\n"
 
     # outputs
     s += "\n#### Outputs"
     if schema.min_output != schema.max_output:
-        s += " ({} - {})".format(display_number(schema.min_output), display_number(schema.max_output))
+        s += f" ({display_number(schema.min_output)} - {display_number(schema.max_output)})"
     s += "\n\n"
     outputs = schema.outputs
     if outputs:
@@ -222,8 +221,8 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                     option_str = " (variadic)"
                 else:
                     option_str = " (variadic, heterogeneous)"
-            s += "<dt><tt>{}</tt>{} : {}</dt>\n".format(output.name, option_str, output.typeStr)
-            s += "<dd>{}</dd>\n".format(output.description)
+            s += f"<dt><tt>{output.name}</tt>{option_str} : {output.typeStr}</dt>\n"
+            s += f"<dd>{output.description}</dd>\n"
 
     s += "</dl>\n"
 
@@ -240,8 +239,8 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                 allowed_type_str = allowed_types[0]
             for allowedType in allowed_types[1:]:
                 allowed_type_str += ", " + allowedType
-            s += "<dt><tt>{}</tt> : {}</dt>\n".format(type_constraint.type_param_str, allowed_type_str)
-            s += "<dd>{}</dd>\n".format(type_constraint.description)
+            s += f"<dt><tt>{type_constraint.type_param_str}</tt> : {allowed_type_str}</dt>\n"
+            s += f"<dd>{type_constraint.description}</dd>\n"
         s += "</dl>\n"
 
     return s
@@ -251,7 +250,7 @@ def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (Function
     s = ""
 
     if domain:
-        domain_prefix = "{}.".format(ONNX_ML_DOMAIN)
+        domain_prefix = f"{ONNX_ML_DOMAIN}."
     else:
         domain_prefix = ""
 
@@ -263,8 +262,8 @@ def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (Function
 
     # since version
     s += "\n#### Version\n"
-    s += "\nThis version of the function has been available since version {}".format(function.since_version)
-    s += " of {}.\n".format(display_domain(domain_prefix))
+    s += f"\nThis version of the function has been available since version {function.since_version}"
+    s += f" of {display_domain(domain_prefix)}.\n"
     if len(versions) > 1:
         s += "\nOther versions of this function: {}\n".format(
             ", ".join(
@@ -280,7 +279,7 @@ def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (Function
     if function.input:
         s += "<dl>\n"
         for input in function.input:
-            s += "<dt>{}; </dt>\n".format(input)
+            s += f"<dt>{input}; </dt>\n"
         s += "<br/></dl>\n"
 
     # outputs
@@ -289,7 +288,7 @@ def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (Function
     if function.output:
         s += "<dl>\n"
         for output in function.output:
-            s += "<dt>{}; </dt>\n".format(output)
+            s += f"<dt>{output}; </dt>\n"
         s += "<br/></dl>\n"
 
         # attributes
@@ -297,7 +296,7 @@ def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (Function
         s += "\n#### Attributes\n\n"
         s += "<dl>\n"
         for attr in function.attribute:
-            s += "<dt>{};<br/></dt>\n".format(attr)
+            s += f"<dt>{attr};<br/></dt>\n"
         s += "</dl>\n"
 
     return s
@@ -314,7 +313,7 @@ def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
 
 def main(output_path: str, domain_filter: [str]):
 
-    with io.open(output_path, "w", newline="", encoding="utf-8") as fout:
+    with open(output_path, "w", newline="", encoding="utf-8") as fout:
         fout.write("## Contrib Operator Schemas\n")
         fout.write(
             "*This file is automatically generated from the registered contrib operator schemas by "
@@ -357,7 +356,7 @@ def main(output_path: str, domain_filter: [str]):
 
         # Table of contents
         for domain, supportmap in operator_schemas:
-            s = "* {}\n".format(display_domain_short(domain))
+            s = f"* {display_domain_short(domain)}\n"
             fout.write(s)
 
             for _, namemap in supportmap:
@@ -372,7 +371,7 @@ def main(output_path: str, domain_filter: [str]):
         fout.write("\n")
 
         for domain, supportmap in operator_schemas:
-            s = "## {}\n".format(display_domain_short(domain))
+            s = f"## {display_domain_short(domain)}\n"
             fout.write(s)
 
             for _, namemap in supportmap:

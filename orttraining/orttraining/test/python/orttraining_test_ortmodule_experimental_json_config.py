@@ -7,7 +7,7 @@ from onnxruntime.training.ortmodule.experimental.json_config import load_from_js
 
 class Net(torch.nn.Module):
     def __init__(self, input_size=784, hidden_size=500, num_classes=10):
-        super(Net, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()

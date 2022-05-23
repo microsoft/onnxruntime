@@ -37,7 +37,7 @@ def is_windows():
 
 def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}, log=None):
     if log:
-        log.info("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
+        log.info(f"Running subprocess in '{cwd or os.getcwd()}'\n{args}")
     my_env = os.environ.copy()
     if dll_path:
         if is_windows():

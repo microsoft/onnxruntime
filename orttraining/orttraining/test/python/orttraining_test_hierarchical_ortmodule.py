@@ -13,7 +13,7 @@ from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import H
 class A(nn.Module):
     # A supported module.
     def __init__(self):
-        super(A, self).__init__()
+        super().__init__()
         self.l1 = nn.Linear(2, 2)
 
     def forward(self, x):
@@ -25,7 +25,7 @@ class B(nn.Module):
     # uses gradient-checkpointing. However, its two sub-module's
     # are exportable, so ORTModule should be used to compute them.
     def __init__(self):
-        super(B, self).__init__()
+        super().__init__()
         self.l1 = nn.Linear(2, 2)
         self.a = A()
 
@@ -43,7 +43,7 @@ class B(nn.Module):
 class C(nn.Module):
     # A supported module.
     def __init__(self):
-        super(C, self).__init__()
+        super().__init__()
         self.l1 = nn.Linear(2, 2)
 
     def forward(self, x):
@@ -55,7 +55,7 @@ class D(nn.Module):
     # This module is not exportable to ONNX because it
     # inner module self.b uses gradient-checkpointing.
     def __init__(self):
-        super(D, self).__init__()
+        super().__init__()
         self.b = B()
 
     def forward(self, x):
@@ -66,7 +66,7 @@ class D(nn.Module):
 class Main(nn.Module):
     # Main module.
     def __init__(self):
-        super(Main, self).__init__()
+        super().__init__()
         self.alpha = nn.Parameter(torch.tensor(0.941736), requires_grad=True)
         self.a = A()
         self.b = B()
@@ -81,7 +81,7 @@ class Main(nn.Module):
 class MainWithNonTensorInput(nn.Module):
     # Module for testing non-tensor input.
     def __init__(self):
-        super(MainWithNonTensorInput, self).__init__()
+        super().__init__()
         self.alpha = nn.Parameter(torch.tensor(0.941736), requires_grad=True)
         self.a = A()
         self.b = B()
@@ -99,7 +99,7 @@ class MainWithNonTensorInput(nn.Module):
 class E(nn.Module):
     # Sub-modules are stored in nn.ModuleList.
     def __init__(self):
-        super(E, self).__init__()
+        super().__init__()
         self.my_layers = nn.ModuleList([A(), B(), C(), D()])
 
     def forward(self, x):
@@ -112,7 +112,7 @@ class E(nn.Module):
 class MainWithModuleList(nn.Module):
     # Sub-modules are stored in nn.ModuleList.
     def __init__(self):
-        super(MainWithModuleList, self).__init__()
+        super().__init__()
         self.my_layers = nn.ModuleList([E(), E()])
 
     def forward(self, x):
@@ -126,7 +126,7 @@ class MainWithMultiModuleOutputs(nn.Module):
     # Module with repeated sub-modules and producing
     # multiple outputs.
     def __init__(self):
-        super(MainWithMultiModuleOutputs, self).__init__()
+        super().__init__()
         self.layer_list1 = nn.ModuleList([D(), A(), B()])
         self.layer_list2 = nn.ModuleList([C(), B(), D()])
 

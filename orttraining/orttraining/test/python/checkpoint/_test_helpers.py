@@ -304,15 +304,15 @@ def aggregate_states(checkpoint_dir, filename_prefix="state_dict", state_dict_ke
     """Aggregate state dictionaries saved in the checkpoint_dir as pickle files with name filename_prefix_world_rank.pkl"""
 
     aggregated_states = {}
-    num_states = len(glob.glob1(checkpoint_dir, "{}*".format(filename_prefix)))
+    num_states = len(glob.glob1(checkpoint_dir, f"{filename_prefix}*"))
     for rank in range(num_states):
         rank_state_dict = None
-        with open(os.path.join(checkpoint_dir, "{}_{}.pkl".format(filename_prefix, rank)), "rb") as f:
+        with open(os.path.join(checkpoint_dir, f"{filename_prefix}_{rank}.pkl"), "rb") as f:
             rank_state_dict = pickle.load(f)
         # if state_dict_key_name is None, then the rank_state_dictis the loaded object
         if state_dict_key_name:
             # if it has a name, index into the loaded object to extract the rank_state_dict
-            rank_state_dict = rank_state_dict["{}_{}".format(state_dict_key_name, rank)]
+            rank_state_dict = rank_state_dict[f"{state_dict_key_name}_{rank}"]
 
         checkpoint._aggregate_model_states(
             rank_state_dict, {}, aggregated_states, rank_state_dict["trainer_options"]["mixed_precision"]
@@ -424,7 +424,7 @@ def assert_all_states_close(checkpoint_dir, state_dict_key_name, state_dict_post
     """Extract previously saved state dictionary from pickle file and compare against state_dict_post_checkpoint for all states"""
 
     state = None
-    with open(os.path.join(checkpoint_dir, "{}.pkl".format(state_dict_key_name)), "rb") as f:
+    with open(os.path.join(checkpoint_dir, f"{state_dict_key_name}.pkl"), "rb") as f:
         state = pickle.load(f)
     state_dict_pre_checkpoint = state[state_dict_key_name]
 

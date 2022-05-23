@@ -135,7 +135,7 @@ def output_test_data(dir: str, inputs: np.ndarray):
     index = 0
     for name, data in inputs.items():
         tensor = numpy_helper.from_array(data, name)
-        with open(os.path.join(dir, "input_{}.pb".format(index)), "wb") as f:
+        with open(os.path.join(dir, f"input_{index}.pb"), "wb") as f:
             f.write(tensor.SerializeToString())
         index += 1
 
@@ -298,7 +298,7 @@ def find_bert_inputs(
         return input_ids, segment_ids, input_mask
 
     if len(graph_inputs) != 3:
-        raise ValueError("Expect the graph to have 3 inputs. Got {}".format(len(graph_inputs)))
+        raise ValueError(f"Expect the graph to have 3 inputs. Got {len(graph_inputs)}")
 
     embed_nodes = onnx_model.get_nodes_by_op_type("EmbedLayerNormalization")
     if len(embed_nodes) == 1:
@@ -498,7 +498,7 @@ def create_and_save_test_data(
         result = sess.run(output_names, inputs)
         for i, output_name in enumerate(output_names):
             tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_names[i])
-            with open(os.path.join(dir, "output_{}.pb".format(i)), "wb") as f:
+            with open(os.path.join(dir, f"output_{i}.pb"), "wb") as f:
                 f.write(tensor_result.SerializeToString())
 
 
@@ -509,7 +509,7 @@ def main():
     if output_dir is None:
         # Default output directory is a sub-directory under the directory of model.
         p = Path(args.model)
-        output_dir = os.path.join(p.parent, "batch_{}_seq_{}".format(args.batch_size, args.sequence_length))
+        output_dir = os.path.join(p.parent, f"batch_{args.batch_size}_seq_{args.sequence_length}")
 
     if output_dir is not None:
         # create the output directory if not existed

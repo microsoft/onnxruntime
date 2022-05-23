@@ -35,7 +35,7 @@ def _parse_build_settings(args):
     setting_file = args.build_settings_file.resolve()
 
     if not setting_file.is_file():
-        raise FileNotFoundError("Build config file {} is not a file.".format(setting_file))
+        raise FileNotFoundError(f"Build config file {setting_file} is not a file.")
 
     with open(setting_file) as f:
         build_settings_data = json.load(f)

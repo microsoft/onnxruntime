@@ -654,10 +654,10 @@ def resolve_executable_path(command_or_path):
 
 def get_linux_distro():
     try:
-        with open("/etc/os-release", "r") as f:
+        with open("/etc/os-release") as f:
             dist_info = dict(line.strip().split("=", 1) for line in f.readlines())
         return dist_info.get("NAME", "").strip('"'), dist_info.get("VERSION", "").strip('"')
-    except (IOError, ValueError):
+    except (OSError, ValueError):
         return "", ""
 
 
@@ -710,7 +710,7 @@ def is_docker():
 
 def install_python_deps(numpy_version=""):
     dep_packages = ["setuptools", "wheel", "pytest"]
-    dep_packages.append("numpy=={}".format(numpy_version) if numpy_version else "numpy>=1.16.6")
+    dep_packages.append(f"numpy=={numpy_version}" if numpy_version else "numpy>=1.16.6")
     dep_packages.append("sympy>=1.1")
     dep_packages.append("packaging")
     dep_packages.append("cerberus")
@@ -723,17 +723,17 @@ def setup_test_data(build_dir, configs):
     if is_windows():
         src_model_dir = os.path.join(build_dir, "models")
         if os.path.exists("C:\\local\\models") and not os.path.exists(src_model_dir):
-            log.debug("creating shortcut %s -> %s" % ("C:\\local\\models", src_model_dir))
+            log.debug("creating shortcut {} -> {}".format("C:\\local\\models", src_model_dir))
             run_subprocess(["mklink", "/D", "/J", src_model_dir, "C:\\local\\models"], shell=True)
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
             os.makedirs(config_build_dir, exist_ok=True)
             dest_model_dir = os.path.join(config_build_dir, "models")
             if os.path.exists("C:\\local\\models") and not os.path.exists(dest_model_dir):
-                log.debug("creating shortcut %s -> %s" % ("C:\\local\\models", dest_model_dir))
+                log.debug("creating shortcut {} -> {}".format("C:\\local\\models", dest_model_dir))
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, "C:\\local\\models"], shell=True)
             elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
-                log.debug("creating shortcut %s -> %s" % (src_model_dir, dest_model_dir))
+                log.debug("creating shortcut {} -> {}".format(src_model_dir, dest_model_dir))
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, src_model_dir], shell=True)
 
 
@@ -1150,7 +1150,7 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
-    cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
+    cmake_args += [f"-D{define}" for define in cmake_extra_defines]
 
     cmake_args += cmake_extra_args
 
@@ -1183,11 +1183,11 @@ def generate_build_tree(
                 # PrivatePart = 123
                 # String = 191101-2300.1.master.0bce7ae
                 cmake_args += [
-                    "-DVERSION_MAJOR_PART={}".format(ort_major),
-                    "-DVERSION_MINOR_PART={}".format(ort_minor),
-                    "-DVERSION_BUILD_PART={}".format(YY),
-                    "-DVERSION_PRIVATE_PART={}{}".format(MM, DD),
-                    "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7]),
+                    f"-DVERSION_MAJOR_PART={ort_major}",
+                    f"-DVERSION_MINOR_PART={ort_minor}",
+                    f"-DVERSION_BUILD_PART={YY}",
+                    f"-DVERSION_PRIVATE_PART={MM}{DD}",
+                    f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
                 ]
 
     for config in configs:
@@ -1218,7 +1218,7 @@ def generate_build_tree(
                     and not args.disable_memleak_checker
                     else "OFF"
                 ),
-                "-DCMAKE_BUILD_TYPE={}".format(config),
+                f"-DCMAKE_BUILD_TYPE={config}",
             ],
             cwd=config_build_dir,
         )
@@ -1245,7 +1245,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
                 build_tool_args += [
-                    "/maxcpucount:{}".format(num_parallel_jobs),
+                    f"/maxcpucount:{num_parallel_jobs}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
                 ]
@@ -1253,7 +1253,7 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
                 # CMake will generate correct build tool args for Xcode
                 cmd_args += ["--parallel", str(num_parallel_jobs)]
             else:
-                build_tool_args += ["-j{}".format(num_parallel_jobs)]
+                build_tool_args += [f"-j{num_parallel_jobs}"]
 
         if build_tool_args:
             cmd_args += ["--"]
@@ -1302,7 +1302,7 @@ def setup_tensorrt_vars(args):
         if not tensorrt_home_valid:
             raise BuildError(
                 "tensorrt_home paths must be specified and valid.",
-                "tensorrt_home='{}' valid={}.".format(tensorrt_home, tensorrt_home_valid),
+                f"tensorrt_home='{tensorrt_home}' valid={tensorrt_home_valid}.",
             )
 
         # Set maximum workspace size in byte for
@@ -1328,7 +1328,7 @@ def setup_migraphx_vars(args):
     migraphx_home = None
 
     if args.use_migraphx:
-        print("migraphx_home = {}".format(args.migraphx_home))
+        print(f"migraphx_home = {args.migraphx_home}")
         migraphx_home = args.migraphx_home or os.getenv("MIGRAPHX_HOME") or None
 
         migraphx_home_not_valid = migraphx_home and not os.path.exists(migraphx_home)
@@ -1336,7 +1336,7 @@ def setup_migraphx_vars(args):
         if migraphx_home_not_valid:
             raise BuildError(
                 "migraphx_home paths must be specified and valid.",
-                "migraphx_home='{}' valid={}.".format(migraphx_home, migraphx_home_not_valid),
+                f"migraphx_home='{migraphx_home}' valid={migraphx_home_not_valid}.",
             )
     return migraphx_home or ""
 
@@ -1350,7 +1350,7 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             file_path = os.path.join(args.dml_path, expected_file)
             if not os.path.exists(file_path):
                 raise BuildError(
-                    "dml_path is invalid.", "dml_path='{}' expected_file='{}'.".format(args.dml_path, file_path)
+                    "dml_path is invalid.", f"dml_path='{args.dml_path}' expected_file='{file_path}'."
                 )
     else:
         for config in configs:
@@ -1373,7 +1373,7 @@ def setup_rocm_build(args, configs):
     rocm_home = None
 
     if args.use_rocm:
-        print("rocm_home = {}".format(args.rocm_home))
+        print(f"rocm_home = {args.rocm_home}")
         rocm_home = args.rocm_home or None
 
         rocm_home_not_valid = rocm_home and not os.path.exists(rocm_home)
@@ -1381,7 +1381,7 @@ def setup_rocm_build(args, configs):
         if rocm_home_not_valid:
             raise BuildError(
                 "rocm_home paths must be specified and valid.",
-                "rocm_home='{}' valid={}.".format(rocm_home, rocm_home_not_valid),
+                f"rocm_home='{rocm_home}' valid={rocm_home_not_valid}.",
             )
 
         for config in configs:
@@ -1411,13 +1411,13 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 "cd {0} && GCOV_PREFIX={0} GCOV_PREFIX_STRIP={1} {2}".format(device_dir, cwd.count(os.sep) + 1, cmd)
             )
         else:
-            adb_shell("cd {} && {}".format(device_dir, cmd))
+            adb_shell(f"cd {device_dir} && {cmd}")
 
     if args.android_abi == "x86_64":
         with contextlib.ExitStack() as context_stack:
             if args.android_run_emulator:
                 avd_name = "ort_android"
-                system_image = "system-images;android-{};google_apis;{}".format(args.android_api, args.android_abi)
+                system_image = f"system-images;android-{args.android_api};google_apis;{args.android_abi}"
 
                 android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
                 emulator_proc = context_stack.enter_context(
@@ -1434,10 +1434,10 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test"), device_dir, cwd=cwd
             )
             adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
-            adb_shell("chmod +x {}/onnxruntime_test_all".format(device_dir))
+            adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
             adb_push("onnx_test_runner", device_dir, cwd=cwd)
-            adb_shell("chmod +x {}/onnx_test_runner".format(device_dir))
-            run_adb_shell("{0}/onnxruntime_test_all".format(device_dir))
+            adb_shell(f"chmod +x {device_dir}/onnx_test_runner")
+            run_adb_shell(f"{device_dir}/onnxruntime_test_all")
 
             if args.build_java:
                 gradle_executable = "gradle"
@@ -1450,7 +1450,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                     [
                         gradle_executable,
                         "--no-daemon",
-                        "-DminSdkVer={}".format(args.android_api),
+                        f"-DminSdkVer={args.android_api}",
                         "clean",
                         "connectedDebugAndroidTest",
                     ],
@@ -1465,7 +1465,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             if args.build_shared_lib:
                 adb_push("libonnxruntime.so", device_dir, cwd=cwd)
                 adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
-                adb_shell("chmod +x {}/onnxruntime_shared_lib_test".format(device_dir))
+                adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
                 run_adb_shell("LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_shared_lib_test".format(device_dir))
 
 
@@ -1647,7 +1647,7 @@ def run_training_python_frontend_e2e_tests(cwd):
             cwd=cwd,
         )
 
-        log.debug("RUN: mpirun -n {} {} orttraining_run_glue.py".format(ngpus, sys.executable))
+        log.debug(f"RUN: mpirun -n {ngpus} {sys.executable} orttraining_run_glue.py")
         run_subprocess(
             ["mpirun", "-n", str(ngpus), "-x", "NCCL_DEBUG=INFO", sys.executable, "orttraining_run_glue.py"], cwd=cwd
         )
@@ -1975,7 +1975,7 @@ def build_python_wheel(
         if default_training_package_device:
             args.append("--default_training_package_device")
         if wheel_name_suffix:
-            args.append("--wheel_name_suffix={}".format(wheel_name_suffix))
+            args.append(f"--wheel_name_suffix={wheel_name_suffix}")
         if enable_training:
             args.append("--enable_training")
         if build_eager_mode:
@@ -1986,11 +1986,11 @@ def build_python_wheel(
             # The following line assumes no other EP is enabled
             args.append("--wheel_name_suffix=gpu")
             if cuda_version:
-                args.append("--cuda_version={}".format(cuda_version))
+                args.append(f"--cuda_version={cuda_version}")
         elif use_rocm:
             args.append("--use_rocm")
             if rocm_version:
-                args.append("--rocm_version={}".format(rocm_version))
+                args.append(f"--rocm_version={rocm_version}")
         elif use_openvino:
             args.append("--use_openvino")
         elif use_dnnl:
@@ -2225,7 +2225,7 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     expected_protoc_path = os.path.join(protoc_build_dir, config_dir, "protoc" + suffix)
 
     if not os.path.exists(expected_protoc_path):
-        raise BuildError("Couldn't find {}. Host build of protoc failed.".format(expected_protoc_path))
+        raise BuildError(f"Couldn't find {expected_protoc_path}. Host build of protoc failed.")
 
     return expected_protoc_path
 
@@ -2616,7 +2616,7 @@ def main():
 
     if args.build:
         if args.parallel < 0:
-            raise BuildError("Invalid parallel job count: {}".format(args.parallel))
+            raise BuildError(f"Invalid parallel job count: {args.parallel}")
         num_parallel_jobs = os.cpu_count() if args.parallel == 0 else args.parallel
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
 

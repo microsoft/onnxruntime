@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # -------------------------------------------------------------------------
-"""
+r"""
 This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
@@ -629,7 +629,7 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
         for i, sequence in enumerate(beam_outputs.sequences):
             decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
             torch_decoded_sequences.append(decoded_sequence)
-            print("{}: {}".format(i, decoded_sequence))
+            print(f"{i}: {decoded_sequence}")
 
     print("-" * 50)
     print("Test ONNX model and bream search with onnxruntime...")

@@ -142,7 +142,7 @@ class QDQQuantizer(ONNXQuantizer):
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.bias_to_quantize.append((bias_name, input_name, weight_name, beta))
         else:
-            logging.warning("Expected {} to be a weight".format(bias_name))
+            logging.warning(f"Expected {bias_name} to be a weight")
 
     def remove_node(self, node):
         self.nodes_to_remove.append(node)

@@ -66,7 +66,7 @@ FileInfo = collections.namedtuple("FileInfo", ["path", "mode"])
 
 
 def file_info_str(file_info: FileInfo):
-    return "{} {}".format(file_info.path, file_info.mode)
+    return f"{file_info.path} {file_info.mode}"
 
 
 def make_file_info_from_path(file_path: str):
@@ -114,7 +114,7 @@ def generate_tag(dockerfile_path, context_path, docker_build_args_str):
     hash_obj.update(docker_build_args_str.encode())
     update_hash_with_file(make_file_info_from_path(dockerfile_path), hash_obj)
     update_hash_with_directory(make_file_info_from_path(context_path), hash_obj)
-    return "image_content_digest_{}".format(hash_obj.hexdigest())
+    return f"image_content_digest_{hash_obj.hexdigest()}"
 
 
 def container_registry_has_image(full_image_name, docker_path):
@@ -143,12 +143,12 @@ def main():
     tag = generate_tag(args.dockerfile, args.context, args.docker_build_args)
 
     full_image_name = (
-        "{}.azurecr.io/{}:{}".format(args.container_registry, args.repository, tag)
+        f"{args.container_registry}.azurecr.io/{args.repository}:{tag}"
         if use_container_registry
-        else "{}:{}".format(args.repository, tag)
+        else f"{args.repository}:{tag}"
     )
 
-    log.info("Image: {}".format(full_image_name))
+    log.info(f"Image: {full_image_name}")
 
     if use_container_registry and container_registry_has_image(full_image_name, args.docker_path):
         log.info("Pulling image...")

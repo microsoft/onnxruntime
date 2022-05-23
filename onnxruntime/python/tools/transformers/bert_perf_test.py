@@ -212,7 +212,7 @@ def onnxruntime_inference(session, all_inputs, output_names):
 
 def to_string(model_path, session, test_setting):
     sess_options = session.get_session_options()
-    option = "model={},".format(os.path.basename(model_path))
+    option = f"model={os.path.basename(model_path)},"
     option += "graph_optimization_level={},intra_op_num_threads={},".format(
         sess_options.graph_optimization_level, sess_options.intra_op_num_threads
     ).replace("GraphOptimizationLevel.ORT_", "")
@@ -304,7 +304,7 @@ def run_perf_tests(model_setting, test_setting, perf_results, all_inputs):
     cpu_count = psutil.cpu_count(logical=False)
     logical_cores = psutil.cpu_count(logical=True)
 
-    candidate_threads = list(set([logical_cores, cpu_count]))
+    candidate_threads = list({logical_cores, cpu_count})
     for i in range(1, min(16, logical_cores)):
         if i not in candidate_threads:
             candidate_threads.append(i)

@@ -256,7 +256,7 @@ def run_onnxruntime(
                     }
 
                     logger.info(
-                        "Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length])
+                        f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}"
                     )
 
                     if disable_ort_io_binding:
@@ -356,7 +356,7 @@ def run_pytorch(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
                 input_ids = torch.randint(
                     low=0,
                     high=config.vocab_size - 1,
@@ -487,7 +487,7 @@ def run_tensorflow(
                     continue
 
                 logger.info(
-                    "Run Tensorflow on {} with input shape {}".format(model_name, [batch_size, sequence_length])
+                    f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}"
                 )
 
                 import random
@@ -761,7 +761,7 @@ def main():
         logger.error("int8 is for CPU only")
         return
 
-    args.num_threads = sorted(set(cpu_count if x <= 0 else x for x in args.num_threads))
+    args.num_threads = sorted({cpu_count if x <= 0 else x for x in args.num_threads})
 
     logger.info(f"Arguments: {args}")
 

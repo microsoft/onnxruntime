@@ -45,7 +45,7 @@ SEQ_LEN = 7
 
 class TinyBertOnnxModel(OnnxModel):
     def __init__(self, model, verbose):
-        super(TinyBertOnnxModel, self).__init__(model, verbose)
+        super().__init__(model, verbose)
         self.resize_model()
 
     def resize_weight(self, initializer_name, target_shape):
@@ -108,7 +108,7 @@ class TinyBertOnnxModel(OnnxModel):
             if len(tensor.shape) == 1 and tensor.shape[0] == 1:
                 if tensor == old_parameters["num_heads"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["num_heads"],
                         "=>[",
@@ -123,7 +123,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["seq_len"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["seq_len"],
                         "=>[",
@@ -138,7 +138,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["size_per_head"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["size_per_head"],
                         "=>[",
@@ -153,7 +153,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["hidden_size"],
                         "=>[",
@@ -168,7 +168,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == 4 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         4 * old_parameters["hidden_size"],
                         "=>[",
@@ -184,7 +184,7 @@ class TinyBertOnnxModel(OnnxModel):
             elif len(tensor.shape) == 0:
                 if tensor == old_parameters["num_heads"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["num_heads"],
                         "=>",
@@ -198,7 +198,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["seq_len"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["seq_len"],
                         "=>",
@@ -212,7 +212,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["size_per_head"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["size_per_head"],
                         "=>",
@@ -226,7 +226,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         old_parameters["hidden_size"],
                         "=>",
@@ -240,7 +240,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == 4 * old_parameters["hidden_size"]:
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         4 * old_parameters["hidden_size"],
                         "=>",
@@ -254,7 +254,7 @@ class TinyBertOnnxModel(OnnxModel):
                     )
                 elif tensor == 1.0 / np.sqrt(old_parameters["size_per_head"]):
                     print(
-                        "initializer type={}".format(initializer.data_type),
+                        f"initializer type={initializer.data_type}",
                         initializer.name,
                         1.0 / np.sqrt(old_parameters["size_per_head"]),
                         "=>",
@@ -365,11 +365,11 @@ def generate_test_data(
         print("inputs", inputs)
         result = sess.run(output_names, inputs)
 
-        with open(os.path.join(path, "input_{}.pb".format(0)), "wb") as f:
+        with open(os.path.join(path, f"input_{0}.pb"), "wb") as f:
             f.write(tensor_1.SerializeToString())
-        with open(os.path.join(path, "input_{}.pb".format(1)), "wb") as f:
+        with open(os.path.join(path, f"input_{1}.pb"), "wb") as f:
             f.write(tensor_2.SerializeToString())
-        with open(os.path.join(path, "input_{}.pb".format(2)), "wb") as f:
+        with open(os.path.join(path, f"input_{2}.pb"), "wb") as f:
             f.write(tensor_3.SerializeToString())
 
         for i, output_name in enumerate(output_names):
@@ -377,7 +377,7 @@ def generate_test_data(
                 np.asarray(result[i]).reshape((batch_size, sequence_length)),
                 output_names[i],
             )
-            with open(os.path.join(path, "output_{}.pb".format(i)), "wb") as f:
+            with open(os.path.join(path, f"output_{i}.pb"), "wb") as f:
                 f.write(tensor_result.SerializeToString())
 
         start_time = timeit.default_timer()
@@ -409,7 +409,7 @@ def generate_test_data(
                     use_cpu, result[0].tolist(), outputs[1].tolist()
                 )
             )
-        print("** Evaluation done in total {} secs".format(evalTime))
+        print(f"** Evaluation done in total {evalTime} secs")
 
 
 def main():

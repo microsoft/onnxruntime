@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 
-class Enabler(object):
+class Enabler:
     def __init__(self):
         self._state = False
 

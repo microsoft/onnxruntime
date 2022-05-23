@@ -1,7 +1,7 @@
 import math
 
 
-class _LRScheduler(object):
+class _LRScheduler:
     r"""Base class for implementing custom learning rate schedulers
 
     Schedulers can be either stateful or stateless.

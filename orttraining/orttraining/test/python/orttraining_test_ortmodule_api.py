@@ -46,7 +46,7 @@ DEFAULT_OPSET = 14
 
 class NeuralNetSinglePositionalArgument(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetSinglePositionalArgument, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -61,7 +61,7 @@ class NeuralNetSinglePositionalArgument(torch.nn.Module):
 
 class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.fc2 = torch.nn.Linear(input_size, hidden_size)
@@ -83,7 +83,7 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
 
 class NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.softmax = torch.nn.Softmax(dim=1)
@@ -102,7 +102,7 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(torch.nn.Mo
 
 class NeuralNetMultiplePositionalArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetMultiplePositionalArguments, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -118,7 +118,7 @@ class NeuralNetMultiplePositionalArguments(torch.nn.Module):
 
 class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetMultiplePositionalArgumentsVarKeyword, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -134,7 +134,7 @@ class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
 
 class NeuralNetPositionalArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetPositionalArguments, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -150,7 +150,7 @@ class NeuralNetPositionalArguments(torch.nn.Module):
 
 class NeuralNetKeywordArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetKeywordArguments, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -166,7 +166,7 @@ class NeuralNetKeywordArguments(torch.nn.Module):
 
 class NeuralNetPositionalAndKeywordArguments(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetPositionalAndKeywordArguments, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -182,7 +182,7 @@ class NeuralNetPositionalAndKeywordArguments(torch.nn.Module):
 
 class NeuralNetSimplePositionalAndKeywordArguments(torch.nn.Module):
     def __init__(self):
-        super(NeuralNetSimplePositionalAndKeywordArguments, self).__init__()
+        super().__init__()
         self.a = torch.nn.Parameter(torch.FloatTensor([-1.0, 1.0]))
 
     def forward(self, x, y=None, z=None):
@@ -195,7 +195,7 @@ class NeuralNetSimplePositionalAndKeywordArguments(torch.nn.Module):
 
 class NeuralNetNonDifferentiableOutput(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetNonDifferentiableOutput, self).__init__()
+        super().__init__()
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
@@ -216,7 +216,7 @@ class NeuralNetNonDifferentiableOutput(torch.nn.Module):
 
 class NeuralNetChainedLayersWithNonDifferentiableOutput(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetChainedLayersWithNonDifferentiableOutput, self).__init__()
+        super().__init__()
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
@@ -233,7 +233,7 @@ class NeuralNetChainedLayersWithNonDifferentiableOutput(torch.nn.Module):
 
 class NeuralNetPartialNoGradModel(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetPartialNoGradModel, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size).requires_grad_(False)
         self.relu = torch.nn.ReLU()
@@ -247,7 +247,7 @@ class NeuralNetPartialNoGradModel(torch.nn.Module):
 
 class UnusedEndParameterNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
-        super(UnusedEndParameterNet, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()
@@ -265,7 +265,7 @@ class UnusedEndParameterNet(torch.nn.Module):
 
 class UnusedBeginParameterNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
-        super(UnusedBeginParameterNet, self).__init__()
+        super().__init__()
 
         # fc1 is an unused initializer (which is in the begining of initializer list)
         # which will be dropped after export
@@ -283,7 +283,7 @@ class UnusedBeginParameterNet(torch.nn.Module):
 
 class UnusedMiddleParameterNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
-        super(UnusedMiddleParameterNet, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()
@@ -303,21 +303,21 @@ class UnusedMiddleParameterNet(torch.nn.Module):
 
 class StatelessModel(torch.nn.Module):
     def __init__(self):
-        super(StatelessModel, self).__init__()
+        super().__init__()
 
     def forward(self, x):
         return x
 
 
 class NeuralNetCustomClassOutput(torch.nn.Module):
-    class CustomClass(object):
+    class CustomClass:
         def __init__(self, out1, out2, out3):
             self.out1 = out1
             self.out2 = out2
             self.out3 = out3
 
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNetCustomClassOutput, self).__init__()
+        super().__init__()
 
         self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
         self.relu1 = torch.nn.ReLU()
@@ -347,7 +347,7 @@ class MyStrNet(torch.nn.Module):
 
 class SerializationNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(SerializationNet, self).__init__()
+        super().__init__()
 
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.relu = torch.nn.ReLU()
@@ -727,7 +727,7 @@ def test_gradient_correctness():
 def test_scatternd_correctness(device, indices):
     class NeuralNetScatterND(torch.nn.Module):
         def __init__(self):
-            super(NeuralNetScatterND, self).__init__()
+            super().__init__()
 
         def forward(self, rerouted_output, dispatch_mask, expert_output):
             rerouted_output[dispatch_mask] = expert_output
@@ -756,7 +756,7 @@ def test_scatternd_correctness(device, indices):
 def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
-            super(NeuralNetConv1D, self).__init__()
+            super().__init__()
             self.conv1 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding, groups=groups)
             self.conv2 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding, groups=groups)
 
@@ -800,7 +800,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
 def _run_gradient_correctness_transpose(perm, shape):
     class NeuralNetTranspose(torch.nn.Module):
         def __init__(self, perm):
-            super(NeuralNetTranspose, self).__init__()
+            super().__init__()
             self.perm = perm
 
         def forward(self, input):
@@ -952,7 +952,7 @@ def test_gradient_correctness_transpose4d(perm, shape):
 def test_gradient_correctness_embedding(device, padding_idx):
     class NeuralNetEmbedding(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim, hidden_size):
-            super(NeuralNetEmbedding, self).__init__()
+            super().__init__()
             self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
             self.linear = torch.nn.Linear(embedding_dim, hidden_size)
 
@@ -982,7 +982,7 @@ def test_gradient_correctness_embedding(device, padding_idx):
 def test_gradient_correctness_cross_entropy_loss(use_fp16):
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
-            super(NeuralNetCrossEntropyLoss, self).__init__()
+            super().__init__()
             self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
 
         def forward(self, input, positions):
@@ -1017,7 +1017,7 @@ def test_gradient_correctness_cross_entropy_loss(use_fp16):
 def test_gradient_correctness_pool2d(pool_type):
     class NeuralNetPool2d(torch.nn.Module):
         def __init__(self):
-            super(NeuralNetPool2d, self).__init__()
+            super().__init__()
             self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
             if pool_type == "MaxPool":
                 self.pool = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -1054,7 +1054,7 @@ def test_gradient_correctness_pool2d(pool_type):
 def test_export_correctness_pool2d(pool_type, stride):
     class NeuralNetPool2d(torch.nn.Module):
         def __init__(self):
-            super(NeuralNetPool2d, self).__init__()
+            super().__init__()
             self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
             self.pool_type = pool_type
 
@@ -1189,7 +1189,7 @@ def test_gradient_correctness_minmax_two_tensors(operator):
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):
         def __init__(self, input_size, hidden_size, unfold_dim, unfold_size, unfold_step):
-            super(NeuralNetUnfold, self).__init__()
+            super().__init__()
             self.linear = torch.nn.Linear(input_size, hidden_size)
             self.unfold_dim = unfold_dim
             self.unfold_size = unfold_size
@@ -1227,7 +1227,7 @@ def test_correctness_argmax_bitwise_or(high):
 
     class NeuralNetBitwiseOr(torch.nn.Module):
         def __init__(self, high):
-            super(NeuralNetBitwiseOr, self).__init__()
+            super().__init__()
             self.other = torch.randint(0, high, (N, D, H), device=device)
 
         def forward(self, input):
@@ -1255,7 +1255,7 @@ def test_correctness_argmax_bitwise_or(high):
 def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
     class NeuralNetDiagonal(torch.nn.Module):
         def __init__(self, offset=0, dim1=0, dim2=1):
-            super(NeuralNetDiagonal, self).__init__()
+            super().__init__()
             self.offset = offset
             self.dim1 = dim1
             self.dim2 = dim2
@@ -1289,7 +1289,7 @@ def test_gradient_correctness_argmax_diagonal(offset, dim1, dim2):
 def test_gradient_correctness_reducesum(dim, keepdim):
     class NeuralNetReduceSum(torch.nn.Module):
         def __init__(self, input_size, hidden_size, dim, keepdim):
-            super(NeuralNetReduceSum, self).__init__()
+            super().__init__()
             self.linear = torch.nn.Linear(input_size, hidden_size)
             self.dim = dim
             self.keepdim = keepdim
@@ -1347,7 +1347,7 @@ skip_torch_1_11 = pytest.mark.skipif(
 def test_gradient_correctness_einsum(equation):
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
-            super(NeuralNetEinsum, self).__init__()
+            super().__init__()
             self.register_parameter(name="bias", param=torch.nn.Parameter(torch.randn(bias_size)))
 
         def forward(self, left, right):
@@ -1396,7 +1396,7 @@ def test_gradient_correctness_einsum(equation):
 def test_gradient_correctness_einsum_2():
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
-            super(NeuralNetEinsum, self).__init__()
+            super().__init__()
             self.register_parameter(name="bias", param=torch.nn.Parameter(torch.randn(bias_size)))
 
         def forward(self, left, right):
@@ -1491,7 +1491,7 @@ def test_gradient_correctness_einsum_2():
 def test_aten_multinomial(input_shape, num_samples, replacement):
     class NeuralNetDiagonal(torch.nn.Module):
         def __init__(self, num_samples, replacement):
-            super(NeuralNetDiagonal, self).__init__()
+            super().__init__()
             self.num_samples = num_samples
             self.replacement = replacement
 
@@ -1550,7 +1550,7 @@ def test_aten_argmax(input_shape):
 def test_numpy_T(input_shape):
     class NeuralNet(torch.nn.Module):
         def __init__(self):
-            super(NeuralNet, self).__init__()
+            super().__init__()
 
         def forward(self, input):
             return input.T
@@ -1577,7 +1577,7 @@ def test_numpy_T(input_shape):
 def test_gradient_correctness_bce_with_logits():
     class NeuralNetBCEWithLogitsLoss(torch.nn.Module):
         def __init__(self, input_size, hidden_size):
-            super(NeuralNetBCEWithLogitsLoss, self).__init__()
+            super().__init__()
             self.linear = torch.nn.Linear(input_size, hidden_size)
 
         def forward(self, input, target):
@@ -1610,7 +1610,7 @@ def test_gradient_correctness_bce_with_logits():
 def test_gradient_correctness_cast_chain():
     class NeuralNetCast(torch.nn.Module):
         def __init__(self, D):
-            super(NeuralNetCast, self).__init__()
+            super().__init__()
             self.a = torch.nn.parameter.Parameter(torch.rand(D))
 
         def forward(self, b):
@@ -1699,7 +1699,7 @@ def test_multiple_chained_ortmodules_with_non_differential_output():
 def test_duplicated_output(loss_with_duplicated_output):
     class NeuralNet(torch.nn.Module):
         def __init__(self):
-            super(NeuralNet, self).__init__()
+            super().__init__()
             self.fc1 = torch.nn.Linear(128, 16)
 
         def forward(self, input):
@@ -1939,7 +1939,7 @@ def test_mixed_nnmodule_ortmodules_training():
 def test_identity_elimination():
     class NeuralNetSimpleIdentity(torch.nn.Module):
         def __init__(self, input_size, num_classes):
-            super(NeuralNetSimpleIdentity, self).__init__()
+            super().__init__()
 
             self.fc = torch.nn.Linear(input_size, num_classes)
 
@@ -2087,7 +2087,7 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
 def test_model_output_with_inplace_update(device):
     class NeuralNetWithGradNeedOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size):
-            super(NeuralNetWithGradNeedOutput, self).__init__()
+            super().__init__()
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             # Softmax's gradient is depending on its output
             self.act = torch.nn.Softmax(dim=1)
@@ -2182,7 +2182,7 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
 def test_model_with_bypass_input(device):
     class NeuralNetWithBypassInput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetWithBypassInput, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -2249,7 +2249,7 @@ def test_gpu_reserved_memory_with_torch_no_grad():
 def test_dict_return_value_module(return_type, device):
     class NeuralNetDictOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetDictOutput, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -2285,7 +2285,7 @@ def test_dict_return_value_module(return_type, device):
 def test_dict_of_tuple_return_value_module(device):
     class NeuralNetDictOfTuplesOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetDictOfTuplesOutput, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -2321,7 +2321,7 @@ def test_dict_of_tuple_return_value_module(device):
 def test_tuple_of_tuple_return_value_module(device):
     class NeuralNetTupleOfTuplesOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetTupleOfTuplesOutput, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -2361,7 +2361,7 @@ def test_named_tuple_return_value_module(device):
 
     class NeuralNetNamedTupleOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetNamedTupleOutput, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -2577,7 +2577,7 @@ def test_model_with_different_cuda_devices(device):
     # Trick to run this test in single GPU machines
     device_id = _utils.get_device_index(device)
     if device_id >= torch.cuda.device_count():
-        warnings.warn("Skipping test_model_with_different_cuda_devices(cuda:{})".format(device_id))
+        warnings.warn(f"Skipping test_model_with_different_cuda_devices(cuda:{device_id})")
         return
 
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -2690,7 +2690,7 @@ def test_hf_model_output_with_tuples(return_dict):
 def test_nested_return_value_module(device):
     class NeuralNetNestedOutput(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetNestedOutput, self).__init__()
+            super().__init__()
 
             self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
             self.relu1 = torch.nn.ReLU()
@@ -2766,7 +2766,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 def test_forward_returns_none_type_as_output():
     class NeuralNetNoneTypeOutput(torch.nn.Module):
         def __init__(self, input_size, num_classes):
-            super(NeuralNetNoneTypeOutput, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, num_classes)
             self.relu1 = torch.nn.ReLU()
@@ -2790,7 +2790,7 @@ def test_forward_returns_none_type_as_output():
 def test_bool_input_and_output():
     class NeuralNetBoolInputOutput(torch.nn.Module):
         def __init__(self, input_size, num_classes):
-            super(NeuralNetBoolInputOutput, self).__init__()
+            super().__init__()
             self.fc = torch.nn.Linear(input_size, num_classes)
             self.relu = torch.nn.ReLU()
 
@@ -2815,7 +2815,7 @@ def test_bool_input_and_output():
 def test_uint8_input_and_output():
     class NeuralNetUInt8InputOutput(torch.nn.Module):
         def __init__(self, input_size, num_classes):
-            super(NeuralNetUInt8InputOutput, self).__init__()
+            super().__init__()
             self.fc = torch.nn.Linear(input_size, num_classes)
             self.relu = torch.nn.ReLU()
 
@@ -2904,7 +2904,7 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
 def test_model_with_registered_buffers():
     class NeuralNetWithRegisteredBuffer(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetWithRegisteredBuffer, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -2936,7 +2936,7 @@ def test_model_with_registered_buffers():
 def test_model_with_unused_registered_buffers():
     class UnusedBufferNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(UnusedBufferNet, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -2968,7 +2968,7 @@ def test_model_with_unused_registered_buffers():
 def test_model_with_constant_and_registered_parameters():
     class NeuralNetWithRegisteredParamsWithConstant(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetWithRegisteredParamsWithConstant, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -3126,7 +3126,7 @@ def test_buffers():
 def test_eval_with_dropout():
     class NeuralNetDropout(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetDropout, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -3188,7 +3188,7 @@ def test_with_torch_no_grad_context():
 def test_unused_layer():
     class Net(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(Net, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -3213,7 +3213,7 @@ def test_unused_layer():
 def test_train_eval_with_various_outputs():
     class Net(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(Net, self).__init__()
+            super().__init__()
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
 
@@ -3401,7 +3401,7 @@ def test_forward_dynamic_kwargs():
 def test_forward_call_kwargs_input(forward_statement):
     class KwargsNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(KwargsNet, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -3450,7 +3450,7 @@ def test_forward_call_kwargs_input(forward_statement):
 def test_repro_iscontiguous():
     class SimpleNet(torch.nn.Module):
         def __init__(self):
-            super(SimpleNet, self).__init__()
+            super().__init__()
             self.a = torch.nn.Parameter(torch.FloatTensor([-1.0, 1.0]))
 
         def forward(self, x):
@@ -3542,7 +3542,7 @@ def test_forward_call_default_input():
 def test_forward_call_kwargs_input_unexpected_order():
     class OrderlyNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(OrderlyNet, self).__init__()
+            super().__init__()
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
             self.fc2 = torch.nn.Linear(hidden_size, num_classes)
@@ -3705,7 +3705,7 @@ def test_forward_call_lots_None():
 def test_primitive_inputs(bool_argument, int_argument, float_argument):
     class PrimitiveTypesInputNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(PrimitiveTypesInputNet, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -3745,7 +3745,7 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
 
     class PrimitiveTypesInputNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(PrimitiveTypesInputNet, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -3785,7 +3785,7 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
 def test_model_with_registered_buffer_and_dropped_parameters():
     class ModelWithBufferAndDroppedParameter(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(ModelWithBufferAndDroppedParameter, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -3862,7 +3862,7 @@ def test_unused_parameters(model, none_pt_params):
 def test_output_order():
     class OutputOrderNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(OutputOrderNet, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.fc2 = torch.nn.Linear(input_size, hidden_size)
@@ -3975,7 +3975,7 @@ def test_unused_parameters_does_not_unnecessarily_reinitialize(model):
 def test_load_state_dict_for_wrapped_ortmodule():
     class WrapperModule(torch.nn.Module):
         def __init__(self, ortmodule):
-            super(WrapperModule, self).__init__()
+            super().__init__()
             self._ortmodule = ortmodule
 
         def forward(self, x):
@@ -4053,7 +4053,7 @@ def test_ortmodule_string_inputs_are_ignored():
 def test_ortmodule_list_input():
     class ListNet(torch.nn.Module):
         def __init__(self):
-            super(ListNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4074,7 +4074,7 @@ def test_ortmodule_list_input():
 def test_ortmodule_list_input_with_unused_values():
     class ListNet(torch.nn.Module):
         def __init__(self):
-            super(ListNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4095,7 +4095,7 @@ def test_ortmodule_list_input_with_unused_values():
 def test_ortmodule_list_input_with_none_values():
     class ListNet(torch.nn.Module):
         def __init__(self):
-            super(ListNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4116,7 +4116,7 @@ def test_ortmodule_list_input_with_none_values():
 def test_ortmodule_nested_list_input():
     class ListNet(torch.nn.Module):
         def __init__(self):
-            super(ListNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4250,7 +4250,7 @@ def test_debug_options_log_level_validation_fails_on_type_mismatch():
 def test_ortmodule_gradient_accumulation_optimization_correctness():
     class NeuralNetWithCast(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetWithCast, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -4305,7 +4305,7 @@ def test_ortmodule_gradient_accumulation_optimization_correctness():
 def test_ortmodule_dict_input():
     class DictNet(torch.nn.Module):
         def __init__(self):
-            super(DictNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4326,7 +4326,7 @@ def test_ortmodule_dict_input():
 def test_ortmodule_dict_input_with_unused_values():
     class DictNet(torch.nn.Module):
         def __init__(self):
-            super(DictNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4347,7 +4347,7 @@ def test_ortmodule_dict_input_with_unused_values():
 def test_ortmodule_dict_input_with_none_values():
     class DictNet(torch.nn.Module):
         def __init__(self):
-            super(DictNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4368,7 +4368,7 @@ def test_ortmodule_dict_input_with_none_values():
 def test_ortmodule_dict_input_with_nested_values():
     class DictNet(torch.nn.Module):
         def __init__(self):
-            super(DictNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, batch):
@@ -4402,7 +4402,7 @@ def test_ortmodule_dict_input_with_nested_values():
 def test_ortmodule_list_dict_input_with_nested_values():
     class ListDictNet(torch.nn.Module):
         def __init__(self):
-            super(ListDictNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([3]))
 
         def forward(self, batch):
@@ -4430,7 +4430,7 @@ def test_ortmodule_list_dict_input_with_nested_values():
 def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
     class ListDictKwargsNet(torch.nn.Module):
         def __init__(self, N, D_in):
-            super(ListDictKwargsNet, self).__init__()
+            super().__init__()
             self.register_buffer("buffer", torch.ones(N, D_in, device="cuda"))
             self.dummy = torch.nn.Parameter(torch.FloatTensor([3]))
 
@@ -4468,7 +4468,7 @@ def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
 def test_ortmodule_user_defined_method():
     class UserDefinedMethodsNet(torch.nn.Module):
         def __init__(self):
-            super(UserDefinedMethodsNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
 
         def forward(self, a):
@@ -4495,7 +4495,7 @@ def test_ortmodule_user_defined_method():
 def test_ortmodule_user_getattr_gets_successfully():
     class UserDefinedMethodsNet(torch.nn.Module):
         def __init__(self):
-            super(UserDefinedMethodsNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([12]))
 
         def forward(self, a):
@@ -4518,7 +4518,7 @@ def test_ortmodule_user_getattr_gets_successfully():
 def test_ortmodule_setattr_new_attribute(attribute):
     class UserNet(torch.nn.Module):
         def __init__(self):
-            super(UserNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, a):
@@ -4537,7 +4537,7 @@ def test_ortmodule_setattr_new_attribute(attribute):
 def test_ortmodule_setattr_on_ortmodule_copied_user_model_attribute():
     class UserNet(torch.nn.Module):
         def __init__(self):
-            super(UserNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, a):
@@ -4570,7 +4570,7 @@ def test_ortmodule_setattr_on_ortmodule_copied_user_model_attribute():
 def test_ortmodule_setattr_ortmodule_attribute():
     class UserNet(torch.nn.Module):
         def __init__(self):
-            super(UserNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
 
         def forward(self, a):
@@ -4592,7 +4592,7 @@ def test_ortmodule_setattr_signals_model_changed():
 
     class UserNet(torch.nn.Module):
         def __init__(self, input_flag):
-            super(UserNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([10]))
             self.input_flag = input_flag
 
@@ -4628,7 +4628,7 @@ def test_ortmodule_setattr_signals_model_changed():
 def test_ortmodule_attribute_name_collision_warning():
     class UserNet(torch.nn.Module):
         def __init__(self):
-            super(UserNet, self).__init__()
+            super().__init__()
             self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
             self._torch_module = True
 
@@ -4651,7 +4651,7 @@ def test_ortmodule_attribute_name_collision_warning():
 def test_ortmodule_ortmodule_method_attribute_copy():
     class UserNetWithSelfCallingForward(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(UserNetWithSelfCallingForward, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.relu = torch.nn.ReLU()
@@ -4737,7 +4737,7 @@ def test_ortmodule_determinism_flag(is_training, deterministic):
 def test_ortmodule_gradient_builder():
     class Model(torch.nn.Module):
         def __init__(self):
-            super(Model, self).__init__()
+            super().__init__()
 
         def forward(self, x):
             return torch.cos(x)
@@ -4946,7 +4946,7 @@ def test_ortmodule_fused_adam_optimizer_correctness_torch():
 def test_sigmoid_grad():
     class NeuralNetSigmoid(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetSigmoid, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.sigmoid = torch.nn.Sigmoid()
@@ -4981,7 +4981,7 @@ def test_sigmoid_grad():
 def test_tanh_grad():
     class NeuralNetTanh(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetTanh, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.tanh = torch.nn.Tanh()
@@ -5030,7 +5030,7 @@ def test__defined_from_envvar():
 def test_sigmoid_grad_opset13():
     class NeuralNetSigmoid(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
-            super(NeuralNetSigmoid, self).__init__()
+            super().__init__()
 
             self.fc1 = torch.nn.Linear(input_size, hidden_size)
             self.sigmoid = torch.nn.Sigmoid()
@@ -5148,7 +5148,7 @@ def test_serialize_ortmodule():
 def test_trilu_grad(batch_size, M, N, k, has_upper, upper):
     class NeuralNetTrilu(torch.nn.Module):
         def __init__(self, has_upper, upper):
-            super(NeuralNetTrilu, self).__init__()
+            super().__init__()
             self.upper = upper
             self.has_upper = has_upper
 
@@ -5185,7 +5185,7 @@ def test_trilu_grad(batch_size, M, N, k, has_upper, upper):
 def test_softmax(M, N):
     class NeuralNetSoftmax(torch.nn.Module):
         def __init__(self):
-            super(NeuralNetSoftmax, self).__init__()
+            super().__init__()
             self.m = torch.nn.Softmax(dim=1)
 
         def forward(self, x):
@@ -5216,7 +5216,7 @@ def test_check_opset_is_default_opset_after_training():
 
     class NeuralNetSoftmax(torch.nn.Module):
         def __init__(self):
-            super(NeuralNetSoftmax, self).__init__()
+            super().__init__()
             self.m = torch.nn.Softmax(dim=1)
 
         def forward(self, x):
@@ -5250,7 +5250,7 @@ def test_random_states_unchanged_for_ortmodule():
 
     class NeuralNetSlice(torch.nn.Module):
         def __init__(self):
-            super(NeuralNetSlice, self).__init__()
+            super().__init__()
             self.dim = 32
 
         def forward(self, x):
@@ -5286,7 +5286,7 @@ def test_random_states_unchanged_for_ortmodule():
 def test_squeeze_custom_symbolic_registry():
     class SqueezeModel(torch.nn.Module):
         def __init__(self):
-            super(SqueezeModel, self).__init__()
+            super().__init__()
             self.conv = torch.nn.Conv2d(in_channels=3, out_channels=32, kernel_size=14, stride=14, bias=False)
 
         def forward(self, x):

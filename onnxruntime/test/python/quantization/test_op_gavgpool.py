@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License. See License.txt in the project root for
@@ -89,7 +88,7 @@ class TestOpGlobalAveragePool(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_q8_path = "gavg_pool_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_q8_path = f"gavg_pool_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
         quantize_static(

@@ -218,9 +218,9 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
     #
     ratio_of_ops_in_trt = (total_ops - total_cuda_and_cpu_ops) / total_ops
     if debug:
-        print("total_cuda_and_cpu_ops: {}".format(total_cuda_and_cpu_ops))
-        print("total_ops: {}".format(total_ops))
-        print("ratio_of_ops_in_trt: {}".format(ratio_of_ops_in_trt))
+        print(f"total_cuda_and_cpu_ops: {total_cuda_and_cpu_ops}")
+        print(f"total_ops: {total_ops}")
+        print(f"ratio_of_ops_in_trt: {ratio_of_ops_in_trt}")
 
     return ((total_ops - total_cuda_and_cpu_ops), total_ops, ratio_of_ops_in_trt)
 
@@ -267,15 +267,15 @@ def calculate_trt_latency_percentage(trt_op_map):
         ratio_of_trt_execution_time = total_trt_execution_time / total_execution_time
 
     if debug:
-        print("total_trt_execution_time: {}".format(total_trt_execution_time))
-        print("total_execution_time: {}".format(total_execution_time))
-        print("ratio_of_trt_execution_time: {}".format(ratio_of_trt_execution_time))
+        print(f"total_trt_execution_time: {total_trt_execution_time}")
+        print(f"total_execution_time: {total_execution_time}")
+        print(f"ratio_of_trt_execution_time: {ratio_of_trt_execution_time}")
 
     return (total_trt_execution_time, total_execution_time, ratio_of_trt_execution_time)
 
 
 def get_profile_metrics(path, profile_already_parsed, logger=None):
-    logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
+    logger.info(f"Parsing/Analyzing profiling files in {path} ...")
     p1 = subprocess.Popen(
         ["find", path, "-name", "onnxruntime_profile*", "-printf", "%T+\t%p\n"],
         stdout=subprocess.PIPE,
@@ -293,7 +293,7 @@ def get_profile_metrics(path, profile_already_parsed, logger=None):
             continue
         profile_already_parsed.add(profile)
 
-        logger.info("start to parse {} ...".format(profile))
+        logger.info(f"start to parse {profile} ...")
         with open(profile) as f:
             op_map = parse_single_file(f)
             if op_map:

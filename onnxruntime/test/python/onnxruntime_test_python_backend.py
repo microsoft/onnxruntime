@@ -22,7 +22,7 @@ class TestBackend(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testAllocationPlanWorksWithOnlyExecutePathToFetchesOption(self):
-        """
+        r"""
                (inp0)  (inp1)
                   |  \/  |
                   |  /\  |

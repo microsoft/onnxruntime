@@ -334,14 +334,14 @@ def hipify(src_file_path, dst_file_path):
 
     do_write = True
     if os.path.exists(dst_file_path):
-        with open(dst_file_path, "r", encoding="utf-8") as fout_old:
+        with open(dst_file_path, encoding="utf-8") as fout_old:
             do_write = fout_old.read() != s
     if do_write:
         with open(dst_file_path, "w") as f:
             f.write(s)
-        return 'Hipified: "{}" -> "{}"'.format(src_file_path, dst_file_path)
+        return f'Hipified: "{src_file_path}" -> "{dst_file_path}"'
     else:
-        return 'Repeated: "{}" -> "{}"'.format(src_file_path, dst_file_path)
+        return f'Repeated: "{src_file_path}" -> "{dst_file_path}"'
 
 
 def list_files(prefix, path):

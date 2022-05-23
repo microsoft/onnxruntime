@@ -34,7 +34,7 @@ def ort_test_with_input(ort_sess, input, output, rtol, atol):
     inputs = list(map(to_numpy, input))
     outputs = list(map(to_numpy, output))
 
-    ort_inputs = dict((ort_sess.get_inputs()[i].name, input) for i, input in enumerate(inputs))
+    ort_inputs = {ort_sess.get_inputs()[i].name: input for i, input in enumerate(inputs)}
     ort_outs = ort_sess.run(None, ort_inputs)
 
     # compare onnxruntime and PyTorch results
@@ -226,7 +226,7 @@ class ONNXExporterTest(unittest.TestCase):
 # opset 9 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
 ONNXExporterTest_opset9_IRv4 = type(
-    str("TestONNXRuntime_opset9_IRv4"),
+    "TestONNXRuntime_opset9_IRv4",
     (unittest.TestCase,),
     dict(ONNXExporterTest.__dict__, keep_initializers_as_inputs=False),
 )

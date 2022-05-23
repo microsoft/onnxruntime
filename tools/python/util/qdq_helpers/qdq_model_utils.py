@@ -36,7 +36,7 @@ def _duplicate_dq_nodes_with_multiple_consumers(graph: onnx.GraphProto, **kwargs
     if nodes_to_update:
         dup_idx = 0
         new_graph = onnx.GraphProto()
-        graph_outputs = set([output.name for output in graph.output])
+        graph_outputs = {output.name for output in graph.output}
         for node in graph.node:
             new_graph.node.append(node)
             if node in nodes_to_update:

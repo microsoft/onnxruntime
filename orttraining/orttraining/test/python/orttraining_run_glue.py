@@ -183,7 +183,7 @@ class ORTGlueTest(unittest.TestCase):
                 "outputs": [("loss", [], True), ("logits", ["batch", 2])],
             }
         else:
-            raise RuntimeError("unsupported base model name {}.".format(model_name))
+            raise RuntimeError(f"unsupported base model name {model_name}.")
 
         return model_desc
 
@@ -285,7 +285,7 @@ class ORTGlueTest(unittest.TestCase):
 
             result = trainer.evaluate()
 
-            logger.info("***** Eval results {} *****".format(data_args.task_name))
+            logger.info(f"***** Eval results {data_args.task_name} *****")
             for key, value in result.items():
                 logger.info("  %s = %s", key, value)
 

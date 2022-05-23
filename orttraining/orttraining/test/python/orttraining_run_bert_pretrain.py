@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # ==================
 import os
 import shutil
@@ -362,7 +358,7 @@ def setup_training(args):
 
     if args.gradient_accumulation_steps < 1:
         raise ValueError(
-            "Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(args.gradient_accumulation_steps)
+            f"Invalid gradient_accumulation_steps parameter: {args.gradient_accumulation_steps}, should be >= 1"
         )
     if args.train_batch_size % args.gradient_accumulation_steps != 0:
         raise ValueError(
@@ -384,7 +380,7 @@ def setup_torch_distributed(world_rank, world_size):
     os.environ["RANK"] = str(world_rank)
     os.environ["WORLD_SIZE"] = str(world_size)
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = str("12345")
+    os.environ["MASTER_PORT"] = "12345"
     torch.distributed.init_process_group(backend="nccl", world_size=world_size, rank=world_rank)
     return
 
@@ -547,7 +543,7 @@ def do_pretrain(args):
                                 # tb_writer.add_scalar('train/summary/scalar/all_fp16_gradients_finite_859', all_finite, global_step)
                             tb_writer.add_scalar("train/summary/total_loss", average_loss / divisor, global_step)
 
-                        print("Step:{} Average Loss = {}".format(global_step, average_loss / divisor))
+                        print(f"Step:{global_step} Average Loss = {average_loss / divisor}")
 
                     if global_step >= args.max_steps or global_step >= force_to_stop_max_steps:
                         if tb_writer:
@@ -556,7 +552,7 @@ def do_pretrain(args):
                     if global_step >= args.max_steps:
                         if args.save_checkpoint:
                             model.save_checkpoint(
-                                os.path.join(args.output_dir, "checkpoint-{}.ortcp".format(args.world_rank))
+                                os.path.join(args.output_dir, f"checkpoint-{args.world_rank}.ortcp")
                             )
                         final_loss = average_loss / (args.log_freq * args.gradient_accumulation_steps)
                         return final_loss

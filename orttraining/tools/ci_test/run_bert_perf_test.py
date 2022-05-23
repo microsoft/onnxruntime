@@ -59,7 +59,7 @@ def main():
         cmds = [
             os.path.join(args.binary_dir, "onnxruntime_training_bert"),
             "--model_name",
-            os.path.join(args.model_root, "nv/bert-large/{}".format(model)),
+            os.path.join(args.model_root, f"nv/bert-large/{model}"),
             "--train_data_dir",
             os.path.join(args.training_data_root, str(c.max_seq_length), "books_wiki_en_corpus/train"),
             "--test_data_dir",

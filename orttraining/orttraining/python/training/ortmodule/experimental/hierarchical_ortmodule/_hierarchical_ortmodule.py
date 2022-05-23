@@ -10,9 +10,9 @@ from ...debug_options import DebugOptions
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if
 # they are exportable.
-_force_exportable_set = set(
-    [torch.nn.Linear, torch.nn.Identity, torch.nn.modules.linear.NonDynamicallyQuantizableLinear]
-)
+_force_exportable_set = {
+    torch.nn.Linear, torch.nn.Identity, torch.nn.modules.linear.NonDynamicallyQuantizableLinear
+}
 
 
 class HierarchicalORTModule(torch.nn.Module):
@@ -53,7 +53,7 @@ class HierarchicalORTModule(torch.nn.Module):
 
     def __init__(self, module, debug_options=None):
         self._initialized = False
-        super(HierarchicalORTModule, self).__init__()
+        super().__init__()
         self._original_module = module
         self._debug_options = debug_options if debug_options else DebugOptions()
 

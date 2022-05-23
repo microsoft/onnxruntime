@@ -8,7 +8,7 @@ from flatbuffers.compat import import_numpy
 np = import_numpy()
 
 
-class KeyValue(object):
+class KeyValue:
     __slots__ = ["_tab"]
 
     @classmethod

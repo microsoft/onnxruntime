@@ -15,7 +15,7 @@ from ._multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 
-class FP16OptimizerModifier(object):
+class FP16OptimizerModifier:
     def __init__(self, optimizer) -> None:
         super().__init__()
         self._optimizer = optimizer

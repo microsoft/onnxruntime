@@ -26,4 +26,4 @@ proc = subprocess.run(
 
 commit = proc.stdout.strip()
 
-print("{} {} {}".format(path, url, commit))
+print(f"{path} {url} {commit}")

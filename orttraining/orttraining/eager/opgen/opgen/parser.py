@@ -18,7 +18,7 @@ class ExpectedSyntaxError(RuntimeError):
         super().__init__(f"expected {expected}; actual {actual}")
 
 
-class ParserBase(object):
+class ParserBase:
     _peek_queue: List[Token]
 
     def __init__(self, lexer: Union[Lexer, Reader]):

@@ -30,11 +30,11 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
 
     nightly_build, local_version = parse_nightly_and_local_version_from_whl_name(blob_name)
     if local_version:
-        html_blob_name = "onnxruntime_{}_{}.html".format(nightly_build, local_version)
+        html_blob_name = f"onnxruntime_{nightly_build}_{local_version}.html"
     else:
-        html_blob_name = "onnxruntime_{}.html".format(nightly_build)
+        html_blob_name = f"onnxruntime_{nightly_build}.html"
 
-    download_path_to_html = "./onnxruntime_{}.html".format(nightly_build)
+    download_path_to_html = f"./onnxruntime_{nightly_build}.html"
 
     block_blob_service.get_blob_to_path(container_name, html_blob_name, download_path_to_html)
 
@@ -51,7 +51,7 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
             for item in lines:
                 f.write("%s\n" % item)
     else:
-        warnings.warn("'{}' exists in {}. The html file is not updated.".format(new_line, download_path_to_html))
+        warnings.warn(f"'{new_line}' exists in {download_path_to_html}. The html file is not updated.")
 
     content_settings = ContentSettings(content_type="text/html")
     block_blob_service.create_blob_from_path(
