@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/session/inference_session.h"
+#include <onnxruntime_cxx_api.h>
 
 namespace onnxruntime {
 namespace training {
@@ -80,16 +81,20 @@ struct Module {
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.
   // Gradients will be accumulated within the Parameter object
-  Status TrainStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
+  Status TrainStep(const std::vector<Ort::Value>& /*inputs*/, std::vector<Ort::Value>& /*outputs*/);
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
-  Status EvalStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
+  Status EvalStep(const std::vector<Ort::Value>& /*inputs*/, std::vector<Ort::Value>& /*outputs*/);
 
   // Return the states of the module as a map.
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
  private:
+  Status TrainStepInternal(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
+
+  Status EvalStepInternal(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
+
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_;
   std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;

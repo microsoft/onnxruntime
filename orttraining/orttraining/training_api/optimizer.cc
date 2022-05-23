@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
+#include "orttraining/training_api/include/session.h"
 #include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/optimizer.h"
 
@@ -19,11 +21,14 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
       param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
 
   // TODO: share threadpool with module session
-  const SessionOptions session_options;
   std::unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
-  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, *env));
+  optim_sess_ = std::move(std::make_unique<InferenceSession>(GetSessionOptions(), *env));
 
+  std::unordered_map<std::string, std::shared_ptr<IExecutionProvider>>& execution_providers = GetRegisteredExecutionProviders();
+  for (auto& execution_provider : execution_providers) {
+    ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider.second));
+  }
   ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
   auto& optim_sess_state = optim_sess_->GetSessionState();
@@ -72,7 +77,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
       ORT_ENFORCE(it != parameters_.end(), "Unknown param: ", param_name, " for field: ", name);
       inputs_.push_back(param_named_optimizer_states.at(param_name).momentum_named_states.at(MOMENT_STATE_NAMES[1]));
     } else {
-      ORT_THROW("This is an invalid graph. Optimizer graph contains unknown user input:",name);
+      ORT_THROW("This is an invalid graph. Optimizer graph contains unknown user input:", name);
     }
   }
 }

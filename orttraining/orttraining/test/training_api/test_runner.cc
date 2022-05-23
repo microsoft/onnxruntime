@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <random>
+#include <onnxruntime_cxx_api.h>
+
 #include "cxxopts.hpp"
 #include "core/util/math.h"
 #include "core/common/common.h"
@@ -11,9 +14,10 @@
 #include "core/session/inference_session.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-
 #include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/interfaces.h"
+
+#include "orttraining/test/training_api/synthetic_data_loader.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -31,11 +35,9 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 }  // namespace onnxruntime
 #endif
 
-static SessionOptions session_options;
-
 struct TestRunnerParameters {
   PathString model_training_graph_path;
-  PathString model_evaluation_graph_path;
+  std::optional<PathString> model_evaluation_graph_path;
   PathString optimizer_training_graph_path;
   // path to checkpoint to load
   PathString checkpoint_to_load_path;
@@ -54,7 +56,6 @@ struct TestRunnerParameters {
 
   // Allocator to use for allocating inputs from the dataset (optional).
   AllocatorPtr input_allocator;
-  std::unique_ptr<IExecutionProvider> provider;
 };
 
 struct OrtTestRunnerParameters {
@@ -73,9 +74,7 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
         cxxopts::value<std::string>()->default_value(""))
       ("optimizer_training_graph_path", "The path to the optimizer graph to load. ",
         cxxopts::value<std::string>()->default_value(""))
-      ("checkpoint_to_load_path",
-       "The path to the checkpoint to load. If not provided, the latest "
-       "checkpoint in checkpoints_dir, if any, is used.",
+      ("checkpoint_to_load_path", "The path to the checkpoint to load if provided.",
         cxxopts::value<std::string>()->default_value(""))
       ("model_name",
        "The name of the model.",
@@ -108,7 +107,13 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
     auto flags = options.parse(argc, argv);
 
     params.model_training_graph_path = ToPathString(flags["model_training_graph_path"].as<std::string>());
-    params.model_evaluation_graph_path = ToPathString(flags["model_evaluation_graph_path"].as<std::string>());
+    std::string eval_path = flags["model_evaluation_graph_path"].as<std::string>();
+    if (eval_path.empty()) {
+      params.model_evaluation_graph_path = std::nullopt;
+    } else {
+      params.model_evaluation_graph_path = ToPathString(eval_path);
+    }
+
     params.optimizer_training_graph_path = ToPathString(flags["optimizer_training_graph_path"].as<std::string>());
     params.checkpoint_to_load_path = ToPathString(flags["checkpoint_to_load_path"].as<std::string>());
     params.model_name = flags["model_name"].as<std::string>();
@@ -136,8 +141,6 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
       printf("No output directory specified. Trained model files will not be saved.\n");
     }
 
-    session_options.use_deterministic_compute = flags["use_deterministic_compute"].as<bool>();
-
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
         logging::Severity::kVERBOSE <= ort_params.log_severity && ort_params.log_severity <= logging::Severity::kFATAL,
@@ -154,16 +157,6 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
   return Status::OK();
 }
 
-std::vector<std::vector<OrtValue>> CreateSyntheticDataLoader(size_t batch_size,
-                                                             AllocatorPtr alloc = nullptr) {
-  OrtValue input, positions;
-  // hard coded each sample to have 4 elements so far.
-  // todo: we can make it support more generic once we are clear what our offline process graph needed.
-  CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 4}, &input, alloc = alloc);
-  CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 3}, &positions, alloc = alloc);
-  return std::vector<std::vector<OrtValue>>(batch_size, std::vector<OrtValue>{input, positions});
-}
-
 Status RunTraining(const TestRunnerParameters& params) {
   std::string tensorboard_file = params.output_dir + "/tb.event";
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
@@ -171,64 +164,88 @@ Status RunTraining(const TestRunnerParameters& params) {
   CheckpointState state;
   ORT_ENFORCE(LoadCheckpoint(params.checkpoint_to_load_path, state).IsOK());
 
+#ifdef USE_CUDA
+  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+  const auto& api = Ort::GetApi();
+  ORT_ENFORCE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
+
+  // MUST set execution provider before model/optimizer creation.
+  SetExecutionProvider(cuda_options);
+#endif
+
   Module module(params.model_training_graph_path,
                 state.module_checkpoint_state.named_parameters,
                 params.model_evaluation_graph_path);
 
+  bool do_eval = params.model_evaluation_graph_path.has_value();
+
   Optimizer optimizer(params.optimizer_training_graph_path,
                       state.module_checkpoint_state.named_parameters);
 
-#ifdef USE_CUDA
-  api::SetExecutionProvider(module, optimizer, params.provider.get());
-#endif
+  size_t sample_count_per_epoch = 4;
+  ::test::training_api::SyntheticDataLoader data_loader(sample_count_per_epoch, params.train_batch_size);
 
-  auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);
-  std::vector<std::vector<OrtValue>>
-      data_loader = CreateSyntheticDataLoader(params.train_batch_size,
-                                              params.input_allocator);
-
-  size_t NUM_EPOCHS = params.num_train_epochs;
-  size_t GRAD_ACC_STEPS = params.gradient_accumulation_steps;
-  size_t EVAL_STEPS = params.eval_interval;
-  size_t SAVE_STEPS = params.checkpoint_interval;
+  int64_t total_step_count = static_cast<int64_t>(params.num_train_epochs * data_loader.NumOfBatches());
+  int64_t warmup_step_count = total_step_count / 3;
+  LinearLRScheduler scheduler = LinearLRScheduler(optimizer, warmup_step_count, total_step_count);
   std::string tag("train");
 
-  for (size_t epoch = 0, batch_idx = 0; epoch < NUM_EPOCHS; ++epoch) {
-    for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
-      std::vector<OrtValue>& inputs = *it;
-      std::vector<OrtValue> fetches;
-      ORT_ENFORCE(module.TrainStep(inputs, fetches).IsOK());
+  const size_t stabilized_perf_start_step = 0;
+  double stabilized_total_end_to_end_time{0};
+  auto end_to_end_start = std::chrono::high_resolution_clock::now();
 
-      float loss = GetValue<float>(fetches[3]);
-      tensorboard->AddSummary(std::to_string(loss), batch_idx, tag);
-      std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
-
-      if (batch_idx % GRAD_ACC_STEPS == 0) {
-        // gradient accumulation steps completed
-        ORT_ENFORCE(optimizer.Step().IsOK());
-        // modify learning rate
-        ORT_ENFORCE(scheduler->Step().IsOK());
-        ORT_ENFORCE(module.ResetGrad().IsOK());
-      }
-
-      if (batch_idx % EVAL_STEPS == 0) {
-        std::vector<OrtValue> eval_results;
-        ORT_ENFORCE(module.EvalStep(inputs, eval_results).IsOK());
-      }
-
-      if (batch_idx % SAVE_STEPS == 0) {
-        // save trained weights
-        CheckpointState state_to_save;
-        ORT_ENFORCE(module.GetStateDict(state_to_save.module_checkpoint_state).IsOK());
-        ORT_ENFORCE(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
-        state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
-        std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
-        ORT_ENFORCE(SaveCheckpoint(state_to_save, ckpt_file).IsOK());
-      }
-
-      batch_idx++;
+  for (size_t epoch = 0, batch_idx = 0; epoch < params.num_train_epochs; ++epoch) {
+    // for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
+    if (batch_idx >= stabilized_perf_start_step) {
+      end_to_end_start = std::chrono::high_resolution_clock::now();
     }
+
+    std::vector<Ort::Value> inputs;
+    data_loader.GetNextBatch(inputs);
+
+    std::vector<Ort::Value> fetches;
+    ORT_ENFORCE(module.TrainStep(inputs, fetches).IsOK());
+
+    float loss = *(fetches[0].GetTensorMutableData<float>());
+    tensorboard->AddSummary(std::to_string(loss), batch_idx, tag);
+    std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
+
+    if ((batch_idx + 1) % params.gradient_accumulation_steps == 0) {
+      // Gradient accumulation steps completed.
+      ORT_ENFORCE(optimizer.Step().IsOK());
+      // Update learning rate.
+      ORT_ENFORCE(scheduler.Step().IsOK());
+      ORT_ENFORCE(module.ResetGrad().IsOK());
+    }
+
+    if (do_eval && (batch_idx + 1) % params.eval_interval == 0) {
+      std::vector<Ort::Value> eval_results;
+      ORT_ENFORCE(module.EvalStep(inputs, eval_results).IsOK());
+    }
+
+    if ((batch_idx + 1) % params.checkpoint_interval == 0) {
+      // Save trained weights
+      CheckpointState state_to_save;
+      ORT_ENFORCE(module.GetStateDict(state_to_save.module_checkpoint_state).IsOK());
+      ORT_ENFORCE(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
+      state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
+      std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
+      ORT_ENFORCE(SaveCheckpoint(state_to_save, ckpt_file).IsOK());
+    }
+
+    batch_idx++;
   }
+
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration_seconds = end - end_to_end_start;
+  stabilized_total_end_to_end_time = duration_seconds.count();
+
+  std::cout << "Training completed - end to end latency: " << stabilized_total_end_to_end_time << "(s)" << std::endl;
+
+#ifdef USE_CUDA
+  // Finally, don't forget to release the provider options
+  api.ReleaseCUDAProviderOptions(cuda_options);
+#endif
 
   return Status::OK();
 }
@@ -257,9 +274,6 @@ int main(int argc, char* argv[]) {
                                                   ort_params.vlog_level};
 #ifdef USE_CUDA
   OrtCUDAProviderOptions provider_options{};
-  if (auto factory = CreateExecutionProviderFactory_Cuda(&provider_options))
-    params.provider = std::move(factory->CreateProvider());
-
   params.input_allocator = CreateCUDAPinnedAllocator(provider_options.device_id, CUDA_PINNED);
 #endif
 

@@ -1,11 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
-
 #include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/session.h"
 #include "orttraining/training_api/include/utils.h"
+
+#include <onnxruntime_cxx_api.h>
 
 using namespace onnxruntime;
 
@@ -23,7 +26,7 @@ Status Parameter::AllocateGrad(const std::string& gradient_name, const SessionSt
 }
 
 Status Parameter::ResetGrad() {
-  //TODO: make use of lazy_reset_grad input instead 
+  // TODO: make use of lazy_reset_grad input instead
   Tensor* p_tensor = gradient_.GetMutable<Tensor>();
   const auto& device = p_tensor->Location().device;
   if (device.Type() == OrtDevice::CPU) {
@@ -39,16 +42,21 @@ Status Parameter::ResetGrad() {
   }
   return Status::OK();
 }
+
 Module::Module(const std::string& train_model_path_or_bytes,
                std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
                const std::optional<std::string>& eval_model_path_or_bytes) {
   // create value copy as same params are passed to Optimizer constructor
   parameters_ = parameters;
 
-  auto so = onnxruntime::SessionOptions();
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  train_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
+  train_sess_ = std::make_unique<onnxruntime::InferenceSession>(GetSessionOptions(), *env);
+  std::unordered_map<std::string, std::shared_ptr<IExecutionProvider>>& execution_providers = GetRegisteredExecutionProviders();
+  for (auto& execution_provider : execution_providers) {
+    ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(execution_provider.second));
+  }
+
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
   if (eval_model_path_or_bytes.has_value()) {
@@ -57,7 +65,11 @@ Module::Module(const std::string& train_model_path_or_bytes,
                                                 nullptr, env->GetLoggingManager()->DefaultLogger()));
     GetGraphInputOutputNames(eval_model->MainGraph(), eval_input_names_, eval_output_names_);
     // TODO:: do validation on eval inputs and outputs: eg order of user inputs, weights
-    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
+    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(GetSessionOptions(), *env);
+    for (auto& execution_provider : execution_providers) {
+      ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(execution_provider.second));
+    }
+
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     ORT_THROW_IF_ERROR(eval_sess_->Initialize());
   }
@@ -110,7 +122,54 @@ Status Module::ResetGrad() {
   return Status::OK();
 }
 
-Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+namespace {
+
+void ToOrtValue(const std::vector<Ort::Value>& ort_value_list, std::vector<OrtValue>& ortvalue_list) {
+  size_t input_len = ort_value_list.size();
+  ortvalue_list.clear();
+  ortvalue_list.reserve(input_len);
+  const Ort::Value* ort_value_inputs_ptr = ort_value_list.data();
+  auto ortvalue_inputs_ptr = reinterpret_cast<const OrtValue**>(const_cast<Ort::Value*>(ort_value_inputs_ptr));
+  for (size_t i = 0; i < input_len; ++i) {
+    auto& ort_value = *reinterpret_cast<const ::OrtValue*>(ortvalue_inputs_ptr[i]);
+    ortvalue_list.push_back(ort_value);
+  }
+}
+
+void FromOrtValue(std::vector<OrtValue>& ortvalue_list, std::vector<Ort::Value>& ort_value_list) {
+  // Clean the output.
+  ort_value_list.clear();
+  size_t output_names_len = ortvalue_list.size();
+  for (size_t i = 0; i < output_names_len; ++i)
+    ort_value_list.emplace_back(nullptr);
+
+  Ort::Value* ort_value_outputs_ptr = ort_value_list.data();
+  auto ortvalue_outputs_ptr = reinterpret_cast<OrtValue**>(ort_value_outputs_ptr);
+  for (size_t i = 0; i != output_names_len; ++i) {
+    OrtValue& value = ortvalue_list[i];
+    // Ort::Value will release the pointer once it goes out of scope.
+    ortvalue_outputs_ptr[i] = new OrtValue(value);
+  }
+}
+
+}  // namespace
+
+Status Module::TrainStep(const std::vector<Ort::Value>& inputs, std::vector<Ort::Value>& outputs) {
+  std::vector<OrtValue> feeds;
+  ToOrtValue(inputs, feeds);
+
+  size_t output_names_len = train_output_names_.size();
+  std::vector<OrtValue> fetches(output_names_len);
+  ORT_THROW_IF_ERROR(TrainStepInternal(feeds, fetches));
+
+  // Clean the output.
+  outputs.clear();
+  FromOrtValue(fetches, outputs);
+
+  return Status::OK();
+}
+
+Status Module::TrainStepInternal(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
@@ -125,7 +184,23 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   return status;
 }
 
-Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+Status Module::EvalStep(const std::vector<Ort::Value>& inputs, std::vector<Ort::Value>& outputs) {
+  ORT_ENFORCE(eval_sess_.get(), "Evaluation session not initialized.");
+  std::vector<OrtValue> feeds;
+  ToOrtValue(inputs, feeds);
+
+  size_t output_names_len = eval_output_names_.size();
+  std::vector<OrtValue> fetches(output_names_len);
+  ORT_THROW_IF_ERROR(EvalStepInternal(feeds, fetches));
+
+  // Clean the output.
+  outputs.clear();
+  FromOrtValue(fetches, outputs);
+
+  return Status::OK();
+}
+
+Status Module::EvalStepInternal(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   auto status = eval_sess_->Run(RunOptions(), eval_input_names_, feeds, eval_output_names_, &outputs);
