@@ -48,13 +48,13 @@
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 
 namespace onnxruntime {
 namespace training {

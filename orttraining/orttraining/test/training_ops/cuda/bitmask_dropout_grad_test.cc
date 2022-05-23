@@ -10,19 +10,18 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
-using namespace onnxruntime::test;
+using onnxruntime::cuda::BitmaskElementType;
+using onnxruntime::cuda::kNumBitsPerBitmaskElement;
 
 namespace {
 
 const std::vector<float> kRatios{0.00f, 0.25f, 0.50f, 0.75f, 0.99f};
-// Bitmask tensor is uint_32 type.
-using BitmaskElementType = uint32_t;
-constexpr size_t kNumBitsPerBitmaskElement = static_cast<size_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 void GenerateMaskData(size_t size, bool* mask_data, float ratio) {
   int threshold = static_cast<int>(ratio * 100);
@@ -60,10 +59,10 @@ template <typename T>
 void RunTest(const std::vector<int64_t>& input_dims) {
   size_t input_size =
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> input_data = ValueRange<T>(input_size, T(1.f), T(1.f));
+  std::vector<T> input_data = onnxruntime::test::ValueRange<T>(input_size, T(1.f), T(1.f));
   std::unique_ptr<bool[]> mask_buffer = std::make_unique<bool[]>(input_size);
   for (float ratio : kRatios) {
-    OpTester test("BitmaskDropoutGrad", 1, kMSDomain);
+    onnxruntime::test::OpTester test("BitmaskDropoutGrad", 1, kMSDomain);
     GenerateMaskData(input_size, mask_buffer.get(), ratio);
     std::vector<BitmaskElementType> bitmask_data;
     std::vector<T> output_data;
@@ -76,11 +75,11 @@ void RunTest(const std::vector<int64_t>& input_dims) {
     test.AddOutput<T>("output", input_dims, output_data);
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+    execution_providers.push_back(onnxruntime::test::DefaultCudaExecutionProvider());
 #elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
+    execution_providers.push_back(onnxruntime::test::DefaultRocmExecutionProvider());
 #endif
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    test.Run(onnxruntime::test::OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 

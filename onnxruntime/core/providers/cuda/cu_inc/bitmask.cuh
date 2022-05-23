@@ -4,14 +4,15 @@
 #pragma once
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/shared_inc/fast_divmod.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 /**
- * These functions MUST be called with an unroll factor that evenly divides the number of threads in a warp (32).
- * In addition, this kernel MUST be launched with a number of threads in a thread block which is evenly
- * divisible by the number of threads in a warp (32).
+ * These functions MUST be called with an unroll factor that evenly divides the number of threads in a warp (32 for
+ * CUDA, 64 for ROCm). In addition, this kernel MUST be launched with a number of threads in a thread block which is
+ * evenly divisible by the number of threads in a warp.
  *
- * Take unroll factor of 4 as example, we take the following approach (for threads in the first warp, that is):
+ * Take unroll factor of 4 and 32 threads in a warp as example, we take the following approach (for threads in the first
+ * warp, that is):
  *
  * Thread 0 generates output booleans 0-3
  * Thread 1 generates output booleans 4-7
@@ -40,7 +41,8 @@
  * for the 0-7 group).
  *
  * Keep in mind that this must not be conditionally called, as all threads in the warp (that haven't already exited)
- * must reach these function calls an equal number of times, or else UB is invoked.
+ * must reach these function calls an equal number of times, otherwise the code execution is likely to hang or produce
+ * unintended side effects.
  *
  * We conditionally update the local thread's mask (with the "li < N" check), but all active threads always collaborate
  * on the reduced value.
@@ -48,10 +50,6 @@
 
 namespace onnxruntime {
 namespace cuda {
-
-// Bitmask tensor is uint_32 type.
-using BitmaskElementType = uint32_t;
-constexpr int kNumBitsPerBitmaskElement = std::numeric_limits<BitmaskElementType>::digits;
 
 template <int NumUnroll>
 __device__ __forceinline__ void SetBitmask(const CUDA_LONG id, const CUDA_LONG mask_element_count,

@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// BiasDropout kernel is only implemented for CUDA/ROCM
+#if defined(USE_CUDA) || defined(USE_ROCM)
+
 #ifdef _MSC_VER
 #pragma warning(disable : 4389)
 #endif
@@ -11,32 +14,28 @@
 #include <random>
 
 #include "gtest/gtest.h"
-
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
+using onnxruntime::cuda::BitmaskElementType;
+using onnxruntime::cuda::kNumBitsPerBitmaskElement;
 using namespace onnxruntime::test;
 
 enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
 
-// BiasDropout kernel is only implemented for CUDA/ROCM
-#if defined(USE_CUDA) || defined(USE_ROCM)
 namespace {
-
-// Bitmask tensor is uint_32 type.
-using BitmaskElementType = uint32_t;
-constexpr size_t kNumBitsPerBitmaskElement = static_cast<size_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 std::vector<BitmaskElementType> MasksToBitmasks(size_t size, const bool* mask_data) {
   std::vector<BitmaskElementType> result;
   for (size_t i = 0; i < size; i++) {
-    size_t bitmask_idx = i / kNumBitsPerBitmaskElement;
-    size_t bitmask_shift = i % kNumBitsPerBitmaskElement;
+    size_t bitmask_idx = i / static_cast<size_t>(kNumBitsPerBitmaskElement);
+    size_t bitmask_shift = i % static_cast<size_t>(kNumBitsPerBitmaskElement);
     if (bitmask_idx >= result.size()) {
       result.emplace_back(0);
     }
@@ -234,8 +233,9 @@ TEST(BiasDropoutTest, BasicBiasSameShape) {
 TEST(BiasDropoutTest, BasicBiasSameShapeNotVectorized) {
   RunBiasDropoutTest(false, {10, 5, 5}, 0.75f, TrainingTrue, false, true, true);
 }
-#endif
 
 }  // namespace test
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

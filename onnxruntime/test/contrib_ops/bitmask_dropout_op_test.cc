@@ -7,11 +7,14 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
+using onnxruntime::cuda::BitmaskElementType;
+using onnxruntime::cuda::kNumBitsPerBitmaskElement;
 using namespace onnxruntime::test;
 
 namespace {
@@ -19,9 +22,6 @@ namespace {
 constexpr int64_t kMaskSeed = 42;
 // If ratio is 0, it will go to inference mode even the training_mode is true.
 const std::vector<float> kRatios{0.25f, 0.50f, 0.75f, 0.99f};
-// Bitmask tensor is uint_32 type.
-using BitmaskElementType = uint32_t;
-constexpr size_t kNumBitsPerBitmaskElement = static_cast<size_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 template <typename T>
 void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio = false, bool has_training_mode = false,
@@ -44,7 +44,8 @@ void RunTestForInference(const std::vector<int64_t>& input_dims, bool has_ratio 
 
   test.AddOutput<T>("output", input_dims, input_data);
   if (has_mask) {
-    size_t mask_size = (input_size + kNumBitsPerBitmaskElement - 1) / kNumBitsPerBitmaskElement;
+    size_t mask_size = (input_size + static_cast<size_t>(kNumBitsPerBitmaskElement) - 1) /
+                       static_cast<size_t>(kNumBitsPerBitmaskElement);
     std::vector<BitmaskElementType> mask_data(mask_size, 0xFFFFFFFF);
     test.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(mask_size)}, mask_data);
   }
@@ -77,8 +78,8 @@ void RunTestForInferenceWrapper() {
 std::vector<BitmaskElementType> MasksToBitmasks(size_t size, const bool* mask_data) {
   std::vector<BitmaskElementType> result;
   for (size_t i = 0; i < size; ++i) {
-    size_t bitmask_idx = i / kNumBitsPerBitmaskElement;
-    size_t bitmask_shift = i % kNumBitsPerBitmaskElement;
+    size_t bitmask_idx = i / static_cast<size_t>(kNumBitsPerBitmaskElement);
+    size_t bitmask_shift = i % static_cast<size_t>(kNumBitsPerBitmaskElement);
     if (bitmask_idx >= result.size()) {
       result.emplace_back(0);
     }

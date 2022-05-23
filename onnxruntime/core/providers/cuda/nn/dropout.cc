@@ -4,15 +4,12 @@
 #include "core/providers/cuda/nn/dropout.h"
 
 #include "core/providers/cuda/nn/dropout_impl.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 namespace {
-
-// Bitmask tensor is uint_32 type.
-using BitmaskElementType = uint32_t;
-constexpr int64_t kNumBitsPerBitmaskElement = static_cast<int64_t>(std::numeric_limits<BitmaskElementType>::digits);
 
 template <typename T>
 struct GetRatioDataImpl {
