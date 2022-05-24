@@ -138,7 +138,7 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
   EXECUTE_RESULT res = EXECUTE_RESULT::SUCCESS;
   for (auto& output : expected_output_values) {
     const std::string& output_name = output.first;
-    if (output_name == "808") {
+    if (output_name == "1537") {
       continue;
     }
     OrtValue* expected_output_value = output.second;  // Automatic cast
