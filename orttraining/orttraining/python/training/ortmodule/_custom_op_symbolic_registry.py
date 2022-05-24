@@ -205,7 +205,7 @@ def numpy_T(g, self):
     else:
         # if we don't have dim information we cannot
         # output a permute so use ATen instead
-        return g.op("com.microsoft::ATenOp", self, operator_s="numpy_T")
+        return g.op("org.pytorch.aten::ATen", self, operator_s="numpy_T")
 
 
 @register_symbolic("squeeze")

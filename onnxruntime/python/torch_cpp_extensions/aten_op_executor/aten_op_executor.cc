@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <torch/torch.h>
+#include <ATen/DLConvertor.h>
 #include <unordered_map>
 #include <vector>
 
-#include <torch/torch.h>
-#include <ATen/DLConvertor.h>
-
-const std::string kATenDomain = "aten::";
+const char kATenDomain[] = "aten::";
 
 template <typename T>
 c10::IValue ToIValue(const DLManagedTensor* dlpack, bool is_optional) {

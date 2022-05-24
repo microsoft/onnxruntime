@@ -20,7 +20,7 @@ class OrtOpTests(unittest.TestCase):
         class NeuralNetEmbedding(torch.nn.Module):
             def __init__(self, num_embeddings, embedding_dim, hidden_size):
                 super(NeuralNetEmbedding, self).__init__()
-                self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+                self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim)
                 self.linear = torch.nn.Linear(embedding_dim, hidden_size)
 
             def forward(self, input):
@@ -61,7 +61,7 @@ class OrtOpTests(unittest.TestCase):
                             "Constant",
                             [],
                             ["padding_idx"],
-                            value=helper.make_tensor("padding_idx", TensorProto.INT64, (), [1]),
+                            value=helper.make_tensor("padding_idx", TensorProto.INT64, (), [-1]),
                         )
                     )
                     exported_model.graph.node.append(
