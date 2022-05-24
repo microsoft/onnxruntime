@@ -8,6 +8,7 @@ import {Tensor} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+
 import {createIndicesHelper, WORKGROUP_SIZE} from './common';
 
 interface GatherAttributes extends AttributeWithCacheKey {

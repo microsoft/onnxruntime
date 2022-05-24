@@ -7,6 +7,7 @@ import {Tensor} from '../../../tensor';
 import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+
 import {WORKGROUP_SIZE} from './common';
 
 type BuiltinFunctionName = string;

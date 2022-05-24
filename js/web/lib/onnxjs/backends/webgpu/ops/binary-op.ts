@@ -6,6 +6,7 @@ import {Tensor} from '../../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+
 import {createIndicesHelper, WORKGROUP_SIZE} from './common';
 
 type BuiltinFunctionName = string;

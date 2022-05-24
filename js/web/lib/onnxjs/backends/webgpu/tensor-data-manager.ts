@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {createView, Tensor} from '../../tensor';
+
 import {createGpuDataManager, GpuDataManager} from './gpu-data-manager';
 import {GpuData, GpuDataId, GpuDataType} from './types';
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {Guid} from 'guid-typescript';
+
 import {Tensor} from '../../tensor';
 
 export enum GpuDataType {
