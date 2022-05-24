@@ -13,10 +13,27 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 
 class TestSparseToDenseMatmul(unittest.TestCase):
+    def testRunSparseOutputOrtValueVector(self):
+        """
+        Try running models using the new run_with_ort_values
+        sparse_initializer_as_output.onnx - requires no inputs, but only one output
+        that comes from the initializer
+        """
+        # The below values are a part of the model
+        dense_shape = [3, 3]
+        values = np.array([1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float)
+        indices = np.array([2, 3, 5], np.int64)
+        sess = onnxrt.InferenceSession(
+            get_name("sparse_initializer_as_output.onnx"),
+            providers=onnxrt.get_available_providers(),
+        )
+        res = sess._sess.run_with_ort_values({}, ["values"], RunOptions())
+        self.assertIsInstance(res, OrtValueVector)
+
     def testRunSparseOutputOnly(self):
         """
         Try running models using the new run_with_ort_values
@@ -410,3 +427,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         result = ort_value.numpy()
         self.assertEqual(list(result.shape), common_shape)
         self.assertTrue(np.array_equal(Y_result, result))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)

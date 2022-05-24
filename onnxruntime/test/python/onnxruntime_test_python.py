@@ -13,7 +13,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
@@ -964,6 +964,8 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
             res = sess.run(["Y"], {"X": ortvalue})
             self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+            vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ['Y'], RunOptions())
+            self.assertIsInstance(vect, OrtValueVector)
 
         ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
         self.assertEqual(ortvalue1.device_name(), "cpu")
