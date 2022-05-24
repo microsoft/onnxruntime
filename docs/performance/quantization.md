@@ -48,21 +48,16 @@ The picture below shows the equivalent representation with the QOperator and QDQ
 ![Changes to nodes from basic and extended optimizations](../../images/QDQ_Format.png)
 
 ## Quantizing an ONNX model
-There are 3 ways of quantizing a model: dynamic, static and quantization-aware training quantization.
+There are two ways of quantizing a model: dynamic and static.
 
 * **Dynamic quantization**: This method calculates the quantization parameters (scale and zero point) for activations dynamically.
 
 * **Static quantization**: leverages calibration data to calculate the quantization parameters of activations. Our quantization tool supports three calibration methods: MinMax, Entropy and Percentile. Please refer to [`calibrate.py`](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/calibrate.py) for details.
 
-* **Quantization-Aware training quantization**: The quantization parameters of activations are calculated during training, and the training process can control activations to a certain range.
-
 ### Quantization API
 {: .no_toc}
 
-Quantization has 3 main APIs, corresponding to the 3 quantization methods:
-* `quantize_dynamic`: dynamic quantization
-* `quantize_static`: static quantization
-* `quantize_qat`: quantization-aware training quantization
+Quantization has two main APIs, corresponding to the two quantization methods: `quantize_dynamic()` and `quantize_static()`.
 
 Please refer to [quantize.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py) for the quantization options for each method.
 
@@ -142,10 +137,10 @@ The performance improvement depends on your model and hardware. The performance 
 
 x86-64 with VNNI, GPU with Tensor Core int8 support and ARM with dot-product instructions can get better performance in general.
 
-### Which quantization method should I choose, dynamic, static or QAT?
+### Which quantization method should I choose, dynamic or static?
 {: .no_toc}
 
-Please refer to [here](#method-selection).
+Please refer to the [Method selection](#method-selection) section.
 
 ### When to use reduce-range and per-channel quantization?
 {: .no_toc}
