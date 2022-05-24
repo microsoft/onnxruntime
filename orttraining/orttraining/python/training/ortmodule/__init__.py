@@ -14,7 +14,6 @@ from onnxruntime import set_seed
 from onnxruntime.capi import build_and_package_info as ort_info
 
 from ._fallback import ORTModuleFallbackException, ORTModuleInitException, _FallbackPolicy, wrap_exception
-from ._graph_execution_manager import _SkipCheck
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 
@@ -49,9 +48,6 @@ ORTMODULE_FALLBACK_POLICY = (
 )
 ORTMODULE_FALLBACK_RETRY = False
 ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
-ORTMODULE_SKIPCHECK_POLICY = _SkipCheck(
-    _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT
-)
 ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, "cuda_version") else None
 ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, "rocm_version") else None
 

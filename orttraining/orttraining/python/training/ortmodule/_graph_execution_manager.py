@@ -107,7 +107,9 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         # default is enabled, if not define in os env
-        self._skip_check = ortmodule.ORTMODULE_SKIPCHECK_POLICY
+        self._skip_check = _SkipCheck(
+            _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT
+        )
         if os.getenv("ORTMODULE_SKIPCHECK_POLICY") is not None:
             self._skip_check = reduce(
                 lambda x, y: x | y,
