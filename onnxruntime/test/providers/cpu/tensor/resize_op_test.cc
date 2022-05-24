@@ -119,6 +119,50 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
   test.Run();
 }
 
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+
+  test.AddInput<float>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {2.66666651f, 4.3333331f};
+
+  test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
+  OpTester test("Resize", 13);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+  test.AddAttribute("mode", "linear");
+
+  constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+  std::vector<int8_t> X = {
+      1, 2, 3, 4,
+      5, 6, 7, 8};
+
+  test.AddInput<int8_t>("X", {N, H, W, C}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<int8_t> Y = {2, 4};
+
+  test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+  test.Run();
+}
+
 // Since NNAPI(TFLite) only using the scale calulate using the input/output size
 // For the above test (ResizeOpLinearDownSampleTest_4DBilinear)
 // The output size is [1,1,2,4].*[1,1,0.6,0.6]=[1,1,1,2]
@@ -218,6 +262,35 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear_align_corners) {
 #endif
 }
 
+TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 0.6f, 0.6f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "align_corners");
+
+    constexpr int64_t N = 1, H = 2, W = 4, C = 1;
+    std::vector<int8_t> X = {
+        1, 2, 3, 4,
+        5, 6, 7, 8};
+
+    test.AddInput<int8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<int8_t> Y = {1, 4};
+
+    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
   OpTester test("Resize", 13);
   std::vector<float> roi{};
@@ -279,6 +352,46 @@ TEST(ResizeOpTest, ResizeOpLinearUpSampleTest_4DBilinear_asymmetric) {
         7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 11.0f, 11.0f, 11.0f};
 
     test.AddOutput<float>("Y", {N, C, static_cast<int64_t>(H * scales[2]), static_cast<int64_t>(W * scales[3])}, Y);
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
+  // To test NNAPI EP, we need the sclaes/sizes to be in initializers
+  auto run_test = [](bool scales_in_initializer) {
+    OpTester test("Resize", 13);
+    std::vector<float> roi{};
+    std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
+
+    test.AddAttribute("mode", "linear");
+    test.AddAttribute("coordinate_transformation_mode", "asymmetric");
+
+    constexpr int64_t N = 2, H = 2, W = 2, C = 1;
+    std::vector<int8_t> X = {1, 3,
+                             4, 8,
+
+                             6, 2,
+                             7, 11};
+
+    test.AddInput<int8_t>("X", {N, H, W, C}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {4}, scales, scales_in_initializer);
+
+    std::vector<int8_t> Y = {
+        1, 1, 2, 2, 3, 3, 3, 3,
+        2, 3, 4, 4, 5, 5, 5, 5,
+        4, 5, 6, 7, 8, 8, 8, 8,
+        4, 5, 6, 7, 8, 8, 8, 8,
+
+        6, 5, 4, 3, 2, 2, 2, 2,
+        6, 6, 6, 6, 6, 6, 6, 6,
+        7, 8, 9, 10, 11, 11, 11, 11,
+        7, 8, 9, 10, 11, 11, 11, 11};
+
+    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
     test.Run();
   };
 

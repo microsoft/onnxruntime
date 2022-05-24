@@ -1069,7 +1069,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           const bool is_half_pixel = coordinate_transform_mode_ == HALF_PIXEL;
           const bool is_align_corners = coordinate_transform_mode_ == ALIGN_CORNERS;
           if (CPUIDInfo::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd() &&
-	      !is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
+              !is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
               (is_half_pixel || is_align_corners || coordinate_transform_mode_ == ASYMMETRIC)) {
             NhwcUpsampleBilinearInteger(is_half_pixel, is_align_corners,
                                         static_cast<int32_t>(batch_size), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(num_channels),
@@ -1077,7 +1077,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                         X->Data<T>(),
                                         static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
                                         output_dims,
-                                        Y->MutableData<T>());
+                                        Y->MutableData<T>(),
+                                        static_cast<int32_t>((1 << 10) / height_scale), static_cast<int32_t>((1 << 10) / width_scale));
           } else {
             NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                                  height_scale, width_scale, roi,

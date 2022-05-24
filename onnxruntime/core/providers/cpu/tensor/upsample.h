@@ -550,14 +550,11 @@ inline void NhwcUpsampleBilinearInteger(
     const T* input_data,
     const int32_t output_height, const int32_t output_width,
     const gsl::span<const int64_t>& output_dims,
-    T* output_data) {
+    T* output_data,
+    int32_t height_scale_10, int32_t width_scale_10) {
   assert(!is_half_pixel || !is_align_corners);
   assert(input_dims.size() == 4);
   assert(output_dims.size() == 4);
-  int32_t height_scale_10 =
-      ((1 << 10) * input_height + output_height / 2) / output_height;
-  int32_t width_scale_10 =
-      ((1 << 10) * input_width + output_width / 2) / output_width;
   if (is_align_corners && output_height > 1) {
     height_scale_10 =
         ((1 << 10) * (input_height - 1) + (output_height - 1) / 2) /
@@ -601,9 +598,8 @@ inline void NhwcUpsampleBilinearInteger(
               (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
           const int64_t output_20 =
               output_20_ll + output_20_lu + output_20_rl + output_20_ru;
-          const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
           const T interpolation =
-              static_cast<T>((output_20 + round) / (1 << 20));
+              static_cast<T>(output_20 / (1 << 20));
           output_data[Offset(output_dims, b, y, x, c)] = interpolation;
         }
       }
