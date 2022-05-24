@@ -25,7 +25,7 @@ struct Action {
 #if !defined(ORT_MINIMAL_BUILD)
   // per-action saved state
   struct SavedState {
-    std::vector<NodeIndexAndKernelDefHash> produced_nodes;
+    std::vector<OpIdAndEpType> produced_nodes;
   };
 
   // saving interface

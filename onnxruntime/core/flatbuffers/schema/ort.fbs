@@ -151,7 +151,7 @@ table Tensor {
 
   raw_data:[uint8];
 
-  // string_data is least used, leave it at the end
+  // string_data is least used
   string_data:[string];
 }
 
@@ -194,10 +194,11 @@ table NodesToOptimizeIndices {
   num_variadic_outputs:uint32;
 }
 
-table ProducedNodeInfo {
-  node_index:uint32;
-  kernel_def_hash:uint64;  // TODO deprecate // replaced by op_id
+table OpIdAndEpType {
+  node_index:uint32 (deprecated);  // removed as it was not being used
+  kernel_def_hash:uint64 (deprecated);  // replaced by op_id + execution_provider_type
   op_id:string;
+  execution_provider_type:string;
 }
 
 /// a single runtime optimization
@@ -205,7 +206,7 @@ table ProducedNodeInfo {
 table RuntimeOptimizationRecord {
   action_id:string;
   nodes_to_optimize_indices:NodesToOptimizeIndices;
-  produced_nodes:[ProducedNodeInfo];
+  produced_nodes:[OpIdAndEpType];
 }
 
 table RuntimeOptimizationRecordContainerEntry {
@@ -256,7 +257,8 @@ table Model {
 
 table KernelCreateInfos {
   node_indices:[uint32];
-  kernel_def_hashes:[uint64];
+  kernel_def_hashes:[uint64] (deprecated);  // replaced by kernel_specifiers
+  kernel_specifiers:[OpIdAndEpType];
 }
 
 table SubGraphSessionState {

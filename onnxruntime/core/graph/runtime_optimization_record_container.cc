@@ -66,13 +66,14 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
                                         nodes_to_optimize_indices.num_variadic_inputs,
                                         nodes_to_optimize_indices.num_variadic_outputs);
 
-  const auto fbs_produced_nodes = builder.CreateVector<flatbuffers::Offset<fbs::ProducedNodeInfo>>(
+  const auto fbs_produced_nodes = builder.CreateVector<flatbuffers::Offset<fbs::OpIdAndEpType>>(
       runtime_optimization_record.produced_nodes.size(),
-      [&](size_t i) -> flatbuffers::Offset<fbs::ProducedNodeInfo> {
-        return fbs::CreateProducedNodeInfo(
+      [&](size_t i) -> flatbuffers::Offset<fbs::OpIdAndEpType> {
+        const auto& produced_node_info = runtime_optimization_record.produced_nodes[i];
+        return fbs::CreateOpIdAndEpType(
             builder,
-            gsl::narrow<uint32_t>(runtime_optimization_record.produced_nodes[i].node_index),
-            runtime_optimization_record.produced_nodes[i].kernel_def_hash);
+            builder.CreateSharedString(produced_node_info.op_id),
+            builder.CreateSharedString(produced_node_info.execution_provider_type));
       });
 
   fbs_runtime_optimization_record =
@@ -138,12 +139,15 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
 
   if (const auto* fbs_produced_nodes = fbs_runtime_optimization_record.produced_nodes()) {
     runtime_optimization_record.produced_nodes.reserve(fbs_produced_nodes->size());
-    for (const auto* fbs_node_index_and_kernel_def_hash : *fbs_produced_nodes) {
-      if (!fbs_node_index_and_kernel_def_hash) continue;
+    for (const auto* fbs_produced_node_info : *fbs_produced_nodes) {
+      if (!fbs_produced_node_info) continue;
+
+      ORT_RETURN_IF_NOT(fbs_produced_node_info->op_id() && fbs_produced_node_info->execution_provider_type(),
+                        "op_id and execution_provider_type should be present.");
 
       runtime_optimization_record.produced_nodes.push_back(
-          NodeIndexAndKernelDefHash{static_cast<NodeIndex>(fbs_node_index_and_kernel_def_hash->node_index()),
-                                    fbs_node_index_and_kernel_def_hash->kernel_def_hash()});
+          OpIdAndEpType{fbs_produced_node_info->op_id()->str(),
+                           fbs_produced_node_info->execution_provider_type()->str()});
     }
   }
 

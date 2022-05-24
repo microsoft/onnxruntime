@@ -75,11 +75,6 @@ an ORT format model. This also means that non-empty node indices here must be in
   }
 };
 
-struct NodeIndexAndKernelDefHash {
-  NodeIndex node_index;
-  HashValue kernel_def_hash;
-};
-
 /** Information for a single runtime optimization.
 It does not contain information about the optimizer itself, that should be maintained seperately.
 */
@@ -89,7 +84,7 @@ struct RuntimeOptimizationRecord {
   /** The nodes to consider for optimization. */
   NodesToOptimizeIndices nodes_to_optimize_indices;
   /** Any new nodes introduced by the optimization. */
-  std::vector<NodeIndexAndKernelDefHash> produced_nodes;
+  std::vector<OpIdAndEpType> produced_nodes;
 };
 
 }  // namespace onnxruntime

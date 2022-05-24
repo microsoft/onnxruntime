@@ -201,7 +201,7 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes,
   auto produced_node_it = record.produced_nodes.begin();
   const auto produced_nodes_end = record.produced_nodes.end();
 
-  std::unordered_map<NodeIndex, HashValue> node_index_to_kernel_def_hash{};
+  std::unordered_map<NodeIndex, OpIdAndEpType> node_index_to_info{};
 
   for (NodeIndex i = 0; i < num_new_node_indices; ++i) {
     const NodeIndex new_node_idx = pre_action_max_num_nodes + i;
@@ -216,15 +216,15 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes,
     ORT_RETURN_IF(produced_node_it == produced_nodes_end,
                   "Not enough produced nodes in the runtime optimization record.");
 
-    node_index_to_kernel_def_hash.emplace(new_node_idx, produced_node_it->kernel_def_hash);
+    node_index_to_info.emplace(new_node_idx, *produced_node_it);
 
     ++produced_node_it;
   }
 
   ORT_RETURN_IF(produced_node_it != produced_nodes_end, "Too many produced nodes in the runtime optimization record.");
 
-  graph.MutableRuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash.merge(
-      node_index_to_kernel_def_hash);
+  graph.MutableRuntimeOptimizationReplayCtx().produced_node_index_to_info.merge(
+      node_index_to_info);
 
   return Status::OK();
 }

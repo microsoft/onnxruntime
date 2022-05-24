@@ -4,6 +4,7 @@
 #include "core/optimizer/selectors_actions/actions.h"
 
 #include "core/framework/op_kernel.h"
+#include "core/graph/op_identifier_utils.h"
 #include "core/optimizer/selectors_actions/helpers.h"
 #include "core/optimizer/utils.h"
 
@@ -112,7 +113,7 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                                  const SatRuntimeOptimizationSaveContext& save_context,
+                                  const SatRuntimeOptimizationSaveContext& /*save_context*/,
                                   SavedState& saved_state, bool& graph_modified) const {
   // make temporary node, use it to look up kernel def hash, remove temporary node
   const RuntimeState runtime_state{graph, selected_nodes};
@@ -126,11 +127,8 @@ Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*replacement), "Failed to set node op schema.");
 
-  const KernelCreateInfo* kernel_create_info{};
-  ORT_RETURN_IF_ERROR(save_context.kernel_registry_manager.get().SearchKernelRegistry(*replacement,
-                                                                                      &kernel_create_info));
-  const auto replacement_kernel_def_hash = kernel_create_info->kernel_def->GetHash();
-  saved_state.produced_nodes.push_back({replacement->Index(), replacement_kernel_def_hash});
+  saved_state.produced_nodes.push_back(OpIdAndEpType{MakeOpId(*replacement),
+                                                        replacement->GetExecutionProviderType()});
 
   ORT_RETURN_IF_NOT(graph.RemoveNode(replacement->Index()), "Failed to remove node.");
 

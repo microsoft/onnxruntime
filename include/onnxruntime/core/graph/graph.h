@@ -44,6 +44,7 @@
 #endif
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
+#include "core/graph/runtime_optimization_record.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -1289,9 +1290,9 @@ class Graph {
   */
   Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
-  Graph(const Model& owning_model, 
-      IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
-      ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+  Graph(const Model& owning_model,
+      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+      ONNX_NAMESPACE::GraphProto& subgraph_proto,
       const std::unordered_map<std::string, int>& domain_version_map,
       const logging::Logger& logger,
       bool strict_shape_type_inference);
@@ -1323,7 +1324,7 @@ class Graph {
 
   // Stores information collected during the replay of loaded runtime optimizations
   struct RuntimeOptimizationReplayContext {
-    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash{};
+    std::unordered_map<NodeIndex, OpIdAndEpType> produced_node_index_to_info{};
     size_t num_replayed_optimizations{};
   };
 

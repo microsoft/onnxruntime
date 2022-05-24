@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_registry_manager.h"
+
 #include "core/framework/kernel_registry.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/session_state.h"
+#include "core/framework/kernel_type_str_resolver.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/framework/customregistry.h"
@@ -54,8 +56,8 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
 #endif
 
 Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
-    const KernelTypeStrResolver& kernel_type_str_resolver,
-    /*out*/ const KernelCreateInfo** kernel_create_info) const {
+                                                   const KernelTypeStrResolver& kernel_type_str_resolver,
+                                                   /*out*/ const KernelCreateInfo** kernel_create_info) const {
   Status status;
 
   auto create_error_message = [&node, &status](const std::string& prefix) {

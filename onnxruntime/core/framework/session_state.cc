@@ -12,12 +12,14 @@
 #include "core/framework/allocator.h"
 #include "core/framework/kernel_def_hash_helpers.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
+#include "core/graph/op_identifier_utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -916,15 +918,24 @@ Status SessionState::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                      flatbuffers::Offset<fbs::SessionState>& fbs_session_state) const {
   size_t size = kernel_create_info_map_.size();
   std::vector<uint32_t> node_indices;
-  std::vector<uint64_t> kernel_def_hashes;
+  std::vector<flatbuffers::Offset<fbs::OpIdAndEpType>> kernel_specifiers;
   node_indices.reserve(size);
-  kernel_def_hashes.reserve(size);
-  for (const auto& kvp : kernel_create_info_map_) {
-    node_indices.push_back(gsl::narrow<uint32_t>(kvp.first));
-    kernel_def_hashes.push_back(kvp.second->kernel_def->GetHash());
+  kernel_specifiers.reserve(size);
+  for (const auto& [node_index, kernel_create_info] : kernel_create_info_map_) {
+    node_indices.push_back(gsl::narrow<uint32_t>(node_index));
+
+    const auto node = graph_.GetNode(node_index);
+    ORT_ENFORCE(node != nullptr);
+
+    const auto kernel_specifier =
+        fbs::CreateOpIdAndEpType(builder,
+                                 builder.CreateSharedString(MakeOpId(*node)),
+                                 builder.CreateSharedString(node->GetExecutionProviderType()));
+
+    kernel_specifiers.push_back(kernel_specifier);
   }
 
-  auto kernels = fbs::CreateKernelCreateInfosDirect(builder, &node_indices, &kernel_def_hashes);
+  auto kernels = fbs::CreateKernelCreateInfosDirect(builder, &node_indices, &kernel_specifiers);
 
   // Subgraph session states
   std::vector<flatbuffers::Offset<fbs::SubGraphSessionState>> sub_graph_session_states;
@@ -977,6 +988,9 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
   ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
+  KernelTypeStrResolver kernel_type_str_resolver{};  // TODO populate this from ORT format model
+
+  // TODO don't use add_kernel_and_set_node_ep_by_hash
   // look up KernelCreateInfo with hash and
   // - add KernelCreateInfo for node
   // - set node's EP from KernelCreateInfo if unset
@@ -1010,6 +1024,23 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
         return Status::OK();
       };
 
+  auto add_kernel =
+      [&kernel_registry_manager, &kernel_type_str_resolver, this](const Node& node) -> Status {
+    const KernelCreateInfo* kci = nullptr;
+    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(node, kernel_type_str_resolver, &kci));
+
+    {
+      const bool inserted = kernel_create_info_map_.emplace(node.Index(),
+                                                            gsl::not_null<const KernelCreateInfo*>(kci))
+                                .second;
+      ORT_RETURN_IF_NOT(inserted,
+                        "Cannot overwrite existing kernel for ",
+                        node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'.");
+    }
+
+    return Status::OK();
+  };
+
   // kernel hashes for model are in top level SessionState
   const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
 
@@ -1028,21 +1059,24 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       continue;
     }
 
-    ORT_RETURN_IF_ERROR(add_kernel_and_set_node_ep_by_hash(*node, node_kernel_info.kernel_def_hash));
+    ORT_RETURN_IF_ERROR(add_kernel(*node));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // process the nodes that were added by replaying any loaded runtime optimizations
-  for (const auto& [node_index, kernel_def_hash] :
-       graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
+  for (const auto& [node_index, node_info] :
+       graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_info) {
     auto* node = graph_.GetNode(node_index);
 
     // NHWC optimizer may replace a node, so a missing node isn't necessarily an error
     // ORT_RETURN_IF(node == nullptr, "Can't find runtime optimization produced node with index ", node_index);
 
-    if (node != nullptr) {
-      ORT_RETURN_IF_ERROR(add_kernel_and_set_node_ep_by_hash(*node, kernel_def_hash));
+    if (node == nullptr) {
+      continue;
     }
+
+    HashValue kernel_def_hash = 0;  // TODO change to using op id and EP type
+    ORT_RETURN_IF_ERROR(add_kernel_and_set_node_ep_by_hash(*node, kernel_def_hash));
   }
 
   // Look up the hashes for any nodes we compiled or added during graph partitioning or other runtime optimizations.

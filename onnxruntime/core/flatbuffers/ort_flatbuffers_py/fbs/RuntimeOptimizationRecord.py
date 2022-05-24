@@ -51,8 +51,8 @@ class RuntimeOptimizationRecord(object):
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
-            from ort_flatbuffers_py.fbs.ProducedNodeInfo import ProducedNodeInfo
-            obj = ProducedNodeInfo()
+            from ort_flatbuffers_py.fbs.OpIdAndEpType import OpIdAndEpType
+            obj = OpIdAndEpType()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None

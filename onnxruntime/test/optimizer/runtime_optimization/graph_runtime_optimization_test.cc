@@ -88,12 +88,6 @@ class TestTransformer : public SelectorActionTransformer {
   }
 };
 }  // namespace sat
-
-std::unique_ptr<KernelRegistryManager> CreateKernelRegistryManager() {
-  auto krm = std::make_unique<KernelRegistryManager>();
-  krm->RegisterKernelRegistry(TestCPUExecutionProvider()->GetKernelRegistry());
-  return krm;
-}
 }  // namespace
 
 TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
@@ -112,8 +106,7 @@ TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
 
   // run SAT to save runtime optimization
   {
-    auto kernel_registry_manager = CreateKernelRegistryManager();
-    auto save_context = SatRuntimeOptimizationSaveContext{std::cref(*kernel_registry_manager)};
+    auto save_context = SatRuntimeOptimizationSaveContext{};
     auto test_transformer = std::make_unique<sat::TestTransformer>(save_context);
     auto transformer_manager = GraphTransformerManager{/* steps */ 5};
     ASSERT_STATUS_OK(transformer_manager.Register(std::move(test_transformer), TransformerLevel::Level1));

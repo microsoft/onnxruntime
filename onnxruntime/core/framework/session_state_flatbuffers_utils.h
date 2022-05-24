@@ -47,7 +47,7 @@ class FbsSessionStateViewer {
 
   struct NodeKernelInfo {
     NodeIndex node_index;
-    HashValue kernel_def_hash;
+    onnxruntime::OpIdAndEpType kernel_specifier;
   };
 
   /**

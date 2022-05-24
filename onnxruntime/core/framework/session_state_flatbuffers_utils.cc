@@ -30,15 +30,35 @@ Status FbsSessionStateViewer::Validate() const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Kernel create info node indices are null. Invalid ORT format model.");
   }
 
-  const auto* const fbs_kernel_def_hashes = fbs_kcis->kernel_def_hashes();
-  if (fbs_kernel_def_hashes == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Kernel create info hashes are null. Invalid ORT format model.");
+  const auto* const fbs_kernel_specifiers = fbs_kcis->kernel_specifiers();
+  if (fbs_kernel_specifiers == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Kernel create info kernel specifiers are null. Invalid ORT format model.");
   }
 
-  if (fbs_node_indices->size() != fbs_kernel_def_hashes->size()) {
+  if (fbs_node_indices->size() != fbs_kernel_specifiers->size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Size mismatch for kernel create info node indexes and hashes. Invalid ORT format model.",
-                           fbs_node_indices->size(), " != ", fbs_kernel_def_hashes->size());
+                           "Size mismatch for kernel create info node indexes and kernel specifiers. "
+                           "Invalid ORT format model.",
+                           fbs_node_indices->size(), " != ", fbs_kernel_specifiers->size());
+  }
+
+  for (const auto* fbs_kernel_specifier : *fbs_kernel_specifiers) {
+    if (fbs_kernel_specifier == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Kernel create info kernel specifier is null. Invalid ORT format model.");
+    }
+
+    if (fbs_kernel_specifier->op_id() == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Kernel create info kernel specifier op_id is null. "
+                             "Invalid ORT format model.");
+    }
+
+    if (fbs_kernel_specifier->execution_provider_type() == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Kernel create info kernel specifier execution_provider_type is null. "
+                             "Invalid ORT format model.");
+    }
   }
 
   return Status::OK();
@@ -47,12 +67,17 @@ Status FbsSessionStateViewer::Validate() const {
 FbsSessionStateViewer::NodeKernelInfo FbsSessionStateViewer::GetNodeKernelInfo(Index idx) const {
   const auto* const fbs_kcis = fbs_session_state_.kernels();
   const auto* const fbs_node_indices = fbs_kcis->node_indices();
-  const auto* const fbs_kernel_def_hashes = fbs_kcis->kernel_def_hashes();
+  const auto* const fbs_kernel_specifiers = fbs_kcis->kernel_specifiers();
 
-  HashValue hash = fbs_kernel_def_hashes->Get(idx);
-  onnxruntime::utils::UpdateHashForBackwardsCompatibility(hash);
+  //HashValue hash = 0;
+  //onnxruntime::utils::UpdateHashForBackwardsCompatibility(hash);
 
-  return {fbs_node_indices->Get(idx), hash};
+  const auto* const fbs_kernel_specifier = fbs_kernel_specifiers->Get(idx);
+
+
+  return {fbs_node_indices->Get(idx),
+          onnxruntime::OpIdAndEpType{fbs_kernel_specifier->op_id()->str(),
+                                     fbs_kernel_specifier->execution_provider_type()->str()}};
 }
 
 FbsSessionStateViewer::Index FbsSessionStateViewer::GetNumNodeKernelInfos() const {

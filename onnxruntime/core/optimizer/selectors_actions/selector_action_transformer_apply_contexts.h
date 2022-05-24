@@ -24,7 +24,6 @@ struct SatDirectApplicationContext {
 
 // Context to save runtime optimizations for later replay.
 struct SatRuntimeOptimizationSaveContext {
-  std::reference_wrapper<const KernelRegistryManager> kernel_registry_manager;
 };
 
 // Context to load runtime optimizations and replay them.

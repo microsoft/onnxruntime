@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <string_view>
+
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
@@ -10,35 +12,7 @@ namespace onnxruntime {
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
 using KernelDefHashes = std::vector<std::pair<std::string, HashValue>>;
 
-using OpIdentifier = std::tuple<std::string, std::string, ONNX_NAMESPACE::OperatorSetVersion>;
-using ArgTypeAndIndex = std::pair<ArgType, size_t>;
-
-inline OpIdentifier OpIdFromNode(const Node& node) {
-  return OpIdentifier{node.Domain(), node.OpType(), node.SinceVersion()};
-}
-
-inline OpIdentifier OpIdFromOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
-  return OpIdentifier{op_schema.domain(), op_schema.Name(), op_schema.SinceVersion()};
-}
-
-class KernelTypeStrResolver {
- public:
-  using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
-
-  gsl::span<const ArgTypeAndIndex> ResolveKernelTypeStr(const OpIdentifier& op_id,
-                                                        const std::string& kernel_type_str) const;
-
-  bool RegisterKernelTypeStrToArgsMap(OpIdentifier op_id, KernelTypeStrToArgsMap kernel_type_str_to_args);
-
-#if !defined(ORT_MINIMAL_BUILD)
-  bool RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema);
-
-  bool RegisterNodeOpSchema(const Node& node);
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
- private:
-  InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap> op_type_str_map_;
-};
+class KernelTypeStrResolver;
 
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
@@ -113,16 +87,12 @@ class KernelRegistry {
   //
   // Note that this is not intended for type-checking the node against the ONNX
   // type specification of the corresponding op, which is done before this check.
-  //
-  // if this function is called before graph partition, then node.provider is not set.
-  // In this case, kernel_def.provider must equal to exec_provider
-  // otherwise, kernel_def.provider must equal to node.provider. exec_provider is ignored.
   static bool VerifyKernelDef(const Node& node,
                               const KernelDef& kernel_def,
                               const KernelTypeStrResolver& kernel_type_str_resolver,
                               std::string& error_str);
 
-  static std::string GetMapKey(const std::string& op_name, const std::string& domain, const std::string& provider) {
+  static std::string GetMapKey(std::string_view op_name, std::string_view domain, const std::string_view provider) {
     std::string key(op_name);
     // use the kOnnxDomainAlias of 'ai.onnx' instead of kOnnxDomain's empty string
     key.append(1, ' ').append(domain.empty() ? kOnnxDomainAlias : domain).append(1, ' ').append(provider);

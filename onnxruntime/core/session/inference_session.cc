@@ -2335,7 +2335,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
           const auto sat_context =
               minimal_build_optimization_handling ==
                       MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations
-                  ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{kernel_registry_manager_}}
+                  ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                       optimizers_to_disable_);
