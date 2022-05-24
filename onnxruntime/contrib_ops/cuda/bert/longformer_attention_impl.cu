@@ -899,6 +899,7 @@ bool LongformerQkvToContext(
     }
   } else {
      assert(max_num_global <= window);
+     /*
     if (!launchSoftmaxKernel(
             stream,
             cublas,
@@ -924,6 +925,7 @@ bool LongformerQkvToContext(
             element_size)) {
       return false;
     }
+    */
   }
 
 
