@@ -19,7 +19,7 @@ const withOrt = (config) => {
                                        })
                                        .contents;
     } else {
-      throw new Error('Cannot add camera maven gradle because the build.gradle is not groovy');
+      throw new Error('Cannot add ONNX Runtime maven gradle because the build.gradle is not groovy');
     }
 
     return config;
