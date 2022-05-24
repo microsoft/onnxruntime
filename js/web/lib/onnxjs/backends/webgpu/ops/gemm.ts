@@ -5,9 +5,11 @@ import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attri
 import {Graph} from '../../../graph';
 import {OperatorAsyncImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
-import {GemmUtil} from '../../../util';
+import {GemmUtil, ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+
+import {WORKGROUP_SIZE} from './common';
 
 export interface GemmAttributes extends AttributeWithCacheKey {
   transA: boolean;
@@ -52,17 +54,14 @@ const createGemmProgramInfo =
     (metadata: ProgramMetadata, inputs: Tensor[], attributes: GemmAttributes): ProgramInfo => {
       const aShape = inputs[0].dims.slice();
       const bShape = inputs[1].dims.slice();
-      const [M, N] = GemmUtil.getShapeOfGemmResult(
+      const [M, N, K] = GemmUtil.getShapeOfGemmResult(
           aShape, attributes.transA, bShape, attributes.transB, inputs.length === 3 ? inputs[2].dims : undefined);
       const outputShape = [M, N];
       if (!outputShape) {
         throw new Error('Can\'t use gemm on the given tensors');
       }
-      let sharedDim = aShape[aShape.length - 1];
+      const outputSize = ShapeUtil.size(outputShape);
       let line = '';
-      if (attributes.transA) {
-        sharedDim = aShape[0];
-      }
       if (attributes.transA && attributes.transB) {
         line = 'value += _A_T(a) * _B_T(b);';
       } else if (attributes.transA && !attributes.transB) {
@@ -70,40 +69,51 @@ const createGemmProgramInfo =
       } else if (!attributes.transA && attributes.transB) {
         line = 'value += _A(a) * _B_T(b);';
       } else if (!attributes.transA && !attributes.transB) {
-        line = 'value += _A(a) * _B(b);';
+        line = 'value += a[m * K + k] * b[k * N + n];';
       }
-      const rank = outputShape.length;
-      const declareC = inputs.length === 3 ? `int c[${inputs[2].dims.length}];` : '';
-      const broadcastC = inputs.length === 3 ? 'bcastIndices_C(indices, c);' : '';
-      const calculateC = inputs.length === 3 ? 'value += beta * _C(c);' : '';
+
+      const dataType = 'f32';  // TODO: support other data type
+      const calculateC = inputs.length === 3 ? `value += ${dataType}(${attributes.beta}) * c[TODO];` : '';
+      const inputStorageBuffersDeclarations = [
+        `@group(0) @binding(0) var<storage, read> a : array<${dataType}>;`,
+        `@group(0) @binding(1) var<storage, read> b : array<${dataType}>;`
+      ];
+      if (inputs.length === 3) {
+        inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
+      }
       const shaderSource = `
-      float process(int indices[${rank}]) {
-          int a[${rank}];
-          int b[${rank}];
-          ${declareC}
+  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  let N: u32 = ${N}u;
+  let K: u32 = ${K}u;
 
-          copyVec(indices, a);
-          copyVec(indices, b);
-          ${broadcastC}
+  ${inputStorageBuffersDeclarations.join('\n')}
+  @group(0) @binding(${inputs.length}) var<storage, write> output : array<${dataType}>;
 
-          float value = 0.0;
-          for (int k=0; k<${sharedDim}; ++k) {
-              a[${rank - 1}] = k;
-              b[${rank - 2}] = k;
-              ${line}
-          }
+  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
-          value = value * alpha;
-          ${calculateC}
-          return value;
-      }`;
+    // Guard against out-of-bounds work group sizes
+    if (global_id.x >= ${outputSize}u) {
+      return;
+    }
+
+    let m = global_id.x / N;
+    let n = global_id.x % N;
+
+    let value = ${dataType}(0);
+    for (var k: u32 = 0u; k<${K}u; k++) {
+      ${line}
+    }
+
+    ${calculateC}
+    output[global_id.x] = value;
+
+  }`;
       return {
         ...metadata,
-        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-        variables: [
-          {name: 'alpha', type: 'float', data: attributes.alpha}, {name: 'beta', type: 'float', data: attributes.beta}
-        ],
-        shaderSource
+        outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
+        shaderSource,
+        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };
 

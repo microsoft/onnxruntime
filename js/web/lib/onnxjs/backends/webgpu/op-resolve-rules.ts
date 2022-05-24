@@ -6,6 +6,7 @@ import {OpSet} from '../../opset';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {gather, parseGatherAttributes} from './ops/gather';
+import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {reshape} from './ops/reshape';
 import * as unaryOps from './ops/unary-op';
 import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
@@ -29,9 +30,8 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', '', '6+', unaryOps.floor],
   // ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
-  ['Gather', '', '1+', gather, parseGatherAttributes],
-  // ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
-  // ['Gemm', '', '11+', gemm, parseGemmAttributesV11],
+  ['Gather', '', '1+', gather, parseGatherAttributes], ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
+  ['Gemm', '', '11+', gemm, parseGemmAttributesV11],
   // ['GlobalAveragePool', '', '1+', globalAveragePool, parseGlobalAveragePoolAttributes],
   // ['GlobalMaxPool', '', '1+', globalMaxPool],
   // ['Greater', '', '7+', binaryOps.greater],
