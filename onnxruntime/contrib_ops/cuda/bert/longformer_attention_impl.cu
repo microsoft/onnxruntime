@@ -959,6 +959,8 @@ bool LaunchLongformerAttentionKernel(
   CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size, batch_size, num_heads, sequence_length, window, use_fast_kernel);
   if (element_size == 2) {
+    return false;
+    /*
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
                                   reinterpret_cast<const half*>(input),
@@ -973,6 +975,7 @@ bool LaunchLongformerAttentionKernel(
                                   reinterpret_cast<half*>(output),
                                   softmax_workspace_size,
                                   use_fast_kernel);
+                                  */
   } else {
     return LongformerQkvToContext(device_prop, cublas, stream,
                                   batch_size, sequence_length, num_heads, head_size, window, element_size,
