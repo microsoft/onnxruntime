@@ -1,11 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# debug_options.py
 import tempfile
+
 import torch
-from ... import ORTModule
+
 from .... import ortmodule
+from ... import ORTModule
 from ...debug_options import DebugOptions
+from ...runtime_options import RuntimeOptions
 
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if
@@ -51,11 +53,12 @@ class HierarchicalORTModule(torch.nn.Module):
 
     """
 
-    def __init__(self, module, debug_options=None):
+    def __init__(self, module, debug_options=None, runtime_options=None):
         self._initialized = False
         super(HierarchicalORTModule, self).__init__()
         self._original_module = module
         self._debug_options = debug_options if debug_options else DebugOptions()
+        self._runtime_options = runtime_options if runtime_options else RuntimeOptions()
 
     def _initialize(self, *args, **kwargs):
         handle_pool = []
@@ -192,13 +195,17 @@ class HierarchicalORTModule(torch.nn.Module):
                     # Let's wrap them one-by-one.
                     for name1, sub1 in sub._modules.items():
                         if is_supported(sub1):
-                            sub._modules[name1] = ORTModule(sub1, debug_options=self._debug_options)
+                            sub._modules[name1] = ORTModule(
+                                sub1, debug_options=self._debug_options, runtime_options=self._runtime_options
+                            )
                         else:
                             recursive_wrap(sub1)
                 else:
                     if is_supported(sub):
                         # Just wrap it as ORTModule when possible.
-                        sub_dict[name] = ORTModule(sub, debug_options=self._debug_options)
+                        sub_dict[name] = ORTModule(
+                            sub, debug_options=self._debug_options, runtime_options=self._runtime_options
+                        )
                     else:
                         # This sub-module is not exportable to ONNX
                         # Let's check its sub-modules.

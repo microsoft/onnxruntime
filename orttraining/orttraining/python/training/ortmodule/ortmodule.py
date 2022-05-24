@@ -3,21 +3,22 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from ._torch_module_factory import TorchModuleFactory
-from ._torch_module_pytorch import TorchModulePytorch
-from ._torch_module_ort import TorchModuleORT
-from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
-from ._custom_gradient_registry import CustomGradientRegistry
-from . import _utils
-from .debug_options import DebugOptions
-from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
-from onnxruntime.training import ortmodule
-
-from onnxruntime.tools import pytorch_export_contrib_ops
+from typing import Callable, Iterator, Optional, Tuple, TypeVar
 
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
+from onnxruntime.tools import pytorch_export_contrib_ops
+from onnxruntime.training import ortmodule
+
+from . import _utils
+from ._custom_gradient_registry import CustomGradientRegistry
+from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._torch_module_factory import TorchModuleFactory
+from ._torch_module_ort import TorchModuleORT
+from ._torch_module_pytorch import TorchModulePytorch
+from .debug_options import DebugOptions
+from .runtime_options import RuntimeOptions
 
 # Needed to override PyTorch methods
 T = TypeVar("T", bound="Module")
@@ -34,7 +35,7 @@ class ORTModule(torch.nn.Module):
         debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
-    def __init__(self, module, debug_options=None):
+    def __init__(self, module, debug_options=None, runtime_options=None):
 
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
@@ -53,6 +54,9 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
+        if not runtime_options:
+            runtime_options = RuntimeOptions()
+
         # Fallback settings
         self._fallback_manager = _FallbackManager(
             pytorch_module=module, policy=ortmodule.ORTMODULE_FALLBACK_POLICY, retry=ortmodule.ORTMODULE_FALLBACK_RETRY
@@ -65,14 +69,15 @@ class ORTModule(torch.nn.Module):
 
             super(ORTModule, self).__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module, debug_options, runtime_options, self._fallback_manager)
 
             _utils.patch_ortmodule_forward_method(self)
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
-            CustomOpSymbolicRegistry.register_all()
-            CustomGradientRegistry.register_all()
+            if not runtime_options.disable_custom_ops:
+                CustomOpSymbolicRegistry.register_all()
+                CustomGradientRegistry.register_all()
 
             # Warn user if there are name collisions between user model's and ORTModule attributes
             # And if there are custom methods defined on the user's model, copy and bind them to

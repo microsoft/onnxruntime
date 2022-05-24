@@ -3,37 +3,39 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from .debug_options import DebugOptions, LogLevel
-from . import _utils, _io, _logger, _onnx_models, _are_deterministic_algorithms_enabled
-from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
+import copy
+import inspect
+import io
+import os
+import warnings
+from abc import ABC, abstractmethod
+from enum import IntFlag
+from functools import reduce
+
+import onnx
+import torch
+from torch.utils.cpp_extension import ROCM_HOME
+
+import onnxruntime
+from onnxruntime.capi import _pybind_state as C
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+from onnxruntime.training import ortmodule
+
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _utils
 from ._custom_autograd_function import custom_autograd_function_enabler
 from ._custom_autograd_function_exporter import _post_process_after_export
-from ._graph_execution_interface import GraphExecutionInterface
 from ._fallback import (
-    _FallbackManager,
     ORTModuleDeviceException,
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
+    _FallbackManager,
     wrap_exception,
 )
 from ._gradient_accumulation_manager import GradientAccumulationManager
-from onnxruntime.training import ortmodule
-
-from onnxruntime.capi import _pybind_state as C
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from abc import ABC, abstractmethod
-import copy
-from functools import reduce
-import io
-import inspect
-import os
-import onnx
-import onnxruntime
-import torch
-import warnings
-from enum import IntFlag
-
-from torch.utils.cpp_extension import ROCM_HOME
+from ._graph_execution_interface import GraphExecutionInterface
+from .debug_options import DebugOptions, LogLevel
+from .runtime_options import RuntimeOptions
+from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
 
 class _RunStateInfo(object):
@@ -69,7 +71,9 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(
+        self, module, debug_options: DebugOptions, runtime_options: RuntimeOptions, fallback_manager: _FallbackManager
+    ):
         """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
@@ -77,6 +81,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
         self._fallback_manager = fallback_manager
+        self._runtime_options = runtime_options
 
         # Original and flattened (tranformed) output module
         self._flattened_module = module
@@ -94,7 +99,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
         # if defined.
         ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
-            "ORTMODULE_ONNX_OPSET_VERSION", ortmodule.ONNX_OPSET_VERSION, warn=True
+            "ORTMODULE_ONNX_OPSET_VERSION", self._runtime_options.exporter_options.opset_version, warn=True
         )
 
         # TrainingAgent or InferenceAgent
@@ -102,9 +107,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         # default is enabled, if not define in os env
-        self._skip_check = _SkipCheck(
-            _SkipCheck.SKIP_CHECK_DEVICE | _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT
-        )
+        self._skip_check = ortmodule.ORTMODULE_SKIPCHECK_POLICY
         if os.getenv("ORTMODULE_SKIPCHECK_POLICY") is not None:
             self._skip_check = reduce(
                 lambda x, y: x | y,
@@ -411,13 +414,24 @@ class GraphExecutionManager(GraphExecutionInterface):
                     "input_names": self._input_info.names,
                     "output_names": output_names,
                     "opset_version": ortmodule.ONNX_OPSET_VERSION,
-                    "do_constant_folding": False,
+                    "do_constant_folding": self._runtime_options.exporter_options.do_constant_folding,
                     "training": self._export_mode,
-                    "dynamic_axes": self._input_info.dynamic_axes,
                     "verbose": self._debug_options.logging.log_level < LogLevel.WARNING,
-                    "export_params": False,
-                    "keep_initializers_as_inputs": True,
+                    "export_params": self._runtime_options.exporter_options.export_params,
+                    "keep_initializers_as_inputs": self._runtime_options.exporter_options.keep_initializers_as_inputs,
                 }
+
+                if not self._runtime_options.exporter_options.use_static_shapes:
+                    required_export_kwargs["dynamic_axes"] = self._input_info.dynamic_axes
+
+                if self._runtime_options.exporter_options.export_modules_as_functions:
+                    required_export_kwargs[
+                        "export_modules_as_functions"
+                    ] = self._runtime_options.exporter_options.export_modules_as_functions
+
+                if self._runtime_options.exporter_options.exporter_extra_args:
+                    self._export_extra_kwargs.update(self._runtime_options.exporter_options.exporter_extra_args)
+
                 invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                 assert (
                     len(invalid_args) == 0

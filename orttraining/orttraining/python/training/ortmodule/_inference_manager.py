@@ -3,15 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io, _logger, _are_deterministic_algorithms_enabled, _use_deterministic_algorithms
-from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
-from ._execution_agent import InferenceAgent
-from .debug_options import DebugOptions
-from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
+import warnings
+
+import torch
 
 from onnxruntime.capi import _pybind_state as C
-import torch
-import warnings
+
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from ._execution_agent import InferenceAgent
+from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
+from .debug_options import DebugOptions
+from .runtime_options import RuntimeOptions
 
 
 class InferenceManager(GraphExecutionManager):
@@ -20,8 +23,10 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
-        super().__init__(model, debug_options, fallback_manager)
+    def __init__(
+        self, model, debug_options: DebugOptions, runtime_options: RuntimeOptions, fallback_manager: _FallbackManager
+    ):
+        super().__init__(model, debug_options, runtime_options, fallback_manager)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod

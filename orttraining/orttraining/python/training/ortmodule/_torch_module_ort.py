@@ -4,6 +4,7 @@
 
 from . import _io, _utils
 from .debug_options import DebugOptions
+from .runtime_options import RuntimeOptions
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
 from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
@@ -16,13 +17,21 @@ T = TypeVar("T", bound="torch.nn.Module")
 
 
 class TorchModuleORT(TorchModuleInterface):
-    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(
+        self,
+        module: torch.nn.Module,
+        debug_options: DebugOptions,
+        runtime_options: RuntimeOptions,
+        fallback_manager: _FallbackManager,
+    ):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 
         _utils.patch_torch_module_ort_forward_method(self)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options, fallback_manager)
+        self._execution_manager = GraphExecutionManagerFactory(
+            self._flattened_module, debug_options, runtime_options, fallback_manager
+        )
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""
