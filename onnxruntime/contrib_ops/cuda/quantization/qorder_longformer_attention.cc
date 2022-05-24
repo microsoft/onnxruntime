@@ -297,7 +297,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
-  return Status::OK();
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Hit");
 }
 
 }  // namespace cuda
