@@ -1,4 +1,7 @@
-# pylint: disable=C0115,W0212,C0103
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# pylint: disable=C0115,W0212,C0103,C0114
+
 import unittest
 
 import numpy as np

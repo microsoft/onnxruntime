@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# pylint: disable=W0212
+# pylint: disable=W0212,C0114,C0116
 
 import unittest
 import copy

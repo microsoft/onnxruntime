@@ -40,7 +40,7 @@ class InferenceManager(GraphExecutionManager):
 
         # Run and return module outputs.
         ort_output = execution_session.run_forward(io_binding, run_options)
-        forward_outputs, run_id = ort_output.ortvalues, ort_output.run_id
+        forward_outputs = ort_output.ortvalues
         user_outputs = _utils._ortvalues_to_torch_tensor(forward_outputs, device)  # pylint: disable=W0212
         state = None
 

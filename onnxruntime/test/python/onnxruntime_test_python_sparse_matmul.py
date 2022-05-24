@@ -1,9 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# pylint: disable=C0115,W0212,C0103
+# pylint: disable=C0115,W0212,C0103,C0114
 
-import gc
-import os
 import sys
 import threading
 
@@ -14,7 +12,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, RunOptions
 
 
 class TestSparseToDenseMatmul(unittest.TestCase):
@@ -25,9 +23,6 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         that comes from the initializer
         """
         # The below values are a part of the model
-        dense_shape = [3, 3]
-        values = np.array([1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float)
-        indices = np.array([2, 3, 5], np.int64)
         sess = onnxrt.InferenceSession(
             get_name("sparse_initializer_as_output.onnx"),
             providers=onnxrt.get_available_providers(),
