@@ -387,7 +387,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
 
-        if self._export_on_device != None:
+        if self._export_on_device is not None:
             self._original_module = self._original_module.to(self._export_on_device)
             self._flattened_module = self._flattened_module.to(self._export_on_device)
             inputs_dev = [value.to(self._export_on_device) for value in sample_inputs_copy]
@@ -400,14 +400,14 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # Setup dynamic axes for onnx model
         self._input_info = _io.parse_inputs_for_onnx_export(
-            self._module_parameters, None, input_schema, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy
+            self._module_parameters, None, input_schema, sample_inputs_copy, sample_kwargs_copy
         )
         (
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
         ) = _io.parse_outputs_for_onnx_export_and_extract_schema(
-            self._original_module, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy
+            self._original_module, sample_inputs_copy, sample_kwargs_copy
         )
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
@@ -450,7 +450,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     **required_export_kwargs,
                     **self._export_extra_kwargs,
                 )
-                if self._export_on_device != None:
+                if self._export_on_device is not None:
                     self._original_module = self._original_module.to(self._device)
                     self._flattened_module = self._flattened_module.to(self._device)
         except Exception as e:
