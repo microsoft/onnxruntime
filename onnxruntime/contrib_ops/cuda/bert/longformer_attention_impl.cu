@@ -872,7 +872,7 @@ bool LongformerQkvToContext(
   T* temp_output = qkv;  // Q will be overwritten
 
   if (use_fast_kernel) {
-    return false;
+    return true;
          /*
     if (!launchSoftmaxFastKernel(
             stream,
