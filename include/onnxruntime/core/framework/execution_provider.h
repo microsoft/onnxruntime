@@ -248,6 +248,11 @@ class IExecutionProvider {
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
 
+
+  virtual bool CompileBeforeOptimization();
+
+  virtual bool FuseAfterOptimization();
+
 #endif
 
   void SetLogger(const logging::Logger* logger) {

@@ -954,6 +954,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
   ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, *session_logger_));
 
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.FuseAfterTransform(graph,
+                                                                session_state.GetMutableFuncMgr(),
+                                                                layout_transformer::TransformLayoutForCompilingEP, mode));
+
   return common::Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)

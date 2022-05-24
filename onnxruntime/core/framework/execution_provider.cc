@@ -166,6 +166,14 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
                         "IExecutionProvider::Compile with FusedNodeAndGraph is not implemented by " + type_);
 }
 
+bool IExecutionProvider::CompileBeforeOptimization() {
+  return true;
+}
+
+bool IExecutionProvider::FuseAfterOptimization() {
+  return true;
+}
+
 #endif
 
 int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,

@@ -297,6 +297,14 @@ namespace Dml
             m_impl->MetacommandsEnabled();
         }
 
+        bool CompileBeforeOptimization() {
+            return false;
+        }
+
+        bool FuseAfterOptimization() {
+            return true;
+        }
+
     private:
         ComPtr<ExecutionProviderImpl> m_impl;
     };

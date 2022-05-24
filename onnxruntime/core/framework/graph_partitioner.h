@@ -37,6 +37,10 @@ class GraphPartitioner {
                    Mode mode = Mode::kNormal,
                    std::unordered_map<std::string, HashValue>* compiled_kernel_hashes = nullptr) const;
 
+  Status FuseAfterTransform(Graph& graph, FuncManager& func_mgr,
+                            TransformLayoutFunction transform_layout_function, Mode mode = Mode::kNormal,
+                            std::unordered_map<std::string, HashValue>* compiled_kernel_hashes = nullptr) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
 
