@@ -2008,8 +2008,8 @@ def build_python_wheel(
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
 
+        log.info(f"Build python wheels command is {args}, cwd is {cwd}")
         run_subprocess(args, cwd=cwd)
-
 
 def derive_linux_build_property():
     if is_windows():
