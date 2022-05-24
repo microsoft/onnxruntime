@@ -36,7 +36,8 @@ struct BeamSearchState : public IBeamSearchState<T> {
             int vocab_size,
             int sequence_length,
             int max_length,
-            bool output_scores) {
+            bool output_scores,
+            bool use_position) {
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * vocab_size;
@@ -47,7 +48,9 @@ struct BeamSearchState : public IBeamSearchState<T> {
 
     this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
-    this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size);
+    if (use_position) {
+      this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_beam_size);
+    }
 
     this->beam_scores = AllocateBuffer<float>(allocator, beam_scores_buffer_, batch_beam_size);
 

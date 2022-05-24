@@ -69,6 +69,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   auto status = Status::OK();
 
   const BeamSearchParameters* parameters = this->parameters_;
+  ORT_ENFORCE(parameters->sequence_length == 0);
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
@@ -107,7 +108,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       parameters->num_beams,
       parameters->pad_token_id,
       parameters->decoder_start_token_id,
-      cpu_state.sequence_lengths,
       encoder_feeds,
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
@@ -118,6 +118,11 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = this->GetConsoleDumper();
+  for (size_t i = 0; i < encoder_feeds.size(); i++) {
+    dumper->Print("encoder_feeds", static_cast<int>(i), true);
+    dumper->Print("", encoder_feeds[i]);
+  }
+
   for (size_t i = 0; i < encoder_fetches.size(); i++) {
     dumper->Print("encoder_fetches", static_cast<int>(i), true);
     dumper->Print("", encoder_fetches[i]);
@@ -127,7 +132,11 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // ------------------------------------
   // Initialize resources
   // ------------------------------------
-  cpu_state.SetSequence(encoder_feeds[0].Get<Tensor>().DataAsSpan<int64_t>(), static_cast<size_t>(parameters->BatchBeamSize()), parameters->max_length, parameters->sequence_length);
+
+  // Output sequence shall start with decoder_start_token_id
+  // TODO: support encoder with 2 input. The following assumes encoder has 3 inputs.
+  this->parameters_->sequence_length = 1;
+  cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int64_t>(), static_cast<size_t>(parameters->BatchBeamSize()), parameters->max_length, parameters->sequence_length);
 
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
@@ -144,13 +153,15 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
 
   BeamSearchState<T> beam_state;
+  constexpr bool use_position = false;
   beam_state.Init(this->temp_space_allocator_,
                   parameters->batch_size,
                   parameters->num_beams,
                   parameters->vocab_size,
                   parameters->sequence_length,
                   parameters->max_length,
-                  parameters->output_scores);
+                  parameters->output_scores,
+                  use_position);
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
@@ -176,12 +187,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              encoder_feeds,
                                                              encoder_fetches,
                                                              decoder_feeds));
-#ifdef DEBUG_BEAM_SEARCH
-    for (size_t i = 0; i < decoder_feeds.size(); i++) {
-      dumper->Print("decoder_feeds", static_cast<int>(i), true);
-      dumper->Print("", decoder_feeds[i]);
-    }
-#endif
   }
 
   // TODO: allocate fetches. use ping-pong buffers for past state.
@@ -191,10 +196,22 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 #ifdef DEBUG_BEAM_SEARCH
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
+
+    for (size_t i = 0; i < decoder_feeds.size(); i++) {
+      dumper->Print("decoder_feeds", static_cast<int>(i), true);
+      dumper->Print("", decoder_feeds[i]);
+    }
 #endif
 
     status = utils::ExecuteSubgraph(this->decoder_session_state_, decoder_feeds_fetches_manager, decoder_feeds, decoder_fetches, {},
                                     ExecutionMode::ORT_SEQUENTIAL, this->context_.GetTerminateFlag(), this->context_.Logger());
+
+#ifdef DEBUG_BEAM_SEARCH
+    for (size_t i = 0; i < decoder_fetches.size(); i++) {
+      dumper->Print("decoder_fetches", static_cast<int>(i), true);
+      dumper->Print("", decoder_fetches[i]);
+    }
+#endif
 
     ORT_RETURN_IF_ERROR(status);
 

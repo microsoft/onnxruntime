@@ -31,7 +31,8 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   const auto& dims = input_ids->Shape().GetDims();
   ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
   batch_size = static_cast<int>(dims[0]);
-  sequence_length = static_cast<int>(dims[1]);
+
+  sequence_length = this->decoder_start_token_id >= 0 ? 0 : static_cast<int>(dims[1]);
 
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;

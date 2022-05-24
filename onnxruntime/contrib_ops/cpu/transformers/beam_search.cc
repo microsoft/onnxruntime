@@ -92,6 +92,14 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       t5_encoder_subgraph_ = std::make_unique<T5EncoderSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
       encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
+
+      if (parameters_.decoder_start_token_id < 0) {
+        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
+                      "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
+      } else {
+        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3,
+                      "Encoder subgraph shall have 3 inputs when decoder_start_token_id attribute is avaiable");
+      }
     } else if (attribute_name == "decoder") {
       ORT_ENFORCE(t5_decoder_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());

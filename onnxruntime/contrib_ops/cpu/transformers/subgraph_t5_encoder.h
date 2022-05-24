@@ -24,7 +24,6 @@ class T5EncoderSubgraph : public Subgraph {
       int num_beams,
       int pad_token_id,
       int start_token_id,
-      gsl::span<int32_t>& sequence_lengths,
       std::vector<OrtValue>& feeds,
       const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
       const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,

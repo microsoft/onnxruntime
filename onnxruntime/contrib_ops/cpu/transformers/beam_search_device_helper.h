@@ -49,9 +49,9 @@ using CreateGptInputsFunc = std::function<Status(
 
 using AddToFeedsFunc = std::function<Status(
     const IExecutionProvider* provider,
-    OrtValue& input_ids,
-    OrtValue& position_ids,
-    OrtValue& attention_mask,
+    OrtValue& input1,
+    OrtValue& input2,
+    OrtValue& input3,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer)>;
 
@@ -105,7 +105,7 @@ using CreateEncoderInputsFunc = std::function<Status(
     int num_beams,
     int pad_token_id,
     int start_token_id,
-    gsl::span<int32_t>& sequence_lengths,
+    //gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,
@@ -152,9 +152,9 @@ Status TopK(
 
 Status AddToFeeds(
     const IExecutionProvider* execution_provider,
-    OrtValue& input_ids,
-    OrtValue& position_ids,
-    OrtValue& attention_mask,
+    OrtValue& input1,
+    OrtValue& input2,
+    OrtValue& input3,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer);
 
@@ -221,7 +221,7 @@ Status CreateEncoderInputs(
     int num_beams,
     int pad_token_id,
     int start_token_id,
-    gsl::span<int32_t>& sequence_lengths,
+    //gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,

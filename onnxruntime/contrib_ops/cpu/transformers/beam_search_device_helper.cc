@@ -126,14 +126,21 @@ Status CreateGptInputs(
 }
 
 Status AddToFeeds(const IExecutionProvider* /*execution_provider*/,
-                  OrtValue& input_ids,
-                  OrtValue& position_ids,
-                  OrtValue& attention_mask,
+                  OrtValue& input1,
+                  OrtValue& input2,
+                  OrtValue& input3,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& /*buffer*/) {
-  feeds.push_back(input_ids);
-  feeds.push_back(position_ids);
-  feeds.push_back(attention_mask);
+  feeds.push_back(input1);
+
+  if (input2.IsAllocated()) {
+    feeds.push_back(input2);
+  }
+
+  if (input3.IsAllocated()) {
+    feeds.push_back(input3);
+  }
+
   return Status::OK();
 }
 
@@ -148,7 +155,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   memset(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes());
   memset(beam_state->next_tokens.data(), 0, beam_state->next_tokens.size_bytes());
   memset(beam_state->next_indices.data(), 0, beam_state->next_indices.size_bytes());
-  memset(beam_state->next_positions.data(), 0, beam_state->next_positions.size_bytes());
+
+  // T5 does not need position, so next_positions is empty for T5.
+  if (!beam_state->next_positions.empty()){
+    memset(beam_state->next_positions.data(), 0, beam_state->next_positions.size_bytes());
+    gsl::copy(sequence_lengths, beam_state->next_positions);
+  }
 
   // Initialize score of first beam of each group with 0 and the rest with -1e9.
   // This ensures that the beams in the same group don't produce same tokens every time.
@@ -159,7 +171,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
     }
   }
 
-  gsl::copy(sequence_lengths, beam_state->next_positions);
+
 }
 
 template <typename T>
@@ -210,7 +222,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("logits", logits);
-  dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
+  if (input_length > 1) {
+    dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
+  }
 #endif
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
@@ -435,7 +449,6 @@ Status CreateEncoderInputs(
     int num_beams,
     int pad_token_id,
     int start_token_id,
-    gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,
@@ -469,16 +482,14 @@ Status CreateEncoderInputs(
     int32_t abs_position = 0;
     for (int j = 0; j < sequence_length; j++, word_id++, encoder_input_ids_data++, mask++) {
       *encoder_input_ids_data = static_cast<int64_t>(*word_id);
-      if (*word_id == pad_token_id) {
+      // Huggingface T5Tokenizer might add one pad token at the end with attention mask 1.
+      // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
+      if (*word_id == pad_token_id && abs_position == 0) {
         *mask = 0;
       } else {
         *mask = 1;
         abs_position++;
       }
-    }
-
-    for (int k = 0; k < num_beams; k++) {
-      sequence_lengths[SafeInt<gsl::index>(i) * num_beams + k] = abs_position;
     }
   }
 
@@ -487,13 +498,17 @@ Status CreateEncoderInputs(
   expanded_encoder_input_ids = ExpandInputs<int64_t>(encoder_input_ids, num_beams, allocator);
   expanded_encoder_attention_mask = ExpandInputs<int64_t>(encoder_attention_mask, num_beams, allocator);
 
-  // Expanded decoder_input_ids has shape (batch_size * num_beams, 1), and filled with start token ID
-  int64_t dims[] = {batch_size * num_beams, 1};
-  TensorShape decoder_input_ids_shape(&dims[0], 2);
-  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, expanded_decoder_input_ids);
-  int64_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
-  for (int i = 0; i < batch_size * num_beams; i++, data++) {
-    *data = start_token_id;
+
+  // decoder_input_ids is optional.
+  if (start_token_id >= 0) {
+    // Expanded decoder_input_ids has shape (batch_size * num_beams, 1), and filled with start token ID
+    int64_t dims[] = {batch_size * num_beams, 1};
+    TensorShape decoder_input_ids_shape(&dims[0], 2);
+    Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, expanded_decoder_input_ids);
+    int64_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+    for (int i = 0; i < batch_size * num_beams; i++, data++) {
+      *data = start_token_id;
+    }
   }
 
   return Status::OK();

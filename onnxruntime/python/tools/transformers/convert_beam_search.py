@@ -338,6 +338,7 @@ def verify_t5_decoder_subgraph(graph, precision):
 
 def verify_t5_encoder_decoder_init_subgraph(graph, precision):
     # TODO: implement it
+    assert len(graph.input) == 3, "please run convert_to_onnx without --use_decoder_start_token"
     pass
 
 
@@ -428,6 +429,9 @@ def convert_model(args):
         node.attribute.extend(
             [
                 helper.make_attribute("encoder", init_model.graph),
+                helper.make_attribute(
+                    "decoder_start_token_id", config.decoder_start_token_id if len(init_model.graph.input) == 3 else -1
+                ),
             ]
         )
 

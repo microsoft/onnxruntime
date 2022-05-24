@@ -131,13 +131,15 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(cpu_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
 
   BeamSearchState<T> beam_state;
+  constexpr bool use_position = true;
   beam_state.Init(this->temp_space_allocator_,
                   parameters->batch_size,
                   parameters->num_beams,
                   parameters->vocab_size,
                   parameters->sequence_length,
                   parameters->max_length,
-                  parameters->output_scores);
+                  parameters->output_scores,
+                  use_position);
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
