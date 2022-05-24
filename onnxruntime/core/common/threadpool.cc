@@ -44,6 +44,8 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+const char* const mm_task_name = "Audio";
+
 #if !defined(ORT_MINIMAL_BUILD)
 ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* thread_pool_name) : num_threads_(num_threads) {
   child_thread_stats_.assign(num_threads, {});
@@ -378,7 +380,7 @@ ThreadPool::ThreadPool(Env* env,
   if (degree_of_parallelism >= 2) {
     int threads_to_create = degree_of_parallelism - 1;
     extended_eigen_threadpool_ =
-        std::make_unique<ThreadPoolTempl<Env> >(name,
+        std::make_unique<ThreadPoolTempl<Env>>(name,
                                                 threads_to_create,
                                                 low_latency_hint,
                                                 *env,
@@ -482,11 +484,15 @@ std::string ThreadPool::StopProfiling() {
 }
 
 void ThreadPool::StartBusyLoop() {
-  extended_eigen_threadpool_->StartBusyLoop();
+  if (extended_eigen_threadpool_) {
+    extended_eigen_threadpool_->StartBusyLoop();
+  }
 }
 
 void ThreadPool::StopBusyLoop() {
-  extended_eigen_threadpool_->StopBusyLoop();
+  if (extended_eigen_threadpool_) {
+    extended_eigen_threadpool_->StopBusyLoop();
+  }
 }
 
 thread_local ThreadPool::ParallelSection* ThreadPool::ParallelSection::current_parallel_section{nullptr};

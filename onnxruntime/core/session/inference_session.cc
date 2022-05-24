@@ -260,6 +260,15 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       SetDenormalAsZero(set_denormal_as_zero);
 
       LOGS(*session_logger_, INFO) << "Flush-to-zero and denormal-as-zero are " << ((set_denormal_as_zero) ? "on" : "off");
+
+      // Set this (main) thread affinity for experiment. I would think user should take care of it
+      // as it is their thread.
+      auto aff_masks = Env::Default().GetThreadAffinityMasks();
+      if (!aff_masks.empty()) {
+        // Will set the main thread to the last processor
+        const auto main_aff = aff_masks.size() - 1;
+        SetThreadAffinityMask(GetCurrentThread(), aff_masks[main_aff]);
+      }
     });
   }
 
@@ -273,6 +282,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
 
       OrtThreadPoolParams to = session_options_.intra_op_param;
+      to.boost_worker_pri = true;
       std::basic_stringstream<ORTCHAR_T> ss;
       if (to.name) {
         ss << to.name << ORT_TSTR("-");
@@ -307,6 +317,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
           session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
 
       OrtThreadPoolParams to = session_options_.inter_op_param;
+      to.boost_worker_pri = true;
       // If the thread pool can use all the processors, then
       // we set thread affinity.
       to.auto_set_affinity =

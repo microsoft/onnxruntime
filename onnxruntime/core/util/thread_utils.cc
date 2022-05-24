@@ -4,6 +4,7 @@
 #include "core/util/thread_utils.h"
 
 #include <algorithm>
+#include <assert.h>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -22,9 +23,13 @@ static std::optional<ThreadOptions> ThreadPoolParamsToOptions(OrtThreadPoolParam
 
   std::vector<size_t> cpu_list;
   ThreadOptions to;
+  to.boost_worker_pri = options.boost_worker_pri;
   if (options.affinity_vec_len != 0) {
     to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
+  } else {
+    to.affinity = Env::Default().GetThreadAffinityMasks();
   }
+
   if (options.thread_pool_size <= 0) {  // default
     cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
@@ -33,6 +38,7 @@ static std::optional<ThreadOptions> ThreadPoolParamsToOptions(OrtThreadPoolParam
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }
+
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
   // set custom thread management members
@@ -52,8 +58,10 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (!to.has_value()) {
     return nullptr;
   }
-  return std::make_unique<ThreadPool>(env, *to, options.name, options.thread_pool_size,
-                                      options.allow_spinning);
+  
+  auto tp = std::make_unique<ThreadPool>(env, *to, options.name, options.thread_pool_size,
+                                         options.allow_spinning);
+  return tp;
 }
 
 std::unique_ptr<ThreadPool>

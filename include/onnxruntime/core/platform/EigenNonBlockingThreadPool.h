@@ -45,6 +45,8 @@
 #include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
+#include <avrt.h>
+
 // ORT thread pool overview
 // ------------------------
 //
@@ -146,6 +148,8 @@
 
 namespace onnxruntime {
 namespace concurrency {
+
+extern const char* const mm_task_name;
 
 #ifdef _WIN32
 using CHAR_TYPE = wchar_t;
@@ -729,8 +733,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         worker_data_(num_threads),
         all_coprimes_(num_threads),
-        blocked_(0),
+        //blocked_(0),
         done_(false) {
+    busy_loop_event_ = CreateEventEx(NULL, NULL, CREATE_EVENT_MANUAL_RESET,
+                                     SYNCHRONIZE | EVENT_MODIFY_STATE);
+    if (busy_loop_event_ == NULL) {
+      auto error_code = ::GetLastError();
+      ORT_THROW("CreateEventEx failed: ", std::system_category().message(error_code));
+    }
     // Calculate coprimes of all numbers [1, num_threads].
     // Coprimes are used for random walks over all threads in Steal
     // and NonEmptyQueueIndex. Iteration is based on the fact that if we take
@@ -759,6 +769,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // Join threads explicitly (by destroying) to avoid destruction order within
     // this class.
     for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
+    ::CloseHandle(busy_loop_event_);
   }
 
   // Run fn().  Ordinarily, the function will be added to the thread pool and executed
@@ -774,7 +785,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     fn = q.PushBack(std::move(fn));
     if (!fn) {
       // The queue accepted the work; ensure that the thread will pick it up
-      td.EnsureAwake();
+      // td.EnsureAwake();
     } else {
       // Run the work directly if the queue rejected the work
       fn();
@@ -1067,10 +1078,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       // another thread (which may then steal the task).
       if (push_status == PushResult::ACCEPTED_IDLE || push_status == PushResult::ACCEPTED_BUSY) {
         ps.tasks.push_back({q_idx, w_idx});
-        td.EnsureAwake();
-        if (push_status == PushResult::ACCEPTED_BUSY) {
-          worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
-        }
+        // td.EnsureAwake();
+        //if (push_status == PushResult::ACCEPTED_BUSY) {
+        //  worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
+        //}
       }
     }
   }
@@ -1170,10 +1181,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         // In addition, if the queue was non-empty, attempt to wake
         // another thread (which may then steal the task).
         if (push_status == PushResult::ACCEPTED_IDLE || push_status == PushResult::ACCEPTED_BUSY) {
-          dispatch_td.EnsureAwake();
-          if (push_status == PushResult::ACCEPTED_BUSY) {
-            worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
-          }
+          //dispatch_td.EnsureAwake();
+          //if (push_status == PushResult::ACCEPTED_BUSY) {
+          //  worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
+          //}
         } else {
           ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
         }
@@ -1278,16 +1289,18 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   }
 
   void StartBusyLoop() {
-    BusyLoopState expected = BusyLoopState::Idle;
-    // Otherwise, it is already active
-    if (busy_loop_state_.compare_exchange_strong(expected, BusyLoopState::Active)) {
-      for (auto& td : worker_data_) {
-        td.EnsureAwake();
-      }
+    busy_loop_state_.store(BusyLoopState::Active, std::memory_order_release);
+    if (0 == ::SetEvent(busy_loop_event_)) {
+      auto error_code = ::GetLastError();
+      ORT_THROW("SetEvent failed: ", std::system_category().message(error_code));
     }
   }
 
   void StopBusyLoop() {
+    if (0 == ::ResetEvent(busy_loop_event_)) {
+      auto error_code = ::GetLastError();
+      ORT_THROW("ResetEvent failed: ", std::system_category().message(error_code));
+    }
     busy_loop_state_.store(BusyLoopState::Idle, std::memory_order_release);
   }
 
@@ -1340,7 +1353,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   };
 
   struct WorkerData {
-    constexpr WorkerData() : thread(), queue() {
+    constexpr WorkerData() : thread(), queue()  //, thread_event_(NULL)
+    {
+      // Manual reset event, initially non-signalled
+      // thread_event_ = CreateEventExA(NULL, TRUE, FALSE, NULL);
+      // assert(thread_event_ != NULL);
     }
     std::unique_ptr<Thread> thread;
     Queue queue;
@@ -1366,12 +1383,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     //    remains busy.
 
     enum class ThreadStatus : uint8_t {
-      Spinning,  // Spinning in the work loop, and other cases (initialization) where
-                 // the thread will soon be in the loop
-      Active,    // Running user code, not waiting for work
-      Blocking,  // In the process of blocking; may no longer notice work pushed to it
-      Blocked,   // Blocked on cv
-      Waking,    // Not yet back in the worker loop, but wake-up notification sent
+      // Spinning,  // Spinning in the work loop, and other cases (initialization) where
+      // the thread will soon be in the loop
+      Active,  // Spinning or Running user code, not waiting for work
+      // Blocking,  // In the process of blocking; may no longer notice work pushed to it
+      Blocked,  // Blocked on cv
+      Waking,   // Not yet back in the worker loop, but wake-up notification sent
     };
 
     ThreadStatus GetStatus() const {
@@ -1381,61 +1398,38 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // State transitions, called from other threads
     // XXX. With continuous spinning during Run() calls
     // this is only called to unblock threads between the runs
-    void EnsureAwake() {
-      ThreadStatus seen = status.load(std::memory_order_relaxed);
-      if (seen == ThreadStatus::Blocking ||
-          seen == ThreadStatus::Blocked) {
-        std::unique_lock<OrtMutex> lk(mutex);
-        // Blocking state exists only transiently during the SetBlock() method
-        // while holding the lock.  We may observe it at the start of this
-        // function, but after acquiring the lock then the target thread
-        // will either be blocked or not.
-        seen = status.load(std::memory_order_relaxed);
-        assert(seen != ThreadStatus::Blocking);
-        if (seen == ThreadStatus::Blocked) {
-          status.store(ThreadStatus::Waking, std::memory_order_relaxed);
-          // Unlock before notify so the awaking thread does not struggle
-          // obtaining the mutex
-          lk.unlock();
-          cv.notify_one();
-        }
-      }
-    }
+    //void EnsureAwake() {
+    //  std::unique_lock<OrtMutex> lk(mutex);
+    //  status = ThreadStatus::Waking;
+    //  // Unlock before notify so the awaking thread does not struggle
+    //  // obtaining the mutex
+    //  lk.unlock();
+    //  cv.notify_one();
+    //}
 
-    // State transitions, called only from the thread itself
-    void SetActive() {
-      status.store(ThreadStatus::Active, std::memory_order_relaxed);
-    }
-
-    void SetSpinning() {
-      status.store(ThreadStatus::Spinning, std::memory_order_relaxed);
-    }
-
-    void SetBlocked(std::function<bool()> should_block,
-                    std::function<void()> post_block) {
-      std::unique_lock<OrtMutex> lk(mutex);
-      // EnsureAwake() can come and set status to Waking
-      // In this case, we should not go to sleep.
-      auto seen = status.load(std::memory_order_relaxed);
-      if (seen == ThreadStatus::Spinning) {
-        status.store(ThreadStatus::Blocking, std::memory_order_relaxed);
-        if (should_block()) {
-          status.store(ThreadStatus::Blocked, std::memory_order_relaxed);
-          while (status.load(std::memory_order_relaxed) == ThreadStatus::Blocked) {
-            cv.wait(lk);
-          }
-          post_block();
-        }
-      } else {
-        assert(seen == ThreadStatus::Waking);
-      }
-      status.store(ThreadStatus::Spinning, std::memory_order_relaxed);
-    }
+    //void SetBlocked(  // std::function<bool()> should_block,
+    //    std::function<void()> block) {
+    //std::unique_lock<OrtMutex> lk(mutex);
+    //// EnsureAwake() can come and set status to Waking
+    //// In this case, we should not go to sleep.
+    //if (status == ThreadStatus::Active) {
+    //  status = ThreadStatus::Blocked;
+    //  do {
+    //    cv.wait(lk);
+    //  } while (status == ThreadStatus::Blocked);
+    //  post_block();
+    //  // }
+    //} else {
+    //  assert(status == ThreadStatus::Waking);
+    //}
+    //status = ThreadStatus::Active;
+    //}
+    std::atomic<ThreadStatus> status{ThreadStatus::Active};
 
    private:
-    std::atomic<ThreadStatus> status{ThreadStatus::Spinning};
-    OrtMutex mutex;
-    OrtCondVar cv;
+    // ThreadStatus status{ThreadStatus::Active};
+    //OrtMutex mutex;
+    //OrtCondVar cv;
   };
 
   // This enum is atomically set to indicate
@@ -1455,208 +1449,195 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   const bool set_denormal_as_zero_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
-  // Start with spinning, otherwise can not submit it.
-  std::atomic<BusyLoopState> busy_loop_state_{BusyLoopState::Idle};
-  std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
+  // Start with spinning
+  std::atomic<BusyLoopState> busy_loop_state_{BusyLoopState::Active};
+  HANDLE busy_loop_event_{INVALID_HANDLE_VALUE};
+  //OrtMutex mut_wakeup_;
+  //OrtCondVar cv_wakeup_;
 
-  // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
-  // a clean exit, each thread will observe (1) done_ set, indicating that the
-  // destructor has been called, (2) all threads blocked, and (3) no
-  // items in the work queues.
-
-  void WakeAllWorkersForExit() {
-    for (auto& td : worker_data_) {
-      td.EnsureAwake();
+  // Threads block on this
+  void Block() {
+    if (busy_loop_state_.load(std::memory_order_acquire) == BusyLoopState::Idle) {
+      if (::WaitForSingleObjectEx(busy_loop_event_, INFINITE, FALSE) != WAIT_OBJECT_0) {
+        auto error_code = ::GetLastError();
+        ORT_THROW("WaitForSingleObjectEx failed: ", std::system_category().message(error_code));
+      }
     }
   }
 
-  // Main worker thread loop.
-  void WorkerLoop(int thread_id) {
-    PerThread* pt = GetPerThread();
-    WorkerData& td = worker_data_[thread_id];
-    Queue& q = td.queue;
-    bool should_exit = false;
-    pt->pool = this;
-    pt->thread_id = thread_id;
+    // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
+    // a clean exit, each thread will observe (1) done_ set, indicating that the
+    // destructor has been called, (2) all threads blocked, and (3) no
+    // items in the work queues.
+    void WakeAllWorkersForExit() {
+      StartBusyLoop();
+      //for (auto& td : worker_data_) {
+      //  td.EnsureAwake();
+      //}
+    }
 
-    assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
+    void threadSetMmCharacteristics(HANDLE& mm_handle) {
+      DWORD mmcssTaskIndex = 0;
+      mm_handle = ::AvSetMmThreadCharacteristicsA(mm_task_name, &mmcssTaskIndex);
+      if (!mm_handle) {
+        auto error_code = ::GetLastError();
+        ORT_THROW("AvSetMmThreadCharacteristicsA failed: ", std::system_category().message(error_code));
+      }
+    }
 
-    // constexpr int log2_spin = 20;  // 1,048,576
-    //int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
-    // const int steal_count = (1ull << log2_spin) / 1000;
-    const auto allow_spinning = allow_spinning_;
+    void threadSetMmPriority(HANDLE mm_handle, int priority) {
+      BOOL success = ::AvSetMmThreadPriority(mm_handle, static_cast<AVRT_PRIORITY>(priority));
+      if (!success) {
+        auto error_code = ::GetLastError();
+        ORT_THROW("AvSetMmThreadPriority failed: ", std::system_category().message(error_code));
+      }
+    }
 
-    SetDenormalAsZero(set_denormal_as_zero_);
-    profiler_.LogThreadId(thread_id);
+    void threadRevokeMmCharacteristics(HANDLE mm_handle) {
+      BOOL ok = ::AvRevertMmThreadCharacteristics(mm_handle);
+      if (!ok) {
+        auto error_code = ::GetLastError();
+        ORT_THROW("AvSetMmThreadPriority failed: ", std::system_category().message(error_code));
+      }
+    }
 
-    while (!should_exit) {
-      // Spin waiting for work.
-      do {
+    // Main worker thread loop.
+    void WorkerLoop(int thread_id) {
+      PerThread* pt = GetPerThread();
+      WorkerData& td = worker_data_[thread_id];
+      td.status = WorkerData::ThreadStatus::Active;
+      Queue& q = td.queue;
+      pt->pool = this;
+      pt->thread_id = thread_id;
+
+      // constexpr int log2_spin = 20;  // 1,048,576
+      //int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
+      // const int steal_count = (1ull << log2_spin) / 1000;
+      // const auto allow_spinning = allow_spinning_;
+
+      SetDenormalAsZero(set_denormal_as_zero_);
+      profiler_.LogThreadId(thread_id);
+
+      HANDLE mm_handle = NULL;
+      threadSetMmCharacteristics(mm_handle);
+      threadSetMmPriority(mm_handle, AVRT_PRIORITY_NORMAL);
+
+      //auto cur_thread = ::GetCurrentThread();
+      //if (!::SetThreadPriority(cur_thread, THREAD_PRIORITY_HIGHEST)) {
+      //  auto error_code = ::GetLastError();
+      //  ORT_THROW("SetThreadPriority failed: ", std::system_category().message(error_code));
+      //}
+
+      while (true) {
+        // Spin waiting for work.
         Task t = q.PopFront();
-        if (!t) t = Steal(StealAttemptKind::TRY_ONE);
-        if (t) {
-          td.SetActive();
-          do {
-            t();
-            profiler_.LogRun(thread_id);
-            t = q.PopFront();
-          } while (t || (t = Steal(StealAttemptKind::TRY_ONE)));
-          td.SetSpinning();
+        while (t) {
+          t();
+          profiler_.LogRun(thread_id);
+          t = q.PopFront();
         }
 
-        if (!allow_spinning || busy_loop_state_ == BusyLoopState::Idle || done_.load(std::memory_order_relaxed)) {
-          // Attempt to block
-          td.SetBlocked(  // Pre-block test
-              [&]() -> bool {
-                bool should_block = true;
-                // Check whether work was pushed to us while attempting to block.  We make
-                // this test while holding the per-thread status lock, and after setting
-                // our status to ThreadStatus::Blocking.
-                //
-                // This synchronizes with ThreadPool::Schedule which pushes work to the queue
-                // and then tests for ThreadStatus::Blocking/Blocked (via EnsureAwake):
-                //
-                // Main thread:                    Worker:
-                //   #1 Push work                   #A Set status blocking
-                //   #2 Read worker status          #B Check queue
-                //   #3 Wake if blocking/blocked
-                //
-                // If #A is before #2 then main sees worker blocked and wakes
-                //
-                // If #A if after #2 then #B will see #1, and we abandon blocking
-                assert(!t);
-                t = q.PopFront();
-                if (t) {
-                  should_block = false;
-                }
-                // No work pushed to us, continue attempting to block.  The remaining
-                // test  is to synchronize with termination requests.  If we are
-                // shutting down and all worker threads blocked without work, that's
-                // we are done.
-                if (should_block) {
-                  auto prev_blocked = blocked_.fetch_add(1, std::memory_order_acq_rel);
-                  if (done_.load(std::memory_order_relaxed) && (prev_blocked + 1) == num_threads_) {
-                    should_block = false;
-                    // Almost done, but need to re-check queues.
-                    // Consider that all queues are empty and all worker threads are preempted
-                    // right after incrementing blocked_ above. Now a free-standing thread
-                    // submits work and calls destructor (which sets done_). If we don't
-                    // re-check queues, we will exit leaving the work unexecuted.
-                    if (NonEmptyQueueIndex() != -1) {
-                      // Note: we must not pop from queues before we decrement blocked_,
-                      // otherwise the following scenario is possible. Consider that instead
-                      // of checking for emptiness we popped the only element from queues.
-                      // Now other worker threads can start exiting, which is bad if the
-                      // work item submits other work. So we just check emptiness here,
-                      // which ensures that all worker threads exit at the same time.
-                      blocked_.fetch_sub(1, std::memory_order_acq_rel);
-                    } else {
-                      should_exit = true;
-                    }
-                  }
-                }
-                return should_block;
-              },
-              // Post-block update (executed only if we blocked)
-              [&]() {
-                blocked_.fetch_sub(1, std::memory_order_acq_rel);
-              });
+        if (done_.load(std::memory_order_relaxed)) {
+          break;
+        }
+        if (busy_loop_state_ == BusyLoopState::Idle) {
+          td.status = WorkerData::ThreadStatus::Blocked;
+          Block();
+          //td.SetBlocked(
+          //    [&]() {
+          //      // blocked_.fetch_sub(1, std::memory_order_acq_rel);
+          //    });
+          td.status = WorkerData::ThreadStatus::Active;
+        } else {  // End of block/exit check
+          onnxruntime::concurrency::SpinPause();
+        }
+      }  // end while(!should_exit)
 
-          // We can unblock after sleep or there are other active threads
-          // that either push work to this one, or need help.
-          if (!t) t = q.PopFront();
-          if (!t) t = Steal(StealAttemptKind::TRY_ALL);
+      assert(td.queue.Size() == 0);
+      threadRevokeMmCharacteristics(mm_handle);
+
+      //if (!::SetThreadPriority(cur_thread, THREAD_PRIORITY_NORMAL)) {
+      //  auto error_code = ::GetLastError();
+      //  ORT_THROW("SetThreadPriority failed: ", std::system_category().message(error_code));
+      //}
+      // Whichever thread(s) observe the termination conditions are responsible for waking
+      // any other threads that have remained blocked.
+      // WakeAllWorkersForExit();
+    }
+
+    // Steal tries to steal work from other worker threads in a
+    // best-effort manner.  We steal only from threads that are running
+    // in user code (ThreadStatus::Active).  The intuition behind this
+    // is that the thread is busy with other work, and we will avoid
+    // "snatching" work from a thread which is just about to notice the
+    // work itself.
+
+    Task Steal(StealAttemptKind steal_kind) {
+      PerThread* pt = GetPerThread();
+      unsigned size = num_threads_;
+      unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
+      unsigned r = Rand(&pt->rand);
+      unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
+      unsigned victim = r % size;
+
+      for (unsigned i = 0; i < num_attempts; i++) {
+        assert(victim < size);
+        if (worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
+          Task t = worker_data_[victim].queue.PopBack();
           if (t) {
-            td.SetActive();
-            t();
-            profiler_.LogRun(thread_id);
-            td.SetSpinning();
+            return t;
           }
-        }  // End of exit check
-        onnxruntime::concurrency::SpinPause();
-      } while (!should_exit);  // End spinning loop
-    }                          // end while(!should_exit)
-
-    // Whichever thread(s) observe the termination conditions are responsible for waking
-    // any other threads that have remained blocked.
-    if (should_exit) {
-      WakeAllWorkersForExit();
-    }
-  }
-
-  // Steal tries to steal work from other worker threads in a
-  // best-effort manner.  We steal only from threads that are running
-  // in user code (ThreadStatus::Active).  The intuition behind this
-  // is that the thread is busy with other work, and we will avoid
-  // "snatching" work from a thread which is just about to notice the
-  // work itself.
-
-  Task Steal(StealAttemptKind steal_kind) {
-    PerThread* pt = GetPerThread();
-    unsigned size = num_threads_;
-    unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
-    unsigned r = Rand(&pt->rand);
-    unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
-    unsigned victim = r % size;
-
-    for (unsigned i = 0; i < num_attempts; i++) {
-      assert(victim < size);
-      if (worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
-        Task t = worker_data_[victim].queue.PopBack();
-        if (t) {
-          return t;
+        }
+        victim += inc;
+        if (victim >= size) {
+          victim -= size;
         }
       }
-      victim += inc;
-      if (victim >= size) {
-        victim -= size;
-      }
+
+      return Task();
     }
 
-    return Task();
-  }
-
-  int NonEmptyQueueIndex() {
-    PerThread* pt = GetPerThread();
-    const unsigned size = static_cast<unsigned>(worker_data_.size());
-    unsigned r = Rand(&pt->rand);
-    unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
-    unsigned victim = r % size;
-    for (unsigned i = 0; i < size; i++) {
-      if (!worker_data_[victim].queue.Empty()) {
-        return victim;
+    int NonEmptyQueueIndex() {
+      PerThread* pt = GetPerThread();
+      const unsigned size = static_cast<unsigned>(worker_data_.size());
+      unsigned r = Rand(&pt->rand);
+      unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
+      unsigned victim = r % size;
+      for (unsigned i = 0; i < size; i++) {
+        if (!worker_data_[victim].queue.Empty()) {
+          return victim;
+        }
+        victim += inc;
+        if (victim >= size) {
+          victim -= size;
+        }
       }
-      victim += inc;
-      if (victim >= size) {
-        victim -= size;
+      return -1;
+    }
+
+    static EIGEN_STRONG_INLINE uint64_t GlobalThreadIdHash() {
+      return std::hash<std::thread::id>()(std::this_thread::get_id());
+    }
+
+    static EIGEN_STRONG_INLINE PerThread* GetPerThread() {
+      static thread_local PerThread per_thread_;
+      PerThread* pt = &per_thread_;
+      if (!pt->initialized) {
+        pt->rand = GlobalThreadIdHash();
+        pt->initialized = true;
       }
+      return pt;
     }
-    return -1;
-  }
 
-  static EIGEN_STRONG_INLINE uint64_t GlobalThreadIdHash() {
-    return std::hash<std::thread::id>()(std::this_thread::get_id());
-  }
-
-  static EIGEN_STRONG_INLINE PerThread* GetPerThread() {
-    static thread_local PerThread per_thread_;
-    PerThread* pt = &per_thread_;
-    if (!pt->initialized) {
-      pt->rand = GlobalThreadIdHash();
-      pt->initialized = true;
+    static EIGEN_STRONG_INLINE unsigned Rand(uint64_t * state) {
+      uint64_t current = *state;
+      // Update the internal state
+      *state = current * 6364136223846793005ULL + 0xda3e39cb94b95bdbULL;
+      // Generate the random output (using the PCG-XSH-RS scheme)
+      return static_cast<unsigned>((current ^ (current >> 22)) >> (22 + (current >> 61)));
     }
-    return pt;
-  }
-
-  static EIGEN_STRONG_INLINE unsigned Rand(uint64_t* state) {
-    uint64_t current = *state;
-    // Update the internal state
-    *state = current * 6364136223846793005ULL + 0xda3e39cb94b95bdbULL;
-    // Generate the random output (using the PCG-XSH-RS scheme)
-    return static_cast<unsigned>((current ^ (current >> 22)) >> (22 + (current >> 61)));
-  }
-};
+  };
 
 }  // namespace concurrency
 

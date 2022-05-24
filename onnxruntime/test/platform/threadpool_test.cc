@@ -52,9 +52,11 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
       onnxruntime::ThreadOptions thread_options;
       thread_options.dynamic_block_base_ = dynamic_block_base;
       auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, true, mock_hybrid);
+      tp_dynamic_block_size->StartBusyLoop();
       test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
     } else {
       auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true, mock_hybrid);
+      tp_constant_block_size->StartBusyLoop();
       test_body(tp_constant_block_size.get()); // test thread pool with constant block size
     } 
   } else {

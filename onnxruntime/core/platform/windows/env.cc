@@ -85,6 +85,9 @@ class WindowsThread : public EnvThread {
       custom_join_thread_fn(custom_thread_handle);
       custom_thread_handle = nullptr;
     } else {
+      if (!::SetThreadPriority(hThread.get(), THREAD_PRIORITY_NORMAL)) {
+        FAIL_FAST_LAST_ERROR_IF(true);
+      }
       DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
       FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
     }
