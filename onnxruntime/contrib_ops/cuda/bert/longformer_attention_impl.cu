@@ -872,6 +872,7 @@ bool LongformerQkvToContext(
   T* temp_output = qkv;  // Q will be overwritten
 
   if (use_fast_kernel) {
+    /*
     if (!launchSoftmaxFastKernel(
             stream,
             cublas,
@@ -897,10 +898,9 @@ bool LongformerQkvToContext(
             element_size)) {
       return false;
     }
+    */
   } else {
-    assert(false);
-    /*
-    assert(max_num_global <= window);
+     assert(max_num_global <= window);
     if (!launchSoftmaxKernel(
             stream,
             cublas,
@@ -926,7 +926,6 @@ bool LongformerQkvToContext(
             element_size)) {
       return false;
     }
-    */
   }
 
 
