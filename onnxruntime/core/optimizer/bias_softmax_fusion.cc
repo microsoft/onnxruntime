@@ -61,7 +61,7 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
 
   // check add is only consumed by softmax with matching exec provider
   Node& softmax_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11, 13}) ||
       softmax_node.GetExecutionProviderType() != add_node.GetExecutionProviderType()) {
     return false;
   }
