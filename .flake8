@@ -22,4 +22,6 @@ exclude =
     ./orttraining,
     # ignore server code for now
     ./server,
+    # ignore issues from different git branches
+    ./.git,
 ignore = W503, E203
