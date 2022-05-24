@@ -59,7 +59,7 @@ class ORTModule(torch.nn.Module):
 
         # Fallback settings
         self._fallback_manager = _FallbackManager(
-            pytorch_module=module, policy=runtime_options.fallback_policy, retry=runtime_options.fallback_retry
+            pytorch_module=module, policy=ortmodule.ORTMODULE_FALLBACK_POLICY, retry=ortmodule.ORTMODULE_FALLBACK_RETRY
         )
 
         try:

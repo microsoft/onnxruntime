@@ -4,6 +4,7 @@
 
 import os
 
+from onnxruntime import GraphOptimizationLevel
 from onnxruntime.training import ortmodule
 
 from ._fallback import _FallbackPolicy
@@ -16,7 +17,7 @@ class _ExporterOptions:
 
     def __init__(
         self,
-        opset_version,
+        onnx_opset_version,
         do_constant_folding,
         export_modules_as_functions,
         export_params,
@@ -24,8 +25,8 @@ class _ExporterOptions:
         use_static_shapes,
         exporter_extra_args,
     ):
-        self._opset_version, self._export_modules_as_functions, self._exporter_extra_args = self._validate(
-            opset_version, export_modules_as_functions, exporter_extra_args
+        self._onnx_opset_version, self._export_modules_as_functions, self._exporter_extra_args = self._validate(
+            onnx_opset_version, export_modules_as_functions, exporter_extra_args
         )
 
         self._do_constant_folding = self._validate_and_extract_flag(do_constant_folding, "do_constant_folding")
@@ -41,15 +42,15 @@ class _ExporterOptions:
             raise TypeError(f"Expected {str} of type bool, got {type(flag)}.")
         return flag
 
-    def _validate(self, opset_version, export_modules_as_functions, exporter_extra_args):
-        # check if opset_version is an int
-        if not isinstance(opset_version, int):
-            raise TypeError(f"Expected opset_version of type int, got {type(opset_version)}.")
+    def _validate(self, onnx_opset_version, export_modules_as_functions, exporter_extra_args):
+        # check if onnx_opset_version is an int
+        if not isinstance(onnx_opset_version, int):
+            raise TypeError(f"Expected onnx_opset_version of type int, got {type(onnx_opset_version)}.")
 
-        if export_modules_as_functions and opset_version < 15:
+        if export_modules_as_functions and onnx_opset_version < 15:
             raise ValueError(
-                "`export_modules_as_functions` is not supported for `opset_version` < 15."
-                "This is because `opset_version` < 15 implies IR version < 8, which means "
+                "`export_modules_as_functions` is not supported for `onnx_opset_version` < 15."
+                "This is because `onnx_opset_version` < 15 implies IR version < 8, which means "
                 "no local function support. "
             )
 
@@ -68,13 +69,13 @@ class _ExporterOptions:
         if not isinstance(exporter_extra_args, dict):
             raise TypeError(f"Expected exporter_extra_args of type dict, got {type(exporter_extra_args)}.")
 
-        return opset_version, export_modules_as_functions, exporter_extra_args
+        return onnx_opset_version, export_modules_as_functions, exporter_extra_args
 
     @property
-    def opset_version(self):
+    def onnx_opset_version(self):
         """Accessor for ONNX opset version configuration."""
 
-        return self._opset_version
+        return self._onnx_opset_version
 
     @property
     def do_constant_folding(self):
@@ -117,22 +118,55 @@ class RuntimeOptions:
     """Configurable runtime options for ORTModule.
 
     Args:
-        save_onnx (:obj:`bool`, optional): Configure ORTModule to save onnx models. Defaults to False.
-            The output directory of the onnx models by default is set to the current working directory.
-            To change the output directory, the environment variable "ORTMODULE_SAVE_ONNX_PATH" can be
-            set to the destination directory path.
+        onnx_opset_version (:obj:`int`, optional, default 14): Configure ORTModule exporter to use this ONNX opset version..
+            To change the opset version, the environment variable "ORTMODULE_ONNX_OPSET_VERSION" can also be used.
+
+        do_constant_folding (:obj:`bool`, optional): Configure ORTModule export to apply the constant-folding optimization.
+            Defaults to False. Constant-folding will replace some of the ops that have all constant inputs with pre-computed
+            constant nodes.
+
+        export_modules_as_functions (:obj:`bool` or set of python:type of nn.Module, optional, default False): ORTModule exporter
+            flag to enable exporting all nn.Module forward calls as local functions in ONNX. Or a set to indicate the particular
+            types of modules to export as local functions in ONNX. This feature requires onnx_opset_version >= 15, otherwise the
+            export will fail. This is because onnx_opset_version < 15 implies IR version < 8, which means no local function support.
+
+        export_params (:obj:`bool`, optional, default False): ORTModule exporter flag to export all model parameters.
+            If True, all parameters will be exported. Set this to False if you want to export an untrained model. In this case,
+            the exported model will first take all of its parameters as arguments.
+
+        keep_initializers_as_inputs (:obj:`bool`, optional, default True): ORTModule exporter flag to keep initializers as inputs.
+            If True, all the initializers (typically corresponding to parameters) in the exported graph will also be added as inputs
+            to the graph. If False, initializers are not added as inputs to the graph, and only the non-parameter inputs are added as inputs.
+            This may allow for better optimizations (e.g. constant folding) by backends/runtimes.
+
+        use_static_shapes (:obj:`bool`, optional, default False): ORTModule exporter flag to use static output shapes.
+            By default the exported model will have dynamic shapes for all input and output tensors.
+
+        export_extra_args (:obj:`dict`, optional, default Empty): Extra arguments to specify to the ORTModule Torch ONNX exporter.
+            Refer to https://pytorch.org/docs/stable/onnx.html#torch.onnx.export for documentation on exporter arguments.
+
+        enable_custom_autograd (:obj:`bool`, optional, default False): Enable custom autograd.Function support for ORTModule.
+            This will enable ``autograd.Function``s to be exported as ``PythonOp`` in ONNX.
+
+        disable_custom_ops (:obj:`bool`, optional, default False): Disable custom ops support in ORTModule.
+            This flag will disable custom ATen ops and custom gradients in ORTModule.
+
+        graph_optimization_level (:obj:`onnxruntime.GraphOptimizationLevel`, optional, default None): Choose the graph optimization
+            level for ORTModule runtime session. The available graph optimization levels are:
+            ``onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL``: Disable all optimizations
+            ``onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC``: Constant folding and other optimizations that only use ONNX operators
+            ``onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED``: Optimizations using custom operators, excluding NCHWc and NHWC layout optimizers
+            ``onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL``: Enable all optimizations (default)
 
     Raises:
-        OSError: If save_onnx is True and output directory is not writable.
-        TypeError: If save_onnx is True and name_prefix is not a valid string. Or if
-            log_level is not an instance of LogLevel.
-        ValueError: If save_onnx is True and name_prefix is an empty string.
+        TypeError: If an invalid type for a runtime option is specified.
+        ValueError: If an invalid runtime option value is specified.
 
     """
 
     def __init__(
         self,
-        opset_version=ortmodule.ONNX_OPSET_VERSION,
+        onnx_opset_version=ortmodule.ONNX_OPSET_VERSION,
         do_constant_folding=False,
         export_modules_as_functions=False,
         export_params=False,
@@ -142,12 +176,9 @@ class RuntimeOptions:
         enable_custom_autograd=False,
         disable_custom_ops=False,
         graph_optimization_level=None,
-        fallback_policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
-        fallback_retry=ortmodule.ORTMODULE_FALLBACK_RETRY,
-        skipcheck_policy=ortmodule.ORTMODULE_SKIPCHECK_POLICY,
     ):
         self._exporter_options = _ExporterOptions(
-            opset_version,
+            onnx_opset_version,
             do_constant_folding,
             export_modules_as_functions,
             export_params,
@@ -157,13 +188,17 @@ class RuntimeOptions:
         )
 
         if enable_custom_autograd:
-            ortmodule._custom_autograd_function()
+            ortmodule._custom_autograd_function.enable_custom_autograd_support()
 
         self._disable_custom_ops = disable_custom_ops
+
+        if not isinstance(graph_optimization_level, GraphOptimizationLevel):
+            raise TypeError(
+                "Expected graph_optimization_level of type onnxruntime.GraphOptimizationLevel, "
+                f"got {type(graph_optimization_level)}."
+            )
+
         self._graph_optimization_level = graph_optimization_level
-        self._fallback_policy = fallback_policy
-        self._fallback_retry = fallback_retry
-        self._skipcheck_policy = skipcheck_policy
 
     @property
     def exporter_options(self):
@@ -182,21 +217,3 @@ class RuntimeOptions:
         """Accessor for the ORTModule graph optimization level."""
 
         return self._graph_optimization_level
-
-    @property
-    def fallback_policy(self):
-        """Accessor for the ORTModule fallback policy."""
-
-        return self._fallback_policy
-
-    @property
-    def fallback_retry(self):
-        """Accessor for the ORTModule option for fallback retry."""
-
-        return self._fallback_retry
-
-    @property
-    def skipcheck_policy(self):
-        """Accessor for the ORTModule skipcheck policy."""
-
-        return self._skipcheck_policy

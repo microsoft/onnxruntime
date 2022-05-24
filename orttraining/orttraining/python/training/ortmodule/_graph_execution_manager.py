@@ -99,7 +99,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
         # if defined.
         ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
-            "ORTMODULE_ONNX_OPSET_VERSION", runtime_options.exporter_options.opset_version, warn=True
+            "ORTMODULE_ONNX_OPSET_VERSION", runtime_options.exporter_options.onnx_opset_version, warn=True
         )
 
         # TrainingAgent or InferenceAgent
@@ -107,7 +107,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         # default is enabled, if not define in os env
-        self._skip_check = runtime_options.skipcheck_policy
+        self._skip_check = ortmodule.ORTMODULE_SKIPCHECK_POLICY
         if os.getenv("ORTMODULE_SKIPCHECK_POLICY") is not None:
             self._skip_check = reduce(
                 lambda x, y: x | y,

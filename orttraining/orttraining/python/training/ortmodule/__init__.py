@@ -34,7 +34,8 @@ def _defined_from_envvar(name, default_value, warn=True):
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
 # NOTE: To *change* values in runtime, import onnxruntime.training.ortmodule and
-# assign them new values. Importing them directly do not propagate changes.
+# assign them new values, or use the runtime_options option to ORTModule.
+# Importing them directly do not propagate changes.
 ################################################################################
 ONNX_OPSET_VERSION = 14
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = "1.8.1"
@@ -124,7 +125,7 @@ def _are_deterministic_algorithms_enabled():
 
 
 from .debug_options import DebugOptions, LogLevel  # noqa: E402
-from .runtime_options import RuntimeOptions  # noqa: E402
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule  # noqa: E402
+from .runtime_options import RuntimeOptions  # noqa: E402
