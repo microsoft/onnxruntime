@@ -2,12 +2,8 @@
 # Licensed under the MIT License.
 # runtime_options.py
 
-import os
-
 from onnxruntime import GraphOptimizationLevel
 from onnxruntime.training import ortmodule
-
-from ._fallback import _FallbackPolicy
 
 
 class _ExporterOptions:
