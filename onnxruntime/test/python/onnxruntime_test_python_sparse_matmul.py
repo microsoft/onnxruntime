@@ -57,7 +57,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         self.assertTrue(isinstance(sparse_output, onnxrt.SparseTensor))
         self.assertEqual(dense_shape, sparse_output.dense_shape())
         self.assertTrue(np.array_equal(values, sparse_output.values()))
-        self.assertTrue(np.array_equal(indices, sparse_output.as_coo_rep().indices()))
+        self.assertTrue(np.array_equal(indices, sparse_output.get_coo_data().indices()))
 
     def testRunContribSparseMatMul(self):
         """
