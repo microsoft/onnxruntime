@@ -5,6 +5,7 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/stream_handles.h"
 #include "core/graph/basic_types.h"
+#include <unordered_map>
 
 namespace onnxruntime {
 
@@ -12,8 +13,15 @@ class SessionState;
 struct AllocPlanPerValue;
 struct ParallelExecutionPlanImpl;
 
+// Specify how many logic streams for each provider type
+using ProviderStreamMap = std::unordered_map<std::string, int>;
+// Each set contains ops which should be grouped in an independent logic stream
+using OpStreamMap = std::vector<std::unordered_set<std::string>>;
+
 struct ParallelExecutionPlan : public IExecutor {
-  ParallelExecutionPlan(const SessionState& session_state, int num_logic_streams);
+  ParallelExecutionPlan(const SessionState& session_state,
+                        const ProviderStreamMap& provider_stream_map,
+                        const OpStreamMap& op_stream_map = {});
   ~ParallelExecutionPlan();
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,

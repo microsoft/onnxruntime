@@ -1411,8 +1411,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
-
-  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, 2);
+  // TODO: make it a session option
+  ProviderStreamMap provider_stream_map;
+  provider_stream_map["CPUExecutionProvider"] = 1; // one cpu stream
+  provider_stream_map["CUDAExecutionProvider"] = 2; // two gpu streams
+  OpStreamMap op_stream_map{std::unordered_set<std::string>{std::string{"MemcpyToHost"}, std::string{"MemcpyFromHost"}}};  // memory transfer in a separate stream
+  // OpStreamMap op_stream_map;
+  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, op_stream_map); // 4 streams in total
 
   // Record the allocation plan
 
