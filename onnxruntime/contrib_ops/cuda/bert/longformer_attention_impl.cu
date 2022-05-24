@@ -898,6 +898,8 @@ bool LongformerQkvToContext(
       return false;
     }
   } else {
+    assert(false);
+    /*
     assert(max_num_global <= window);
     if (!launchSoftmaxKernel(
             stream,
@@ -924,6 +926,7 @@ bool LongformerQkvToContext(
             element_size)) {
       return false;
     }
+    */
   }
 
 
