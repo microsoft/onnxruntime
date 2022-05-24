@@ -329,7 +329,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   //   // TODO: support encoder decoder model like T5
   //   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Support of 'model_type' != 0 is not implemented");
   // }
-
+  std::cout << "332" << std::endl;
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
   auto* encoder_session_state = ctx_internal->SubgraphSessionState("encoder");
@@ -341,7 +341,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(decoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-
+  std::cout << "344" << std::endl;
   BeamSearchParameters parameters = parameters_;  // make a copy since we will update the parameters based on inputs later
 
   // Subgraph has constraint that the output is either float or float16
@@ -383,7 +383,7 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
   // Input shapes:
   //   input_ids  : (batch_size, sequence_length)
   //   vocab_mask : (vocab_size) or nullptr
-
+  std::cout << "386" << std::endl;
   const Tensor* input_ids = context.Input<Tensor>(0);
   const auto& dims = input_ids->Shape().GetDims();
   if (dims.size() != 2) {
@@ -583,7 +583,7 @@ template <typename T>
 Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches_manager,
                                   const FeedsFetchesManager& decoder_feeds_fetches_manager) {
   auto status = Status::OK();
-
+  std::cout << "586" << std::endl;
   int64_t sequences_dims[] = {parameters_->batch_size, parameters_->num_return_sequences, parameters_->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
   Tensor* output_sequences = context_.Output(0, sequences_shape);
@@ -619,7 +619,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                                                     hypothesis_score_allocator,
                                                     beam_hyps_allocator);
   beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
-
+  std::cout << "622" << std::endl;
   BeamSearchCpuState cpu_state;
   cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
 
