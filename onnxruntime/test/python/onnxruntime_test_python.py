@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# pylint: disable=C0116,W0212,R1720
 
 # -*- coding: UTF-8 -*-
 import gc
@@ -964,7 +965,7 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
             res = sess.run(["Y"], {"X": ortvalue})
             self.assertTrue(np.array_equal(res[0], numpy_arr_output))
-            vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ["Y"], RunOptions())
+            vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ["Y"], RunOptions())  # pylint: disable=W0212
             self.assertIsInstance(vect, OrtValueVector)
 
         ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)

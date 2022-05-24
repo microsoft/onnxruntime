@@ -17,7 +17,7 @@ from typing import List
 import numpy as np
 import torch
 from torch._C import _from_dlpack
-from torch.utils.dlpack import from_dlpack, to_dlpack
+from torch.utils.dlpack import to_dlpack
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
@@ -59,8 +59,7 @@ def _ortvalue_from_torch_tensor(torch_tensor):
         torch_tensor = torch_tensor.to(torch.uint8)
     if torch_tensor.device.type == "ort":
         return C.aten_ort_tensor_to_ort_value(torch_tensor)
-    else:
-        return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
+    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
 def _ortvalues_to_torch_tensor(ortvalues, device):

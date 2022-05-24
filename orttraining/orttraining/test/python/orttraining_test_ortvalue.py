@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# pylint: disable=W0212
 
 import unittest
 import copy
@@ -274,7 +275,7 @@ class TestOrtValue(unittest.TestCase):
         self.assertEqual(len(vect), 2)
         if new_impl == "list":
             raise AssertionError("Conversion from list to torch is not supported anymore.")
-        elif new_impl:
+        if new_impl:
             tensors = _utils._ortvalues_to_torch_tensor(vect, device)
         else:
             tensors = _ortvalues_to_torch_tensor(vect, device)

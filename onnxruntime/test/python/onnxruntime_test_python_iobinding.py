@@ -1,3 +1,4 @@
+# pylint: disable=C0115,W0212,C0103
 import unittest
 
 import numpy as np
