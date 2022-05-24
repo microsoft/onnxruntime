@@ -138,7 +138,7 @@ class RuntimeOptions:
         use_static_shapes (:obj:`bool`, optional, default False): ORTModule exporter flag to use static output shapes.
             By default the exported model will have dynamic shapes for all input and output tensors.
 
-        export_extra_args (:obj:`dict`, optional, default Empty): Extra arguments to specify to the ORTModule Torch ONNX exporter.
+        exporter_extra_args (:obj:`dict`, optional, default Empty): Extra arguments to specify to the ORTModule Torch ONNX exporter.
             Refer to https://pytorch.org/docs/stable/onnx.html#torch.onnx.export for documentation on exporter arguments.
 
         enable_custom_autograd (:obj:`bool`, optional, default False): Enable custom autograd.Function support for ORTModule.
@@ -168,7 +168,7 @@ class RuntimeOptions:
         export_params=False,
         keep_initializers_as_inputs=True,
         use_static_shapes=False,
-        export_extra_args={},
+        exporter_extra_args={},
         enable_custom_autograd=False,
         disable_custom_ops=False,
         graph_optimization_level=None,
@@ -180,7 +180,7 @@ class RuntimeOptions:
             export_params,
             keep_initializers_as_inputs,
             use_static_shapes,
-            export_extra_args,
+            exporter_extra_args,
         )
 
         if enable_custom_autograd:
