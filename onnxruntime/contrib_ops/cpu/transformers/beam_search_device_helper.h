@@ -101,11 +101,10 @@ using UpdateGptFeedsFunc = std::function<Status(
 
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
-     const Tensor* original_encoder_input_ids,
+    const Tensor* original_encoder_input_ids,
     int num_beams,
     int pad_token_id,
     int start_token_id,
-    //gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,
@@ -132,13 +131,12 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
+    int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper)>;
 }  // namespace BeamSearchDeviceHelper
-
 
 // These are CPU specific device helper implementations
 namespace BeamSearchCpuDeviceHelper {
@@ -212,16 +210,15 @@ Status UpdateGptFeeds(
     int num_beams,
     const transformers::IConsoleDumper* dumper);
 
-
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
 // ---------------------------------------------------------------
 Status CreateEncoderInputs(
-     const Tensor* original_encoder_input_ids,
+    const Tensor* original_encoder_input_ids,
     int num_beams,
     int pad_token_id,
     int start_token_id,
-    //gsl::span<int32_t>& sequence_lengths,
+    // gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,
@@ -248,7 +245,7 @@ Status UpdateDecoderFeeds(
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
+    int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,

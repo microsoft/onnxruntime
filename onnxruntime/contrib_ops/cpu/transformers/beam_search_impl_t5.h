@@ -228,12 +228,13 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
+      const int num_present_outputs = 2 * parameters->num_layers;  // number of outputs with name like present_*
       ORT_RETURN_IF_ERROR(this->update_decoder_feeds_func_(
           this->temp_space_allocator_,
           this->cuda_stream_,
           decoder_fetches,
           decoder_feeds,
-          current_length,
+          num_present_outputs,
           beam_next_tokens.as_span<const int32_t>(),
           beam_indices.as_span<const int32_t>(),
           parameters->num_beams,
