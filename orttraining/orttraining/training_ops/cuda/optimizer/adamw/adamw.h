@@ -23,7 +23,7 @@ class AdamWOptimizer final : public CudaKernel {
     info.GetAttrOrDefault("correct_bias", &correct_bias_, static_cast<int64_t>(1));
 
     ORT_ENFORCE(adam_mode_ == 0 || adam_mode_ == 1, "The value of adam_mode is invalid.");
-    ORT_ENFORCE(correct_bias_ == 0 || correct_bias_ == 1, "The value of adam_mode is invalid.");
+    ORT_ENFORCE(correct_bias_ == 0 || correct_bias_ == 1, "The value of correct_bias is invalid.");
 
     // To have torch adamw equivalence, correct_bias must be 1 for adam_mode=0.
     ORT_ENFORCE(adam_mode_ != 0 || correct_bias_ == 1, "The correct_bias should be 1 for adam_mode = 0.");

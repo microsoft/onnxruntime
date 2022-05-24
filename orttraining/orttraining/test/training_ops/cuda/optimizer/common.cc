@@ -132,6 +132,11 @@ void AdamWTestLoop(
   for (size_t step = 0; step < 1; ++step) {
     OpTester test("AdamWOptimizer", 1, onnxruntime::kMSDomain);
 
+    // Update the steps for each param group update.
+    // Both torch and HF increase training step before applying gradients.
+    // The test alignes with them.
+    int64_t increased_update_count = step + 1;
+
     // Weights/momentums before applying optimization.
     std::vector<TensorInfo> weight_tensor_infos;
     std::vector<TensorInfo> momentum1_tensor_infos;
@@ -155,7 +160,7 @@ void AdamWTestLoop(
     }
 
     AdamTestInputOutput<float> data(
-        lr, step, weight_tensor_infos, gradient_tensor_infos, momentum1_tensor_infos, momentum2_tensor_infos,
+        lr, increased_update_count, weight_tensor_infos, gradient_tensor_infos, momentum1_tensor_infos, momentum2_tensor_infos,
         updated_weight_tensor_infos, updated_momentum1_tensor_infos, updated_momentum2_tensor_infos);
 
     test.AddAttribute("alpha", alpha);

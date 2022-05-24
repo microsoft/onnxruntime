@@ -82,10 +82,10 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   size_t num_of_momentums_2 = momentums_2->Size();
 
   // Check the number of weights, gradients, momentums matchs.
-  ORT_ENFORCE(num_of_weights > 0, "invalid count of tensors in Seq<Tensor>.");
-  ORT_ENFORCE(num_of_weights == num_of_gradients, "number of weights and gradients mismatch.");
-  ORT_ENFORCE(num_of_gradients == num_of_momentums_1, "number of gradients and momentums_1 mismatch.");
-  ORT_ENFORCE(num_of_momentums_1 == num_of_momentums_2, "number of momentums_1 and momentums_2 mismatch.");
+  ORT_ENFORCE(num_of_weights > 0, "Invalid count of tensors in Seq<Tensor>.");
+  ORT_ENFORCE(num_of_weights == num_of_gradients, "Number of weights and gradients mismatch.");
+  ORT_ENFORCE(num_of_gradients == num_of_momentums_1, "Number of gradients and momentums_1 mismatch.");
+  ORT_ENFORCE(num_of_momentums_1 == num_of_momentums_2, "Number of momentums_1 and momentums_2 mismatch.");
 
   std::vector<int> tensor_sizes(num_of_weights);
   std::vector<std::vector<void*>> grouped_tensor_pointers(num_of_weights);
@@ -97,9 +97,12 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
     const Tensor& momentum_2_tensor = momentums_2->Get(i);
 
     // Check the weight/gradient/momentums at the same index should have same shape.
-    ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(), "shape of weight and gradient mismatch.");
-    ORT_ENFORCE(gradient_tensor.Shape() == momentum_1_tensor.Shape(), "shape of gradient and momentum_1 mismatch.");
-    ORT_ENFORCE(momentum_1_tensor.Shape() == momentum_2_tensor.Shape(), "shape of momentum_1 and momentum_2 mismatch.");
+    ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(),
+                "Shape of weight and gradient mismatch, weight index:", i);
+    ORT_ENFORCE(gradient_tensor.Shape() == momentum_1_tensor.Shape(),
+                "Shape of gradient and momentum_1 mismatch, weight index:", i);
+    ORT_ENFORCE(momentum_1_tensor.Shape() == momentum_2_tensor.Shape(),
+                "Shape of momentum_1 and momentum_2 mismatch, weight index:", i);
 
     // Currently we only support float data types.
     ORT_ENFORCE(weight_tensor.IsDataType<float>() &&

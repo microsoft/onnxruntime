@@ -153,9 +153,6 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
   const int block_count = chunks.chunk_count;
   const int thread_count = ChunkGroup<MTA_ADAMW_GROUP_SIZE>::thread_count_per_block;
 
-  // Update the steps for each param group update.
-  int64_t increased_update_count = update_count + 1;
-
   float alpha_correction = 1.f, beta_correction = 1.f;
   float lr_corrected = lr;
   if (correct_bias == 1) {
@@ -163,8 +160,8 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
     // > there is a minor difference compared with Apex's implementation,
     //   which uses double storing corrections before casting to float passing to kernels.
     // > std::pow(float, int) return double since C++11, so we cast back to float.
-    alpha_correction = 1.f - static_cast<float>(std::pow(alpha, increased_update_count));
-    beta_correction = 1.f - static_cast<float>(std::pow(beta, increased_update_count));
+    alpha_correction = 1.f - static_cast<float>(std::pow(alpha, update_count));
+    beta_correction = 1.f - static_cast<float>(std::pow(beta, update_count));
     lr_corrected *= std::sqrt(beta_correction) / alpha_correction;
   }
 
@@ -172,7 +169,8 @@ void AdamWMTAFunctor<T_WEIGHT, T_GRAD, T_MOMENTUM>::operator()(
   // Mode 0: Pytorch https://pytorch.org/docs/stable/_modules/torch/optim/adamw.html#AdamW,
   //         bias correction is applied on m and v individually,
   //         weight decay is applied before weight is updated.
-  // Mode 1: Huggingface https://github.com/huggingface/transformers/blob/d91841315aab55cf1347f4eb59332858525fad0f/src/transformers/optimization.py,
+  // Mode 1: Huggingface https://github.com/huggingface/transformers/blob/d91841315aab55cf1347f4eb59332858525fad0f/
+  //         src/transformers/optimization.py,
   //         bias correction is applied on learning rate, then use lr_corrected for subsequent computations.
   //         weight decay is applied after weight is updated.
   if (adam_mode == 0) {

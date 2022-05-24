@@ -1291,7 +1291,7 @@ void RegisterTrainingOpSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(AdamWOptimizer)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "lr", "The initial learning rate.", "T1")
+      .Input(0, "lr", "The learning rate.", "T1")
       .Input(1, "step", "The update count of weights. It should be a scalar.", "T2")
       .Input(2, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
       .Input(3, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
@@ -1361,12 +1361,21 @@ void RegisterTrainingOpSchemas() {
         std::unordered_map<size_t, size_t> output_to_input_index_map{{0, 1}, {1, 2}, {2, 4}, {3, 5}};
         assert(output_to_input_index_map.size() >= num_of_outputs);
 
+        size_t sequence_source_input_index = 0;  // Be noted: 0 is invalid for sequence source input index
         for (size_t output_index = 0; output_index < num_of_outputs; ++output_index) {
           auto& input_index = output_to_input_index_map[output_index];
           propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
-          if (hasInputShape(ctx, input_index)) {
-            propagateShapeFromInputToOutput(ctx, input_index, output_index);
+
+          // All 3 sequence inputs/outputs should have same shapes, searched for the first available shape
+          // and use it to infer output shapes.
+          if (output_index > 0 && sequence_source_input_index == 0 && hasInputShape(ctx, input_index)) {
+            sequence_source_input_index = input_index;
           }
+        }
+
+        for (size_t output_index = 1; sequence_source_input_index > 1 && output_index < num_of_outputs;
+             ++output_index) {
+          propagateShapeFromInputToOutput(ctx, sequence_source_input_index, output_index);
         }
       });
 
