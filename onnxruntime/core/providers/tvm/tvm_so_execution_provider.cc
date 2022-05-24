@@ -1,26 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <fstream>
+//#include <fstream>
 #include <map>
+#include <unordered_set>
 #include <utility>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
-#include "core/graph/graph_proto_serializer.h"
 #include "core/platform/env.h"
 #include "core/graph/model.h"
 
-#include "tvm_execution_provider.h"
-#include "xpu_data_transfer.h"
-#include "tvm_allocator.h"
-#include "tvm_utils.h"
-#include "tvm_api.h"
+#include "tvm_so_execution_provider.h"  // NOLINT(build/include_subdir)
+#include "xpu_data_transfer.h"  // NOLINT(build/include_subdir)
+#include "tvm_allocator.h"  // NOLINT(build/include_subdir)
+#include "tvm_utils.h"  // NOLINT(build/include_subdir)
+#include "tvm_api.h"  // NOLINT(build/include_subdir)
 
 
-using namespace ONNX_NAMESPACE;
+using ONNX_NAMESPACE::TensorShapeProto;
 
 namespace onnxruntime {
 namespace tvm {
@@ -33,7 +33,7 @@ struct TVMFuncState {
   std::shared_ptr<TVMCompilerBase> compiler = nullptr;
 };
 
-TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
+TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
     : IExecutionProvider{kTvmExecutionProvider},
       options_{options} {
   AllocatorCreationInfo default_memory_info = {[](int) {
@@ -47,16 +47,14 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
   const Env& env_instance = Env::Default();
 
   const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(env_vars::kDumpSubgraphs);
-  if (!dump_subgraphs_env.empty()) {
-    dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
-  }
+  ORT_ENFORCE(dump_subgraphs_env.empty(), "TVM EP processing shared lib does not support subgraphs");
 }
 
-TvmExecutionProvider::~TvmExecutionProvider() {}
+TvmSoExecutionProvider::~TvmSoExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
-TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+TvmSoExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
+                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -70,7 +68,7 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   for (auto& node_idx : sorted_nodes) {
     graph_viewer.GetNode(node_idx)->ForEachDef([&required_initializers, &init_tensors]
                                                (const NodeArg& node_arg, bool is_input) {
-              if(is_input && init_tensors.count(node_arg.Name())) {
+              if (is_input && init_tensors.count(node_arg.Name())) {
                   required_initializers.insert(node_arg.Name());
               } }, true);
   }
@@ -103,41 +101,22 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   return result;
 }
 
-common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
   printOptions();
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
     const std::string func_name = fused_node.Name();
-    Model model(graph_body_viewer.Name(), true, ModelMetaData(), PathString(),
-                IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(),
-                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    // TVM EP is using static lib approach, so invoke serializer directly.
-    GraphViewerToProto(graph_body_viewer, *model_proto.mutable_graph(), true, true);
-    auto opset = model_proto.add_opset_import();
-    opset->set_domain(kOnnxDomain);
-    opset->set_version(graph_body_viewer.DomainToVersionMap().at(kOnnxDomain));
 
-    std::string onnx_model_str;
-    model_proto.SerializeToString(&onnx_model_str);
-    compilers_[func_name] = std::make_shared<TVMCompiler>(std::move(onnx_model_str),
-                              fused_node.ModelPath().ToPathString(),
-                              int(opset->version()));
+    compilers_[func_name] = std::make_shared<TVMSoCompiler>();
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, graph_body_viewer, all_input_shapes);
 
-    std::vector<DLTensor> output_tensors;
-    prepareOutputTensors(mod, output_tensors, graph_body_viewer.GetOutputs().size());
+    std::vector<DLTensor> output_tensors(graph_body_viewer.GetOutputs().size());
+    prepareOutputTensors(output_tensors);
 
     runners_[func_name] = std::make_shared<Runner>(options_, mod, all_input_shapes, output_tensors);
-
-    if (dump_subgraphs_) {
-        std::fstream dump("/tmp/" + func_name + ".onnx",
-                          std::ios::out | std::ios::trunc | std::ios::binary);
-        model_proto.SerializeToOstream(&dump);
-    }
 
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
     // if the checking fails due to unsupported op(s)
@@ -148,8 +127,8 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
   return Status::OK();
 }
 
-std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
-  //TODO(vvchernov): target or target host?
+std::unique_ptr<IDataTransfer> TvmSoExecutionProvider::GetDataTransfer() const {
+  // TODO(vvchernov): target or target host?
   if (TvmEPOptionsHelper::checkGPUTarget(options_.target)) {
     return std::make_unique<XPUDataTransfer>();
   } else if (TvmEPOptionsHelper::checkCPUTarget(options_.target)) {
@@ -159,17 +138,17 @@ std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   }
 }
 
-AllocatorPtr TvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr TvmSoExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
   return allocator_;
 }
 
-void TvmExecutionProvider::printOptions() {
+void TvmSoExecutionProvider::printOptions() {
   LOGS(*GetLogger(), INFO) << options_;
 }
 
-std::shared_ptr<TvmModule> TvmExecutionProvider::compileModel(const std::string& func_name,
-                                                              const GraphViewer& graph_viewer,
-                                                              InputsInfoMap& all_input_shapes) {
+std::shared_ptr<TvmModule> TvmSoExecutionProvider::compileModel(const std::string& func_name,
+                                                                const GraphViewer& graph_viewer,
+                                                                InputsInfoMap& all_input_shapes) {
   all_input_shapes.clear();
 
   TVMTensorShapes input_shapes;
@@ -184,9 +163,9 @@ std::shared_ptr<TvmModule> TvmExecutionProvider::compileModel(const std::string&
   return mod;
 }
 
-void TvmExecutionProvider::setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
-                                                      TVMTensorShapes& input_shapes,
-                                                      InputsInfoMap& all_input_shapes) {
+void TvmSoExecutionProvider::setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
+                                                        TVMTensorShapes& input_shapes,
+                                                        InputsInfoMap& all_input_shapes) {
   const std::vector<const NodeArg*>& all_nodes = graph_viewer.GetInputsIncludingInitializers();
 
   size_t indx = 0;
@@ -199,9 +178,9 @@ void TvmExecutionProvider::setInputShapesForFreezedNN(const GraphViewer& graph_v
   }
 }
 
-void TvmExecutionProvider::setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
-                                                        TVMTensorShapes& input_shapes,
-                                                        InputsInfoMap& all_input_shapes) {
+void TvmSoExecutionProvider::setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
+                                                          TVMTensorShapes& input_shapes,
+                                                          InputsInfoMap& all_input_shapes) {
   const std::vector<const NodeArg*>& all_nodes = graph_viewer.GetInputsIncludingInitializers();
 
   size_t indx = 0;
@@ -214,10 +193,10 @@ void TvmExecutionProvider::setInputShapesForUnfreezedNN(const GraphViewer& graph
   }
 }
 
-TensorShapeVector TvmExecutionProvider::getInputShape(const NodeArg* node) {
+TensorShapeVector TvmSoExecutionProvider::getInputShape(const NodeArg* node) {
     TensorShapeVector shape;
     const auto& node_name = node->Name();
-    if(!options_.input_shapes.empty() &&
+    if (!options_.input_shapes.empty() &&
         options_.input_shapes.count(node_name)) {
       shape = options_.input_shapes[node_name];
     } else {
@@ -227,7 +206,7 @@ TensorShapeVector TvmExecutionProvider::getInputShape(const NodeArg* node) {
     return shape;
 }
 
-TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
+TensorShapeVector TvmSoExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
   TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(shape_proto);
   size_t dims = ort_shape.NumDimensions();
 
@@ -242,39 +221,20 @@ TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProt
   return shape;
 }
 
-void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
-                                                std::vector<DLTensor>& output_tensors,
-                                                size_t num) {
-  ORT_ENFORCE(mod != nullptr, "TVM module is not compiled");
-  output_tensors.clear();
-  options_.output_shapes.clear();
-  options_.output_shapes.resize(num);
-
-  if (options_.executor != "vm") {
-    TVMGetOutputShapes(*mod, options_.output_shapes);
-  }
-
-  for (auto& output_shape : options_.output_shapes) {
-    DLTensor t;
+void TvmSoExecutionProvider::prepareOutputTensors(std::vector<DLTensor>& output_tensors) {
+  for (DLTensor& t : output_tensors) {
     // Draft for tensor, correct data is defined during inference
     t.strides = nullptr;
     t.byte_offset = 0;
     t.data = nullptr;
-    if (options_.executor == "vm") {
-      t.ndim = 0;
-      t.shape = nullptr;
-    } else {
-      t.ndim = output_shape.size();
-      t.shape = output_shape.data();
-    }
-
-    output_tensors.push_back(t);
+    t.ndim = 0;
+    t.shape = nullptr;
   }
 }
 
-NodeComputeInfo TvmExecutionProvider::prepareComputeInfo(const std::string& func_name) {
+NodeComputeInfo TvmSoExecutionProvider::prepareComputeInfo(const std::string& func_name) {
   NodeComputeInfo compute_info;
-  compute_info.create_state_func = std::bind(&TvmExecutionProvider::createStateFunc,
+  compute_info.create_state_func = std::bind(&TvmSoExecutionProvider::createStateFunc,
                                               this,
                                               std::placeholders::_1,
                                               std::placeholders::_2);
@@ -289,7 +249,7 @@ NodeComputeInfo TvmExecutionProvider::prepareComputeInfo(const std::string& func
   return compute_info;
 }
 
-int TvmExecutionProvider::createStateFunc(ComputeContext* context, FunctionState* state) {
+int TvmSoExecutionProvider::createStateFunc(ComputeContext* context, FunctionState* state) {
   auto* state_ptr = new TVMFuncState();
   *state_ptr = {context->allocate_func,
                 context->release_func,
