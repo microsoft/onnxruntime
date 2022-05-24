@@ -281,6 +281,9 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
+   ORT_IGNORE_RETURN_VALUE(scale_output);
+   ORT_IGNORE_RETURN_VALUE(output);
+
   //QOrderQuantizeRowToCol32(stream, device_prop, (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
   //                         *scale_output, batch_size, sequence_length, hidden_size);
 
