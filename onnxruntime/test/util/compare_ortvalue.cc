@@ -80,6 +80,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
   std::pair<COMPARE_RESULT, std::string> res = std::make_pair(COMPARE_RESULT::SUCCESS, "");
   double max_diff = 0;
   size_t diff_count = 0;
+  std::ostringstream re_string;
+
   for (size_t di = 0; di != size1; ++di) {
     const double real_value =
         post_processing ? std::max<double>(0.0, std::min<double>(255.0, real_output[di])) : real_output[di];
@@ -102,7 +104,12 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
         max_diff = diff;
       }
       ++diff_count;
+    } else {
+        res.first = COMPARE_RESULT::RESULT_DIFFERS;
+        re_string << expected_output[di] << "\t" << real_value << "\n";
     }
+
+    res.second = re_string.str();
   }
 
   if (res.first == COMPARE_RESULT::SUCCESS) return res;
