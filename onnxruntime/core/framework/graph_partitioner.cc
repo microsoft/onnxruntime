@@ -516,7 +516,6 @@ Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, FuncManager& fun
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_mgr_,
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function));
-      FuseAfterTransform();
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
