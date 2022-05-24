@@ -141,7 +141,9 @@ class RuntimeOptions:
         export_extra_args={},
         enable_custom_autograd=False,
         disable_custom_ops=False,
+        graph_optimization_level=None,
         fallback_policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
+        fallback_retry=ortmodule.ORTMODULE_FALLBACK_RETRY,
         skipcheck_policy=ortmodule.ORTMODULE_SKIPCHECK_POLICY,
     ):
         self._exporter_options = _ExporterOptions(
@@ -156,8 +158,11 @@ class RuntimeOptions:
 
         if enable_custom_autograd:
             ortmodule._custom_autograd_function()
+
         self._disable_custom_ops = disable_custom_ops
+        self._graph_optimization_level = graph_optimization_level
         self._fallback_policy = fallback_policy
+        self._fallback_retry = fallback_retry
         self._skipcheck_policy = skipcheck_policy
 
     @property
@@ -171,3 +176,27 @@ class RuntimeOptions:
         """Accessor for the ORTModule flag to disable custom ops."""
 
         return self._disable_custom_ops
+
+    @property
+    def graph_optimization_level(self):
+        """Accessor for the ORTModule graph optimization level."""
+
+        return self._graph_optimization_level
+
+    @property
+    def fallback_policy(self):
+        """Accessor for the ORTModule fallback policy."""
+
+        return self._fallback_policy
+
+    @property
+    def fallback_retry(self):
+        """Accessor for the ORTModule option for fallback retry."""
+
+        return self._fallback_retry
+
+    @property
+    def skipcheck_policy(self):
+        """Accessor for the ORTModule skipcheck policy."""
+
+        return self._skipcheck_policy

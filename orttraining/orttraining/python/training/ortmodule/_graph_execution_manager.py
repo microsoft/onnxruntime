@@ -99,7 +99,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Update constant ONNX_OPSET_VERSION with env var ORTMODULE_ONNX_OPSET_VERSION
         # if defined.
         ortmodule.ONNX_OPSET_VERSION = ortmodule._defined_from_envvar(
-            "ORTMODULE_ONNX_OPSET_VERSION", self._runtime_options.exporter_options.opset_version, warn=True
+            "ORTMODULE_ONNX_OPSET_VERSION", runtime_options.exporter_options.opset_version, warn=True
         )
 
         # TrainingAgent or InferenceAgent
@@ -107,7 +107,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
         # default is enabled, if not define in os env
-        self._skip_check = ortmodule.ORTMODULE_SKIPCHECK_POLICY
+        self._skip_check = runtime_options.skipcheck_policy
         if os.getenv("ORTMODULE_SKIPCHECK_POLICY") is not None:
             self._skip_check = reduce(
                 lambda x, y: x | y,
@@ -317,6 +317,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.use_deterministic_compute = _are_deterministic_algorithms_enabled()
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
+        if self._runtime_options.graph_optimization_level is not None:
+            session_options.graph_optimization_level = self._runtime_options.graph_optimization_level
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 
