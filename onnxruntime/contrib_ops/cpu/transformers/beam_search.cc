@@ -26,13 +26,13 @@
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 #include "gsl/gsl"
-#include "beam_search.h"
-#include "logits_processor.h"
-#include "sequences.h"
-#include "dump_tensor.h"
-#include "beam_search_scorer.h"
-#include "beam_search_impl_gpt.h"
-#include "beam_search_impl_t5.h"
+#include "contrib_ops/cpu/transformers/beam_search.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/transformers/beam_search_scorer.h"
+#include "contrib_ops/cpu/transformers/beam_search_impl_gpt.h"
+#include "contrib_ops/cpu/transformers/beam_search_impl_t5.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

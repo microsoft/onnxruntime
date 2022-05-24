@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #ifndef SHARED_PROVIDER
@@ -7,8 +10,8 @@
 #endif
 
 #include "gsl/gsl"
-#include "logits_processor.h"
-#include "beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
 class IExecutionProvider;

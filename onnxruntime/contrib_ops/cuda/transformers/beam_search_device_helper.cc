@@ -1,12 +1,15 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/math/topk_impl.h"
 #include "core/providers/cuda/math/softmax.h"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 #include "core/framework/ort_value.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
-#include "beam_search_impl.h"
 #include <cuda_runtime.h>
-#include "dump_cuda_tensor.h"
+#include "contrib_ops/cuda/transformers/beam_search_impl.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 #ifdef DEBUG_BEAM_SEARCH
 using namespace onnxruntime::contrib::cuda::transformers;

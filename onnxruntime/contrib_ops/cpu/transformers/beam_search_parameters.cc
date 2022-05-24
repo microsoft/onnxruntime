@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "beam_search_parameters.h"
+
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -1,7 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <assert.h>
-#include "logits_processor.h"
-#include "dump_tensor.h"
 #include "core/common/safeint.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {

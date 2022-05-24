@@ -7,8 +7,8 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "subgraph_base.h"
-#include "dump_tensor.h"
+#include "contrib_ops/cpu/transformers/subgraph_base.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

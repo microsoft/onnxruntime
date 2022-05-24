@@ -7,9 +7,9 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "subgraph_t5_decoder.h"
-#include "dump_tensor.h"
-#include "beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

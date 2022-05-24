@@ -1,10 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/common/safeint.h"
 #include "gsl/gsl"
-#include "sequences.h"
-#include "beam_search_scorer.h"
-#include "beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/beam_search_scorer.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -82,7 +85,8 @@ Status CreateGptInputs(
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
   // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
   OrtValue input_ids;
-  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(original_input_ids)->MutableData<int32_t>(), location, input_ids);
+  Tensor::InitOrtValue(element_type, input_ids_shape,
+                       const_cast<Tensor*>(original_input_ids)->MutableData<int32_t>(), location, input_ids);
 
   OrtValue position_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, position_ids);
@@ -116,8 +120,8 @@ Status CreateGptInputs(
     }
   }
 
-  // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length) for input_ids, position_ids and attention_mask
-  // TODO: Try expand outputs after first subgraph call instead. That may get better performance, but more complex to implement.
+  // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
+  // TODO: Try expand outputs after first subgraph call instead. That may get better performance.
   expanded_input_ids = ExpandInputs<int32_t>(input_ids, num_beams, allocator);
   expanded_position_ids = ExpandInputs<int32_t>(position_ids, num_beams, allocator);
   expanded_attention_mask = ExpandInputs<int32_t>(attention_mask, num_beams, allocator);
@@ -212,7 +216,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     const T* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(current_logits, vocab_size);
-      gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size, static_cast<gsl::index>(vocab_size));
+      gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
+                                                      static_cast<gsl::index>(vocab_size));
       gsl::copy(source, target);
       current_logits += input_length * vocab_size;
     }
@@ -242,7 +247,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   logits_processors->Process(sequences, next_token_scores, step);
 
 #ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, num_beams, vocab_size);
+  dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
   // Add beam score to next token scores. Corresponding python code is like:
@@ -259,7 +264,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   }
 
 #ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("next_token_scores after adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
+  dumper->Print("next_token_scores adding beam_scores", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
   if (output_scores) {

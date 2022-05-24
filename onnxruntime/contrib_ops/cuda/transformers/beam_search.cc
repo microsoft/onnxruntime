@@ -4,8 +4,9 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/beam_search.h"
-#include "beam_search_device_helper.h"
-#include "dump_cuda_tensor.h"
+
+#include "contrib_ops/cuda/transformers/beam_search_device_helper.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -37,15 +38,13 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::BeamSearch(info) {
   SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 
-
   SetDeviceHelpers(BeamSearchCudaDeviceHelper::AddToFeeds,
                    BeamSearchCudaDeviceHelper::TopK,
                    BeamSearchCudaDeviceHelper::DeviceCopy<float>,
                    BeamSearchCudaDeviceHelper::ProcessLogits<float>,
                    BeamSearchCudaDeviceHelper::ProcessLogits<MLFloat16>,
                    BeamSearchCudaDeviceHelper::InitBeamState<float>,
-                   BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>
-                   );
+                   BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>);
 
   SetDeviceHelpers_Gpt(BeamSearchCudaDeviceHelper::UpdateFeeds<float>,
                        BeamSearchCudaDeviceHelper::UpdateFeeds<MLFloat16>);

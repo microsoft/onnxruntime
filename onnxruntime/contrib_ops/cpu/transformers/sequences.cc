@@ -1,5 +1,8 @@
-#include "sequences.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/common/safeint.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"

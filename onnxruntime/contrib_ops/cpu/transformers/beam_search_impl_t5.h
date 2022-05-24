@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "beam_search_shared.h"  // for DEBUG_BEAM_SEARCH
-#include "beam_search_impl_base.h"
-#include "subgraph_t5_encoder.h"
-#include "subgraph_t5_decoder.h"
+
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"  // for DEBUG_BEAM_SEARCH
+#include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <stdint.h>
 #include <cuda_fp16.h>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
