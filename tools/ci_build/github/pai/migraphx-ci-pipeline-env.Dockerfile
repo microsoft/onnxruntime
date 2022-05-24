@@ -26,11 +26,7 @@ ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash build-essential rocm-dev python3.7 python3-pip miopen-hip \
-    rocblas half aria2 libnuma-dev
-
-RUN aria2c -q -d /tmp -o cmake-3.21.0-linux-x86_64.tar.gz \
-https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x86_64.tar.gz &&\
-tar -zxf /tmp/cmake-3.21.0-linux-x86_64.tar.gz --strip=1 -C /usr
+    rocblas half libnuma-dev
 
 # Install rbuild
 RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz numpy yapf==0.28.0
