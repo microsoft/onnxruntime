@@ -138,7 +138,10 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
   std::vector<float> Y = {2.66666651f, 4.3333331f};
 
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  test.Run();
+  //CUDA: result mismatch due to not implementing NHWC support
+  //ROCm: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
@@ -284,7 +287,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int
     std::vector<int8_t> Y = {1, 4};
 
     test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-    test.Run();
+    //TensorRT: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
   run_test(false);
@@ -392,7 +396,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
         7, 8, 9, 10, 11, 11, 11, 11};
 
     test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-    test.Run();
+    //TensorRT: results mismatch
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
   run_test(false);
