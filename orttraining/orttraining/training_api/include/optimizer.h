@@ -67,7 +67,6 @@ struct Optimizer {
   int64_t GetStep() const {
     return optimizer_state_.step;
   }
-
   Status SetLearningRate(float lr) {
     optimizer_state_.learning_rate = lr;
     return Status::OK();

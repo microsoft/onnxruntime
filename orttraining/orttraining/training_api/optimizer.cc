@@ -24,7 +24,7 @@ Status Optimizer::GenerateMomentumNamedStates() {
     if (pair.second->RequiresGrad()) {
       param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
-      for (auto& state_name : MOMENT_STATE_NAMES) {
+      for (auto& state_name : utils::MOMENT_STATE_NAMES) {
         OrtValue param_state;
         ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(), "Error generating moment state for ", pair.first);
         cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
