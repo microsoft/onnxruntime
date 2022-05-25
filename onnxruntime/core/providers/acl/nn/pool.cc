@@ -47,7 +47,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
     pads.assign(kernel_shape.size(), 0);
   }
 
-  auto output_dims = pool_attrs.SetOutputSize(x_shape, x_shape[1], &pads);
+  const auto& output_dims = pool_attrs.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(output_dims));
 
   ACLNEPool tpool;
@@ -63,11 +63,11 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
     if (pool_attrs.global_pooling) {
       layer->configure(tpool.in.get(), tpool.out.get(), arm_compute::PoolingLayerInfo(pool_type));
     } else {
-      std::vector<int64_t> aclStrides(2);
+      TensorShapeVector aclStrides(2);
       aclStrides[0] = (strides.size() == 2) ? strides[1] : 1;
       aclStrides[1] = strides[0];
 
-      std::vector<int64_t> aclPads(4);
+      absl::InlinedVector<int64_t, 4> aclPads;
     // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
       if (pads.size() == 2) {
         if (strides.size() == 1) {
@@ -91,7 +91,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(aclStrides[0], aclStrides[1],
                                                                            aclPads[0], aclPads[1], aclPads[2], aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
 
-      std::vector<int64_t> aclKernelShape(2);
+      TensorShapeVector aclKernelShape(2);
       aclKernelShape[0] = (kernel_shape.size() > 1) ? kernel_shape[1] : 1;
       aclKernelShape[1] = kernel_shape[0];
 
@@ -146,7 +146,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
   TensorShapeVector dilations(PoolBase::pool_attrs_.dilations);
-  std::vector<int64_t> aclDilations(2);
+  absl::InlinedVector<int64_t, 2> aclDilations;
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
@@ -192,7 +192,7 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
   TensorShapeVector dilations(PoolBase::pool_attrs_.dilations);
-  std::vector<int64_t> aclDilations(2);
+  absl::InlinedVector<int64_t, 2> aclDilations;
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
