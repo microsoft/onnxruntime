@@ -22,7 +22,7 @@ def create_qordered_longformer_attention_graph():
             name='LongFormerAttention_quantized',
             domain='com.microsoft',
             num_heads=12,
-            window=256,
+            window=8,
             order_input=2,
             order_output=2,
             order_weight=3,
