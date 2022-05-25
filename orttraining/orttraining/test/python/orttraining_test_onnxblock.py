@@ -398,6 +398,47 @@ def test_crossentropy_loss_training_graph_execution():
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
+def test_bcewithlogits_loss_training_graph_execution():
+    # Given
+    device = "cuda"
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model, onnx_model = _get_models(device, N, D_in, H, D_out)
+
+    x = torch.randn(N, D_in, device=device)
+    target = torch.randn(N, D_out, device=device)
+
+    # Build the onnx model with loss
+    simple_model = SimpleTrainingModelWithBCEWithLogitsLoss()
+    with onnxblock.onnx_model(onnx_model):
+        _ = simple_model(onnx_model.graph.output[0].name)
+
+    ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
+    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model)
+
+    def bcewithlogits_loss(prediction, target):
+        loss = torch.nn.BCEWithLogitsLoss()
+        return loss(prediction, target)
+
+    # When
+    with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
+        onnx.save(onnx_model, onnx_fo.name)
+        ort_session = onnxruntime.InferenceSession(
+            onnx_fo.name, providers=C.get_available_providers()
+        )
+
+        ort_outs = ort_session.run(ort_output_names, ort_inputs)
+        torch_outs = bcewithlogits_loss(pt_model(x), target)
+        torch_outs.backward()
+
+        # Then
+        # assert loss is close
+        assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
+
+        # assert all the gradients are close
+        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
+            assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
+
+
 @pytest.mark.parametrize(
     "graph", [SimpleTrainingModelWithMSELoss, SimpleTrainingModelWithCrossEntropyLoss]
 )
