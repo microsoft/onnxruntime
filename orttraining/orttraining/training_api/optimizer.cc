@@ -14,25 +14,14 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
-Optimizer::Optimizer(const std::string& optim_path_or_bytes,
-                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters) {
+Optimizer::Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+                     InferenceSession* optim_session) {
+  optim_sess_ = optim_session;
   parameters_ = parameters;
+
+  auto& optim_sess_state = optim_sess_->GetSessionState();
   std::unordered_map<std::string, ParameterOptimizerState>&
       param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
-
-  // TODO: share threadpool with module session
-  std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
-  optim_sess_ = std::move(std::make_unique<InferenceSession>(GetSessionOptions(), *env));
-
-  std::unordered_map<std::string, std::shared_ptr<IExecutionProvider>>& execution_providers = GetRegisteredExecutionProviders();
-  for (auto& execution_provider : execution_providers) {
-    ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider.second));
-  }
-  ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
-  ORT_THROW_IF_ERROR(optim_sess_->Initialize());
-  auto& optim_sess_state = optim_sess_->GetSessionState();
-
   for (auto& pair : parameters) {
     if (pair.second->RequiresGrad()) {
       param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
@@ -46,9 +35,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
     }
   }
 
-  std::shared_ptr<onnxruntime::Model> model;
-  ORT_THROW_IF_ERROR(onnxruntime::Model::Load(optim_path_or_bytes, model, nullptr, env->GetLoggingManager()->DefaultLogger()));
-  GetGraphInputOutputNames(model->MainGraph(), input_names_, output_names_);
+  GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
   ORT_ENFORCE(input_names_[0] == "learning_rate");  // TODO: make this better
   ORT_ENFORCE(input_names_[1] == "step");           // TODO: make this better
 

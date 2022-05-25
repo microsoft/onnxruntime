@@ -52,8 +52,8 @@ struct Optimizer {
   // Initialize an optimizer module from an ORT inference session with loaded
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
-  Optimizer(const std::string& optim_path_or_bytes,
-            const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters);
+  Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+            InferenceSession* optim_session);
 
   // Optimizer Step.
   Status Step();
@@ -72,7 +72,7 @@ struct Optimizer {
   }
 
  private:
-  std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
+  InferenceSession* optim_sess_;
   std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;
   GroupOptimizerState optimizer_state_;
   std::vector<std::string> input_names_;

@@ -65,9 +65,12 @@ struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  Module(const std::string& train_model_path_or_bytes,
-         std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
+  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+         InferenceSession* train_session);
+
+  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+         InferenceSession* train_session,
+         InferenceSession* eval_session);
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> parameters() const;
@@ -81,22 +84,18 @@ struct Module {
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.
   // Gradients will be accumulated within the Parameter object
-  Status TrainStep(const std::vector<Ort::Value>& /*inputs*/, std::vector<Ort::Value>& /*outputs*/);
+  Status TrainStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
-  Status EvalStep(const std::vector<Ort::Value>& /*inputs*/, std::vector<Ort::Value>& /*outputs*/);
+  Status EvalStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
 
   // Return the states of the module as a map.
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
  private:
-  Status TrainStepInternal(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
-
-  Status EvalStepInternal(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
-
-  std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
-  std::unique_ptr<onnxruntime::InferenceSession> eval_sess_;
+  InferenceSession* train_sess_;
+  InferenceSession* eval_sess_;
   std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;
   std::vector<std::string> train_input_names_;
   std::vector<std::string> train_output_names_;

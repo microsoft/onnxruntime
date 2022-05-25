@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include <onnxruntime_cxx_api.h>
-#include "cxxopts.hpp"
 #include "orttraining/training_api/include/interfaces.h"
-#include "orttraining/test/training_api/synthetic_data_loader.h"
+
+#include "cxxopts.hpp"
+#include "synthetic_data_loader.h"
 
 using namespace onnxruntime::training::api;
 struct TestRunnerParameters {
@@ -115,34 +116,46 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
 }
 
 void RunTraining(const TestRunnerParameters& params) {
+  const auto& api = Ort::GetApi();
+
   CheckpointState state;
+  // TODO: update using public API's calling pattern, e.g. api.LoadCheckpoint().
   EnforceCheck(LoadCheckpoint(params.checkpoint_to_load_path, state).IsOK(), "Failed to load checkpoint");
+
+  OrtSessionOptions* session_options = nullptr;
+  EnforceCheck(api.CreateSessionOptions(&session_options) == nullptr, "Failed to create session options.");
 
 #ifdef USE_CUDA
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-  const auto& api = Ort::GetApi();
   EnforceCheck(api.CreateCUDAProviderOptions(&cuda_options) == nullptr, "Failed to create cuda provider options");
-
-  // MUST set execution provider before model/optimizer creation.
-  SetExecutionProvider(cuda_options);
+  EnforceCheck(api.SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options) == nullptr,
+               "Failed to append cuda ep.");
 #endif
 
-  Module module(params.model_training_graph_path,
-                state.module_checkpoint_state.named_parameters,
-                params.model_evaluation_graph_path);
+  OrtEnv* env = nullptr;
+  EnforceCheck(api.CreateEnv(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner", &env) == nullptr, "Failed to create env");
+
+  // TODO: update using public API's calling pattern, e.g. api.CreateModule().
+  Ort::OrtModule module(api, env, session_options,
+                        params.model_training_graph_path,
+                        state.module_checkpoint_state.named_parameters,
+                        params.model_evaluation_graph_path);
 
   bool do_eval = params.model_evaluation_graph_path.has_value();
 
-  Optimizer optimizer(params.optimizer_training_graph_path,
-                      state.module_checkpoint_state.named_parameters);
+  // TODO: update using public API's calling pattern, e.g. api.CreateOptimizer().
+  Ort::OrtOptimizer optimizer(api, env, session_options,
+                              params.optimizer_training_graph_path,
+                              state.module_checkpoint_state.named_parameters);
 
   size_t sample_count_per_epoch = 4;
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader(sample_count_per_epoch, params.train_batch_size);
 
   int64_t total_step_count = static_cast<int64_t>(params.num_train_epochs * data_loader.NumOfBatches());
   int64_t warmup_step_count = total_step_count / 3;
-  LinearLRScheduler scheduler = LinearLRScheduler(optimizer, warmup_step_count, total_step_count);
-  std::string tag("train");
+
+  // TODO: update using public API's calling pattern, e.g. api.CreateLinearLRScheduler().
+  Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
 
   const size_t stabilized_perf_start_step = 0;
   double stabilized_total_end_to_end_time{0};
@@ -158,31 +171,33 @@ void RunTraining(const TestRunnerParameters& params) {
     data_loader.GetNextBatch(inputs);
 
     std::vector<Ort::Value> fetches;
-    EnforceCheck(module.TrainStep(inputs, fetches).IsOK(), "Failed during module.TrainStep.");
+    EnforceCheck(module.TrainStep(inputs, fetches), "Failed during module.TrainStep.");
 
     float loss = *(fetches[0].GetTensorMutableData<float>());
     std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
 
     if ((batch_idx + 1) % params.gradient_accumulation_steps == 0) {
       // Gradient accumulation steps completed.
-      EnforceCheck(optimizer.Step().IsOK(), "Failed during optimizer.Step().");
+      EnforceCheck(optimizer.Step(), "Failed during optimizer.Step().");
       // Update learning rate.
-      EnforceCheck(scheduler.Step().IsOK(), "Failed during shceduler.Step()");
-      EnforceCheck(module.ResetGrad().IsOK(), "Failed during module.ResetGrad().");
+      EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
+      EnforceCheck(module.ResetGrad(), "Failed during module.ResetGrad().");
     }
 
     if (do_eval && (batch_idx + 1) % params.eval_interval == 0) {
       std::vector<Ort::Value> eval_results;
-      EnforceCheck(module.EvalStep(inputs, eval_results).IsOK(), "Failed during Module.EvalStep().");
+      EnforceCheck(module.EvalStep(inputs, eval_results), "Failed during Module.EvalStep().");
     }
 
     if ((batch_idx + 1) % params.checkpoint_interval == 0) {
       // Save trained weights
       CheckpointState state_to_save;
-      EnforceCheck(module.GetStateDict(state_to_save.module_checkpoint_state).IsOK(), "Failed to load module states.");
-      EnforceCheck(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK(), "Failed to load optimizer states.");
+      EnforceCheck(module.GetStateDict(state_to_save.module_checkpoint_state), "Failed to load module states.");
+      EnforceCheck(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state), "Failed to load optimizer states.");
       state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
       std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
+
+      // TODO: update using public API's calling pattern, e.g. api.SaveCheckpoint().
       EnforceCheck(SaveCheckpoint(state_to_save, ckpt_file).IsOK(), "Failed to save checkpoint.");
     }
 
@@ -195,17 +210,19 @@ void RunTraining(const TestRunnerParameters& params) {
 
   std::cout << "Training completed - end to end latency: " << stabilized_total_end_to_end_time << "(s)" << std::endl;
 
+  api.ReleaseEnv(env);
+
 #ifdef USE_CUDA
   // Finally, don't forget to release the provider options
   api.ReleaseCUDAProviderOptions(cuda_options);
 #endif
+
+  api.ReleaseSessionOptions(session_options);
 }
 
 int main(int argc, char* argv[]) {
   TestRunnerParameters params;
   EnforceCheck(ParseArguments(argc, argv, params), "Parse arguments failed.");
-
-  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner");
 
   // Start training session
   RunTraining(params);

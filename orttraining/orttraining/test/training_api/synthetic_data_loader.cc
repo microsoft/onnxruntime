@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <random>
 
-#include "orttraining/test/training_api/synthetic_data_loader.h"
+#include "synthetic_data_loader.h"
 
 namespace onnxruntime {
 namespace training {
@@ -27,7 +27,6 @@ SyntheticDataLoader::SyntheticDataLoader(
   const float seed = 123.f;
   std::default_random_engine generator{static_cast<uint32_t>(seed)};
   std::normal_distribution<float> distribution{mean, scale};
-  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
   std::vector<int64_t> dims_input{static_cast<int64_t>(sample_count), static_cast<int64_t>(hidden_size_)};
   input1_.resize(sample_count * hidden_size_);
