@@ -806,8 +806,9 @@ stages:
 
       - script: |
           pushd .
+          py_ver_nodot=${PythonVersion//.}
           cd '$(Build.BinariesDirectory)/Release/dist'
-          for file in *.whl ; do mv $file ${file//x86_64/arm64}
+          for file in *.whl ; do mv $file ${file/-cp"$py_ver_nodot"-macosx_11_0_x86_64/-none-macosx_11_0_arm64}
           popd
         displayName: "Rename x86_64 to arm64"
 
