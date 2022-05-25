@@ -34,10 +34,10 @@ def create_qordered_longformer_attention_graph():
     ]
 
     initializers = [
-        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float16').reshape([768, 2304]), name='weight'),
-        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float16').reshape([2304]), name='bias'),
-        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float16').reshape([768, 2304]), name='global_weight'),
-        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float16').reshape([2304]), name='global_bias'),
+        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float32').reshape([768, 2304]), name='weight'),
+        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float32').reshape([2304]), name='bias'),
+        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float32').reshape([768, 2304]), name='global_weight'),
+        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float32').reshape([2304]), name='global_bias'),
         numpy_helper.from_array(numpy.array(2, dtype='float32'), name='scale_input'),
         numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_weight'),
         numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_global_weight'),        
