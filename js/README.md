@@ -36,8 +36,10 @@ Please follow the steps described below to setup development environment.
   - **required** extension: [Debugger for Chrome](https://marketplace.visualstudio.com/items?itemName=msjsdiag.debugger-for-chrome)
 
 - Ninja: https://ninja-build.org/
-  - Recommended - pip install ninja
-
+  ```sh
+  pip install ninja
+  ```
+  
 - Chrome or Edge Browser
 
 ### Setup TypeScript development environment
