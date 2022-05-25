@@ -77,7 +77,7 @@ class SimpleModelWithBCEWithLogitsLoss(onnxblock.Model):
         return self.loss(output_name)
 
 
-class SimpleTrainingModelWithBCEWithLogitsLoss(onnxblock.Model):
+class SimpleTrainingModelWithBCEWithLogitsLoss(onnxblock.TrainingModel):
     def __init__(self):
         super(SimpleTrainingModelWithBCEWithLogitsLoss, self).__init__()
         self.loss = onnxblock.loss.BCEWithLogitsLoss()

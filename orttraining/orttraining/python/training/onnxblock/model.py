@@ -33,7 +33,8 @@ class Model(building_blocks.Block):
 
         # Perform shape inference
         model_with_shapes = onnx.shape_inference.infer_shapes(
-            accessor.global_accessor.model)
+            accessor.global_accessor.model
+        )
         accessor.global_accessor.model.CopyFrom(model_with_shapes)
 
         # Build the graph outputs
@@ -108,7 +109,8 @@ class TrainingModel(building_blocks.Block):
 
         # Perform shape inference
         model_with_shapes = onnx.shape_inference.infer_shapes(
-            accessor.global_accessor.model)
+            accessor.global_accessor.model
+        )
         accessor.global_accessor.model.CopyFrom(model_with_shapes)
 
         # Build the graph outputs
