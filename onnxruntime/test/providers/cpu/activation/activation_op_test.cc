@@ -4,6 +4,7 @@
 #include "activation_op_test.h"
 #include "core/providers/cpu/activation/activations.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -377,6 +378,7 @@ TEST_F(ActivationOpTest, Selu_GH10726) {
                           [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
                           {{"alpha", alpha}, {"gamma", gamma}});
 }
+
 TEST_F(ActivationOpTest, PRelu) {
   OpTester test("PRelu");
 
@@ -396,24 +398,31 @@ TEST_F(ActivationOpTest, PRelu) {
 }
 
 TEST_F(ActivationOpTest, PRelu_SingleSlope) {
-  OpTester test("PRelu");
+  auto test = [](bool slope_is_initializer) {
+    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer));
 
-  auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
+    OpTester test("PRelu");
 
-  auto inputs = {1.0f, -4.0f, 0.0f, -9.0f};
-  auto slope = 1.5f;
-  std::vector<float> outputs;
-  for (auto& input : inputs)
-    outputs.push_back(formula(input, slope));
+    auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
 
-  std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("X", dims, inputs);
-  test.AddInput<float>("slope", {}, {slope});
-  test.AddOutput<float>("Y", dims, outputs);
-  test.Run();
+    auto inputs = {1.0f, 2.0f, -4.0f, 3.0f, 0.0f, 5.0f, -9.0f, 8.0f};
+    auto slope = 1.5f;
+    std::vector<float> outputs;
+    for (auto& input : inputs)
+      outputs.push_back(formula(input, slope));
+
+    std::vector<int64_t> dims{2, 2, 2};
+    test.AddInput<float>("X", dims, inputs);
+    test.AddInput<float>("slope", {}, {slope}, slope_is_initializer);
+    test.AddOutput<float>("Y", dims, outputs);
+    test.Run();
+  };
+
+  test(true /* slope_is_initializer */);
+  test(false /* slope_is_initializer */);
 }
 
-TEST_F(ActivationOpTest, PRelu_MultiChannel) {
+TEST_F(ActivationOpTest, PRelu_MultiChannel3D) {
   OpTester test("PRelu");
 
   auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
@@ -433,6 +442,40 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel) {
   test.AddInput<float>("slope", slope_dims, slopes);
   test.AddOutput<float>("Y", x_dims, outputs);
   test.Run();
+}
+
+TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
+  RandomValueGenerator random{2345};
+
+  auto test = [&](bool slope_is_initializer,
+                  int64_t n, int64_t c, int64_t h, int64_t w) {
+    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer,
+                            ", n: ", n, ", c: ", c, ", h: ", h, ", w: ", w));
+
+    OpTester test("PRelu");
+
+    auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
+
+    const std::vector<int64_t> x_dims{n, c, h, w};
+    const std::vector<int64_t> slope_dims{c, 1, 1};
+    std::vector<float> inputs = random.Uniform<float>(x_dims, -16.0f, 16.0f);
+    std::vector<float> slopes = random.Uniform<float>(slope_dims, -1.0f, 1.0f);
+    std::vector<float> outputs;
+    for (unsigned i = 0; i < inputs.size(); i++) {
+      outputs.push_back(formula(inputs[i], slopes[i / (h * w) % c]));
+    }
+
+    test.AddInput<float>("X", x_dims, inputs);
+    test.AddInput<float>("slope", slope_dims, slopes, slope_is_initializer);
+    test.AddOutput<float>("Y", x_dims, outputs);
+    test.Run();
+  };
+
+  test(true /* slope_is_initializer */, 5, 4, 3, 2);
+  test(false, 5, 4, 3, 2);
+
+  test(true, 3, 1, 1, 1);
+  test(false, 3, 1, 1, 1);
 }
 
 TEST_F(ActivationOpTest, Softplus) {
