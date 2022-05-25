@@ -50,9 +50,9 @@ def create_qordered_longformer_attention_graph():
     ]
 
     graph = helper.make_graph(nodes, "QOrderedLongformerAttention_Graph", [
-        helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 32, 768])
+        helper.make_tensor_value_info('input', TensorProto.FLOAT, [2, 32, 768])
     ], [
-        helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 32, 768]),
+        helper.make_tensor_value_info('output', TensorProto.FLOAT, [2, 32, 768]),
     ], initializers)
 
     model = helper.make_model(graph=graph)
