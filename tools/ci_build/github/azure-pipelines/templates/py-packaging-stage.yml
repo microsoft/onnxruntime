@@ -805,10 +805,13 @@ stages:
         displayName: 'Command Line Script'
 
       - script: |
+          set -ex
           pushd .
-          py_ver_nodot=${PythonVersion//.}
+          py_ver=$(PythonVersion)
+          py_ver_nodot=${py_ver//.}
+          mac_ver=11_0
           cd '$(Build.BinariesDirectory)/Release/dist'
-          for file in *.whl ; do mv $file ${file/-cp"$py_ver_nodot"-macosx_11_0_x86_64/-none-macosx_11_0_arm64}
+          for file in *.whl ; do mv $file ${file//-cp"$py_ver_nodot"-macosx_"$mac_ver"_x86_64/-none-macosx_"$mac_ver"_arm64} ; done
           popd
         displayName: "Rename x86_64 to arm64"
 
