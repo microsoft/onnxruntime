@@ -329,6 +329,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+enable_training_on_device = parse_arg_remove_boolean(sys.argv, '--enable_training_on_device')
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, '--disable_auditwheel_repair')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
@@ -374,6 +375,8 @@ if enable_training:
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops',
                      'onnxruntime.training.utils.data'])
+    if enable_training_on_device:
+        packages.append('onnxruntime.training.onnxblock')
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
