@@ -15,15 +15,18 @@ namespace api {
 
 Status Parameter::AllocateGrad(const std::string& gradient_name, const SessionState& sess_state) {
   // assert param is allocated
-  ORT_ENFORCE(data_.IsAllocated());
-  ORT_ENFORCE(requires_grad_);
+  ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");
+  ORT_ENFORCE(requires_grad_, "Gradient should only be allocated for trainable parameters.");
   gradient_name_ = gradient_name;
-  ORT_ENFORCE(OrtValueLike(sess_state, data_, gradient_).IsOK());
+  ORT_ENFORCE(utils::OrtValueLike(sess_state, data_, gradient_).IsOK(), "Failed to allocate gradient.");
   return Status::OK();
 }
 
 Status Parameter::ResetGrad() {
-  //TODO: make use of lazy_reset_grad input instead 
+  if (!requires_grad_) {
+    return Status::OK();
+  }
+  // TODO: make use of lazy_reset_grad input instead. maybe rename method
   Tensor* p_tensor = gradient_.GetMutable<Tensor>();
   const auto& device = p_tensor->Location().device;
   if (device.Type() == OrtDevice::CPU) {
@@ -41,9 +44,8 @@ Status Parameter::ResetGrad() {
 }
 Module::Module(const std::string& train_model_path_or_bytes,
                std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-               const std::optional<std::string>& eval_model_path_or_bytes) {
+               const std::optional<std::string>& eval_model_path_or_bytes) : named_parameters_(parameters) {
   // create value copy as same params are passed to Optimizer constructor
-  parameters_ = parameters;
 
   auto so = onnxruntime::SessionOptions();
   std::unique_ptr<Environment> env;
@@ -52,40 +54,33 @@ Module::Module(const std::string& train_model_path_or_bytes,
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
   if (eval_model_path_or_bytes.has_value()) {
-    std::shared_ptr<onnxruntime::Model> eval_model;
-    ORT_THROW_IF_ERROR(onnxruntime::Model::Load(eval_model_path_or_bytes.value(), eval_model,
-                                                nullptr, env->GetLoggingManager()->DefaultLogger()));
-    GetGraphInputOutputNames(eval_model->MainGraph(), eval_input_names_, eval_output_names_);
     // TODO:: do validation on eval inputs and outputs: eg order of user inputs, weights
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     ORT_THROW_IF_ERROR(eval_sess_->Initialize());
+    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
   }
+
+  utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
   auto& train_sess_state = train_sess_->GetSessionState();
-
-  std::shared_ptr<onnxruntime::Model> train_model;
-  ORT_THROW_IF_ERROR(onnxruntime::Model::Load(train_model_path_or_bytes, train_model,
-                                              nullptr, env->GetLoggingManager()->DefaultLogger()));
-  GetGraphInputOutputNames(train_model->MainGraph(), train_input_names_, train_output_names_);
-
-  std::vector<std::string> param_input_names, grad_input_names, user_input_names;
+  std::vector<std::string> param_input_names, grad_input_names, user_input_names, reset_grad_name;
   std::string param_name;
-  for (auto input_name : train_input_names_) {
-    auto it = parameters_.find(input_name);
-    if (it != parameters_.end()) {
+
+  for (const auto& input_name : train_input_names_) {
+    auto it = named_parameters_.find(input_name);
+    if (it != named_parameters_.end()) {
       param_input_names.emplace_back(input_name);
       weights_.push_back(it->second->Data());
-    } else if (GetParamNameFromGradient(input_name, param_name)) {
+    } else if (input_name == utils::LAZY_RESET_GRAD_NAME) {
+      reset_grad_name.emplace_back(input_name);
+    } else if (utils::GetParamNameFromGradient(input_name, param_name)) {
       grad_input_names.emplace_back(input_name);
       // create gradient buffer
-      // assert param_name is valid.
-      auto it = parameters_.find(param_name);
-      if (it != parameters_.end()) {
-        ORT_THROW_IF_ERROR(it->second->AllocateGrad(input_name, train_sess_state));
-        gradients_.push_back(it->second->Gradient());
-      } else {
-        // raise error here.
-      }
+      auto it = named_parameters_.find(param_name);
+      ORT_ENFORCE(it != named_parameters_.end(), "Unknown param: ", param_name, " for gradient input: ", input_name);
+      // TODO: don't pre-allocate the gradient buffer.
+      ORT_THROW_IF_ERROR(it->second->AllocateGrad(input_name, train_sess_state));
+      gradients_.push_back(it->second->Gradient());
     } else {
       user_input_names.emplace_back(input_name);
     }
@@ -93,18 +88,19 @@ Module::Module(const std::string& train_model_path_or_bytes,
   train_input_names_ = user_input_names;
   train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
   train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
+  train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
 }
 
-std::vector<std::shared_ptr<Parameter>> Module::parameters() const {
+std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
   std::vector<std::shared_ptr<Parameter>> params;
-  for (auto& it : parameters_) {
+  for (auto& it : named_parameters_) {
     params.push_back(it.second);
   }
   return params;
 }
 
 Status Module::ResetGrad() {
-  for (auto& it : parameters_) {
+  for (auto& it : named_parameters_) {
     ORT_ENFORCE(it.second->ResetGrad().IsOK());
   }
   return Status::OK();
@@ -116,7 +112,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
   // TODO: consider maintaining this as ortvalue instead of bool
   OrtValue reset_grad_input;
-  WarpInOrtValue<bool>(lazy_reset_grad_, &reset_grad_input);
+  utils::WarpInOrtValue<bool>(lazy_reset_grad_, &reset_grad_input);
   feeds.push_back(reset_grad_input);
 
   // TODO: need to filter out the grads from the output ortvalues
@@ -134,7 +130,7 @@ Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValu
 }
 
 Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {
-  module_checkpoint_state.named_parameters = named_parameters();
+  module_checkpoint_state.named_parameters = NamedParameters();
 
   // Pass the training session data transfer manager for data copying when saving.
   // An alternative is, we can do copy at this stage.

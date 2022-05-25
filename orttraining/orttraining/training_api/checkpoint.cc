@@ -380,8 +380,7 @@ Status OrtLoadModuleStatesInternal(
     std::unordered_map<std::string, OrtValue> name_to_ort_values;
     ORT_RETURN_IF_ERROR(CreateOrtValuesFromTensorProtos(param_tensor_protos, name_to_ort_values));
     for (auto it = name_to_ort_values.begin(); it != name_to_ort_values.end(); ++it) {
-      auto param = std::make_shared<Parameter>(it->first, it->second);
-      ORT_RETURN_IF_ERROR(param->SetRequiresGrad(is_trainable));
+      auto param = std::make_shared<Parameter>(it->first, it->second, is_trainable);
       named_parameters.insert({it->first, param});
     }
     return Status::OK();

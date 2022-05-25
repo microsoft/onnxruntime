@@ -20,6 +20,7 @@ using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace onnxruntime::training::api;
+using namespace onnxruntime::training::api::utils;
 using namespace std;
 
 #ifdef USE_CUDA

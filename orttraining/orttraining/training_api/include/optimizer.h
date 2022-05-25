@@ -30,7 +30,7 @@ struct ParameterOptimizerState {
  */
 struct GroupOptimizerState {
   int64_t step = 0;
-  float learning_rate = 0.1;
+  float learning_rate = 0.001; // default value used in torch AdamW
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
@@ -43,6 +43,12 @@ struct OptimizerCheckpointState {
  public:
   std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>> group_named_optimizer_states;
   const DataTransferManager* optimizer_session_data_transfer_mgr;
+};
+
+enum OptimizerType {
+  AdamW = 0,
+  Lamb = 1,
+  SGD = 3,
 };
 
 struct Optimizer {
@@ -58,18 +64,27 @@ struct Optimizer {
 
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
- protected:
   int64_t GetStep() const {
     return optimizer_state_.step;
   }
-  Status SetLearningRate(float& lr) {
+  
+ protected:
+  Status SetLearningRate(float lr) {
     optimizer_state_.learning_rate = lr;
     return Status::OK();
   }
 
  private:
+  // Generates optimizer momentum states for applicable optimizer types
+  Status GenerateMomentumNamedStates();
+  // Constructs the ortvalue inputs to be fed to the graph
+  // each step: inputs_
+  Status ConstructInputs();
+
+  // TODO: load this info from checkpoint
+  OptimizerType optimizer_type_ = OptimizerType::AdamW;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   GroupOptimizerState optimizer_state_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

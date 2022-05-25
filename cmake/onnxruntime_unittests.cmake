@@ -254,7 +254,9 @@ file(GLOB onnxruntime_test_training_src
 
 if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
   file(GLOB onnxruntime_test_training_on_device_src
-      "${ORTTRAINING_SOURCE_DIR}/test/training_api/checkpoint/*.cc")
+  "${ORTTRAINING_SOURCE_DIR}/test/training_api/checkpoint/*.cc"
+  "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
+  )
 endif()
 
 if(WIN32)
@@ -729,11 +731,6 @@ if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  onnxruntime_add_include_to_target(onnxruntime_test_all onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
-  target_include_directories(onnxruntime_test_all PUBLIC ${PROTOBUF_LIB})
-  target_link_libraries(onnxruntime_test_all PRIVATE onnx onnx_proto onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} libprotobuf)
-endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()

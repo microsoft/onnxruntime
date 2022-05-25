@@ -944,6 +944,10 @@ class PlannerImpl {
             }
           }
 #if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
+          // This is required because for the on-device training case,
+          // the InPlaceAccumulator produces graph
+          // outputs which will be re-allocated instead of re-using
+          // the input accumulation buffer
           if (pnode->OpType() == "InPlaceAccumulator") {
             const NodeArg* input = pnode->InputDefs()[0];
             const auto& input_name = input->Name();

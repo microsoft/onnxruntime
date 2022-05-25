@@ -198,10 +198,9 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   // Optimizer creation and trainable parameter name definitions.
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
-    auto param = std::make_shared<Parameter>(it->first, it->second);
     bool is_trainable =
-        std::find(trainable_param_names.begin(), trainable_param_names.end(), param->Name()) != trainable_param_names.end();
-    ASSERT_STATUS_OK(param->SetRequiresGrad(is_trainable));
+        std::find(trainable_param_names.begin(), trainable_param_names.end(), it->first) != trainable_param_names.end();
+    auto param = std::make_shared<Parameter>(it->first, it->second, is_trainable);
     named_parameters.insert({it->first, param});
   }
   auto optimizer = Optimizer(model_uri, named_parameters);

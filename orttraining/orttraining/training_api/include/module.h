@@ -11,9 +11,10 @@ namespace api {
 struct Parameter {
  public:
   // Create parameter
-  Parameter(std::string name, const OrtValue& data)
-      : name_(name), data_(data) {
+  Parameter(std::string name, const OrtValue& data, bool requires_grad)
+      : name_(name), data_(data), requires_grad_(requires_grad) {
     ORT_ENFORCE(data_.IsAllocated());
+    ORT_ENFORCE(!name_.empty(), "Parameter must have a non-empty name.");
   }
 
   // Return the mutable data.
@@ -31,11 +32,6 @@ struct Parameter {
 
   // Reset and release the gradient buffer of this Parameter.
   Status ResetGrad();
-
-  Status SetRequiresGrad(bool requires_grad) {
-    requires_grad_ = requires_grad;
-    return Status::OK();
-  }
 
  protected:
   Status AllocateGrad(const std::string& gradient_name, const SessionState& allocator);
@@ -69,10 +65,10 @@ struct Module {
          const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
 
   // Return the trainable/nontrainable parameters
-  std::vector<std::shared_ptr<Parameter>> parameters() const;
+  std::vector<std::shared_ptr<Parameter>> Parameters() const;
 
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters() const {
-    return parameters_;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> NamedParameters() const {
+    return named_parameters_;
   }
 
   // Reset and release the gradient buffer of all trainable params
@@ -92,7 +88,7 @@ struct Module {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_;
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> parameters_;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::vector<std::string> train_input_names_;
   std::vector<std::string> train_output_names_;
   std::vector<std::string> eval_input_names_;
