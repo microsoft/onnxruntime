@@ -1,5 +1,5 @@
 import onnx
-from onnx import OperatorSetIdProto,TensorProto, helper
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 add = helper.make_node("Add", ["input", "bias"], ["add_out"], "add")
 reverseadd = helper.make_node("Add", ["bias", "input"], ["add_out"], "add")
@@ -31,7 +31,7 @@ onnx.save(
             ],
             [],
         ),
-        opset_imports=opsets
+        opset_imports=opsets,
     ),
     r"bias_softmax_fusion_simple_no_axis_opset13.onnx",
 )
@@ -53,7 +53,6 @@ onnx.save(
     ),
     r"bias_softmax_fusion_simple.onnx",
 )
-
 
 
 onnx.save(
