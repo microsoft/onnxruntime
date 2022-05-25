@@ -188,11 +188,12 @@ class RuntimeOptions:
 
         self._disable_custom_ops = disable_custom_ops
 
-        if not isinstance(graph_optimization_level, GraphOptimizationLevel):
-            raise TypeError(
-                "Expected graph_optimization_level of type onnxruntime.GraphOptimizationLevel, "
-                f"got {type(graph_optimization_level)}."
-            )
+        if graph_optimization_level is not None:
+            if not isinstance(graph_optimization_level, GraphOptimizationLevel):
+                raise TypeError(
+                    "Expected graph_optimization_level of type onnxruntime.GraphOptimizationLevel, "
+                    f"got {type(graph_optimization_level)}."
+                )
 
         self._graph_optimization_level = graph_optimization_level
 
