@@ -28,6 +28,7 @@ struct Barrier {
     }
   }
 };
+
 using NotificationIndex = size_t;
 
 // similiar as Stream
@@ -85,7 +86,7 @@ struct ExecutionContext {
     for (auto& i : release_plan.node_ref_count_map[node_index]) {
       if (--release_plan.ref_counts[i] == 0) {
         ORT_THROW_IF_ERROR(frame->ReleaseMLValue(i));
-        //std::cout << "value " << i << " released" << std::endl;
+        std::cout << "value " << i << " released" << std::endl;
       }
     }
   }
@@ -127,6 +128,7 @@ struct ParallelExecutionPlanImpl {
                             const ProviderStreamMap& provider_stream_map,
                             const OpStreamMap& op_stream_map);
   ~ParallelExecutionPlanImpl();
+
   common::Status Execute(const SessionState& session_state,
                          const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds,
@@ -140,21 +142,17 @@ struct ParallelExecutionPlanImpl {
     return it == node_to_stream_map_.end() ? nullptr : it->second;
   }
 
-  const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const {
-    return alloc_plan_;
-  }
-
   ReleasePlan GenerateReleasePlan() const;
-
   const std::vector<int>& GetRefCounts() const { return value_ref_counts_; }
 
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
   const SessionState& session_state_;
   int num_logic_streams_{};
+
   // the stream where the notificaiton got created.
   std::vector<Stream*> notification_owners_;
   std::unordered_map<NodeIndex, Stream*> node_to_stream_map_;
-  std::vector<AllocPlanPerValue> alloc_plan_;
+  std::unordered_map<size_t, Stream*> value_to_stream_map_;
   std::vector<int> value_ref_counts_;
   std::unordered_map<onnxruntime::NodeIndex, std::vector<int>> node_value_map_;
   ProviderStreamMap provider_stream_map_;
@@ -365,53 +363,16 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       }
     }
   }
-  // 6. create per value alloc plan
-  // first, set all value AllocKind::kAllocate by default
+  // 6. now prepare for release plan
   const auto& value_map = session_state_.GetOrtValueNameIdxMap();
   const auto& execution_providers = session_state_.GetExecutionProviders();
   const auto& kernel_create_info_map = session_state_.GetKernelCreateInfoMap();
-
-  // func to set mem location on inputs
-  std::function<OrtMemoryInfo(size_t, const Node&)> GetLocationForNodeInput = [&](size_t input_index, const Node& node) {
-    auto* p_provider = execution_providers.Get(node);
-    ORT_ENFORCE(p_provider);
-    auto entry = kernel_create_info_map.find(node.Index());
-    const KernelCreateInfo& kernel_create_info = *entry->second;
-    if (utils::IsInputOnCpu(node, &kernel_create_info, input_index)) {
-      return execution_providers.GetDefaultCpuMemoryInfo();
-    } else {
-      return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();
-    }
-  };
-
-  // func to set mem location on outputs
-  std::function<OrtMemoryInfo(size_t, const Node&)> GetLocationForNodeOutput = [&](size_t output_index, const Node& node) {
-    auto* p_provider = execution_providers.Get(node);
-    ORT_ENFORCE(p_provider);
-    auto entry = kernel_create_info_map.find(node.Index());
-    const KernelCreateInfo& kernel_create_info = *entry->second;
-    const auto* p_kernel_def = kernel_create_info.kernel_def.get();
-    auto allocator = p_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(output_index));
-    ORT_ENFORCE(allocator);
-    return allocator->Info();
-  };
-
   int num_ml_values = value_map.MaxIdx() + 1;
-  alloc_plan_.resize(num_ml_values);
   std::unordered_set<int> node_outputs;
-
+  value_ref_counts_.resize(num_ml_values);
+  
   for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto* node = graph_viewer.GetNode(node_index);
-    const auto& input_node_args = node->InputDefs();
-    for (int input_index_local = 0; input_index_local < input_node_args.size(); ++input_index_local) {
-      auto input_arg = input_node_args[input_index_local];
-      OrtValueIndex input_idx_global;
-      ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
-      alloc_plan_[input_idx_global].alloc_kind = AllocKind::kAllocate;
-      alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*input_arg);
-      alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_index_local, *node);
-    }
-
     const auto& output_defs = node->OutputDefs();
     for (int output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
       const auto& node_output = output_defs[output_idx_local];
@@ -419,43 +380,10 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       OrtValueIndex output_idx_global;
       ORT_THROW_IF_ERROR(value_map.GetIdx(node_output->Name(), output_idx_global));
       node_outputs.insert(output_idx_global);
-      alloc_plan_[output_idx_global].alloc_kind = AllocKind::kAllocate;
-      alloc_plan_[output_idx_global].value_type = utils::GetMLDataType(*node_output);
-      alloc_plan_[output_idx_global].location = GetLocationForNodeOutput(output_idx_local, *node);
+      value_to_stream_map_[output_idx_global] = node_to_stream_map_[node_index];
     }
   }
-  // next, set all graph inputs as AllocKind::kPreExisting
-  for (auto graph_input : graph_viewer.GetInputs()) {
-    OrtValueIndex input_idx_global;
-    ORT_THROW_IF_ERROR(value_map.GetIdx(graph_input->Name(), input_idx_global));
-    alloc_plan_[input_idx_global].alloc_kind = AllocKind::kPreExisting;
-    alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*graph_input);
-  }
-  // moving on, set all graph outputs as AllocKind::kAllocateOutput
-  for (auto graph_outout: graph_viewer.GetOutputs()) {
-    OrtValueIndex output_idx_global;
-    ORT_THROW_IF_ERROR(value_map.GetIdx(graph_outout->Name(), output_idx_global));
-    alloc_plan_[output_idx_global].alloc_kind = AllocKind::kAllocateOutput;
-    alloc_plan_[output_idx_global].value_type = utils::GetMLDataType(*graph_outout);
-  }
-  // finally, set all weights
-  const auto& weights = graph_viewer.GetAllInitializedTensors();
-  for (const auto& node : graph_viewer.Nodes()) {
-    const auto& input_node_args = node.InputDefs();
-    for (int input_index = 0; input_index < input_node_args.size(); ++input_index) {
-      auto input_arg = input_node_args[input_index];
-      if (input_arg->Exists() && weights.count(input_arg->Name())) {
-        OrtValueIndex input_idx_global;
-        ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
-        alloc_plan_[input_idx_global].alloc_kind = AllocKind::kAllocateStatically;
-        alloc_plan_[input_idx_global].value_type = utils::GetMLDataType(*input_arg);
-        alloc_plan_[input_idx_global].location = GetLocationForNodeInput(input_index, node);
-      }
-    }
-  }
-  // 7. now prepare for release plan 
-  value_ref_counts_.resize(num_ml_values);
-  
+
   for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto* node = graph_viewer.GetNode(node_index);
     const auto& input_node_args = node->InputDefs();
@@ -463,7 +391,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       const auto* input_arg = input_node_args[input_index_local];
       OrtValueIndex input_idx_global;
       ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
-      if (node_outputs.find(input_idx_global) != node_outputs.end() && alloc_plan_[input_idx_global].alloc_kind == AllocKind::kAllocate) {
+      if (node_outputs.find(input_idx_global) != node_outputs.end()) {
         value_ref_counts_[input_idx_global]++;
         node_value_map_[node_index].push_back(input_idx_global);
       }
@@ -499,7 +427,6 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
 }
 
 ParallelExecutionPlanImpl::~ParallelExecutionPlanImpl() {
-
 }
 
 ReleasePlan ParallelExecutionPlanImpl::GenerateReleasePlan() const {
@@ -561,6 +488,14 @@ ParallelExecutionPlan::ParallelExecutionPlan(const SessionState& session_state,
 ParallelExecutionPlan::~ParallelExecutionPlan() {
 }
 
+bool ParallelExecutionPlan::CanReuse(size_t ort_value_old, size_t ort_value_new) const {
+  // only allow reuse to happen in same stream
+  // TODO: enable reusing among streams under certain cases
+  return impl_->value_to_stream_map_.count(ort_value_old) &&
+         impl_->value_to_stream_map_.count(ort_value_new) &&
+         impl_->value_to_stream_map_[ort_value_old] == impl_->value_to_stream_map_[ort_value_new];
+}
+
 common::Status ParallelExecutionPlan::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                               const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                               std::vector<OrtValue>& fetches,
@@ -569,9 +504,8 @@ common::Status ParallelExecutionPlan::Execute(const SessionState& session_state,
   return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);
 }
 
-
 const std::vector<AllocPlanPerValue>& ParallelExecutionPlan::GetAllocPlanPerValue() const {
-  return impl_->GetAllocPlanPerValue();
+  return this->allocation_plan;
 }
 
 
