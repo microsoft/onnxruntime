@@ -138,8 +138,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear) {
   std::vector<float> Y = {2.66666651f, 4.3333331f};
 
   test.AddOutput<float>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  //CUDA: result mismatch due to not implementing NHWC support
-  //ROCm: results mismatch
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaExecutionProvider, kRocmExecutionProvider});
 }
@@ -166,7 +166,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_int8) {
   test.Run();
 }
 
-// Since NNAPI(TFLite) only using the scale calulate using the input/output size
+// Since NNAPI(TFLite) only using the scale calculate using the input/output size
 // For the above test (ResizeOpLinearDownSampleTest_4DBilinear)
 // The output size is [1,1,2,4].*[1,1,0.6,0.6]=[1,1,1,2]
 // NNAPI will recaluclate the scales as the output size divided by input size
@@ -287,7 +287,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_int
     std::vector<int8_t> Y = {1, 4};
 
     test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-    //TensorRT: results mismatch
+    // TensorRT: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 
@@ -396,7 +396,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
         7, 8, 9, 10, 11, 11, 11, 11};
 
     test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-    //TensorRT: results mismatch
+    // TensorRT: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
 

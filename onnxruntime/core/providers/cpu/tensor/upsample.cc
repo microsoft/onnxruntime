@@ -1072,19 +1072,23 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
               !is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
               (is_half_pixel || is_align_corners || coordinate_transform_mode_ == ASYMMETRIC)) {
             NhwcUpsampleBilinearInteger(is_half_pixel, is_align_corners,
-                                        static_cast<int32_t>(batch_size), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(num_channels),
+                                        static_cast<int32_t>(batch_size),
+                                        static_cast<int32_t>(input_height), static_cast<int32_t>(input_width),
+                                        static_cast<int32_t>(num_channels),
                                         dims,
                                         X->Data<T>(),
                                         static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
                                         output_dims,
                                         Y->MutableData<T>(),
-                                        static_cast<int32_t>((1 << 10) / height_scale), static_cast<int32_t>((1 << 10) / width_scale));
+                                        static_cast<int32_t>((1 << 10) / height_scale),
+                                        static_cast<int32_t>((1 << 10) / width_scale));
           } else {
-            NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                                 height_scale, width_scale, roi,
-                                 use_extrapolation_, extrapolation_value_, X->Data<T>(),
-                                 Y->MutableData<T>(), alloc, get_original_coordinate_,
-                                 output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+            NhwcUpsampleBilinear(
+                batch_size, num_channels, input_height, input_width, output_height, output_width,
+                height_scale, width_scale, roi,
+                use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                Y->MutableData<T>(), alloc, get_original_coordinate_,
+                output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
           }
         }
         return Status::OK();

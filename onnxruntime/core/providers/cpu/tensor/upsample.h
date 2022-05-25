@@ -6,6 +6,7 @@
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
+#include <algorithm>
 #include <cmath>
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
