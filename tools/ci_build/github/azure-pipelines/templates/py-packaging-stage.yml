@@ -804,6 +804,13 @@ stages:
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
+      - script: |
+          pushd .
+          cd '$(Build.BinariesDirectory)/Release/dist'
+          for file in *.whl ; do mv $file ${file//x86_64/arm64}
+          popd
+        displayName: "Rename x86_64 to arm64"
+
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
