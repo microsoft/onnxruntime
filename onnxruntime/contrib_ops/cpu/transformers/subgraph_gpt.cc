@@ -107,7 +107,7 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   ORT_RETURN_IF(subgraph_inputs[3]->Name() != "past_0",
                 "subgraph input 3 shall be named as past_0, got: ", subgraph_inputs[3]->Name());
 
-  // Past state shape is like (2, batch_size, 12, past_seq_len, 64). Here 12 and 64 are constants of num_heads and hidden_size/num_heads.
+  // Past state shape is like (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads).
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_inputs[3]->Shape();
   ORT_RETURN_IF(past_shape->dim_size() != 5,
                 "subgraph past state is expected to have 5 dimension, got ", past_shape->dim_size());

@@ -103,7 +103,11 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
 
   BeamSearchCpuState cpu_state;
-  cpu_state.Init(this->cpu_allocator_, static_cast<size_t>(parameters->BatchBeamSize()), parameters->max_length, parameters->sequence_length, this->IsCuda());
+  cpu_state.Init(this->cpu_allocator_,
+                 static_cast<size_t>(parameters->BatchBeamSize()),
+                 parameters->max_length,
+                 parameters->sequence_length,
+                 this->IsCuda());
 
   IAllocatorUniquePtr<char> buffer;
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
@@ -117,8 +121,14 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       this->add_to_feeds_func_,
       buffer));
 
-  ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_, encoder_feeds_fetches_manager, encoder_feeds, encoder_fetches, {},
-                                             ExecutionMode::ORT_SEQUENTIAL, this->context_.GetTerminateFlag(), this->context_.Logger()));
+  ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
+                                             encoder_feeds_fetches_manager,
+                                             encoder_feeds,
+                                             encoder_fetches,
+                                             {},
+                                             ExecutionMode::ORT_SEQUENTIAL,
+                                             this->context_.GetTerminateFlag(),
+                                             this->context_.Logger()));
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = this->GetConsoleDumper();
@@ -140,7 +150,10 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Output sequence shall start with decoder_start_token_id
   // TODO: support encoder with 2 input. The following assumes encoder has 3 inputs.
   this->parameters_->sequence_length = 1;
-  cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int64_t>(), static_cast<size_t>(parameters->BatchBeamSize()), parameters->max_length, parameters->sequence_length);
+  cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int64_t>(),
+                        static_cast<size_t>(parameters->BatchBeamSize()),
+                        parameters->max_length,
+                        parameters->sequence_length);
 
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
@@ -184,7 +197,12 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   int current_length = parameters->sequence_length;
   if (current_length + 1 < parameters->max_length) {
     ++iteration_counter;
-    ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0], beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
+    ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
+                                                beam_next_tokens,
+                                                beam_indices,
+                                                beam_state,
+                                                cpu_state,
+                                                iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
     ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(beam_next_tokens.as_span<const int32_t>(),
                                                              this->implicit_inputs_,
@@ -207,8 +225,14 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     }
 #endif
 
-    status = utils::ExecuteSubgraph(this->decoder_session_state_, decoder_feeds_fetches_manager, decoder_feeds, decoder_fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, this->context_.GetTerminateFlag(), this->context_.Logger());
+    status = utils::ExecuteSubgraph(this->decoder_session_state_,
+                                    decoder_feeds_fetches_manager,
+                                    decoder_feeds,
+                                    decoder_fetches,
+                                    {},
+                                    ExecutionMode::ORT_SEQUENTIAL,
+                                    this->context_.GetTerminateFlag(),
+                                    this->context_.Logger());
 
 #ifdef DEBUG_BEAM_SEARCH
     for (size_t i = 0; i < decoder_fetches.size(); i++) {
@@ -220,7 +244,12 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     ORT_RETURN_IF_ERROR(status);
 
     const OrtValue& logits = decoder_fetches[0];
-    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
+    ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,
+                                                beam_next_tokens,
+                                                beam_indices,
+                                                beam_state,
+                                                cpu_state,
+                                                iteration_counter));
 
     // When all batches are finished, stop earlier to avoid wasting computation.
     if (this->beam_scorer_->IsDone()) {
@@ -249,8 +278,12 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   gsl::span<const float> final_beam_scores(beam_state.beam_scores.data(), beam_state.beam_scores.size());
   if (this->IsCuda()) {
-    ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores, final_beam_scores, nullptr, DeviceCopyDirection::deviceToHost));
-    final_beam_scores = gsl::make_span<const float>(cpu_state.final_beam_scores.data(), cpu_state.final_beam_scores.size());
+    ORT_RETURN_IF_ERROR(this->device_copy_func_(cpu_state.final_beam_scores,
+                                                final_beam_scores,
+                                                nullptr,
+                                                DeviceCopyDirection::deviceToHost));
+    final_beam_scores = gsl::make_span<const float>(cpu_state.final_beam_scores.data(),
+                                                    cpu_state.final_beam_scores.size());
   }
 
   this->beam_scorer_->Finalize(&(cpu_state.sequences),

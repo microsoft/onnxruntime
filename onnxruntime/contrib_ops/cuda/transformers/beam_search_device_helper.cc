@@ -250,7 +250,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // Copy sequences to device only when repetition penalty or no repeat ngram is used in kernel
   BufferUniquePtr sequences_buffer;
   int current_sequence_length = sequences->GetSequenceLength();
-  if (parameters->repetition_penalty != 1.0f || (parameters->no_repeat_ngram_size > 0 && current_sequence_length >= parameters->no_repeat_ngram_size)) {
+  bool run_ngram = parameters->no_repeat_ngram_size > 0 && current_sequence_length >= parameters->no_repeat_ngram_size;
+  if (parameters->repetition_penalty != 1.0f || run_ngram) {
     size_t bytes = SafeInt<size_t>(sizeof(int32_t)) * batch_beam_size * parameters->max_length;
     void* data = allocator->Alloc(bytes);
     BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
@@ -409,7 +410,8 @@ Status PickPastState(const std::vector<OrtValue>& last_outputs,
     for (gsl::index j = 0; j < beam_indices.length(); j++) {
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
-      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam, block_size_per_beam);
+      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam,
+                                                              block_size_per_beam);
 
       gsl::span<T> past_key = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
       gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
