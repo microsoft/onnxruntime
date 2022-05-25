@@ -1876,10 +1876,16 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   }
 
   bool changed = false;
+  bool have_dq = false;
+
   // Optimize graph. Nodes will be modified during iteration, but nodes are never deleted before we reach them.
   // New transpose nodes are inserted, but always as an input to an existing node.
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::NodeRef& node = *nodes[i];
+    if (node.OpType() == "DequantizeLinear") {
+      have_dq = true;
+    }
+
     if (ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM &&
         ctx.layout_sensitive_ops.count(node.OpType()) && node.GetExecutionProviderType() != ctx.provider_type) {
       // If the current op is layout sensitive and it is not assigned to the given provider
@@ -1907,16 +1913,16 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
     }
   }
 
-  // Currently limiting the second optimization pass to layout transform mode
-  // TODO: Enable this for both the modes.
-  if (ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE) {
+  // To test 'old' behavior with unit tests set have_dq to false so it always returns here.
+  if (!have_dq) {
     result.graph_modified = changed;
     return result;
   }
 
   // Run second optimization pass.
-  // If any transpose succeeds a DQ node, move it above the DQ node.
-  // In case of QDQ models this helps to preserve the QDQ node unit
+  // If any transpose succeeds a DQ node, move it above the DQ node if it's not part of a QDQ node unit.
+  // In case of QDQ models this helps to preserve the QDQ node unit when a Transpose was pushed across a DQ into
+  // an existing QDQ node unit.
   // In all other scenarios this is beneficial as well because moving transpose above DQ node is more efficient as
   // transpose node now handles less data.
   auto graph_nodes = ctx.graph.Nodes();
