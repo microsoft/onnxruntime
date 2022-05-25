@@ -29,7 +29,7 @@ struct IBeamSearchState {
   gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams), empty for T5. Next position for position_ids.
   gsl::span<float> beam_scores;        // shape (batch_size, num_beams)
   gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
-  gsl::span<float> remaining_scores;   // portion of scores that is avaiable for appending next token scores.
+  gsl::span<float> remaining_scores;   // portion of scores that is available for appending next token scores.
 };
 
 struct IBeamSearchCpuState {

@@ -34,7 +34,9 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
                const BeamSearchDeviceHelper::InitDecoderFeedsFunc<T>& init_decoder_feeds_func,
                const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func)
-      : BeamSearchBase<T>(context, decoder_session_state, thread_pool, cuda_stream, cuda_dumper, params, topk_func, process_logits_func, device_copy_func),
+      : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
+                          cuda_stream, cuda_dumper, params,
+                          topk_func, process_logits_func, device_copy_func),
         encoder_session_state_(encoder_session_state),
         encoder_subgraph_(encoder_subgraph),
         decoder_subgraph_(decoder_subgraph),
@@ -78,7 +80,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   Tensor* output_sequences = this->context_.Output(0, sequences_shape);
 
   int64_t sequences_scores_dims[] = {parameters->batch_size, parameters->num_return_sequences};
-  TensorShape sequences_scores_shape(&sequences_scores_dims[0], sizeof(sequences_scores_dims) / sizeof(sequences_scores_dims[0]));
+  constexpr int64_t dims = sizeof(sequences_scores_dims) / sizeof(sequences_scores_dims[0]);
+  TensorShape sequences_scores_shape(&sequences_scores_dims[0], dims);
   Tensor* output_sequences_scores = this->context_.Output(1, sequences_scores_shape);
 
   int64_t scores_dims[] = {

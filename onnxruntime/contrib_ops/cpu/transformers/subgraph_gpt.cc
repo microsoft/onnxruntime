@@ -37,13 +37,13 @@ Status GptSubgraph::CreateInitialFeeds(
   const int64_t& batch_size = input_ids_shape[0];
 
   // Subgraph inputs:
-  //   input_ids: shape (B, S) wher B is batch size, and S is sequence length
+  //   input_ids: shape (B, S) where B is batch size, and S is sequence length
   //   position_ids: shape (B, S)
   //   attention_mask: shape (B, P+S), where past_sequence_length (P) is 0
   // After expansion, their shapes will become (B, M*S), where M is num_beams.
 
   // Allocate subgraph inputs to be same device as input_ids
-  AllocatorPtr cpu_alloactor = session_state_->GetAllocator(input_ids.Location());
+  AllocatorPtr cpu_allocator = session_state_->GetAllocator(input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
   auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
@@ -61,11 +61,23 @@ Status GptSubgraph::CreateInitialFeeds(
 
   OrtValue expanded_position_ids;
   OrtValue expanded_attention_mask;
-  ORT_RETURN_IF_ERROR(create_gpt_inputs_func(&input_ids, num_beams, pad_token_id, sequence_lengths, cpu_alloactor, expanded_input_ids, expanded_position_ids, expanded_attention_mask));
+  ORT_RETURN_IF_ERROR(create_gpt_inputs_func(&input_ids,
+                                             num_beams,
+                                             pad_token_id,
+                                             sequence_lengths,
+                                             cpu_allocator,
+                                             expanded_input_ids,
+                                             expanded_position_ids,
+                                             expanded_attention_mask));
 
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider, expanded_input_ids, expanded_position_ids, expanded_attention_mask, feeds, buffer));
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
+                                        expanded_input_ids,
+                                        expanded_position_ids,
+                                        expanded_attention_mask,
+                                        feeds,
+                                        buffer));
 
-  // The remaing inputs are past state.
+  // The remaining inputs are past state.
   for (int i = 3; i < num_subgraph_inputs; ++i) {
     feeds.push_back(empty_past);
   }
@@ -81,24 +93,24 @@ Status GptSubgraph::CreateInitialFeeds(
 Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                              const std::vector<const NodeArg*>& subgraph_outputs) {
   ORT_RETURN_IF(num_subgraph_outputs <= 1,
-                "Invalid GPT-2 subgraph: number of outputs shall be larger than 1 (Need past state in inputs and outputs).");
+                "Invalid GPT-2 subgraph: number of outputs shall be larger than 1 (Need past state in outputs).");
 
   ORT_RETURN_IF(num_subgraph_inputs != num_subgraph_outputs + 2,
                 "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2");
 
-  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids", "subgraph input 0 shall be named as input_ids, got: ",
-                subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "position_ids", "subgraph input 1 shall be named as position_ids, got: ",
-                subgraph_inputs[1]->Name());
-  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "attention_mask", "subgraph input 2 shall be named as attention_mask, got: ",
-                subgraph_inputs[2]->Name());
-  ORT_RETURN_IF(subgraph_inputs[3]->Name() != "past_0", "subgraph input 3 shall be named as past_0, got: ",
-                subgraph_inputs[3]->Name());
+  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
+                "subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "position_ids",
+                "subgraph input 1 shall be named as position_ids, got: ", subgraph_inputs[1]->Name());
+  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "attention_mask",
+                "subgraph input 2 shall be named as attention_mask, got: ", subgraph_inputs[2]->Name());
+  ORT_RETURN_IF(subgraph_inputs[3]->Name() != "past_0",
+                "subgraph input 3 shall be named as past_0, got: ", subgraph_inputs[3]->Name());
 
   // Past state shape is like (2, batch_size, 12, past_seq_len, 64). Here 12 and 64 are constants of num_heads and hidden_size/num_heads.
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_inputs[3]->Shape();
-  ORT_RETURN_IF(past_shape->dim_size() != 5, "subgraph past state is expected to have 5 dimension, got ",
-                past_shape->dim_size());
+  ORT_RETURN_IF(past_shape->dim_size() != 5,
+                "subgraph past state is expected to have 5 dimension, got ", past_shape->dim_size());
 
   ORT_RETURN_IF(!past_shape->dim(0).has_dim_value() || past_shape->dim(0).dim_value() != 2,
                 "subgraph past state dimension 0 shall have length of 2");
@@ -110,16 +122,16 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                 "subgraph past state dimension 4 shall have a positive value for hidden size per head");
 
   // check subgraph outputs
-  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits", "subgraph output 0 shall be named as logits, got: ",
-                subgraph_outputs[0]->Name());
+  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
+                "subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
 
-  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "present_0", "subgraph input 1 shall be named as present_0, got: ",
-                subgraph_outputs[1]->Name());
+  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "present_0",
+                "subgraph input 1 shall be named as present_0, got: ", subgraph_outputs[1]->Name());
 
   // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
-  ORT_RETURN_IF(logits_shape->dim_size() != 3, "subgraph logits output is expected to have 3 dimension, got ",
-                logits_shape->dim_size());
+  ORT_RETURN_IF(logits_shape->dim_size() != 3,
+                "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
 
   ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
                 "subgraph past state dimension 2 shall have a positive value for vocabulary size");
@@ -130,15 +142,19 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
   num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+  constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
+  constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+  constexpr auto float16_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
+
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "subgraph input 0 (input_ids) shall have int32 type");
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "subgraph input 1 (position_ids) shall have int32 type");
-  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "subgraph input 2 (attention_mask) shall have int32 type");
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
-  ORT_RETURN_IF(output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
+  ORT_RETURN_IF(output_type != float32_type && output_type != float16_type,
                 "subgraph output 0 (logits) shall be float or float16 data type");
 
   ORT_RETURN_IF(subgraph_inputs[3]->TypeAsProto()->tensor_type().elem_type() != output_type,
@@ -146,7 +162,7 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   ORT_RETURN_IF(subgraph_outputs[1]->TypeAsProto()->tensor_type().elem_type() != output_type,
                 "subgraph output 1 (present_0) shall shall have same data type of logits output");
 
-  is_output_float16_ = (output_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
+  is_output_float16_ = (output_type == float16_type);
 
   return Status::OK();
 }

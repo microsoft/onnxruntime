@@ -252,7 +252,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
-  // TODO: use thread pool to parrellel
+  // TODO: use thread pool to parallel
   int offset = 0;
   int batch_beam_index = 0;
   for (int i = 0; i < batch_size; i++) {
@@ -280,7 +280,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
   auto element_type = DataTypeImpl::GetType<T>();
   OrtValue next_token_scores_value;
-  Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(), next_token_scores_value);
+  Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(),
+                       next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
   constexpr int axis = 1;
@@ -290,7 +291,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   std::unique_ptr<Tensor> topk_scores;
   std::unique_ptr<Tensor> topk_indices;
-  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool, topk_scores, topk_indices));
+  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
+                           topk_scores, topk_indices));
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("topk_scores", *(topk_scores.get()));
@@ -358,7 +360,8 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
     for (gsl::index j = 0; j < beam_indices.length(); j++) {
       int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
-      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam, block_size_per_beam);
+      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam,
+                                                              block_size_per_beam);
 
       gsl::span<T> past_key = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
       gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
@@ -497,8 +500,9 @@ Status CreateEncoderInputs(
     }
   }
 
-  // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length) for encoder_input_ids and encoder_attention_mask
-  // TODO: Try expand outputs after first subgraph call instead. That may get better performance, but more complex to implement.
+  // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
+  // for encoder_input_ids and encoder_attention_mask
+  // TODO: Try expand outputs after first subgraph call instead. That may get better performance.
   expanded_encoder_input_ids = ExpandInputs<int64_t>(encoder_input_ids, num_beams, allocator);
   expanded_encoder_attention_mask = ExpandInputs<int64_t>(encoder_attention_mask, num_beams, allocator);
 
@@ -619,7 +623,7 @@ Status UpdateDecoderFeeds(
 
   // Update past state
   ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(1 + num_present_tensors));
-  if (num_beams == 1) {  // TODO: remove this once GreedySearch operator is avaiable.
+  if (num_beams == 1) {  // TODO: remove this once GreedySearch operator is available.
     // feed present_* output to past_* inputs one by one
     for (int i = 1; i < 1 + num_present_tensors; ++i) {
       next_inputs[i + 2] = last_outputs[i];
@@ -660,7 +664,7 @@ template Status DeviceCopy<float>(
     gsl::span<float> target,
     gsl::span<const float> source,
     void* stream,
-    int copyDirectionn);
+    int copyDirection);
 
 template Status UpdateGptFeeds<float>(
     AllocatorPtr allocator,

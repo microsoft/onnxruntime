@@ -37,8 +37,10 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;
-  ORT_ENFORCE(max_length > sequence_length, "max_length (", max_length, ") shall be greater than input sequence length (", sequence_length, ")");
-  ORT_ENFORCE(max_length <= kMaxSequenceLength, "max_length (", max_length, ") shall be no more than ", kMaxSequenceLength);
+  ORT_ENFORCE(max_length > sequence_length,
+              "max_length (", max_length, ") shall be greater than input sequence length (", sequence_length, ")");
+  ORT_ENFORCE(max_length <= kMaxSequenceLength,
+              "max_length (", max_length, ") shall be no more than ", kMaxSequenceLength);
 
   auto* min_length_tensor = context->Input<Tensor>(2);
   min_length = min_length_tensor ? static_cast<int>(*min_length_tensor->Data<int32_t>()) : 0;
@@ -46,12 +48,15 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   auto* num_beams_tensor = context->Input<Tensor>(3);
   num_beams = num_beams_tensor ? static_cast<int>(*num_beams_tensor->Data<int32_t>()) : 1;
   // TODO: limit num_beams > 1 when we can have another operator for greedy search.
-  ORT_ENFORCE(num_beams >= 1 && num_beams <= kMaxNumBeams, "num_beams shall be a positive integer no more than ", kMaxNumBeams, ", got ", num_beams);
+  ORT_ENFORCE(num_beams >= 1 && num_beams <= kMaxNumBeams,
+              "num_beams shall be a positive integer no more than ", kMaxNumBeams, ", got ", num_beams);
 
   auto* num_return_sequences_tensor = context->Input<Tensor>(4);
-  num_return_sequences = num_return_sequences_tensor ? static_cast<int>(*num_return_sequences_tensor->Data<int32_t>()) : 1;
-  ORT_ENFORCE(num_return_sequences >= 1, "num_return_sequences shall be a positive integer, got ", num_return_sequences);
-  ORT_ENFORCE(num_beams >= num_return_sequences, "num_return_sequences (", num_return_sequences, ") shall be be no more than num_beams (", num_beams, ")");
+  num_return_sequences = num_return_sequences_tensor ? *num_return_sequences_tensor->Data<int32_t>() : 1;
+  ORT_ENFORCE(num_return_sequences >= 1,
+              "num_return_sequences shall be a positive integer, got ", num_return_sequences);
+  ORT_ENFORCE(num_beams >= num_return_sequences,
+              "num_return_sequences (", num_return_sequences, ") shall be be no more than num_beams (", num_beams, ")");
 
   auto* temperature_tensor = context->Input<Tensor>(5);
   temperature = temperature_tensor ? static_cast<float>(*temperature_tensor->Data<float>()) : 1;

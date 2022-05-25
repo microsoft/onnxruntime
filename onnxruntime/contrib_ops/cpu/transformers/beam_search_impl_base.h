@@ -77,7 +77,8 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
   void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, int sequence_length, bool is_cuda) {
     this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
 
-    this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_beam_size * max_length);
+    size_t sequences_bytes = SafeInt<size_t>(2) * batch_beam_size * max_length;
+    this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, sequences_bytes);
     memset(this->sequences_space.data(), 0, this->sequences_space.size_bytes());
 
     if (is_cuda) {
@@ -91,21 +92,29 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     this->sequences.Init(this->sequences_space, static_cast<int>(batch_beam_size), sequence_length, max_length);
   }
 
-// Copy input_ids to sequences[0]
-void SetSequence(gsl::span<const int32_t> input_ids_in_cpu, size_t batch_beam_size, int max_length, int sequence_length) {
+  // Copy input_ids to sequences[0]
+  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
+                   size_t batch_beam_size,
+                   int max_length,
+                   int sequence_length) {
     gsl::span<int32_t> sequences_0 = sequences_space;
     for (size_t i = 0; i < batch_beam_size; i++) {
       for (int j = 0; j < sequence_length; j++) {
-        sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
+        sequences_0[index] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
       }
     }
   }
 
-  void SetSequence(gsl::span<const int64_t> input_ids_in_cpu, size_t batch_beam_size, int max_length, int sequence_length) {
+  void SetSequence(gsl::span<const int64_t> input_ids_in_cpu,
+                   size_t batch_beam_size,
+                   int max_length,
+                   int sequence_length) {
     gsl::span<int32_t> sequences_0 = sequences_space;
     for (size_t i = 0; i < batch_beam_size; i++) {
       for (int j = 0; j < sequence_length; j++) {
-        sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
+        sequences_0[index] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
       }
     }
   }
@@ -214,22 +223,22 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   const Tensor* input_ids = context.Input<Tensor>(0);
   const auto& dims = input_ids->Shape().GetDims();
   if (dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input_ids' is expected to have 2 dimensions, got ",
-                           dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
   }
 
   const Tensor* vocab_mask = context.Input<Tensor>(8);
   if (vocab_mask != nullptr) {  // vocab_mask is optional
     const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
     if (vocab_mask_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocab_mask' is expected to have 1 dimension, got ",
-                             vocab_mask_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'vocab_mask' is expected to have 1 dimension, got ", vocab_mask_dims.size());
     }
 
     // There is dependency on vocab_size parameter, which shall be set before calling this function.
     if (static_cast<int>(vocab_mask_dims[0]) != parameters_->vocab_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocab_mask' shape does not match with vocab_size, got ",
-                             vocab_mask_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'vocab_mask' shape does not match with vocab_size, got ", vocab_mask_dims[0]);
     }
 
     // store vocab mask in parameters.
@@ -241,19 +250,20 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
     // prefix_vocab_mask is optional
     const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
     if (vocab_mask_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' is expected to have 2 dimensions, got ",
-                             vocab_mask_dims.size());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'prefix_vocab_mask' is expected to be 2 dimensions, got ", vocab_mask_dims.size());
     }
 
     // prefix_vocab_mask first dimension should be same as the first dimension of input_ids
     if (static_cast<int>(vocab_mask_dims[0]) != static_cast<int>(dims[0])) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input_ids and prefix_vocab_mask must have the same batch_size");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "input_ids and prefix_vocab_mask must have the same batch_size");
     }
 
     // There is dependency on vocab_size parameter, which shall be set before calling this function.
     if (static_cast<int>(vocab_mask_dims[1]) != parameters_->vocab_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_vocab_mask' shape does not match with vocab_size, got ",
-                             vocab_mask_dims[0]);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'prefix_vocab_mask' shape[1] shall be vocab_size, got ", vocab_mask_dims[1]);
     }
 
     // store prefix vocab mask in parameters.
@@ -290,7 +300,8 @@ Status BeamSearchBase<T>::Initialize() {
 
   CHECK_SCALAR_INPUT(length_penalty, 6, true);
 
-  ORT_RETURN_IF(parameters_->num_return_sequences > parameters_->num_beams, "'num_return_sequences' has to be smaller or equal to 'num_beams'.");
+  ORT_RETURN_IF(parameters_->num_return_sequences > parameters_->num_beams,
+                "'num_return_sequences' has to be smaller or equal to 'num_beams'.");
 
   ORT_RETURN_IF_ERROR(CheckInputs(context_));
 
@@ -299,7 +310,7 @@ Status BeamSearchBase<T>::Initialize() {
 
   if (!IsCuda()) {
     // Logits processor is used in CPU only. In CUDA, cuda kernels are used instead.
-    // Initialize processsors after CheckInputs so that parameters_->vocab_mask is ready.
+    // Initialize processors after CheckInputs so that parameters_->vocab_mask is ready.
     logits_processors_.Init(*parameters_);
   }
 
@@ -333,15 +344,18 @@ Status BeamSearchBase<T>::GenerateNextToken(
   // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
   //    beam_state.beam_scores = beam_scores
   // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
-  ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores, beam_scores, cuda_stream_, DeviceCopyDirection::hostToDevice));
+  ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores,
+                                        beam_scores,
+                                        cuda_stream_,
+                                        DeviceCopyDirection::hostToDevice));
 
   beam_next_tokens = beam_scorer_->GetNextTokens();
   beam_indices = beam_scorer_->GetNextIndices();
 
 #ifdef DEBUG_BEAM_SEARCH
-  cpu_dumper_.Print("beam_scores after scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
-  cpu_dumper_.Print("beam_next_tokens after scorer", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
-  cpu_dumper_.Print("beam_indices after scorer", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
+  cpu_dumper_.Print("beam_scores from scorer", beam_scores.data(), parameters_->batch_size, parameters_->num_beams);
+  cpu_dumper_.Print("beam_next_tokens", beam_next_tokens.data(), parameters_->batch_size, parameters_->num_beams);
+  cpu_dumper_.Print("beam_indices", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
 #endif
 
   cpu_state.sequences.AppendNextTokenToSequences(beam_indices, beam_next_tokens);
