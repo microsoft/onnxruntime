@@ -107,11 +107,12 @@ bool TrySelectInputAndBiasWithAlignment(
   // confirm all dimensions starting from softmax axis match for input and mask
   bool singlebatch_shape_matches = true;
 
-  int axis = 1;
+  // default axis = -1 if opset >= 13
+  int axis = graph_utils::MatchesOpSinceVersion(softmax_node, {1, 11}) ? 1 : -1;
   auto& softmax_attr = softmax_node.GetAttributes();
   if (softmax_attr.find("axis") != softmax_attr.end()) {
     auto& axis_attr = softmax_attr.at("axis");
-    axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : 1;
+    axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : axis;
   }
 
   int N1 = input1->Shape()->dim_size();
