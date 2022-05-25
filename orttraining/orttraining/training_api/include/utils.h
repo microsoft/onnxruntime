@@ -1,4 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
+
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -7,13 +11,7 @@ namespace training {
 namespace api {
 namespace utils {
 
-// TODO: consolidate the gradient names with frontend tooling
-const std::vector<std::string> GRAD_SUFFIX{"_grad.accumulation.buffer", "_grad", "_grad.accumulation.out"};
-const std::string MOMENT_1_SUFFIX{".exp_avg"};
-const std::string MOMENT_2_SUFFIX{".exp_avg_sq"};
-const std::string LAZY_RESET_GRAD_NAME{"lazy_reset_grad"};
-// TODO: don't hard code the state names, should get the state names according to the optimizer types.
-const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
+
 
 // Get names of graph inputs and outputs
 void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
