@@ -47,8 +47,8 @@ struct OptimizerCheckpointState {
 
 enum OptimizerType {
   AdamW = 0,
-  Lamb = 1,
-  SGD = 3,
+  // More optimizers can be added later as:
+  // Lamb = 1,
 };
 
 struct Optimizer {
@@ -78,7 +78,7 @@ struct Optimizer {
   // Generates optimizer momentum states for applicable optimizer types
   Status GenerateMomentumNamedStates();
   // Constructs the ortvalue inputs to be fed to the graph
-  // each step: inputs_
+  // at each step
   Status ConstructInputs();
 
   // TODO: load this info from checkpoint

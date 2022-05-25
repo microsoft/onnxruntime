@@ -86,8 +86,8 @@ struct Module {
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
  private:
-  std::unique_ptr<onnxruntime::InferenceSession> train_sess_;
-  std::unique_ptr<onnxruntime::InferenceSession> eval_sess_;
+  std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
+  std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::vector<std::string> train_input_names_;
   std::vector<std::string> train_output_names_;
@@ -95,7 +95,7 @@ struct Module {
   std::vector<std::string> eval_output_names_;
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
-  bool lazy_reset_grad_ = false;
+  bool accumulate_gradient_ = true;
 };
 
 }  // namespace api

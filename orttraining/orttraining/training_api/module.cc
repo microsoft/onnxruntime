@@ -13,6 +13,9 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
+// TODO: consolidate with frontend tooling
+const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
+
 Status Parameter::AllocateGrad(const std::string& gradient_name, const SessionState& sess_state) {
   // assert param is allocated
   ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");
@@ -26,7 +29,6 @@ Status Parameter::ResetGrad() {
   if (!requires_grad_) {
     return Status::OK();
   }
-  // TODO: make use of lazy_reset_grad input instead. maybe rename method
   Tensor* p_tensor = gradient_.GetMutable<Tensor>();
   const auto& device = p_tensor->Location().device;
   if (device.Type() == OrtDevice::CPU) {
@@ -54,7 +56,6 @@ Module::Module(const std::string& train_model_path_or_bytes,
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
   if (eval_model_path_or_bytes.has_value()) {
-    // TODO:: do validation on eval inputs and outputs: eg order of user inputs, weights
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
     ORT_THROW_IF_ERROR(eval_sess_->Initialize());
@@ -71,7 +72,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     if (it != named_parameters_.end()) {
       param_input_names.emplace_back(input_name);
       weights_.push_back(it->second->Data());
-    } else if (input_name == utils::LAZY_RESET_GRAD_NAME) {
+    } else if (input_name == ACCUMULATE_GRAD_CONTROL_INPUT_NAME) {
       reset_grad_name.emplace_back(input_name);
     } else if (utils::GetParamNameFromGradient(input_name, param_name)) {
       grad_input_names.emplace_back(input_name);
@@ -89,6 +90,28 @@ Module::Module(const std::string& train_model_path_or_bytes,
   train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
   train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
+
+  // Eval model validation
+  if (nullptr != eval_sess_) {
+    // We are making certain assumptions: Like the order in which parameters
+    // occur will be same between train and eval graphs,
+    // and all the weights present in both graphs match.
+    std::vector<std::string> eval_user_input_names;
+    for (const auto& input_name : eval_input_names_) {
+      if (named_parameters_.find(input_name) != named_parameters_.end()) {
+        // it is a parameter
+        continue;
+      } else {
+        // It is a user input. We handle user inputs separately in eval 
+        // because eval graph might have different user inputs. 
+        // Eg if loss is not a part of eval graph, it won't have 
+        // certain inputs like targets
+        eval_user_input_names.emplace_back(input_name);
+      }
+    }
+    eval_input_names_ = eval_user_input_names;
+    eval_input_names_.insert(eval_input_names_.end(), param_input_names.begin(), param_input_names.end());
+  }
 }
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
@@ -100,9 +123,7 @@ std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
 }
 
 Status Module::ResetGrad() {
-  for (auto& it : named_parameters_) {
-    ORT_ENFORCE(it.second->ResetGrad().IsOK());
-  }
+  accumulate_gradient_ = false;
   return Status::OK();
 }
 
@@ -111,22 +132,29 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
   // TODO: consider maintaining this as ortvalue instead of bool
-  OrtValue reset_grad_input;
-  utils::WarpInOrtValue<bool>(lazy_reset_grad_, &reset_grad_input);
-  feeds.push_back(reset_grad_input);
+  OrtValue do_update_input;
+  utils::WarpInOrtValue<bool>(accumulate_gradient_, &do_update_input);
+  feeds.push_back(do_update_input);
 
   // TODO: need to filter out the grads from the output ortvalues
   auto status = train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs);
   ORT_THROW_IF_ERROR(status);
-  return status;
+
+  // Reset the flag after every step. In case the ResetGrad was called before running
+  // the current step, it will have done the effective resetting during the
+  // InPlaceAccumulator execution.
+  accumulate_gradient_ = true;
+
+  return Status::OK();
 }
 
 Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  ORT_ENFORCE(nullptr != eval_sess_);
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   auto status = eval_sess_->Run(RunOptions(), eval_input_names_, feeds, eval_output_names_, &outputs);
   ORT_THROW_IF_ERROR(status);
-  return status;
+  return Status::OK();
 }
 
 Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {

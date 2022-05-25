@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights :MOMENT_STATE_NAMESreserved.
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -12,6 +12,11 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
+// TODO: don't hard code the state names, should get the state names according to the optimizer types.
+// TODO: Conolidate with frontend tooling
+const std::vector<std::string> MOMENT_SUFFIXES{".exp_avg", ".exp_avg_sq"};
+const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
+
 Status Optimizer::GenerateMomentumNamedStates() {
   auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
   auto& optim_sess_state = optim_sess_->GetSessionState();
@@ -19,7 +24,7 @@ Status Optimizer::GenerateMomentumNamedStates() {
     if (pair.second->RequiresGrad()) {
       param_named_optimizer_states.insert({pair.first, ParameterOptimizerState()});
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
-      for (auto& state_name : utils::MOMENT_STATE_NAMES) {
+      for (auto& state_name : MOMENT_STATE_NAMES) {
         OrtValue param_state;
         ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(), "Error generating moment state for ", pair.first);
         cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
@@ -30,9 +35,9 @@ Status Optimizer::GenerateMomentumNamedStates() {
 }
 
 // Constructs the ortvalue inputs to be fed to the graph
-// each step
+// at each step
 Status Optimizer::ConstructInputs() {
-  if (optimizer_type_ == OptimizerType::AdamW || optimizer_type_ == OptimizerType::Lamb) {
+  if (optimizer_type_ == OptimizerType::AdamW) {
     auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
 
     std::string param_name;
@@ -49,16 +54,16 @@ Status Optimizer::ConstructInputs() {
         auto it = named_parameters_.find(param_name);
         ORT_ENFORCE(it != named_parameters_.end(), "Unknown param: ", param_name, " for field: ", name);
         inputs_.push_back(it->second->Gradient());
-      } else if (utils::GetParamNameFromSuffix(name, utils::MOMENT_1_SUFFIX, param_name)) {
+      } else if (utils::GetParamNameFromSuffix(name, MOMENT_SUFFIXES[0], param_name)) {
         moment1_names.push_back(name);
         auto it = named_parameters_.find(param_name);
         ORT_ENFORCE(it != named_parameters_.end(), "Unknown param: ", param_name, " for field: ", name);
-        inputs_.push_back(param_named_optimizer_states.at(param_name).momentum_named_states.at(utils::MOMENT_STATE_NAMES[0]));
-      } else if (utils::GetParamNameFromSuffix(name, utils::MOMENT_2_SUFFIX, param_name)) {
+        inputs_.push_back(param_named_optimizer_states.at(param_name).momentum_named_states.at(MOMENT_STATE_NAMES[0]));
+      } else if (utils::GetParamNameFromSuffix(name, MOMENT_SUFFIXES[1], param_name)) {
         moment2_names.push_back(name);
         auto it = named_parameters_.find(param_name);
         ORT_ENFORCE(it != named_parameters_.end(), "Unknown param: ", param_name, " for field: ", name);
-        inputs_.push_back(param_named_optimizer_states.at(param_name).momentum_named_states.at(utils::MOMENT_STATE_NAMES[1]));
+        inputs_.push_back(param_named_optimizer_states.at(param_name).momentum_named_states.at(MOMENT_STATE_NAMES[1]));
       } else {
         ORT_ENFORCE("This is an invalid graph. Optimizer graph contains unknown user input:", name);
       }
@@ -83,7 +88,7 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   ORT_ENFORCE(input_names_[0] == "learning_rate");  // TODO: make this better
   ORT_ENFORCE(input_names_[1] == "step");           // TODO: make this better
 
-  if (optimizer_type_ == OptimizerType::AdamW || optimizer_type_ == OptimizerType::Lamb) {
+  if (optimizer_type_ == OptimizerType::AdamW) {
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
   }
   ORT_THROW_IF_ERROR(ConstructInputs());
@@ -104,7 +109,7 @@ Status Optimizer::Step() {
   // TODO: need to remove hardcoding
   optimizer_state_.step = utils::GetValue<int64_t>(outputs[0]);
 
-  return status;
+  return Status::OK();
 }
 
 Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_state) {

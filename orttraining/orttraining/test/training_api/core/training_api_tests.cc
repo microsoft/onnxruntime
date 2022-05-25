@@ -117,7 +117,7 @@ TEST(TrainingApiTest, OptimStep) {
   OptimizerCheckpointState optimizer_states;
   ORT_ENFORCE(optim_sess->GetStateDict(optimizer_states).IsOK());
   ParameterOptimizerState& param_state = optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
-  OrtValue& moment_1 = param_state.momentum_named_states.at(MOMENT_STATE_NAMES[0]);
+  OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
 
   std::vector<float> moment_1_vec;
   OrtValueToVec(moment_1, moment_1_vec);
