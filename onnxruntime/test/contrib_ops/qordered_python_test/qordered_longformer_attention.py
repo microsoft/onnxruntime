@@ -22,7 +22,11 @@ def create_qordered_longformer_attention_graph():
             name='LongFormerAttention_quantized',
             domain='com.microsoft',
             num_heads=12,
-            window=8
+            window=8,
+            order_input=2,
+            order_output=2,
+            order_weight=3,
+            order_global_weight=3            
         ),
         
         helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output_quantized_longformer'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=2, order_output=1),
@@ -34,12 +38,7 @@ def create_qordered_longformer_attention_graph():
             name='LongFormerAttention_non_quantized',
             domain='com.microsoft',
             num_heads=12,
-            window=8,
-            order_input=2,
-            order_output=2,
-            order_weight=3,
-            order_global_weight=3
-        ),
+            window=8
     ]
 
 
