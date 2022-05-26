@@ -99,7 +99,7 @@ struct AdamTestInputOutput {
 };
 
 void AdamWTestLoop(
-    bool use_baseline_for_each_iteration, size_t total_step, float lr,
+    bool use_baseline_inputs_for_each_iteration, size_t total_step, float lr,
     float alpha, float beta, float epsilon, float weight_decay, int64_t adam_mode, int64_t correct_bias,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_weights,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_gradients,
@@ -108,7 +108,8 @@ void AdamWTestLoop(
     std::unordered_map<std::string, VectorInt64>& weight_name_shape_mapping,
     std::pair<float, float> weight_tolerance,
     std::pair<float, float> momentum_1_tolerance,
-    std::pair<float, float> momentum_2_tolerance);
+    std::pair<float, float> momentum_2_tolerance,
+    bool* update_signal = nullptr);
 
 }  // namespace optimizer
 }  // namespace test

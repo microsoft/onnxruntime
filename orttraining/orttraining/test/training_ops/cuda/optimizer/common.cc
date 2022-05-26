@@ -105,7 +105,7 @@ void GetPerStepInput(
 }
 
 void AdamWTestLoop(
-    bool use_baseline_for_each_iteration, size_t total_step, float lr,
+    bool use_baseline_inputs_for_each_iteration, size_t total_step, float lr,
     float alpha, float beta, float epsilon, float weight_decay, int64_t adam_mode, int64_t correct_bias,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_weights,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_gradients,
@@ -114,7 +114,8 @@ void AdamWTestLoop(
     std::unordered_map<std::string, VectorInt64>& weight_name_shape_mapping,
     std::pair<float, float> weight_tolerance,
     std::pair<float, float> momentum_1_tolerance,
-    std::pair<float, float> momentum_2_tolerance) {
+    std::pair<float, float> momentum_2_tolerance,
+    bool* update_signal) {
   std::vector<std::string> ordered_weight_names;
   for (auto it = weight_name_shape_mapping.begin(); it != weight_name_shape_mapping.end(); ++it) {
     const std::string& weight_name = it->first;
@@ -160,8 +161,9 @@ void AdamWTestLoop(
     }
 
     AdamTestInputOutput<float> data(
-        lr, increased_update_count, weight_tensor_infos, gradient_tensor_infos, momentum1_tensor_infos, momentum2_tensor_infos,
-        updated_weight_tensor_infos, updated_momentum1_tensor_infos, updated_momentum2_tensor_infos);
+        lr, increased_update_count, weight_tensor_infos, gradient_tensor_infos, momentum1_tensor_infos,
+        momentum2_tensor_infos, updated_weight_tensor_infos, updated_momentum1_tensor_infos,
+        updated_momentum2_tensor_infos);
 
     test.AddAttribute("alpha", alpha);
     test.AddAttribute("beta", beta);
@@ -177,20 +179,32 @@ void AdamWTestLoop(
     test.AddSeqInput("gradients", data.GradientSeq());
     test.AddSeqInput("momentums_1", data.Momentum_1_Seq());
     test.AddSeqInput("momentums_2", data.Momentum_2_Seq());
+    if (update_signal != nullptr) {
+      test.AddInput<bool>("update_signal", {}, {*update_signal});
+    }
 
     // Add test outputs as baseline.
-    test.AddOutput<int64_t>("updated_flag", {}, {1});
-    test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), weight_tolerance.first, weight_tolerance.second);
+    if (update_signal == nullptr || *update_signal) {
+      test.AddOutput<int64_t>("updated_flag", {}, {1});
+      test.AddSeqOutput("updated_weights", data.UpdatedWeightSeq(), weight_tolerance.first, weight_tolerance.second);
+      test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum_1_tolerance.first,
+                        momentum_1_tolerance.second);
+      test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum_2_tolerance.first,
+                        momentum_2_tolerance.second);
 
-    test.AddSeqOutput("updated_momentums_1", data.UpdatedMomentum_1_Seq(), momentum_1_tolerance.first,
-                      momentum_1_tolerance.second);
-
-    test.AddSeqOutput("updated_momentums_2", data.UpdatedMomentum_2_Seq(), momentum_2_tolerance.first,
-                      momentum_2_tolerance.second);
+    } else {
+      // No update happens.
+      test.AddOutput<int64_t>("updated_flag", {}, {0});
+      test.AddSeqOutput("updated_weights", data.WeightSeq(), weight_tolerance.first, weight_tolerance.second);
+      test.AddSeqOutput("updated_momentums_1", data.Momentum_1_Seq(), momentum_1_tolerance.first,
+                        momentum_1_tolerance.second);
+      test.AddSeqOutput("updated_momentums_2", data.Momentum_2_Seq(), momentum_2_tolerance.first,
+                        momentum_2_tolerance.second);
+    }
 
     test.Run();
 
-    if (use_baseline_for_each_iteration) {
+    if (use_baseline_inputs_for_each_iteration) {
       GetPerStepInput(weight_name_shape_mapping, named_weights, named_momentums_1, named_momentums_2,
                       step + 1, weights_to_train, momentum1_to_train, momentum2_to_train);
     } else {

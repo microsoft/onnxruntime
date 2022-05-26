@@ -29,7 +29,7 @@ typedef std::unordered_map<std::string, WeightDictType> TestDataDictType;
 
 #define ADAM_TEST_DATA_FOLDER ORT_TSTR("testdata/test_data_generation/adamw_test/")
 
-void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
+void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iteration, bool* update_signal = nullptr) {
   size_t total_step = 10;
   float lr = 1e-03f;
 
@@ -37,7 +37,7 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
   std::pair<float, float> momentum1_tolerance{1e-3f, 1e-6f};
   std::pair<float, float> momentum2_tolerance{1e-2f, 1e-7f};
 
-  if (!use_baseline_for_each_iteration) {
+  if (!use_baseline_inputs_for_each_iteration) {
     // Loose the tolerance as all states are maintained (without reloading from baseline) across different steps.
     momentum2_tolerance.first = 1e-3f;
     momentum2_tolerance.second = 1e-6f;
@@ -75,7 +75,7 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}};
 
-  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
                 static_cast<float>(0.9f),    // alpha
                 static_cast<float>(0.999f),  // beta
                 static_cast<float>(1e-8f),   // epsilon
@@ -87,18 +87,25 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration)
                 weight_name_shape_mapping,
                 weight_tolerance,
                 momentum1_tolerance,
-                momentum2_tolerance);
+                momentum2_tolerance,
+                update_signal);
 }
 
 TEST(AdamWTest, TorchAdamWSingleWeightTest_Loop10Steps) {
-  TorchAdamWSingleWeightTestLoop10Steps(false);
-}
-
-TEST(AdamWTest, TorchAdamWSingleWeightStrictTest_Loop10Steps) {
   TorchAdamWSingleWeightTestLoop10Steps(true);
 }
 
-void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iteration) {
+TEST(AdamWTest, TorchAdamWSingleWeightStrictTest_Loop10Steps) {
+  TorchAdamWSingleWeightTestLoop10Steps(false);
+}
+
+TEST(AdamWTest, TorchAdamWSingleWeightNoUpdateTest_Loop10Steps) {
+  bool update_signal = false;
+  TorchAdamWSingleWeightTestLoop10Steps(true, &update_signal);
+}
+
+void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_inputs_for_each_iteration,
+                                              bool* update_signal = nullptr) {
   size_t total_step = 10;
   float lr = 1e-03f;
 
@@ -106,7 +113,7 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iterati
   std::pair<float, float> momentum1_tolerance{1e-3f, 1e-6f};
   std::pair<float, float> momentum2_tolerance{1e-2f, 1e-7f};
 
-  if (!use_baseline_for_each_iteration) {
+  if (!use_baseline_inputs_for_each_iteration) {
     // Loose the tolerance as all states are maintained (without reloading from baseline) across different steps.
     momentum2_tolerance.first = 1e-3f;
     momentum2_tolerance.second = 1e-6f;
@@ -144,7 +151,7 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iterati
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
 
-  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
                 static_cast<float>(0.9f),    // alpha
                 static_cast<float>(0.999f),  // beta
                 static_cast<float>(1e-8f),   // epsilon
@@ -156,7 +163,8 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_for_each_iterati
                 weight_name_shape_mapping,
                 weight_tolerance,
                 momentum1_tolerance,
-                momentum2_tolerance);
+                momentum2_tolerance,
+                update_signal);
 }
 
 TEST(AdamWTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
@@ -167,7 +175,12 @@ TEST(AdamWTest, TorchAdamWMultipleWeightsStrictTest_Loop10Steps) {
   TorchAdamWMultipleWeightsTestLoop10Steps(false);
 }
 
-void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
+TEST(AdamWTest, TorchAdamWMultipleWeightsNoUpdateTest_Loop10Steps) {
+  bool update_signal = false;
+  TorchAdamWMultipleWeightsTestLoop10Steps(true, &update_signal);
+}
+
+void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iteration) {
   size_t total_step = 10;
   float lr = 1e-03f;
 
@@ -207,7 +220,7 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_for_each_iteration) {
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}};
 
-  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
                 static_cast<float>(0.9f),    // alpha
                 static_cast<float>(0.999f),  // beta
                 static_cast<float>(1e-6f),   // epsilon
@@ -231,7 +244,7 @@ TEST(AdamWTest, HFAdamWSingleWeightStrictTest_Loop10Steps) {
 }
 
 void HFAdamWMultipleWeightsTestLoop10Steps(
-    bool use_baseline_for_each_iteration) {
+    bool use_baseline_inputs_for_each_iteration) {
   size_t total_step = 10;
   float lr = 1e-03f;
 
@@ -239,7 +252,7 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
   std::pair<float, float> momentum1_tolerance{1e-3f, 1e-6f};
   std::pair<float, float> momentum2_tolerance{1e-2f, 1e-7f};
 
-  if (!use_baseline_for_each_iteration) {
+  if (!use_baseline_inputs_for_each_iteration) {
     // Loose the tolerance as all states are maintained (without reloading from baseline) across different steps.
     momentum2_tolerance.first = 1e-3f;
     momentum2_tolerance.second = 1e-6f;
@@ -276,7 +289,7 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
   std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
       {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
 
-  AdamWTestLoop(use_baseline_for_each_iteration, total_step, lr,
+  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
                 static_cast<float>(0.9f),    // alpha
                 static_cast<float>(0.999f),  // beta
                 static_cast<float>(1e-6f),   // epsilon

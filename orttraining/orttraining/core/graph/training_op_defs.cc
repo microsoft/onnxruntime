@@ -1360,6 +1360,10 @@ void RegisterTrainingOpSchemas() {
           "S_MOMENT",
           {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
           "Constrain momentums' types.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         size_t num_of_outputs = ctx.getNumOutputs();
         std::unordered_map<size_t, size_t> output_to_input_index_map{{0, 1}, {1, 2}, {2, 4}, {3, 5}};
