@@ -9,9 +9,8 @@
 import argparse
 import os
 import random
-import sys
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
@@ -27,7 +26,7 @@ def fake_input_ids_data(
         input_ids (TensorProto): graph input of the input_ids input tensor
         batch_size (int): batch size
         sequence_length (int): sequence length
-        dictionary_size (int): vacaburary size of dictionary
+        dictionary_size (int): vocabulary size of dictionary
 
     Returns:
         np.ndarray: the input tensor created
@@ -115,12 +114,12 @@ def fake_input_mask_data(
     return data
 
 
-def output_test_data(dir: str, inputs: np.ndarray):
+def output_test_data(dir: str, inputs: Dict[str, np.ndarray]):
     """Output input tensors of test data to a directory
 
     Args:
         dir (str): path of a directory
-        inputs (numpy.ndarray): numpy array
+        inputs (Dict[str, np.ndarray]): map from input name to value
     """
     if not os.path.exists(dir):
         try:
@@ -158,7 +157,7 @@ def fake_test_data(
         batch_size (int): batch size
         sequence_length (int): sequence length
         test_cases (int): number of test cases
-        dictionary_size (int): vocaburary size of dictionary for input_ids
+        dictionary_size (int): vocabulary size of dictionary for input_ids
         verbose (bool): print more information or not
         random_seed (int): random seed
         input_ids (TensorProto): graph input of input IDs
@@ -167,7 +166,8 @@ def fake_test_data(
         random_mask_length (bool): whether mask random number of words at the end
 
     Returns:
-        List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictonary with input name as key and a tensor as value
+        List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
+                                       with input name as key and a tensor as value
     """
     assert input_ids is not None
 
@@ -202,7 +202,7 @@ def generate_test_data(
     input_mask: TensorProto,
     random_mask_length: bool,
 ):
-    """Create given number of minput data for testing
+    """Create given number of input data for testing
 
     Args:
         batch_size (int): batch size
@@ -216,7 +216,8 @@ def generate_test_data(
         random_mask_length (bool): whether mask random number of words at the end
 
     Returns:
-        List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictonary with input name as key and a tensor as value
+        List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
+                                       with input name as key and a tensor as value
     """
     dictionary_size = 10000
     all_inputs = fake_test_data(
@@ -251,12 +252,13 @@ def get_graph_input_from_embed_node(onnx_model, embed_node, input_index):
 
 def find_bert_inputs(
     onnx_model: OnnxModel,
-    input_ids_name: str = None,
-    segment_ids_name: str = None,
-    input_mask_name: str = None,
-) -> Tuple[Union[None, np.ndarray], Union[None, np.ndarray], Union[None, np.ndarray]]:
+    input_ids_name: Optional[str] = None,
+    segment_ids_name: Optional[str] = None,
+    input_mask_name: Optional[str] = None,
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
     """Find graph inputs for BERT model.
-    First, we will deduce inputs from EmbedLayerNormalization node. If not found, we will guess the meaning of graph inputs based on naming.
+    First, we will deduce inputs from EmbedLayerNormalization node.
+    If not found, we will guess the meaning of graph inputs based on naming.
 
     Args:
         onnx_model (OnnxModel): onnx model object
@@ -266,10 +268,12 @@ def find_bert_inputs(
 
     Raises:
         ValueError: Graph does not have input named of input_ids_name or segment_ids_name or input_mask_name
-        ValueError: Exptected graph input number does not match with specifeid input_ids_name, segment_ids_name and input_mask_name
+        ValueError: Expected graph input number does not match with specified input_ids_name, segment_ids_name
+                    and input_mask_name
 
     Returns:
-        Tuple[Union[None, np.ndarray], Union[None, np.ndarray], Union[None, np.ndarray]]: input tensors of input_ids, segment_ids and input_mask
+        Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]: input tensors of input_ids,
+                                                                                 segment_ids and input_mask
     """
 
     graph_inputs = onnx_model.get_graph_inputs_excluding_initializers()
@@ -340,12 +344,13 @@ def find_bert_inputs(
 
 def get_bert_inputs(
     onnx_file: str,
-    input_ids_name: str = None,
-    segment_ids_name: str = None,
-    input_mask_name: str = None,
-):
+    input_ids_name: Optional[str] = None,
+    segment_ids_name: Optional[str] = None,
+    input_mask_name: Optional[str] = None,
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
     """Find graph inputs for BERT model.
-    First, we will deduce inputs from EmbedLayerNormalization node. If not found, we will guess the meaning of graph inputs based on naming.
+    First, we will deduce inputs from EmbedLayerNormalization node.
+    If not found, we will guess the meaning of graph inputs based on naming.
 
     Args:
         onnx_file (str): onnx model path
@@ -354,7 +359,8 @@ def get_bert_inputs(
         input_mask_name (str, optional): Name of graph input for attention mask. Defaults to None.
 
     Returns:
-        Tuple[Union[None, np.ndarray], Union[None, np.ndarray], Union[None, np.ndarray]]: input tensors of input_ids, segment_ids and input_mask
+        Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]: input tensors of input_ids,
+                                                                                 segment_ids and input_mask
     """
     model = ModelProto()
     with open(onnx_file, "rb") as f:
@@ -447,9 +453,9 @@ def create_and_save_test_data(
     test_cases: int,
     seed: int,
     verbose: bool,
-    input_ids_name: str,
-    segment_ids_name: str,
-    input_mask_name: str,
+    input_ids_name: Optional[str],
+    segment_ids_name: Optional[str],
+    input_mask_name: Optional[str],
     only_input_tensors: bool,
 ):
     """Create test data for a model, and save test data to a directory.

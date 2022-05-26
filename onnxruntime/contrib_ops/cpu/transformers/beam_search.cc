@@ -9,6 +9,7 @@
 #pragma warning(disable : 4996)
 #endif
 
+#include <memory>
 #include <assert.h>
 #include <functional>
 #include "core/common/safeint.h"
@@ -61,12 +62,12 @@ void BeamSearch::Init(const OpKernelInfo& info) {
   // Check model_type 0 (GPT-2) and 1 (encoder-decoder like T5)
   ORT_ENFORCE(parameters_.model_type == 0 || parameters_.model_type == 1);
 
-  // Make sure the decoder attribute was present even though we don't need it here.
   ONNX_NAMESPACE::GraphProto proto;
   if (parameters_.model_type != 0) {
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
+  // Make sure the decoder attribute was present even though we don't need it here.
   ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("decoder", &proto).IsOK());
   ORT_IGNORE_RETURN_VALUE(proto);
 }

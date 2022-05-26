@@ -11,9 +11,6 @@
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 #include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
-
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
@@ -42,7 +39,7 @@ namespace transformers {
 
     Note:
       B = batch_size * num_beams
-      Data type of input or output is float or float16 if not specifed.
+      Data type of input or output is float or float16 if not specified.
 */
 
 Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,

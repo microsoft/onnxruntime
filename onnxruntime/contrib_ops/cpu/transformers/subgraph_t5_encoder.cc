@@ -10,9 +10,6 @@
 #include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
-
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
@@ -39,7 +36,7 @@ namespace transformers {
     Note:
       Here, B = batch_size * num_beams since we expand the inputs.
       Ideally, we could use B=batch_size and expand the outputs with a factor of num_beams.
-      Data type of input or output is float or float16 if not specifed.
+      Data type of input or output is float or float16 if not specified.
 */
 
 Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,

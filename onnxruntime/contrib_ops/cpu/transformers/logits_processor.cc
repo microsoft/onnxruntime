@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
 #include <assert.h>
 #include "core/common/safeint.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"

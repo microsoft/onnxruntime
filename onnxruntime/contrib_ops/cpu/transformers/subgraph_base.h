@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <vector>
+#include <string>
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"

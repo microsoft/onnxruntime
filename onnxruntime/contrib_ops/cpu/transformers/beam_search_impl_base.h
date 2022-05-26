@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <memory>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {

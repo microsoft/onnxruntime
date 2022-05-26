@@ -10,9 +10,6 @@
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
-
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {

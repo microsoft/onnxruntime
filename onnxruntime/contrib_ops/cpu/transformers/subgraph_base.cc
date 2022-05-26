@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <utility>
 #include "core/framework/framework_common.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
@@ -9,9 +10,6 @@
 #include "gsl/gsl"
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
-
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace contrib {
