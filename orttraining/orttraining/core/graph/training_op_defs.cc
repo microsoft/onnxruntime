@@ -153,14 +153,13 @@ bool SCELossInternalFunBuilder(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
     FunctionProto& functionProto) {
-
   bool hasWeight = ctx.hasInput(2);
   bool hasIgnoreIndex = ctx.hasInput(3);
 
   FunctionBuilder builder(functionProto);
 
-  builder //
-      .Const("Shape3D", std::vector<int64_t>({0, 0, -1})) //
+  builder                                                  //
+      .Const("Shape3D", std::vector<int64_t>({0, 0, -1}))  //
       .Add(R"(
         X_NCD = Reshape (scores, Shape3D)
         X_NDC = Transpose <perm = [0, 2, 1]> (X_NCD)
@@ -179,11 +178,10 @@ bool SCELossInternalFunBuilder(
       builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
     else
       builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights)");
+  else if (hasIgnoreIndex)
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
   else
-    if (hasIgnoreIndex)
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
-    else
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
 
   schema.BuildFunction(functionProto);
   return true;
@@ -363,7 +361,7 @@ bool BuildNllLossInternalFunctionHelper(
   std::vector<FunctionBodyHelper::AttributeProtoWrapper> axis_attr = {};
   if (opset_version <= 12)
     axis_attr.push_back(MakeAttribute("axes", std::vector<int64_t>({1})));
-  auto make_input = [opset_version](const char* arg) { 
+  auto make_input = [opset_version](const char* arg) {
     return (opset_version <= 12) ? std::vector<std::string>{arg} : std::vector<std::string>{arg, "const_one_64"};
   };
   body.push_back(
@@ -380,10 +378,10 @@ bool BuildNllLossInternalFunctionHelper(
 
   if (opset_version > 12)
     body.push_back(
-      {{"const_one_64"},
-       "Constant",
-       {},
-       {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
+        {{"const_one_64"},
+         "Constant",
+         {},
+         {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
 
   body.push_back(
       {{"expanded_target"},
@@ -1291,6 +1289,31 @@ void RegisterTrainingOpSchemas() {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AccumulateGradient)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("in-place accumulator for tensors")
+      .Input(0, "buffer", "historical result of accumulator", "T1")
+      .Input(1, "gradient", "the value that will be added to the accumulator", "T2")
+      .Output(0, "updated_flag", "This signal indicates if tensor should be updated", "T3")
+      .Output(1, "updated_buffer", "updated result of accumulator", "T1", OpSchema::Optional)
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T3",
+          {"tensor(int64)"},
+          "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
+        updateOutputShape(ctx, 0, {});
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1666,9 +1689,9 @@ Example 4:
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
-        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-          return SCELossGradFunBuilder (true, ctx, schema, functionProto);
-        })
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(true, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
@@ -3631,7 +3654,6 @@ Return true if all elements are true and false otherwise.
       .SetContextDependentFunctionBodyBuilder(SCELossInternalFunBuilder)
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
 
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternalGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3657,9 +3679,9 @@ Return true if all elements are true and false otherwise.
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
-        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-          return SCELossGradFunBuilder  (false, ctx, schema, functionProto);
-        })
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(false, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternalGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal)
@@ -3688,7 +3710,7 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
 
-    ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))

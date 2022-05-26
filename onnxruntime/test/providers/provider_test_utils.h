@@ -297,9 +297,12 @@ class OpTester {
 
   template <typename T>
   void AddInput(const char* name, std::initializer_list<int64_t> dims, std::initializer_list<T> values,
-                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr,
+                bool is_strided_tensor = false, std::initializer_list<int64_t> strides = {}) {
     const DimsVariant dims_var = std::vector<int64_t>(dims);
-    AddData(input_data_, name, dims_var, values.begin(), values.size(), is_initializer, false, dim_params);
+    const DimsVariant strided_var = std::vector<int64_t>(strides);
+    AddData(input_data_, name, dims_var, values.begin(), values.size(), is_initializer, false, dim_params,
+            0.0f, 0.0f, false, is_strided_tensor, strided_var);
   }
 
   template <typename T>
@@ -938,7 +941,8 @@ class OpTester {
   void AddData(std::vector<Data>& data, const char* name, const DimsVariant& dims_var, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
                const std::vector<std::string>* dim_params = nullptr,
-               float rel_error = 0.0f, float abs_error = 0.0f, bool is_optional_type_tensor = false) {
+               float rel_error = 0.0f, float abs_error = 0.0f, bool is_optional_type_tensor = false,
+               bool is_strided_tensor = false, const DimsVariant& strides = {}) {
     auto dims = ToDimsSpan(dims_var);
 #if defined(DISABLE_OPTIONAL_TYPE)
     if (is_optional_type_tensor) {
@@ -954,26 +958,43 @@ class OpTester {
       if (!is_optional_type_tensor || (is_optional_type_tensor && values != nullptr)) {
         // In case values is nullptr for optional type tensor, it means we are creating
         // an optional type tensor which is None and we hence skip values count validation
-        ORT_ENFORCE(shape.Size() == values_count,
-                    values_count, " input values doesn't match tensor size of ",
-                    shape.Size());
+        if (!is_strided_tensor) {
+          ORT_ENFORCE(shape.Size() == values_count,
+                      values_count, " input values doesn't match tensor size of ",
+                      shape.Size());
+        }
 
         // If it is an optional tensor type with no values (i.e.) None,
         // we won't even pass it in to Run() as part of the feeds,
         // so we don't even have to create a Tensor.
         // Conversely, if it is an optional tensor type with values,
         // we pass it in as a regular tensor.
-        auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-        Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
 
-        // values *could* be nullptr for a non-optional tensor if it is empty.
-        // Update the data buffer of the input only if values if non-nullptr.
-        if (values != nullptr) {
-          auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
-          for (int64_t i = 0; i < values_count; i++) {
-            data_ptr[i] = values[i];
+        auto element_type = DataTypeImpl::GetType<T>();
+        auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+        std::unique_ptr<Tensor> p_tensor;
+        if (is_strided_tensor) {
+          //  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
+          //  ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
+          p_tensor = std::move(std::make_unique<Tensor>(element_type, shape, const_cast<void*>(reinterpret_cast<const void*>(values)), allocator, 0, ToDimsSpan(strides)));
+        } else {
+          p_tensor = std::move(std::make_unique<Tensor>(element_type, shape, allocator));
+          // Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
+
+          // values *could* be nullptr for a non-optional tensor if it is empty.
+          // Update the data buffer of the input only if values is non-nullptr.
+          if (values != nullptr) {
+            // auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
+            // for (int64_t i = 0; i < values_count; i++) {
+            //   data_ptr[i] = values[i];
+            // }
+            memcpy(p_tensor->MutableDataRaw(), reinterpret_cast<const void*>(values), p_tensor->SizeInBytes());
           }
         }
+
+        value.Init(p_tensor.release(),
+                   DataTypeImpl::GetType<Tensor>(),
+                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
       } else {  // "None" Tensor OrtValue. Initialize appropriately.
         auto ml_tensor = DataTypeImpl::GetType<Tensor>();
         value.Init(nullptr, ml_tensor, ml_tensor->GetDeleteFunc());

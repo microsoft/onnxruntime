@@ -221,6 +221,10 @@ void RunTraining(const TestRunnerParameters& params) {
 }
 
 int main(int argc, char* argv[]) {
+  // Have this to mitigate the issue
+  // "Attempt to use DefaultLogger but none has been registered"
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner");
+
   TestRunnerParameters params;
   EnforceCheck(ParseArguments(argc, argv, params), "Parse arguments failed.");
 
