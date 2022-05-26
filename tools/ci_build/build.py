@@ -460,6 +460,8 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.",
     )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
+    parser.add_argument("--use_snpe", action='store_true', help="Build with SNPE support.")
+    parser.add_argument("--snpe_root", help="Path to SNPE SDK root.")
     parser.add_argument("--use_nnapi", action="store_true", help="Build with NNAPI support.")
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
@@ -776,6 +778,7 @@ def generate_build_tree(
     acl_libs,
     armnn_home,
     armnn_libs,
+    snpe_root,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -944,6 +947,9 @@ def generate_build_tree(
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
+    if snpe_root and os.path.exists(snpe_root):
+        cmake_args += ["-DSNPE_ROOT=" + snpe_root]
+
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
     if args.use_openvino:
@@ -1049,6 +1055,9 @@ def generate_build_tree(
 
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
+
+    if args.use_snpe:
+        cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
     if args.ios:
         needed_args = [
@@ -2386,6 +2395,8 @@ def main():
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
 
+    snpe_root = args.snpe_root
+
     acl_home = args.acl_home
     acl_libs = args.acl_libs
 
@@ -2601,6 +2612,7 @@ def main():
             acl_libs,
             armnn_home,
             armnn_libs,
+            snpe_root,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,

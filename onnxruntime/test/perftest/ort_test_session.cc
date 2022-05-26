@@ -331,6 +331,64 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kSnpeExecutionProvider) {
+#ifdef USE_SNPE
+#ifdef _MSC_VER
+    std::string option_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(option_string);
+    std::string token;
+
+    std::vector<const char*> snpe_option_keys;
+    std::vector<const char*> snpe_option_values;
+    std::vector<std::string> values;
+
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [SNPE] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      std::string key(token.substr(0, pos));
+      std::string value(token.substr(pos + 1));
+
+      if (key == "runtime") {
+        std::set<std::string> snpe_supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
+        if (snpe_supported_runtime.find(value) != snpe_supported_runtime.end()) {
+          snpe_option_keys.push_back("runtime");
+          values.push_back(value);
+        } else {
+          ORT_THROW("[ERROR] [SNPE] Wrong configuration value for the key 'runtime'. \
+                     select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n");
+        }
+      } else if (key == "priority") {
+        snpe_option_keys.push_back("priority");
+        values.push_back(value);
+      } else if (key == "buffer_type") {
+        std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
+        if (supported_buffer_type.find(value) != supported_buffer_type.end()) {
+          snpe_option_keys.push_back("buffer_type");
+          values.push_back(value);
+        } else {
+          ORT_THROW("[ERROR] [SNPE] Wrong configuration value for the key 'buffer_type'. \
+                     select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n");
+        }
+      } else {
+        ORT_THROW("[ERROR] [SNPE] wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+      }
+    }
+    for (auto& it : values) {
+      snpe_option_values.push_back(it.c_str());
+    }
+    session_options.AppendExecutionProvider_SNPE(snpe_option_keys.data(), snpe_option_values.data(), snpe_option_keys.size());
+#else
+    ORT_THROW("SNPE is not supported in this build\n");
+#endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
     uint32_t nnapi_flags = 0;

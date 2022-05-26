@@ -2379,6 +2379,42 @@ void RegisterContribSchemas() {
 
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for SNPE.")
+      .Attr("DLC", "payload of the SNPE DLC file.", AttributeProto::STRING)
+      .Attr("snpe_version", "(Optional) SNPE version used to convert the model.", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr("target_device", "(Optional) Target device like CPU, DSP, etc.", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(
+          0,
+          "inputs",
+          "List of tensors for SNPE DLC input",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "outputs",
+          "One or more outputs, list of tensors for DLC output",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
