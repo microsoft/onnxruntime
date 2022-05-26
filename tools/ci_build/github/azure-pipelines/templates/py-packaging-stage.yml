@@ -784,6 +784,12 @@ stages:
 
       - script: |
           set -ex
+          py_ver=$(PythonVersion)
+          echo $py_ver
+        displayName: 'Test Script'
+
+      - script: |
+          set -ex
           uname -m
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac machine info'
@@ -807,7 +813,7 @@ stages:
       - script: |
           set -ex
           pushd .
-          py_ver=echo $(PythonVersion)
+          py_ver=$(PythonVersion)
           py_ver_nodot=${py_ver//.}
           mac_ver=11_0
           cd '$(Build.BinariesDirectory)/Release/dist'
