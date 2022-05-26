@@ -68,6 +68,8 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
 
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "aa");
+
   // For Debugging...
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
