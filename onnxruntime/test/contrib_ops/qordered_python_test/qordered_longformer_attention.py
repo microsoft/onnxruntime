@@ -79,6 +79,7 @@ sess_options = SessionOptions()
 ort_session = InferenceSession(onnx_model_str, sess_options, providers=['CUDAExecutionProvider'])
 
 i = numpy.random.randint(10, 20, [1, 32, 768]).astype('float32')
+print(i)
 ort_inputs = {
     'input' : i
 }
