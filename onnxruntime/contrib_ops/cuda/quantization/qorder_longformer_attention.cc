@@ -64,6 +64,7 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
                                               "QOrderedLongformerAttention: un-supported order for order_global_weight");
   order_output_ = GetCublasLtOrderAttr(info, "order_output", 1, (const cublasLtOrder_t*)&order_input_,
                                        "QOrderedLongformerAttention: oder_output must be same as order_input");
+  ORT_THROW("a");
 }
 
 Status
