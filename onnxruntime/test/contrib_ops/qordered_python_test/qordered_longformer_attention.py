@@ -70,4 +70,4 @@ ort_inputs = {
 }
 
 ort_output = ort_session.run(None, ort_inputs)
-print(prt_outputs[0])
+print(ort_outputs[0])
