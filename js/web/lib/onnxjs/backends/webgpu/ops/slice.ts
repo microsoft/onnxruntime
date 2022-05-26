@@ -7,7 +7,9 @@ import {NUMBER_TYPES, OperatorAsyncImplementation, OperatorInitialization} from 
 import {Tensor} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {GpuDataType, ProgramInfo} from '../types';
+
+import {WORKGROUP_SIZE} from './common';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly axes: number[];
@@ -17,8 +19,7 @@ export interface SliceAttributes extends AttributeWithCacheKey {
 
 const sliceProgramMetadata = {
   name: 'Slice',
-  inputNames: ['A'],
-  inputTypes: [TextureType.unpacked]
+  inputTypes: [GpuDataType.default]
 };
 
 export const slice: OperatorAsyncImplementation<SliceAttributes> = async(
@@ -40,7 +41,7 @@ export const parseSliceAttributes: OperatorInitialization<SliceAttributes> = (no
   return createAttributeWithCacheKey({starts, ends, axes});
 };
 
-const createSliceProgramInfo = (input: Tensor, attributes: SliceAttributes): ProgramInfo => {
+const createSliceProgramInfo = (input: Tensor, attributes: SliceAttributes, dataType = 'f32'): ProgramInfo => {
   const axes = (attributes.axes.length === 0) ? input.dims.slice(0).map((val, i) => i) : attributes.axes;
   const normalizedAxes = ShapeUtil.normalizeAxes(axes, input.dims.length);
   const starts = attributes.starts.map((start, i) => {
@@ -58,24 +59,39 @@ const createSliceProgramInfo = (input: Tensor, attributes: SliceAttributes): Pro
 
   const outputShape = input.dims.slice();
 
-  const sliceOps: string[] = [];
+  const sliceOps: Array<[number, number]> = [];
   for (let i = 0; i < normalizedAxes.length; i++) {
     outputShape[normalizedAxes[i]] = ends[i] - starts[i];
     if (starts[i] > 0) {
-      sliceOps.push(`outputIdx[${normalizedAxes[i]}] += ${starts[i]};`);
+      // sliceOps.push(`outputIdx[${normalizedAxes[i]}] += ${starts[i]};`);
+      sliceOps.push([normalizedAxes[i], starts[i]]);
     }  // else { sliceOps.push(`outputIdx[${normalizedAxes[i]}] += 0;`); }
   }
 
-  const rank = outputShape.length;
+  const outputSize = ShapeUtil.size(outputShape);
+  const outputStrides = ShapeUtil.computeStrides(outputShape);
   const shaderSource = `
-      float process(int outputIdx[${rank}]) {
-        ${sliceOps.join('\n      ')}
-        return _A(outputIdx);
-      }`;
+  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
+  @group(0) @binding(1) var<storage, write> output : array<${dataType}>;
+
+  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+
+    // Guard against out-of-bounds work group sizes
+    if (global_id.x >= ${outputSize}u) {
+      return;
+    }
+
+    var offset = global_id.x;
+    ${sliceOps.map(i => `offset += ${i[1]}u * ${outputStrides[i[0]]}u;`).join('')}
+    output[global_id.x] = input[offset];
+  }`;
   return {
     ...sliceProgramMetadata,
-    output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
-    shaderSource
+    outputs: [{dims: outputShape, type: input.type, gpuDataType: GpuDataType.default}],
+    shaderSource,
+    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
   };
 };
 
@@ -88,8 +104,7 @@ const validateInputs = (inputs: Tensor[]): void => {
   }
 };
 
-export const sliceV10: OperatorAsyncImplementation<SliceAttributes> =
-    async(inferenceHandler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> => {
+export const sliceV10 = async(inferenceHandler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> => {
   validateInputsV10(inputs);
   const attributes = generateSliceAttributesFromInputs(inferenceHandler, inputs);
   return inferenceHandler.run(

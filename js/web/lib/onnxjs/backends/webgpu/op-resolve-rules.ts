@@ -8,6 +8,7 @@ import {concat, parseConcatAttributes} from './ops/concat';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {reshape} from './ops/reshape';
+import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
 import * as unaryOps from './ops/unary-op';
 import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
 
@@ -63,8 +64,8 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['Resize', '', '11+', resize, parseResizeAttributesV11],
   // ['Shape', '', '1+', shape],
   ['Sigmoid', '', '6+', unaryOps.sigmoid], ['Sin', '', '7+', unaryOps.sin],
-  // ['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
-  // ['Slice', '', '1-9', slice, parseSliceAttributes],
+  ['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
+  ['Slice', '', '1-9', slice, parseSliceAttributes],
   // // The "semantic" meaning of axis has changed in opset-13.
   // ['Softmax', '', '1-12', softmax, parseSoftmaxAttributes],
   // ['Softmax', '', '13+', softmaxV13, parseSoftmaxAttributesV13],
