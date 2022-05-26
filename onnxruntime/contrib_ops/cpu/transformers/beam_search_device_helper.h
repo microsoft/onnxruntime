@@ -10,8 +10,8 @@
 #endif
 
 #include "gsl/gsl"
-#include "contrib_ops/cpu/transformers/logits_processor.h"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "./logits_processor.h"
+#include "./beam_search_shared.h"
 
 namespace onnxruntime {
 class IExecutionProvider;

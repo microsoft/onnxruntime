@@ -4,7 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "cub/util_type.cuh"
-#include "contrib_ops/cuda/transformers/beam_search_impl.h"
+#include "./beam_search_impl.h"
 
 namespace onnxruntime {
 namespace contrib {

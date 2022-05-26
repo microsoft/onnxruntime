@@ -10,7 +10,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
-#include "contrib_ops/cpu/transformers/beam_search_scorer.h"
+#include "./beam_search_scorer.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/safeint.h"
-#include "contrib_ops/cpu/transformers/sequences.h"
+#include "./sequences.h"
 
 namespace onnxruntime {
 namespace contrib {

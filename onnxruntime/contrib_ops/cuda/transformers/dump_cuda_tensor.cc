@@ -4,7 +4,7 @@
 #include <cuda_runtime_api.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/framework/print_tensor_utils.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "./dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {

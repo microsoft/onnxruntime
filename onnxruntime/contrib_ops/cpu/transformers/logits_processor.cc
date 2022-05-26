@@ -4,8 +4,8 @@
 #include <memory>
 #include <assert.h>
 #include "core/common/safeint.h"
-#include "contrib_ops/cpu/transformers/logits_processor.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include "./logits_processor.h"
+#include "./dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
+#include "./beam_search_impl_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -128,7 +128,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   this->parameters_->output_scores = (output_scores != nullptr);
 
   std::vector<OrtValue> feeds;
-  // TODO: allocate fetches. use ping-pong buffers for past state.
+  // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.
   std::vector<OrtValue> fetches;
 
   // Initialize resources

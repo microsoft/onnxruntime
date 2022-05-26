@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <vector>
+#include <algorithm>
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/common/safeint.h"
 #include "gsl/gsl"
-#include "contrib_ops/cpu/transformers/sequences.h"
-#include "contrib_ops/cpu/transformers/beam_search_scorer.h"
-#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
+#include "./sequences.h"
+#include "./beam_search_scorer.h"
+#include "./beam_search_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -121,7 +123,7 @@ Status CreateGptInputs(
   }
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
-  // TODO: Try expand outputs after first subgraph call instead. That may get better performance.
+  // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
   expanded_input_ids = ExpandInputs<int32_t>(input_ids, num_beams, allocator);
   expanded_position_ids = ExpandInputs<int32_t>(position_ids, num_beams, allocator);
   expanded_attention_mask = ExpandInputs<int32_t>(attention_mask, num_beams, allocator);
@@ -252,7 +254,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
-  // TODO: use thread pool to parallel
+  // TODO(tianleiwu): use thread pool to parallel
   int offset = 0;
   int batch_beam_index = 0;
   for (int i = 0; i < batch_size; i++) {
@@ -502,7 +504,7 @@ Status CreateEncoderInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // for encoder_input_ids and encoder_attention_mask
-  // TODO: Try expand outputs after first subgraph call instead. That may get better performance.
+  // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
   expanded_encoder_input_ids = ExpandInputs<int64_t>(encoder_input_ids, num_beams, allocator);
   expanded_encoder_attention_mask = ExpandInputs<int64_t>(encoder_attention_mask, num_beams, allocator);
 
@@ -534,7 +536,7 @@ Status InitDecoderFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper) {
-  // TODO: remove this function since it is not used
+  // TODO(tianleiwu): remove this function since it is not used
   ORT_UNUSED_PARAMETER(allocator);
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(encoder_outputs);
@@ -606,7 +608,7 @@ Status UpdateDecoderFeeds(
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
 
-  // TODO: Reuse buffer for input_ids to reduce memory allocation.
+  // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   OrtValue input_ids;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), input_ids_shape, allocator, input_ids);
   int64_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
@@ -623,7 +625,8 @@ Status UpdateDecoderFeeds(
 
   // Update past state
   ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(1 + num_present_tensors));
-  if (num_beams == 1) {  // TODO: remove this once GreedySearch operator is available.
+  // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
+  if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
     for (int i = 1; i < 1 + num_present_tensors; ++i) {
       next_inputs[i + 2] = last_outputs[i];

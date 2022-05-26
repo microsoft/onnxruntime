@@ -8,8 +8,8 @@
 #include "core/framework/ort_value.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include <cuda_runtime.h>
-#include "contrib_ops/cuda/transformers/beam_search_impl.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "./beam_search_impl.h"
+#include "./dump_cuda_tensor.h"
 
 #ifdef DEBUG_BEAM_SEARCH
 using namespace onnxruntime::contrib::cuda::transformers;

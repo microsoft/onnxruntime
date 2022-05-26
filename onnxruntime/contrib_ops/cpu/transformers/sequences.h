@@ -4,7 +4,7 @@
 #pragma once
 
 #include "gsl/gsl"
-#include "contrib_ops/cpu/transformers/beam_search_shared.h"
+#include "./beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
