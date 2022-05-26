@@ -45,17 +45,17 @@ def create_qordered_longformer_attention_graph():
 
 
     initializers = [
-        numpy_helper.from_array(numpy.ones((768, 2304), dtype='float32'), name='weight'),      
+        numpy_helper.from_array(numpy.ones((7 68, 2304), dtype='float32'), name='weight'),      
         numpy_helper.from_array(numpy.zeros((2304), dtype='float32'), name='bias'),
         numpy_helper.from_array(numpy.ones((768, 2304), dtype='float32'), name='global_weight'),        
         numpy_helper.from_array(numpy.zeros((2304), dtype='float32'), name='global_bias'),
-        numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_input'),
-        numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_weight'),
-        numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_global_weight'),        
-        numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_bias'),
-        numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_qkv_gemm'),
-        numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_global_gemm'),
-        numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_output'),      
+        numpy_helper.from_array(numpy.array(2/256, dtype='float32'), name='scale_input'),
+        numpy_helper.from_array(numpy.array(2/256, dtype='float32'), name='scale_weight'),
+        numpy_helper.from_array(numpy.array(2/256, dtype='float32'), name='scale_global_weight'),        
+        numpy_helper.from_array(numpy.array(2/256, dtype='float32'), name='scale_bias'),
+        numpy_helper.from_array(numpy.array(2/256, dtype='float32'), name='scale_qkv_gemm'),
+        numpy_helper.from_array(numpy.array(2/256, dtype='float32'), name='scale_global_gemm'),
+        numpy_helper.from_array(numpy.array(2/256, dtype='float32'), name='scale_output'),      
         numpy_helper.from_array(numpy.zeros((1, 32), dtype='float16'), name='mask'),
         numpy_helper.from_array(numpy.zeros((1, 32), dtype='float32'), name='mask_float32'),        
         numpy_helper.from_array(numpy.zeros((1, 32), dtype='int32'), name='global'),
@@ -78,7 +78,7 @@ from onnxruntime import SessionOptions, InferenceSession
 sess_options = SessionOptions()
 ort_session = InferenceSession(onnx_model_str, sess_options, providers=['CUDAExecutionProvider'])
 
-i = numpy.random.randint(10, 20, [1, 32, 768]).astype('float32')
+i = numpy.random.randint(-1, 1, size=(1, 32, 768)).astype('float32')
 print(i)
 ort_inputs = {
     'input' : i
