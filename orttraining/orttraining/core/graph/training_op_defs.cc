@@ -1297,6 +1297,10 @@ void RegisterTrainingOpSchemas() {
       .Input(3, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
       .Input(4, "momentums_1", "Sequence of exponentially averaged historical gradients.", "S_MOMENT")
       .Input(5, "momentums_2", "Sequence of exponentially averaged historical squared gradients.", "S_MOMENT")
+      .Input(6, "update_signal",
+             "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
+             " in mixed precision training. ",
+             "T_BOOL", OpSchema::Optional)
       .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
       .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
       .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)

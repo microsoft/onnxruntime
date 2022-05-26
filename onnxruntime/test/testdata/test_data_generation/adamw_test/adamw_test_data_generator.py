@@ -48,15 +48,7 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 
     def _torch_tensor_to_str(torch_tensor):
         """Torch tensor to string."""
-        # return [f"{v}f" for v in torch_tensor.detach().cpu().numpy().round(10).astype(str).tolist()]
         return torch_tensor.detach().cpu().numpy().tolist()
-
-    def _str_list_to_str(val_list):
-        """List of string combined into single string."""
-        str_ret = ""
-        for val in val_list:
-            str_ret += val.replace("[", "{").replace("]", "},")
-        return str_ret
 
     def _build_param_index_to_name_mapping(model, map_result):
         """Build index to name mapping, which is used to retrieve data from optimizer group."""

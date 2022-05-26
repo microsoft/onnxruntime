@@ -18,6 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 6)
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .Alias(2, 1) /* Return updated weights in-place */
         .Alias(4, 2) /* Return updated moment-1 in-place */
@@ -125,20 +126,26 @@ Status AdamWOptimizer::ComputeInternal(OpKernelContext* ctx) const {
   TensorSeq* updated_momentums_1 = ctx->Output<TensorSeq>(2);
   TensorSeq* updated_momentums_2 = ctx->Output<TensorSeq>(3);
 
-  typedef typename ToCudaType<float>::MappedType CudaT_FLOAT;
-  typedef AdamWMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
-  TFunctor functor;
-
-  const float* lr_ptr = learning_rate->template Data<float>();
-  const int64_t* step_ptr = step->template Data<int64_t>();
-  ORT_ENFORCE(lr_ptr && step_ptr);
-
   int64_t* updated_flag_ptr = updated_flag->template MutableData<int64_t>();
-  *updated_flag_ptr = 1;
 
-  launch_multi_tensor_functor<MTA_ADAMW_GROUP_SIZE, TFunctor>(
-      Stream(), MTA_ADAMW_CHUNK_SIZE, tensor_sizes, grouped_tensor_pointers, functor,
-      alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
+  // Currently placed on CPU, need revisit when we had mixed precision training requirement.
+  const Tensor* update_signal = ctx->Input<Tensor>(6);
+  if (update_signal == nullptr || *update_signal->template Data<bool>()) {
+    typedef typename ToCudaType<float>::MappedType CudaT_FLOAT;
+    typedef AdamWMTAFunctor<CudaT_FLOAT, CudaT_FLOAT, CudaT_FLOAT> TFunctor;
+    TFunctor functor;
+
+    const float* lr_ptr = learning_rate->template Data<float>();
+    const int64_t* step_ptr = step->template Data<int64_t>();
+    ORT_ENFORCE(lr_ptr && step_ptr);
+
+    launch_multi_tensor_functor<MTA_ADAMW_GROUP_SIZE, TFunctor>(
+        Stream(), MTA_ADAMW_CHUNK_SIZE, tensor_sizes, grouped_tensor_pointers, functor,
+        alpha_, beta_, epsilon_, *lr_ptr, weight_decay_, adam_mode_, correct_bias_, *step_ptr);
+    *updated_flag_ptr = 1;
+  } else {
+    *updated_flag_ptr = 0;
+  }
 
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), weights, updated_weights, num_of_weights));
   ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, Stream(), momentums_1, updated_momentums_1, num_of_weights));
