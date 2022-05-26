@@ -13,12 +13,32 @@ namespace cuda {
 template <typename T>
 void QOrderQuantize(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
-    const T* src, int8_t* dst, size_t N, T scale);
+    const T* src, int8_t* dst, float scale, size_t N);
 
 template <typename T>
 void QOrderDequantize(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
-    const int8_t* src, T* dst, size_t N, T scale);
+    const int8_t* src, T* dst, float scale, size_t N);
+
+// template <typename T>
+// void QOrderDequantizeToRow(
+//     cublasLtOrder_t input_order,
+//     cudaStream_t stream, const cudaDeviceProp& device_prop,
+//     const int8_t* src, T* dst, float scale, unsigned batch, unsigned rows, unsigned cols);
+
+// template <typename T>
+// void QOrderQuantizeRowTo(
+//     cublasLtOrder_t output_order,
+//     cudaStream_t stream, const cudaDeviceProp& device_prop,
+//     const T* src, int8_t* dst, float scale, unsigned batch, unsigned rows, unsigned cols);
+
+void QOrderDequantizeToRow(
+    cublasLtOrder_t input_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
+    const int8_t* src, __half* dst, float scale, unsigned batch, unsigned rows, unsigned cols);
+
+void QOrderQuantizeRowTo(
+    cublasLtOrder_t output_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
+    const __half* src, int8_t* dst, float scale, unsigned batch, unsigned rows, unsigned cols);
 
 void QOrderQuantizeRowToCol32(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
@@ -30,13 +50,11 @@ void QOrderQuantizeRowToCol32(
 
 void QOrderDequantizeCol32ToRow(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
-    const int8_t* src, __half* dst, float scale,
-    unsigned batch, unsigned rows, unsigned cols);
+    const int8_t* src, __half* dst, float scale, unsigned batch, unsigned rows, unsigned cols);
 
 void QOrderDequantizeCol32ToRow(
     cudaStream_t stream, const cudaDeviceProp& device_prop,
-    const int8_t* src, float* dst, float scale,
-    unsigned batch, unsigned rows, unsigned cols);
+    const int8_t* src, float* dst, float scale, unsigned batch, unsigned rows, unsigned cols);
 
 void QOrderLayerNorm(
     cudaStream_t stream, const cudaDeviceProp& device_prop, cublasLtOrder_t order,

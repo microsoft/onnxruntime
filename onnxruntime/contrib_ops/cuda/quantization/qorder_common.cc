@@ -218,7 +218,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
     }
 
     ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_A, batchCount, k, m, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // for A'
-    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchB, n, k, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_T));      // For B'
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchB, k, n, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));      // For B'
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
     ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_D, batchCount, n, m, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // For D'
     if (C != nullptr) {
@@ -234,7 +234,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
                                         BtXAt ? A : B, BtXAt ? desc_A : desc_B,
                                         beta, C == nullptr ? D : C, C == nullptr ? desc_D : desc_C,
                                         D, desc_D,
-                                        &algo, nullptr, 0,  // algo, workspace, workspace_size
+                                        nullptr, nullptr, 0,  // algo, workspace, workspace_size
                                         stream));
   return Status::OK();
 }
@@ -406,9 +406,9 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
     auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
     int8_t* dst = (order_input_ == order_output_ ? output_tensor->MutableData<int8_t>() : q8_buffer.get());
     if (input_tensor.IsDataType<float>()) {
-      QOrderQuantize(stream, device_prop, input_tensor.Data<float>(), dst, n, *(const float*)scale);
+      QOrderQuantize(stream, device_prop, input_tensor.Data<float>(), dst, *(const float*)scale, n);
     } else {
-      QOrderQuantize(stream, device_prop, (const half*)input_tensor.Data<MLFloat16>(), dst, n, *(const half*)scale);
+      QOrderQuantize(stream, device_prop, (const __half*)input_tensor.Data<MLFloat16>(), dst, (float)*(const __half*)scale, n);
     }
 
     if (order_input_ != order_output_) {
@@ -447,9 +447,9 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
       src = (const int8_t*)q8_buffer.get();
     }
     if (scale_tensor.IsDataType<float>()) {
-      QOrderDequantize(stream, device_prop, src, output_tensor->MutableData<float>(), n, *(const float*)scale);
+      QOrderDequantize(stream, device_prop, src, output_tensor->MutableData<float>(), *(const float*)scale, n);
     } else {
-      QOrderDequantize(stream, device_prop, src, (half*)output_tensor->MutableData<MLFloat16>(), n, *(const half*)scale);
+      QOrderDequantize(stream, device_prop, src, (__half*)output_tensor->MutableData<MLFloat16>(), (float)*(const __half*)scale, n);
     }
   }
 

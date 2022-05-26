@@ -336,7 +336,7 @@ QOrderQuantizeKernel(const typename DequantizeVec<FloatVecT>::DequantizedScalarT
 
 template <typename T>
 void QOrderQuantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */,
-                    const T* src, int8_t* dst, size_t N, T scale) {
+                    const T* src, int8_t* dst, float scale, size_t N) {
   if (N & 0x1fLL) {
     throw std::runtime_error("N can not divide by 32!");
   }
@@ -347,16 +347,16 @@ void QOrderQuantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */
   static constexpr unsigned kElementsPerThread = 4;
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(QuantizedVecT) * kElementsPerThread;
-  T inverse_scale = (T)(1.0f / (float)scale);
+  T inverse_scale = (T)(1.0f / (scale));
   size_t blocks = (N + (EPB - 1)) / EPB;
   QOrderQuantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, inverse_scale);
 }
 
 template void QOrderQuantize<float>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                    const float* src, int8_t* dst, size_t N, float scale);
+                                    const float* src, int8_t* dst, float scale, size_t N);
 
 template void QOrderQuantize<__half>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                     const __half* src, int8_t* dst, size_t N, __half scale);
+                                     const __half* src, int8_t* dst, float scale, size_t N);
 
 /************************************************************************
  * Dequantize Routines:
@@ -386,7 +386,7 @@ QOrderDequantizeKernel(const int8_t* __restrict__ src,
 
 template <typename T>
 void QOrderDequantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */,
-                      const int8_t* src, T* dst, size_t N, T scale) {
+                      const int8_t* src, T* dst, float scale, size_t N) {
   if (N & 0x1fLL) {
     throw std::runtime_error("N can not divide by 32!");
   }
@@ -398,14 +398,38 @@ void QOrderDequantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop 
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(QuantizedVecT) * kElementsPerThread;
   size_t blocks = (N + (EPB - 1)) / EPB;
-  QOrderDequantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale);
+  T scale_as_T = (T)(scale);
+  QOrderDequantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale_as_T);
 }
 
 template void QOrderDequantize<float>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                      const int8_t* src, float* dst, size_t N, float scale);
+                                      const int8_t* src, float* dst, float scale, size_t N);
 
 template void QOrderDequantize<__half>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                       const int8_t* src, __half* dst, size_t N, __half scale);
+                                       const int8_t* src, __half* dst, float scale, size_t N);
+
+
+void QOrderDequantizeToRow(cublasLtOrder_t input_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
+                           const int8_t* src, __half* dst, float scale, unsigned batch, unsigned rows, unsigned cols) {
+  if (input_order == CUBLASLT_ORDER_ROW) {
+    QOrderDequantize(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
+  } else if (input_order == CUBLASLT_ORDER_COL32) {
+    QOrderDequantizeCol32ToRow(stream, device_prop, src, dst, scale, batch, rows, cols);
+  } else {
+    throw std::runtime_error("Currently not supported!");
+  }
+}
+
+void QOrderQuantizeRowTo(cublasLtOrder_t output_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
+                         const __half* src, int8_t* dst, float scale, unsigned batch, unsigned rows, unsigned cols) {
+  if (output_order == CUBLASLT_ORDER_ROW) {
+    QOrderQuantize(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
+  } else if (output_order == CUBLASLT_ORDER_COL32) {
+    QOrderQuantizeRowToCol32(stream, device_prop, src, dst, scale, batch, rows, cols);
+  } else {
+    throw std::runtime_error("Currently not supported!");
+  }
+}
 
 /************************************************************************
  * QOrdered Layernorm with compute type fp16:
