@@ -9,8 +9,8 @@ def create_qordered_longformer_attention_graph():
 
     nodes = [
         helper.make_node('QuantizeWithOrder', inputs=['input', 'scale_input'], outputs=['input_s8_COL32'], name='1_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),    
-        helper.make_node('QuantizeWithOrder', inputs=['weight', 'scale_weight'], outputs=['weight_s8_COL4_4R2_8C_T'], name='2_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),
-        helper.make_node('QuantizeWithOrder', inputs=['global_weight', 'scale_global_weight'], outputs=['global_weight_s8_COL4_4R2_8C_T'], name='3_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),
+        helper.make_node('QuantizeWithOrder', inputs=['weight', 'scale_weight'], outputs=['weight_s8_COL4_4R2_8C_T'], name='2_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=0),
+        helper.make_node('QuantizeWithOrder', inputs=['global_weight', 'scale_global_weight'], outputs=['global_weight_s8_COL4_4R2_8C_T'], name='3_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=0),
  
         helper.make_node(
             'QOrderedLongformerAttention',
