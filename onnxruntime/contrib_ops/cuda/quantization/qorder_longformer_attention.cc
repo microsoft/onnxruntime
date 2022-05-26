@@ -159,8 +159,6 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   QOrderDequantizeCol32ToRow(stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);
 
-  cudaMemcpy(output->template MutableData<int8_t>(), gemm_buffer.get() + qkv_size, shape.Size(), cudaMemcpyDeviceToDevice);
-
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
 
@@ -224,8 +222,14 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
-  //QOrderQuantizeRowToCol32(stream, device_prop, (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
-  //                         *scale_output, batch_size, sequence_length, hidden_size);
+  QOrderQuantizeRowToCol32(stream, device_prop, (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
+                           *scale_output, batch_size, sequence_length, hidden_size);
+
+  // int8_t* out_tmp_s8 = ((int8_t*)out_fp16) + (output_elements * element_size);
+  // const CudaT* out_scale = (const CudaT*)(gemm_buffer.get() + qkv_3 + element_size);
+  // ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, (CudaT*)out_fp16, out_tmp_s8, out_scale, (const int8_t*)nullptr, output_elements));
+  // ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, device_prop, batch_size, sequence_length, hidden_size, CUDA_R_8I,
+  //                             out_tmp_s8, CUBLASLT_ORDER_ROW, output->template MutableData<int8_t>(), (cublasLtOrder_t)order_output_));
 
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
