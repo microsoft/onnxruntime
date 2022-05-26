@@ -142,7 +142,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   size_t qkv_3 = qkv_size + qkv_count * sizeof(int8_t);
   auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3);
 
-  //typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
+  typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
 
   const float* scale_input = context->Input<Tensor>(1)->Data<float>();
   const float* scale_weight = context->Input<Tensor>(3)->Data<float>();
