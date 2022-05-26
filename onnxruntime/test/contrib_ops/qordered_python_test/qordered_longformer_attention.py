@@ -38,7 +38,8 @@ def create_qordered_longformer_attention_graph():
             name='LongFormerAttention_non_quantized',
             domain='com.microsoft',
             num_heads=12,
-            window=8
+            window=8,
+        ),
     ]
 
 
