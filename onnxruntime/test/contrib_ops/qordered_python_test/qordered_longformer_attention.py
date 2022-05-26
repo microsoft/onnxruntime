@@ -33,7 +33,7 @@ def create_qordered_longformer_attention_graph():
 
         helper.make_node(
             'LongformerAttention',
-            inputs=['input', 'weight', 'bias', 'mask', 'global_weight', 'global_bias', 'global'],
+            inputs=['input', 'weight', 'bias', 'mask_float32', 'global_weight', 'global_bias', 'global'],
             outputs=['output_non_quantized_longformer'],
             name='LongFormerAttention_non_quantized',
             domain='com.microsoft',
@@ -57,6 +57,7 @@ def create_qordered_longformer_attention_graph():
         numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_global_gemm'),
         numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_output'),      
         numpy_helper.from_array(numpy.zeros((2, 32), dtype='float16'), name='mask'),
+        numpy_helper.from_array(numpy.zeros((2, 32), dtype='float32'), name='mask_float32'),        
         numpy_helper.from_array(numpy.ones((2, 32), dtype='int32'), name='global'),
     ]
 
