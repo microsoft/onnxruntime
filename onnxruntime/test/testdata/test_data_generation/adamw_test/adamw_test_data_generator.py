@@ -8,7 +8,7 @@ import torch
 
 
 class SingleParameterModule(torch.nn.Module):
-    """A dumpy module containing only one trainable parameter."""
+    """A dummy module containing only one trainable parameter."""
 
     def __init__(self, input_size, hidden_size):
         super().__init__()
@@ -21,7 +21,7 @@ class SingleParameterModule(torch.nn.Module):
 
 
 class MultipleParametersModule(torch.nn.Module):
-    """A dumpy module containing multiple trainable parameters."""
+    """A dummy module containing multiple trainable parameters."""
 
     def __init__(self, input_size, hidden_size, num_classes):
         super().__init__()
@@ -37,7 +37,7 @@ class MultipleParametersModule(torch.nn.Module):
         return out
 
 
-def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode):
+def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_count, adam_mode, json_file_name):
     """Generate test data using specified model/data and other configs."""
 
     def _run_step(model, input, target):
@@ -48,9 +48,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 
     def _torch_tensor_to_str(torch_tensor):
         """Torch tensor to string."""
-        return str([f"{v}f" for v in torch_tensor.detach().cpu().numpy().round(10).astype(str).tolist()]).replace(
-            "'", ""
-        )
+        # return [f"{v}f" for v in torch_tensor.detach().cpu().numpy().round(10).astype(str).tolist()]
+        return torch_tensor.detach().cpu().numpy().tolist()
 
     def _str_list_to_str(val_list):
         """List of string combined into single string."""
@@ -58,12 +57,6 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
         for val in val_list:
             str_ret += val.replace("[", "{").replace("]", "},")
         return str_ret
-
-    def _to_adam_test_format(data, name_of_the_data):
-        """Dump string representation of data, used for adamw test."""
-        print(f"{name_of_the_data} ==================")
-        for name, val in data.items():
-            print('{{ "{}", {{ {} }}, }},'.format(name, _str_list_to_str(val)))
 
     def _build_param_index_to_name_mapping(model, map_result):
         """Build index to name mapping, which is used to retrieve data from optimizer group."""
@@ -117,6 +110,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
 
             # Collect flattened parameter data.
             p_dict[name].append(_torch_tensor_to_str(param.view(-1)))
+            if step == 0:
+                print(f"Weight name: {name}, shape: {param.shape}, data type: {param.dtype}")
 
             if step != train_step_count - 1:
                 # Collect flattened gradient data.
@@ -143,10 +138,15 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
         adamw_optimizer.zero_grad()
 
     torch.cuda.synchronize()
-    _to_adam_test_format(p_dict, "Parameters")
-    _to_adam_test_format(g_dict, "Gradients")
-    _to_adam_test_format(m1_dict, "Momentum1s")
-    _to_adam_test_format(m2_dict, "Momentum2s")
+    data = {
+        "Parameters": p_dict,
+        "Gradients": g_dict,
+        "Momentum1s": m1_dict,
+        "Momentum2s": m2_dict,
+    }
+    import json
+    with open(json_file_name, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 
 def generate_adamw_single_weight_tests(adam_mode, run_step_count):
@@ -164,25 +164,26 @@ def generate_adamw_single_weight_tests(adam_mode, run_step_count):
         target = torch.randn(batch_size, dimension_hidden, device=device, dtype=torch.float32)
         return input, target
 
-    generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode)
+    json_file_name = f"adamw_test_single_weight_mode_{adam_mode}.json"
+    generate_adamw_test_data(seed, _model_setup_func, _data_func, run_step_count, adam_mode, json_file_name)
 
 
 def generate_adamw_multiple_weights_tests(adam_mode, run_step_count):
     """Generate test data using specified mode of adamw."""
     seed = 6666
     device = "cuda"
-    batch_size, dimension_in, dimension_hidden, DIM_OUT = 2, 2, 3, 2
+    batch_size, dimension_in, dimension_hidden, dim_out = 2, 2, 3, 2
 
     def _model_setup_func():
-        pt_model = MultipleParametersModule(dimension_in, dimension_hidden, DIM_OUT).to(device)
+        pt_model = MultipleParametersModule(dimension_in, dimension_hidden, dim_out).to(device)
         return pt_model
 
     def data_func():
         input = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
-        target = torch.randn(batch_size, DIM_OUT, device=device, dtype=torch.float32)
+        target = torch.randn(batch_size, dim_out, device=device, dtype=torch.float32)
         return input, target
-
-    generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode)
+    json_file_name = f"adamw_test_multiple_weights_mode_{adam_mode}.json"
+    generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode, json_file_name)
 
 
 def main():

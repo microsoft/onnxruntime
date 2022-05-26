@@ -41,7 +41,7 @@ AllocatorPtr& GetAllocatorPtr(OpKernelContext* ctx) {
   return alloc;
 }
 
-Status GenerateOutputs(OpKernelContext* ctx, cudaStream_t steam,
+Status GenerateOutputs(OpKernelContext* ctx, cudaStream_t stream,
                        const TensorSeq* values, TensorSeq* updated_values,
                        size_t number_of_values) {
   // Return if the output edge is not fetched.
@@ -60,7 +60,7 @@ Status GenerateOutputs(OpKernelContext* ctx, cudaStream_t steam,
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, steam));
+                                           cudaMemcpyDeviceToDevice, stream));
       updated_values->Add(std::move(*target_tensor));  // Add will check for type consistency
     }
   }
