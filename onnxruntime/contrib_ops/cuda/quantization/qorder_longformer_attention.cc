@@ -154,11 +154,11 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
 
   // TODO: bias need pre-processing, i.e., / *scale_qkvgemm
-  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      batch_size, sequence_length, n, k,
-                                      &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
-                                      bias->Data<float>(), gemm_buffer.get() + qkv_size,
-                                      (cublasLtOrder_t)order_weight_));
+  //ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
+  //                                    batch_size, sequence_length, n, k,
+  //                                    &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
+  //                                    bias->Data<float>(), gemm_buffer.get() + qkv_size,
+  //                                    (cublasLtOrder_t)order_weight_));
 
   std::vector<int8_t> q;
   q.reserve(shape.Size());
