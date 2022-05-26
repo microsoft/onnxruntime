@@ -140,7 +140,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   size_t qkv_count = (size_t)m * (size_t)n;
   size_t qkv_size = qkv_count * element_size;
   size_t qkv_3 = qkv_size + qkv_count * sizeof(int8_t);
-  auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3 + 3 * element_size);  // extra half scale
+  auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3);
 
   //typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
 
@@ -162,12 +162,8 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                       (cublasLtOrder_t)order_weight_));
 
 
-  cudaMemcpy(output->template MutableData<int8_t>(), gemm_buffer.get() + qkv_size, shape.Size(), cudaMemcpyHostToDevice);
-
-    /*
-
-  QOrderDequantizeCol32ToRow(stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);  
-
+  QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);
+  
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
 
@@ -199,12 +195,13 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                         &global_alpha, input->Data<int8_t>(), global_weights->Data<int8_t>(),
                                         global_bias->Data<float>(), global_gemm_buffer.get() + qkv_size,
                                         (cublasLtOrder_t)order_global_weight_));
-    QOrderDequantizeCol32ToRow(stream, device_prop, global_gemm_buffer.get() + qkv_size, (CudaT*)global_gemm_buffer.get(),
-                               *scale_global_qkvgemm, batch_size, sequence_length, n);
+    QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop,
+                          global_gemm_buffer.get() + qkv_size, (CudaT*)global_gemm_buffer.get(),
+                          *scale_global_qkvgemm, batch_size, sequence_length, n);
   }
 
   size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, use_fast_kernel);
-  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize + output_elements * (element_size + sizeof(int8_t)));
+  auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize + output_elements * element_size);
   MLFloat16* out_fp16 = (MLFloat16*)(((int8_t*)workspace_buffer.get()) + workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
           device_prop,
@@ -232,14 +229,13 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
-  //QOrderQuantizeRowToCol32(stream, device_prop, (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
-  //                         *scale_output, batch_size, sequence_length, hidden_size);
-
+  QOrderQuantizeRowTo((cublasLtOrder_t)order_input_, stream, device_prop,
+                      (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
+                      *scale_output, batch_size, sequence_length, hidden_size);
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
-  */
 
   return Status::OK();
 }

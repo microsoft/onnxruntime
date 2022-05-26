@@ -38,11 +38,18 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
   order_bias_ = GetCublasLtOrderAttr(info, "order_bias");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
-  // ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
-  // ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL4_4R2_8C || order_weight_ == CUBLASLT_ORDER_COL32_2R_4R4,
-  //             "Only CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 are supported for order_weight_");
-  // ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
-  // ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
+  if (order_input_ == CUBLASLT_ORDER_ROW) {
+    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL, "Only CUBLASLT_ORDER_COL is supported for order_weight_");
+    ORT_ENFORCE(order_bias_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_bias");
+    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_output");
+  } else if (order_input_ == CUBLASLT_ORDER_COL32) {
+    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL4_4R2_8C || order_weight_ == CUBLASLT_ORDER_COL32_2R_4R4,
+                "Only CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 are supported for order_weight_");
+    ORT_ENFORCE(order_bias_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_bias");
+    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
+  } else {
+    ORT_ENFORCE(false, "Only CUBLASLT_ORDER_ROW or CUBLASLT_ORDER_COL32 are supported for order_input");
+  }
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
@@ -98,7 +105,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = Stream();
 
   // Gemm result(M, N) = scale_input * input * scale_weights * weights + scale_bias x B.
-  const float scale_alpha = *scale_input_data * (*scale_weights_data);
+  const float scale_alpha = *scale_input_data * *scale_weights_data / *scale_gemm_data;
   ORT_RETURN_IF_ERROR(
       QOrdered_MatMul(cublasLt, stream, device_prop,
                       1, m, n, k,
@@ -110,18 +117,10 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   constexpr size_t element_size = sizeof(MLFloat16);
 
   auto gemm_buffer = GetScratchBuffer<int8_t>(m * n * element_size);  // row, fp16
-  QOrderDequantizeCol32ToRow(stream, GetDeviceProp(), gemm_buffer_quantized.get(), (CudaT*)gemm_buffer.get(),
-                             *(const float*)scale_gemm_data, batch_size, sequence_length, n);
-  // // reorder to row major
-  // ORT_RETURN_IF_ERROR(
-  //   Reorder(cublasLt, stream, device_prop, gsl::narrow_cast<int>(1), m, n, CUDA_R_8I,
-  //           gemm_buffer_quantized.get(), (cublasLtOrder_t)2, gemm_buffer_quantized.get() + m*n, (cublasLtOrder_t)1));
-
-  // // dequantize back to fp16
-  // ORT_RETURN_IF_ERROR(
-  //   CudaDequantizeLinear(stream, (const int8_t*)(gemm_buffer_quantized.get() + m*n), (CudaT*)gemm_buffer.get(),
-  //   (const CudaT*)scale_gemm_data, (const int8_t*)nullptr, batch_size * sequence_length * 3 * hidden_size));
-
+  
+  QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, GetDeviceProp(), gemm_buffer_quantized.get(), (CudaT*)gemm_buffer.get(),
+                        *(const float*)scale_gemm_data, batch_size, sequence_length, n);
+  
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, 0);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
   auto output_buffer = GetScratchBuffer<int8_t>(m * n * element_size);  // row, fp16
@@ -150,19 +149,10 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
-  QOrderQuantizeRowToCol32(stream, GetDeviceProp(), (const CudaT*)output_buffer.get(), output->MutableData<int8_t>(),
-                           *(const float*)scale_output_data, batch_size, sequence_length, hidden_size);
-  // // quantize to int8
-  // auto output_buffer_quantized = GetScratchBuffer<int8_t>(batch_size * sequence_length * hidden_size * 1);  // row, int8
-  // ORT_RETURN_IF_ERROR(
-  //     CudaQuantizeLinear(stream, (const CudaT*)output_buffer.get(), (int8_t*)output_buffer_quantized.get(),
-  //                        (const CudaT*)scale_output_data, (const int8_t*)nullptr, batch_size * sequence_length * hidden_size));
+  QOrderQuantizeRowTo((cublasLtOrder_t)order_input_, stream, GetDeviceProp(),
+                      (const CudaT*)output_buffer.get(), output->MutableData<int8_t>(),
+                      *(const float*)scale_output_data, batch_size, sequence_length, hidden_size);
 
-  // // reorder to col32
-  // ORT_RETURN_IF_ERROR(
-  //     Reorder(cublasLt, stream, device_prop, gsl::narrow_cast<int>(batch_size), sequence_length, hidden_size, CUDA_R_8I,
-  //             output_buffer_quantized.get(), (cublasLtOrder_t)1, output->MutableData<int8_t>(), (cublasLtOrder_t)2));
-  
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   return Status::OK();
