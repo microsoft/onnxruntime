@@ -45,7 +45,7 @@ def create_qordered_longformer_attention_graph():
 
 
     initializers = [
-        numpy_helper.from_array(numpy.ones((7, 68, 2304), dtype='float32'), name='weight'),      
+        numpy_helper.from_array(numpy.ones((768, 2304), dtype='float32'), name='weight'),      
         numpy_helper.from_array(numpy.zeros((2304), dtype='float32'), name='bias'),
         numpy_helper.from_array(numpy.ones((768, 2304), dtype='float32'), name='global_weight'),        
         numpy_helper.from_array(numpy.zeros((2304), dtype='float32'), name='global_bias'),
