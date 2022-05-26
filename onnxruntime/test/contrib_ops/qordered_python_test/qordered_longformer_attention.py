@@ -25,8 +25,8 @@ def create_qordered_longformer_attention_graph():
             window=8,
             order_input=1,
             order_output=1,
-            order_weight=1,
-            order_global_weight=1            
+            order_weight=0,
+            order_global_weight=0            
         ),
         
         helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output_quantized_longformer'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),
