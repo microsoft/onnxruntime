@@ -9,7 +9,7 @@
 #include "test/util/include/default_providers.h"
 #ifdef USE_ROCM
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
-#elif
+#else
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #endif
 
@@ -20,7 +20,7 @@ namespace test {
 #ifdef USE_ROCM
 using onnxruntime::rocm::BitmaskElementType;
 using onnxruntime::rocm::kNumBitsPerBitmaskElement;
-#elif
+#else
 using onnxruntime::cuda::BitmaskElementType;
 using onnxruntime::cuda::kNumBitsPerBitmaskElement;
 #endif
