@@ -1913,16 +1913,15 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
     }
   }
 
-  // To test 'old' behavior with unit tests set have_dq to false so it always returns here.
   if (!have_dq) {
     result.graph_modified = changed;
     return result;
   }
 
   // Run second optimization pass.
-  // If any transpose succeeds a DQ node, move it above the DQ node if it's not part of a QDQ node unit.
-  // In case of QDQ models this helps to preserve the QDQ node unit when a Transpose was pushed across a DQ into
-  // an existing QDQ node unit.
+  // If any transpose succeeds a DQ node, move it above the DQ node if it's not part of a QDQ node group.
+  // In QDQ models this helps to preserve the QDQ node group when a Transpose was pushed across a DQ into
+  // an existing QDQ node group.
   // In all other scenarios this is beneficial as well because moving transpose above DQ node is more efficient as
   // transpose node now handles less data.
   auto graph_nodes = ctx.graph.Nodes();
@@ -1935,11 +1934,11 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       }
 
       auto consumers = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
-      bool is_part_of_qdq_unit = std::find_if(consumers->nodes.cbegin(), consumers->nodes.cend(),
-                                              [](const std::unique_ptr<api::NodeRef>& node) {
-                                                return node->OpType() == "QuantizeLinear";
-                                              }) != consumers->nodes.cend();
-      if (is_part_of_qdq_unit) {
+      bool is_part_of_qdq_group = std::find_if(consumers->nodes.cbegin(), consumers->nodes.cend(),
+                                               [](const std::unique_ptr<api::NodeRef>& node) {
+                                                 return node->OpType() == "QuantizeLinear";
+                                               }) != consumers->nodes.cend();
+      if (is_part_of_qdq_group) {
         continue;
       }
 

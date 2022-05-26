@@ -1587,15 +1587,6 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
       auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -64, 64);
 
       // add QDQ
-      //
-      // Proposed change:
-      // NodeArg* dq_output{nullptr};
-      // if constexpr (QDQIsInt8Allowed()) {
-      //  dq_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
-      //} else {
-      //  dq_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 1);
-      //}
-
       auto* dq_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
 
       // add Transpose
@@ -1631,7 +1622,9 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      TransformerLevel::Level2,
+                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1643,14 +1636,6 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
       auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -64, 64);
-
-      // Proposed change:
-      // NodeArg* dq_output{nullptr};
-      // if constexpr (QDQIsInt8Allowed()) {
-      //  qdq_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
-      //} else {
-      //  qdq_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 1);
-      //}
 
       // add Transpose
       auto* qdq_output = AddQDQNodePair<int8_t>(builder, input_arg, .004f, 1);
@@ -1712,7 +1697,9 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
-                      13 /*opset_version*/);
+                      13 /*opset_version*/,
+                      0.0, 0.0, nullptr, {},    // defaults that we're not overriding
+                      {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1955,12 +1942,6 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
-      // Proposed update:
-      // { "Transpose",
-      //   "DequantizeLinear", "MaxPool", "QuantizeLinear",
-      //   "DequantizeLinear", "Reshape", "QuantizeLinear",
-      //   "DequantizeLinear" }
-
       std::vector<std::string> expected_op_types_in_order{
           "DequantizeLinear",
           "Transpose",
@@ -1980,7 +1961,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level1);
+                      TransformerLevel::Level1,
+                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
@@ -2079,10 +2062,6 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
-      // If we allow phase 2 of transpose optimizer we get: { "Transpose", "DequantizeLinear" }
-      // This is tricky. I think the end result is good - we're using 8-bit data for the Transpose, but we're not
-      // really testing the propagation as the transpose optimizer flips the two nodes prior to qdq prop kicking in.
-      // We could maybe use MaxPool in this test so that phase 2 of transpose optimizer isn't relevant.
       const std::vector<std::string> expected_op_types_in_order{
           "DequantizeLinear",
           "Transpose",
@@ -2120,7 +2099,6 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
-      // transpose optimizer flips these into { "Transpose", "DequantizeLinear" }
       const std::vector<std::string> expected_op_types_in_order{
           "DequantizeLinear",
           "Transpose"};
@@ -2131,7 +2109,9 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level1);
+                      TransformerLevel::Level1,
+                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
