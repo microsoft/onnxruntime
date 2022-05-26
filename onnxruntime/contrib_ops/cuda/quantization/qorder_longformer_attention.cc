@@ -64,12 +64,10 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
                                               "QOrderedLongformerAttention: un-supported order for order_global_weight");
   order_output_ = GetCublasLtOrderAttr(info, "order_output", 1, (const cublasLtOrder_t*)&order_input_,
                                        "QOrderedLongformerAttention: oder_output must be same as order_input");
-  ORT_THROW("a");
 }
 
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
-  ORT_THROW("a");
 
   // For Debugging...
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
@@ -157,18 +155,14 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
 
   // TODO: bias need pre-processing, i.e., / *scale_qkvgemm
-  //ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-  //                                    batch_size, sequence_length, n, k,
-  //                                    &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
-  //                                    bias->Data<float>(), gemm_buffer.get() + qkv_size,
-  //                                    (cublasLtOrder_t)order_weight_));
+  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
+                                      batch_size, sequence_length, n, k,
+                                      &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
+                                      bias->Data<float>(), gemm_buffer.get() + qkv_size,
+                                      (cublasLtOrder_t)order_weight_));
 
-  std::vector<int8_t> q;
-  q.reserve(shape.Size());
 
-  q[0] = 1;
-
-  cudaMemcpy(output->template MutableData<int8_t>(), q.data(), shape.Size(), cudaMemcpyHostToDevice);
+  cudaMemcpy(output->template MutableData<int8_t>(), gemm_buffer.get() + qkv_size, shape.Size(), cudaMemcpyHostToDevice);
 
     /*
 
