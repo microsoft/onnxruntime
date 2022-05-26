@@ -2157,53 +2157,52 @@ std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
 }
 
-struct CPUNotification {
-  void notify() { ready_.store(true); };
+struct CPUNotification : synchronize::Notification {
+  CPUNotification(Stream* s) : Notification(s) {}
+
+  void Activate() override {
+    ready_.store(true);
+  }
+
+  void Reset() override {
+    ready_.store(false);
+  }
+
   void wait() {
     while (!ready_.load()) {
       onnxruntime::concurrency::SpinPause();
     }
   };
+
   std::atomic_bool ready_{};
 };
 
+struct CPUStream : Stream {
+  CPUStream(const IExecutionProvider* ep) : Stream(nullptr, ep) {}
+
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
+    return std::make_unique<CPUNotification>(this);
+  }
+
+  void Flush() override {}
+};
+
 // CPU Stream command handles
-void WaitCPUNotification(StreamHandle, NotificationHandle& notification) {
-  static_cast<CPUNotification*>(notification)->wait();
+void WaitCPUNotification(Stream& /*stream*/, synchronize::Notification& notification) {
+  static_cast<CPUNotification*>(&notification)->wait();
 }
 
-void NotifyCPUNotification(NotificationHandle& notification) {
-  static_cast<CPUNotification*>(notification)->notify();
+std::unique_ptr<Stream> CreateCPUStream(const IExecutionProvider* provider) {
+  ORT_ENFORCE(provider && provider->Type() == kCpuExecutionProvider);
+  return std::make_unique<CPUStream>(provider);
 }
 
-void* CreateCPUNotification(const StreamHandle&) {
-  return static_cast<void*>(new CPUNotification());
-}
-
-void ReleaseCPUNotification(void* handle) {
-  delete static_cast<CPUNotification*>(handle);
-}
-
-StreamHandle CreateCPUStream() {
-  return nullptr;
-}
-
-void ReleaseCPUStream(StreamHandle) {
-}
-
-void FlushCPUStream(StreamHandle) {
-}
 
 void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
   //TODO: move it to cuda ep?
   stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCudaExecutionProvider, WaitCPUNotification);
-  stream_handle_registry.RegisterNotifyFn(kCpuExecutionProvider, NotifyCPUNotification);
-  stream_handle_registry.RegisterCreateNotificationFn(kCpuExecutionProvider, CreateCPUNotification);
-  stream_handle_registry.RegisterReleaseNotificationFn(kCpuExecutionProvider, ReleaseCPUNotification);
   stream_handle_registry.RegisterCreateStreamFn(kCpuExecutionProvider, CreateCPUStream);
-  stream_handle_registry.RegisterReleaseStreamFn(kCpuExecutionProvider, ReleaseCPUStream);
-  stream_handle_registry.RegisterFlushStreamFn(kCpuExecutionProvider, FlushCPUStream);
 }
 
 }  // namespace onnxruntime
