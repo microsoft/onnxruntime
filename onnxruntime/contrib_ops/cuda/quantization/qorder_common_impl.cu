@@ -3,12 +3,19 @@
 #include "contrib_ops/cuda/quantization/qorder_unary_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/cuda_common.h"
+
+//#include "qorder_binary_op.cuh"
+//#include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
+
+#include <cub/cub.cuh>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
+using namespace cub;
 
 // todo: define __dp4a when it is not available (i.e. before compute capability 6.1)
 
@@ -336,7 +343,7 @@ QOrderQuantizeKernel(const typename DequantizeVec<FloatVecT>::DequantizedScalarT
 
 template <typename T>
 void QOrderQuantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */,
-                    const T* src, int8_t* dst, float scale, size_t N) {
+                    const T* src, int8_t* dst, size_t N, T scale) {
   if (N & 0x1fLL) {
     throw std::runtime_error("N can not divide by 32!");
   }
@@ -344,19 +351,19 @@ void QOrderQuantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */
   typedef typename FloatVecSelector<T>::FloatVecT FloatVecT;
   typedef typename DequantizeVec<FloatVecT>::QuantizedVecT QuantizedVecT;
 
-  static constexpr unsigned kElementsPerThread = 4;
+  static constexpr unsigned int kElementsPerThread = 4;
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(QuantizedVecT) * kElementsPerThread;
-  T inverse_scale = (T)(1.0f / (scale));
-  size_t blocks = (N + (EPB - 1)) / EPB;
+  T inverse_scale = (T)(1.0f / (float)scale);
+  unsigned int blocks = (static_cast<unsigned int>(N) + (EPB - 1)) / EPB;
   QOrderQuantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, inverse_scale);
 }
 
 template void QOrderQuantize<float>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                    const float* src, int8_t* dst, float scale, size_t N);
+                                    const float* src, int8_t* dst, size_t N, float scale);
 
 template void QOrderQuantize<__half>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                     const __half* src, int8_t* dst, float scale, size_t N);
+                                     const __half* src, int8_t* dst, size_t N, __half scale);
 
 /************************************************************************
  * Dequantize Routines:
@@ -386,50 +393,26 @@ QOrderDequantizeKernel(const int8_t* __restrict__ src,
 
 template <typename T>
 void QOrderDequantize(cudaStream_t stream, const cudaDeviceProp& /* device_prop */,
-                      const int8_t* src, T* dst, float scale, size_t N) {
+                      const int8_t* src, T* dst, size_t N, T scale) {
   if (N & 0x1fLL) {
     throw std::runtime_error("N can not divide by 32!");
   }
 
   typedef typename FloatVecSelector<T>::FloatVecT FloatVecT;
   typedef typename DequantizeVec<FloatVecT>::QuantizedVecT QuantizedVecT;
-  static constexpr unsigned kElementsPerThread = 2;
+  static constexpr unsigned int kElementsPerThread = 2;
 
   unsigned int threads = 256;
   unsigned int EPB = threads * sizeof(QuantizedVecT) * kElementsPerThread;
-  size_t blocks = (N + (EPB - 1)) / EPB;
-  T scale_as_T = (T)(scale);
-  QOrderDequantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale_as_T);
+  unsigned int blocks = (static_cast<unsigned int>(N) + (EPB - 1)) / EPB;
+  QOrderDequantizeKernel<FloatVecT, kElementsPerThread><<<blocks, threads, 0, stream>>>(src, dst, N, scale);
 }
 
 template void QOrderDequantize<float>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                      const int8_t* src, float* dst, float scale, size_t N);
+                                      const int8_t* src, float* dst, size_t N, float scale);
 
 template void QOrderDequantize<__half>(cudaStream_t stream, const cudaDeviceProp& device_prop,
-                                       const int8_t* src, __half* dst, float scale, size_t N);
-
-
-void QOrderDequantizeToRow(cublasLtOrder_t input_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
-                           const int8_t* src, __half* dst, float scale, unsigned batch, unsigned rows, unsigned cols) {
-  if (input_order == CUBLASLT_ORDER_ROW) {
-    QOrderDequantize(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
-  } else if (input_order == CUBLASLT_ORDER_COL32) {
-    QOrderDequantizeCol32ToRow(stream, device_prop, src, dst, scale, batch, rows, cols);
-  } else {
-    throw std::runtime_error("Currently not supported!");
-  }
-}
-
-void QOrderQuantizeRowTo(cublasLtOrder_t output_order, cudaStream_t stream, const cudaDeviceProp& device_prop,
-                         const __half* src, int8_t* dst, float scale, unsigned batch, unsigned rows, unsigned cols) {
-  if (output_order == CUBLASLT_ORDER_ROW) {
-    QOrderQuantize(stream, device_prop, src, dst, scale, (size_t)batch * rows * cols);
-  } else if (output_order == CUBLASLT_ORDER_COL32) {
-    QOrderQuantizeRowToCol32(stream, device_prop, src, dst, scale, batch, rows, cols);
-  } else {
-    throw std::runtime_error("Currently not supported!");
-  }
-}
+                                       const int8_t* src, __half* dst, size_t N, __half scale);
 
 /************************************************************************
  * QOrdered Layernorm with compute type fp16:
@@ -440,7 +423,8 @@ static constexpr unsigned QORDER_LAYERNORM_ROWS_PER_BLOCK = 8;  // 4, 8, 16, ...
 // block_size = (32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1)
 // grid_size = ((rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, batch, 1)
 __global__ void
-QOrderLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale, int8_t* __restrict__ dst, const float dst_scale,
+QOrderLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale,
+                           int8_t* __restrict__ dst, const float dst_scale,
                            const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
                            const unsigned rows, const unsigned cols) {
   int32_t sum = 0;
@@ -484,9 +468,10 @@ QOrderLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale
 // block_size = (32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1)
 // grid_size = ((rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, batch, 1)
 __global__ void
-QOrderLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale, int8_t* __restrict__ dst, const float dst_scale,
-                           const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
-                           const unsigned rows, const unsigned cols) {
+QOrderLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale,
+                         int8_t* __restrict__ dst, const float dst_scale,
+                         const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
+                         const unsigned rows, const unsigned cols) {
   int32_t sum = 0;
   int32_t square_sum = 0;
   unsigned r = blockIdx.x * QORDER_LAYERNORM_ROWS_PER_BLOCK + threadIdx.y;
@@ -495,7 +480,7 @@ QOrderLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale, 
   const size_t batch_row_index = (size_t)blockIdx.y * (rows * cols) + r * cols;
   src += batch_row_index;
   dst += batch_row_index;
-  for (unsigned c = threadIdx.x << 2;  c < cols; c += 128) {
+  for (unsigned c = threadIdx.x << 2; c < cols; c += 128) {
     char4 ch4 = __ldg((const char4*)(src + c));
     sum += ((short)ch4.x + (short)ch4.y + (short)ch4.z + (short)ch4.w);
     square_sum = __dp4a(ch4, ch4, square_sum);
@@ -523,16 +508,266 @@ QOrderLayerNormRowKernel(const int8_t* __restrict__ src, const float src_scale, 
   }
 }
 
-void QOrderLayerNorm(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
-                     const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
-                     const __half* gamma, const __half* beta, const float epsilon,
-                     const unsigned batch, const unsigned rows, const unsigned cols) {
-  dim3 threads(32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1);
-  dim3 blocks((unsigned)(rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, (unsigned)batch, 1);
-  if (order == CUBLASLT_ORDER_COL32) {
-    QOrderLayerNormCol32Kernel<<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
-  } else { // order == CUBLASLT_ORDER_ROW
-    QOrderLayerNormRowKernel<<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
+template <typename T>
+__device__ inline T Rsqrt(const T& x);
+
+template <>
+__device__ inline float Rsqrt(const float& x) {
+  return rsqrtf(x);
+}
+
+template <>
+__device__ inline half Rsqrt(const half& x) {
+#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
+  return hrsqrt(x);
+#else
+  return half(rsqrtf(float(x)));
+#endif
+}
+
+__device__ inline half2 AddHalf2(const half2 a, const half2 b) {
+#if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
+  return __hadd2(a, b);
+#else
+  return __halves2half2(__hadd(a.x, b.x), __hadd(a.y, b.y));
+#endif
+}
+
+struct KeyValuePairSum {
+  __device__ inline cub::KeyValuePair<float, float> operator()(const cub::KeyValuePair<float, float>& a, const cub::KeyValuePair<float, float>& b) {
+    return cub::KeyValuePair<float, float>(a.key + b.key, a.value + b.value);
+  }
+
+  __device__ inline cub::KeyValuePair<half, half> operator()(const cub::KeyValuePair<half, half>& a, const cub::KeyValuePair<half, half>& b) {
+    const half2 a2 = __halves2half2(a.key, a.value);
+    const half2 b2 = __halves2half2(b.key, b.value);
+    const half2 res = AddHalf2(a2, b2);
+    return cub::KeyValuePair<half, half>(res.x, res.y);
+  }
+
+  __device__ inline cub::KeyValuePair<half2, half2> operator()(const cub::KeyValuePair<half2, half2>& a, const cub::KeyValuePair<half2, half2>& b) {
+    return cub::KeyValuePair<half2, half2>(AddHalf2(a.key, b.key), AddHalf2(a.value, b.value));
+  }
+};
+
+template <unsigned TPB, int num_half_twos_per_thread>
+__global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale,
+                                                          const int8_t* __restrict__ residual, const float residual_scale,
+                                                          const __half* __restrict__ bias,
+                                                          int8_t* __restrict__ dst, const float dst_scale,
+                                                          const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
+                                                          const unsigned rows, const unsigned cols, const unsigned tile_stride) {
+  half2 cache[num_half_twos_per_thread];
+  const int row_offset = (blockIdx.y * rows * cols) + (blockIdx.x << 5);
+
+  const __half2 src_scale2 = __float2half2_rn(src_scale);
+  const __half2 residual_scale2 = __float2half2_rn(residual_scale);
+  const __half2 dst_scale2 = __float2half2_rn(1.0f / dst_scale);
+
+  KeyValuePairSum pair_sum;
+
+  const half2 rld = __float2half2_rn(1.f / cols);
+
+  cub::KeyValuePair<half2, half2> thread_data(__float2half2_rn(0.f), __float2half2_rn(0.f));
+
+  unsigned col_stride = (TPB << 1);
+  unsigned c = (threadIdx.x << 1);
+
+#pragma unroll
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+      const half* bias_offset = bias + c;
+
+      const int8_t* process_src = src + offset;
+      const int8_t* process_residual = residual + offset;
+
+      half2 val = __hmul2(src_scale2, __half2(__short2half_rn(process_src[0]), __short2half_rn(process_src[1])));
+      const half2 residual_val = __hmul2(residual_scale2, __half2(__short2half_rn(process_residual[0]), __short2half_rn(process_residual[1])));
+      const half2 bias_val = {bias_offset[0], bias_offset[1]};
+      val = __hadd2(val, __hadd2(residual_val, bias_val));
+
+      cache[idx] = val;
+
+      const half2 rldval = __hmul2(rld, val);
+      thread_data = pair_sum(thread_data, cub::KeyValuePair<half2, half2>(rldval, __hmul2(rldval, val)));
+
+      c += col_stride;
+    }
+  }
+
+  // Compute mean, std, and normalize here
+
+  using BlockReduce = cub::BlockReduce<cub::KeyValuePair<half2, half2>, TPB>;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+  __shared__ half2 mu;
+  __shared__ half2 rsigma;
+
+  const auto sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
+
+  if (threadIdx.x == 0) {
+    // Reduce across half2
+    const half2 half2_mu_reduced = sum_kv.key;
+    const half mu_half = __hadd(half2_mu_reduced.x, half2_mu_reduced.y);
+    mu = __half2half2(mu_half);
+
+    const half2 half2_sum_squared_reduced = sum_kv.value;
+    const half sum_squared = __hadd(half2_sum_squared_reduced.x, half2_sum_squared_reduced.y);
+    rsigma = __half2half2(Rsqrt(sum_squared - mu_half * mu_half + __float2half_rn(epsilon)));
+  }
+
+  __syncthreads();
+
+  // reset c
+  c = (threadIdx.x << 1);
+
+#pragma unroll
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+
+      const half* gamma_offset = gamma + c;
+      const half2 gamma_val = {gamma_offset[0], gamma_offset[1]};
+
+      const half* beta_offset = (nullptr == beta) ? nullptr : beta + c;
+      half2 beta_val;
+      if (nullptr == beta) {
+        beta_val = __float2half2_rn(0.0f);
+      } else {
+        beta_val = {beta_offset[0], beta_offset[1]};
+      }
+
+      half2 val = cache[idx];
+
+      half2 output_val = gamma_val * (val - mu) * rsigma + beta_val;
+      output_val *= dst_scale2;
+
+      U1S2 short_output_val;
+      short_output_val.s2.x = __half2short_rn(output_val.x);
+      short_output_val.s2.y = __half2short_rn(output_val.y);
+
+      short_output_val.u1 = __vmaxs2(__vmins2(short_output_val.u1, 0x007F007F), 0xFF80FF80);
+
+      int8_t* process_dst = dst + offset;
+
+      process_dst[0] = static_cast<int8_t>(short_output_val.s2.x);
+      process_dst[1] = static_cast<int8_t>(short_output_val.s2.y);
+
+      c += col_stride;
+    }
+  }
+}
+
+/*
+template <unsigned TPB, int num_half_twos_per_thread>
+__global__ void QOrderAddResidualBiasLayerNormCol32Kernel(const int8_t* __restrict__ src, const float src_scale,
+                                                          const int8_t* __restrict__ residual, const float residual_scale,
+                                                          const __half* __restrict__ bias,
+                                                          int8_t* __restrict__ dst, const float dst_scale,
+                                                          const __half* __restrict__ gamma, const __half* __restrict__ beta, const float epsilon,
+                                                          const unsigned rows, const unsigned cols, const unsigned tile_stride) {
+  const int row_offset = (blockIdx.y * rows * cols) + (blockIdx.x << 5);
+  int8_t cache[num_half_twos_per_thread * 2];
+
+  unsigned col_stride = (TPB << 1);
+  unsigned c = (threadIdx.x << 1);
+
+  //#pragma unroll
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+
+      const int8_t* process_src = src + offset;
+      cache[idx * 2] = process_src[0];
+      cache[idx * 2 + 1] = process_src[1];
+      c += col_stride;
+    }
+  }
+
+  c = (threadIdx.x << 1);
+
+  for (int idx = 0; idx < num_half_twos_per_thread; ++idx) {
+    if (c < cols) {
+      unsigned offset = (row_offset + ((c >> 5) * tile_stride) + (c & 31));
+
+      int8_t* process_dst = dst + offset;
+      process_dst[0] = cache[idx * 2];
+      process_dst[1] = cache[idx * 2 + 1];
+      c += col_stride;
+    }
+  }
+}
+*/
+
+void QOrderAddBiasResidualLayerNorm(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
+                                    const int8_t* src, const float src_scale,
+                                    const int8_t* residual, const float residual_scale,
+                                    const __half* bias,
+                                    int8_t* dst, const float dst_scale,
+                                    const __half* gamma, const __half* beta, const float epsilon,
+                                    const unsigned batch, const unsigned rows, const unsigned cols) {
+  if (order == CUBLASLT_ORDER_COL32 && residual != nullptr && bias != nullptr) {
+    if (cols > 1024) {
+      ORT_THROW("Unsupported");
+    } else if (cols <= 256) {
+      constexpr unsigned tpb = 128;
+      constexpr int num_half_twos_per_thread = 1;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    } else if (cols <= 512) {
+      constexpr unsigned tpb = 128;
+      constexpr int num_half_twos_per_thread = 2;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    } else if (cols <= 768) {
+      constexpr unsigned tpb = 128;
+      constexpr int num_half_twos_per_thread = 3;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    } else {  // cols == 1024
+      constexpr unsigned tpb = 256;
+      constexpr int num_half_twos_per_thread = 2;
+
+      const dim3 blocks(rows, batch, 1);
+      const dim3 threads(tpb, 1, 1);
+
+      QOrderAddResidualBiasLayerNormCol32Kernel<tpb, num_half_twos_per_thread><<<blocks, threads, 0, stream>>>(src, src_scale, residual,
+                                                                                                               residual_scale, bias,
+                                                                                                               dst, dst_scale, gamma,
+                                                                                                               beta, epsilon, rows, cols,
+                                                                                                               rows * 32);
+    }
+  } else {  // No bias or residual
+    dim3 threads(32, QORDER_LAYERNORM_ROWS_PER_BLOCK, 1);
+    dim3 blocks((unsigned)(rows + QORDER_LAYERNORM_ROWS_PER_BLOCK - 1) / QORDER_LAYERNORM_ROWS_PER_BLOCK, (unsigned)batch, 1);
+    if (order == CUBLASLT_ORDER_COL32) {
+      QOrderLayerNormCol32Kernel<<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale,
+                                                                 gamma, beta, epsilon, rows, cols);
+    } else {  // order == CUBLASLT_ORDER_ROW
+      QOrderLayerNormRowKernel<<<blocks, threads, 0, stream>>>(src, src_scale, dst, dst_scale,
+                                                               gamma, beta, epsilon, rows, cols);
+    }
   }
 }
 
