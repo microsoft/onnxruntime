@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 graph = helper.make_graph(
     [  # nodes
@@ -11,14 +10,14 @@ graph = helper.make_graph(
     ],
     "AddWithSurroundingIdentities",  # name
     [  # inputs
-        helper.make_tensor_value_info('A', TensorProto.FLOAT, [1]),
-        helper.make_tensor_value_info('B', TensorProto.FLOAT, [1]),
+        helper.make_tensor_value_info("A", TensorProto.FLOAT, [1]),
+        helper.make_tensor_value_info("B", TensorProto.FLOAT, [1]),
     ],
     [  # outputs
-        helper.make_tensor_value_info('C', TensorProto.FLOAT, [1]),
+        helper.make_tensor_value_info("C", TensorProto.FLOAT, [1]),
     ],
-    [  # initializers
-    ])
+    [],  # initializers
+)
 
 model = helper.make_model(graph)
-onnx.save(model, r'add_with_surrounding_identities.onnx')
+onnx.save(model, r"add_with_surrounding_identities.onnx")

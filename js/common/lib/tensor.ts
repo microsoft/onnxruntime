@@ -82,7 +82,7 @@ export interface TypedTensor<T extends Tensor.Type> extends TypedTensorBase<T>, 
 export interface Tensor extends TypedTensorBase<Tensor.Type>, TypedTensorUtils<Tensor.Type> {}
 
 export interface TensorConstructor {
-  //#region specify element type
+  // #region specify element type
   /**
    * Construct a new string tensor object from the given type, data and dims.
    *
@@ -111,9 +111,9 @@ export interface TensorConstructor {
    */
   new<T extends Exclude<Tensor.Type, 'string'|'bool'>>(
       type: T, data: Tensor.DataTypeMap[T]|readonly number[], dims?: readonly number[]): TypedTensor<T>;
-  //#endregion
+  // #endregion
 
-  //#region infer element types
+  // #region infer element types
 
   /**
    * Construct a new float32 tensor object from the given data and dims.
@@ -211,9 +211,9 @@ export interface TensorConstructor {
    */
   new(data: BigUint64Array, dims?: readonly number[]): TypedTensor<'uint64'>;
 
-  //#endregion
+  // #endregion
 
-  //#region fall back to non-generic tensor type declaration
+  // #region fall back to non-generic tensor type declaration
 
   /**
    * Construct a new tensor object from the given type, data and dims.
@@ -231,7 +231,7 @@ export interface TensorConstructor {
    * @param dims - Specify the dimension of the tensor. If omitted, a 1-D tensor is assumed.
    */
   new(data: Tensor.DataType, dims?: readonly number[]): Tensor;
-  //#endregion
+  // #endregion
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

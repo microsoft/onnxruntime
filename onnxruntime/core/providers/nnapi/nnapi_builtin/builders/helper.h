@@ -94,6 +94,8 @@ enum class QuantizedOpType : uint8_t {
   QDQReshape,
   QDQSoftmax,
   QDQConcat,
+  QDQGemm,
+  QDQMatMul,
   // TODO, add other QDQ NodeUnit types
 };
 
@@ -101,11 +103,6 @@ enum class ConvType : uint8_t {
   Regular,
   Depthwise,
   Grouped,
-};
-
-enum class IOKind : uint8_t {
-  Input,
-  Output,
 };
 
 QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
@@ -120,6 +117,9 @@ bool IsQuantizedConv(QuantizedOpType quant_op_type);
 // If this is a quantized Pool (QLinearAveragePool or QDQAveragePool)
 bool IsQuantizedPool(QuantizedOpType quant_op_type);
 
+// If this is a quantized Gemm (QLinearMatMul or QDQMatMul/QDQGemm)
+bool IsQuantizedGemm(QuantizedOpType quant_op_type);
+
 // This quantized op is an operator or qdq node unit takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
@@ -133,7 +133,7 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, IOKind io_kind = IOKind::Input);
+    float& scale, int32_t& zero_point, ArgType arg_type = ArgType::kInput);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils

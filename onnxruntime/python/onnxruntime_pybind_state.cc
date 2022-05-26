@@ -1547,6 +1547,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
+        // release GIL to allow multiple python threads to invoke Run() in parallel.
+        py::gil_scoped_release release;
         if (!run_options)
           status = sess->GetSessionHandle()->Run(*io_binding.Get());
         else

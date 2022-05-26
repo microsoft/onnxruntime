@@ -39,24 +39,30 @@ class _OptimizerConfig(object):
 
     def __init__(self, name, params, defaults):
         assert isinstance(name, str), "'name' must be a string"
-        assert name in ['AdamOptimizer', 'LambOptimizer', 'SGDOptimizer'], \
-            "'name' must be one of 'AdamOptimizer', 'LambOptimizer' or 'SGDOptimizer'"
-        assert isinstance(defaults,
-                          dict), "'defaults' must be a dict"
-        assert 'lr' in defaults, "'defaults' must contain a {'lr' : positive number} entry"
-        assert (isinstance(defaults['lr'], float) or
-                isinstance(defaults['lr'], int)) and defaults['lr'] >= 0, "lr must be a positive number"
+        assert name in [
+            "AdamOptimizer",
+            "LambOptimizer",
+            "SGDOptimizer",
+        ], "'name' must be one of 'AdamOptimizer', 'LambOptimizer' or 'SGDOptimizer'"
+        assert isinstance(defaults, dict), "'defaults' must be a dict"
+        assert "lr" in defaults, "'defaults' must contain a {'lr' : positive number} entry"
+        assert (isinstance(defaults["lr"], float) or isinstance(defaults["lr"], int)) and defaults[
+            "lr"
+        ] >= 0, "lr must be a positive number"
         assert isinstance(params, list), "'params' must be a list"
         for group in params:
-            assert isinstance(group, dict) and len(group) > 1 and 'params' in group, \
-                ("Each dict inside 'params' must contain a {'params' : [model parameter names]} entry"
-                 " and additional entries for custom hyper parameter values")
+            assert isinstance(group, dict) and len(group) > 1 and "params" in group, (
+                "Each dict inside 'params' must contain a {'params' : [model parameter names]} entry"
+                " and additional entries for custom hyper parameter values"
+            )
             for k, _ in group.items():
-                if k != 'params':
-                    assert k in defaults or k.replace("_coef", "") in defaults, f"'params' has {k} hyper parameter not present at 'defaults'"
+                if k != "params":
+                    assert (
+                        k in defaults or k.replace("_coef", "") in defaults
+                    ), f"'params' has {k} hyper parameter not present at 'defaults'"
 
         self.name = name
-        self.lr = float(defaults['lr'])
+        self.lr = float(defaults["lr"])
         self.defaults = defaults
         self.params = []
 
@@ -106,9 +112,7 @@ class SGDConfig(_OptimizerConfig):
     """
 
     def __init__(self, params=[], lr=0.001):
-        super().__init__(name='SGDOptimizer',
-                         params=params,
-                         defaults={'lr': lr})
+        super().__init__(name="SGDOptimizer", params=params, defaults={"lr": lr})
         assert isinstance(params, list) and len(params) == 0, "'params' must be an empty list for SGD optimizer"
 
 
@@ -145,11 +149,21 @@ class AdamConfig(_OptimizerConfig):
 
     @unique
     class DecayMode(IntEnum):
-        BEFORE_WEIGHT_UPDATE = 0,
+        BEFORE_WEIGHT_UPDATE = (0,)
         AFTER_WEIGHT_UPDATE = 1
 
-    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0, epsilon=1e-8, max_norm_clip=1.0,
-                 do_bias_correction=True, weight_decay_mode=DecayMode.BEFORE_WEIGHT_UPDATE):
+    def __init__(
+        self,
+        params=[],
+        lr=0.001,
+        alpha=0.9,
+        beta=0.999,
+        lambda_coef=0.0,
+        epsilon=1e-8,
+        max_norm_clip=1.0,
+        do_bias_correction=True,
+        weight_decay_mode=DecayMode.BEFORE_WEIGHT_UPDATE,
+    ):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
@@ -159,19 +173,19 @@ class AdamConfig(_OptimizerConfig):
         assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
         assert isinstance(weight_decay_mode, AdamConfig.DecayMode), "'weight_decay_mode' must be a AdamConfig.DecayMode"
         for param in params:
-            assert 'lr' not in param, "'lr' is not supported inside params"
+            assert "lr" not in param, "'lr' is not supported inside params"
 
-        defaults = {'lr': lr,
-                    'alpha': alpha,
-                    'beta': beta,
-                    'lambda': lambda_coef,
-                    'epsilon': epsilon,
-                    'max_norm_clip': max_norm_clip,
-                    'do_bias_correction': do_bias_correction,
-                    'weight_decay_mode': weight_decay_mode}
-        super().__init__(name='AdamOptimizer',
-                         params=params,
-                         defaults=defaults)
+        defaults = {
+            "lr": lr,
+            "alpha": alpha,
+            "beta": beta,
+            "lambda": lambda_coef,
+            "epsilon": epsilon,
+            "max_norm_clip": max_norm_clip,
+            "do_bias_correction": do_bias_correction,
+            "weight_decay_mode": weight_decay_mode,
+        }
+        super().__init__(name="AdamOptimizer", params=params, defaults=defaults)
         self.alpha = alpha
         self.beta = beta
         self.lambda_coef = lambda_coef
@@ -213,8 +227,19 @@ class LambConfig(_OptimizerConfig):
         lamb_optim2 = LambConfig([{'params':['fc1.weight','fc2.weight'], 'lr':0.005}], lr=0.01)
     """
 
-    def __init__(self, params=[], lr=0.001, alpha=0.9, beta=0.999, lambda_coef=0.0,
-                 ratio_min=float('-inf'), ratio_max=float('inf'), epsilon=1e-6, max_norm_clip=1.0, do_bias_correction=False):
+    def __init__(
+        self,
+        params=[],
+        lr=0.001,
+        alpha=0.9,
+        beta=0.999,
+        lambda_coef=0.0,
+        ratio_min=float("-inf"),
+        ratio_max=float("inf"),
+        epsilon=1e-6,
+        max_norm_clip=1.0,
+        do_bias_correction=False,
+    ):
         assert lr >= 0, "'lr' must be a positive number"
         assert alpha >= 0, "'alpha' must be a positive number"
         assert beta >= 0, "'beta' must be a positive number"
@@ -225,20 +250,20 @@ class LambConfig(_OptimizerConfig):
         assert max_norm_clip != 0, "'max_norm_clip' must not be 0"
         assert isinstance(do_bias_correction, bool), "'do_bias_correction' must be a boolean"
         for param in params:
-            assert 'lr' not in param, "'lr' is not supported inside params"
+            assert "lr" not in param, "'lr' is not supported inside params"
 
-        defaults = {'lr': lr,
-                    'alpha': alpha,
-                    'beta': beta,
-                    'lambda': lambda_coef,
-                    'ratio_min': ratio_min,
-                    'ratio_max': ratio_max,
-                    'epsilon': epsilon,
-                    'max_norm_clip': max_norm_clip,
-                    'do_bias_correction': do_bias_correction}
-        super().__init__(name='LambOptimizer',
-                         params=params,
-                         defaults=defaults)
+        defaults = {
+            "lr": lr,
+            "alpha": alpha,
+            "beta": beta,
+            "lambda": lambda_coef,
+            "ratio_min": ratio_min,
+            "ratio_max": ratio_max,
+            "epsilon": epsilon,
+            "max_norm_clip": max_norm_clip,
+            "do_bias_correction": do_bias_correction,
+        }
+        super().__init__(name="LambOptimizer", params=params, defaults=defaults)
         self.alpha = alpha
         self.beta = beta
         self.lambda_coef = lambda_coef

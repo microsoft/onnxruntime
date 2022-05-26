@@ -309,7 +309,7 @@ static void EvaluateSessionAndCloseModel() {
   WINML_EXPECT_NO_THROW(::EvaluateSessionAndCloseModelHelper(LearningModelDeviceKind::Cpu, false));
 }
 
-static void NamedDimensionOverride() 
+static void NamedDimensionOverride()
 {
   LearningModel model = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"fns-candy.onnx", model));
@@ -323,7 +323,7 @@ static void NamedDimensionOverride()
 
   LearningModelSessionOptions options;
   options.OverrideNamedDimension(L"None", n);
-  
+
   // Verifies that if a Dim name doesn't exist the named dimension override does not interfere with successful evaluation
   // The override is still expected to be present in the internal onnxruntime override data
   options.OverrideNamedDimension(L"DimNameThatDoesntExist", n);
@@ -441,8 +441,8 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
   if (kind == TensorKind::Double) {
     window_operator.SetAttribute(L"output_datatype", double_data_type);
   }
-    
-  auto model = 
+
+  auto model =
       LearningModelBuilder::Create(13)
               .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Int64, scalar_shape))
               .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", kind, output_shape))
@@ -502,7 +502,7 @@ static void DiscreteFourierTransform_2D() {
   IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
   SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
   VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
-    
+
   auto corrected_image =
       winrt::Windows::Media::VideoFrame(
           winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
@@ -516,7 +516,7 @@ static void DiscreteFourierTransform_2D() {
 
   std::vector<int64_t> shape = {1, 1, height, width};
   std::vector<int64_t> output_shape = {1, 1, height, width};
-   
+
   auto builder =
       LearningModelBuilder::Create(13)
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, shape))
@@ -575,7 +575,7 @@ static void DiscreteFourierTransform_2D() {
           .SetOutput(L"C", L"Output.Error"));
 
   auto model = builder.CreateModel();
-  
+
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
@@ -610,8 +610,9 @@ static void DiscreteFourierTransform_2D() {
 static void DiscreteFourierTransform(
     const std::vector<std::complex<float>>& input,
     const std::vector<int64_t>& shape,
-    const std::vector<std::complex<float>>& expected_output, 
+    const std::vector<std::complex<float>>& expected_output,
     size_t axis,
+    size_t dft_length,
     bool is_onesided = false) {
   auto axis_dim = axis + 1;
   printf("\nDiscrete Fourier Transform [axis=%d, is_onesided=%s]\n", static_cast<int>(axis_dim), is_onesided ? "true" : "false");
@@ -627,18 +628,20 @@ static void DiscreteFourierTransform(
     output_shape[output_shape.size() - 1] = 2;
   }
   output_shape[axis_dim] = is_onesided ? (1 + (shape[axis_dim] >> 1)) : shape[axis_dim];
-   
+
   auto model =
       LearningModelBuilder::Create(13)
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, shape))
+        .Inputs().AddConstant(L"Input.DFTLength", TensorInt64Bit::CreateFromArray({}, {INT64(dft_length)}))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
         .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
           .SetInput(L"input", L"Input.Signal")
+          .SetInput(L"dft_length", L"Input.DFTLength")
           .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
           .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
           .SetOutput(L"output", L"Output.Spectra"))
         .CreateModel();
-  
+
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
@@ -663,7 +666,7 @@ static void DiscreteFourierTransform(
      constexpr float error_threshold = .001f;
      WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i) - expected_output[i / 2].real()) < error_threshold);
      WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i + 1) - expected_output[i / 2].imag()) < error_threshold);
-   }  
+   }
    printf("\n");
 }
 #endif
@@ -726,7 +729,7 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
       2
     };
   auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
-  
+
   auto model =
       LearningModelBuilder::Create(13)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, input_shape))
@@ -879,7 +882,7 @@ static void MelSpectrogramOnThreeToneSignal(
   // Bind input
   auto signal = MakeThreeTones<float>(signal_size, sampling_rate);
   binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromArray(signal_shape, signal));
-  
+
   // Bind output
   auto output_image =
     winrt::Windows::Media::VideoFrame(
@@ -918,8 +921,8 @@ static void ModelBuilding_StandardDeviationNormalization() {
   int64_t height = 256;
   int64_t width = 256;
   int64_t channels = 3;
-  std::vector<int64_t> input_shape = {1, height, width, channels};  
-  std::vector<int64_t> output_shape = {1, channels, height, width};  
+  std::vector<int64_t> input_shape = {1, height, width, channels};
+  std::vector<int64_t> output_shape = {1, channels, height, width};
   auto sub_model =
       LearningModelBuilder::Create(13)
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
@@ -930,7 +933,7 @@ static void ModelBuilding_StandardDeviationNormalization() {
                            .SetInput(L"B", L"Means")
                            .SetOutput(L"C", L"Output"))
         .CreateModel();
-  auto div_model = 
+  auto div_model =
     LearningModelBuilder::Create(13)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
@@ -1077,13 +1080,13 @@ static void ModelBuilding_DiscreteFourierTransform() {
       {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
       {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
       {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
-      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f}, 
+      {1.00f, 0.00f}, {2.00, 0.00f}, {3.00f, 0.00f}, {4.00f, 0.00f}, {5.00f, 0.00f}, {6.00f, 0.00f}, {7.00f, 0.00f}, {8.00f, 0.00f},
 
       {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
       {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
       {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
       {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
-      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f}, 
+      {2.00f, 1.00f}, {4.00, 2.00f}, {6.00f, 3.00f}, {8.00f, 4.00f}, {10.00f, 5.00f}, {12.00f, 6.00f}, {14.00f, 7.00f}, {16.00f, 8.00f},
     };
 
   std::vector<std::complex<float>> expected_axis_0_two_sided = {
@@ -1099,7 +1102,37 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_two_sided, 0, false /*onesided*/);
+  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_two_sided, 0, 5, false /*onesided*/);
+
+  std::vector<std::complex<float>> expected_axis_0_two_sided_small_dft_length = {
+    {4.000f, 0.000f}, {8.000f, 0.000f}, {12.000f, 0.000f}, {16.000f, 0.000f}, {20.000f, 0.000f}, {24.000f, 0.000f}, {28.000f, 0.000f}, {32.000f, 0.000f},
+    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+
+    {8.000f, 4.000f}, {16.000f, 8.000f}, {24.000f, 12.000f}, {32.000f, 16.000f}, {40.000f, 20.000f}, {48.000f, 24.000f}, {56.000f, 28.000f}, {64.000f, 32.000f},
+    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
+    {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
+  };
+  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_two_sided_small_dft_length, 0, 4, false /*onesided*/);
+
+  std::vector<std::complex<float>> expected_axis_0_two_sided_bigger_dft_length = {
+    {5.000000f, 0.000000f},   {10.000000f, 0.000000f},  {15.000000f, 0.000000f},  {20.000000f, 0.000000f},  {25.000000f, 0.000000f},  {30.000000f, 0.000000f},  {35.000000f, 0.000000f},  {40.000000f, 0.000000f},
+    {-0.500000f, -0.866025f}, {-1.000000f, -1.732051f}, {-1.500000f, -2.598076f}, {-2.000000f, -3.464101f}, {-2.500000f, -4.330126f}, {-3.000000f, -5.196152f}, {-3.500000f, -6.062176f}, {-4.000000f, -6.928203f},
+    {0.500000f, -0.866025f},  {1.000000f, -1.732051f},  {1.500000f, -2.598076f},  {1.999999f, -3.464102f},  {2.499999f, -4.330127f},  {2.999999f, -5.196152f},  {3.499999f, -6.062178f},  {3.999999f, -6.928203f},
+    {1.000000f, -0.000000f},  {2.000000f, -0.000001f},  {3.000000f, -0.000001f},  {4.000000f, -0.000002f},  {5.000000f, -0.000002f},  {6.000000f, -0.000002f},  {7.000000f, -0.000003f},  {8.000000f, -0.000003f},
+    {0.500000f, 0.866025f},   {1.000001f, 1.732051f},   {1.500001f, 2.598076f},   {2.000001f, 3.464102f},   {2.500002f, 4.330127f},   {3.000002f, 5.196153f},   {3.500002f, 6.062179f},   {4.000003f, 6.928204f},
+    {-0.500000f, 0.866026f},  {-1.000000f, 1.732052f},  {-1.500000f, 2.598077f},  {-2.000000f, 3.464104f},  {-2.500000f, 4.330130f},  {-2.999999f, 5.196155f},  {-3.500000f, 6.062181f},  {-4.000000f, 6.928207f},
+
+    {10.000000f, 5.000000f},  {20.000000f, 10.000000f}, {30.000000f, 15.000000f}, {40.000000f, 20.000000f}, {50.000000f, 25.000000f},  {60.000000f, 30.000000f},  {70.000000f, 35.000000f},  {80.000000f, 40.000000f}, 
+    {-0.133975f, -2.232050f}, {-0.267949f, -4.464101f}, {-0.401925f, -6.696153f}, {-0.535898f, -8.928202f}, {-0.669872f, -11.160252f}, {-0.803849f, -13.392305f}, {-0.937822f, -15.624352f}, {-1.071796f, -17.856403f},
+    {1.866025f, -1.232051f},  {3.732050f, -2.464102f},  {5.598075f, -3.696153f},  {7.464101f, -4.928204f},  {9.330126f, -6.160254f},   {11.196151f, -7.392306f},  {13.062176f, -8.624355f},  {14.928202f, -9.856407f},
+    {2.000000f, 0.999999f},   {4.000001f, 1.999998f},   {6.000001f, 2.999998f},   {8.000002f, 3.999997f},   {10.000003f, 4.999996f},   {12.000002f, 5.999995f},   {14.000003f, 6.999995f},   {16.000004f, 7.999993f},
+    {0.133975f, 2.232051f},   {0.267951f, 4.464102f},   {0.401926f, 6.696153f},   {0.535901f, 8.928205f},   {0.669876f, 11.160257f},   {0.803851f, 13.392306f},   {0.937826f, 15.624360f},   {1.071802f, 17.856409f},
+    {-1.866026f, 1.232052f},  {-3.732052f, 2.464104f},  {-5.598077f, 3.696155f},  {-7.464104f, 4.928207f},  {-9.330130f, 6.160261f},   {-11.196154f, 7.392309f},  {-13.062180f, 8.624363f},  {-14.928207f, 9.856415f},
+  };
+  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 0, 6, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_0_one_sided = {
     {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
@@ -1110,7 +1143,7 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_one_sided, 0, true /*onesided*/);
+  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_one_sided, 0, 5, true /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_1_two_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
@@ -1125,7 +1158,7 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_1_two_sided, 1, false /*onesided*/);
+  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_1_two_sided, 1, 8, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_1_one_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f},
@@ -1139,7 +1172,7 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_1_one_sided, 1, true /*onesided*/);
+  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_1_one_sided, 1, 8, true /*onesided*/);
 
   DiscreteFourierTransform_2D();
 
@@ -1175,7 +1208,7 @@ static void DiscreteFourierTransformInverse(size_t axis) {
            1, 2, 3, 4, 5, 6, 7, 8,
            1, 2, 3, 4, 5, 6, 7, 8,
            1, 2, 3, 4, 5, 6, 7, 8,
-           1, 2, 3, 4, 5, 6, 7, 8, 
+           1, 2, 3, 4, 5, 6, 7, 8,
 
            2, 4, 6, 8, 10, 12, 14, 16,
            2, 4, 6, 8, 10, 12, 14, 16,
@@ -1192,7 +1225,7 @@ static void DiscreteFourierTransformInverse(size_t axis) {
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
-  
+
   // Check results
   auto y_tensor = result.Outputs().Lookup(L"Output.Inverse").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
@@ -1200,7 +1233,7 @@ static void DiscreteFourierTransformInverse(size_t axis) {
     constexpr float error_threshold = .001f;
     WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i) - input_vector[i / 2]) < error_threshold);
     WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i + 1) - 0) < error_threshold);
-  }  
+  }
 }
 #endif
 
@@ -1299,7 +1332,7 @@ static void SetIntraOpThreadSpinning() {
     auto device = LearningModelDevice(LearningModelDeviceKind::Cpu);
     auto shape = std::vector<int64_t>{1, 1000};
     auto model = ProtobufHelpers::CreateModel(TensorKind::Float, shape, 1000);
-    
+
     std::vector<float> input(1000);
     std::iota(std::begin(input), std::end(input), 0.0f);
     auto tensor_input = TensorFloat::CreateFromArray(shape, input);
