@@ -161,7 +161,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   std::vector<int8_t> q(shape.Size(), 10);
   ORT_IGNORE_RETURN_VALUE(scale_output);
-  cudaMemcpy(output->template MutableData<int8_t>(), q.data(), shape.Size(), cudaMemcpyDeviceToDevice);
+  cudaMemcpy(output->template MutableData<int8_t>(), q.data(), shape.Size(), cudaMemcpyHostToDevice);
 
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
