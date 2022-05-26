@@ -45,12 +45,9 @@ def create_qordered_longformer_attention_graph():
 
 
     initializers = [
-        numpy_helper.from_array(numpy.ones((768, 2304), dtype='float32'), name='weight'),
-        #numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float32').reshape([768, 2304]), name='weight'),
-        #numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float32').reshape([2304]), name='bias'),
+        numpy_helper.from_array(numpy.ones((768, 2304), dtype='float32'), name='weight'),      
         numpy_helper.from_array(numpy.zeros((2304), dtype='float32'), name='bias'),
-        numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float32').reshape([768, 2304]), name='global_weight'),
-        #numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float32').reshape([2304]), name='global_bias'),
+        numpy_helper.from_array(numpy.ones((768, 2304), dtype='float32'), name='global_weight'),        
         numpy_helper.from_array(numpy.zeros((2304), dtype='float32'), name='global_bias'),
         numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_input'),
         numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_weight'),
@@ -59,16 +56,16 @@ def create_qordered_longformer_attention_graph():
         numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_qkv_gemm'),
         numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_global_gemm'),
         numpy_helper.from_array(numpy.array(1, dtype='float32'), name='scale_output'),      
-        numpy_helper.from_array(numpy.zeros((2, 32), dtype='float16'), name='mask'),
-        numpy_helper.from_array(numpy.zeros((2, 32), dtype='float32'), name='mask_float32'),        
-        numpy_helper.from_array(numpy.zeros((2, 32), dtype='int32'), name='global'),
+        numpy_helper.from_array(numpy.zeros((1, 32), dtype='float16'), name='mask'),
+        numpy_helper.from_array(numpy.zeros((1, 32), dtype='float32'), name='mask_float32'),        
+        numpy_helper.from_array(numpy.zeros((1, 32), dtype='int32'), name='global'),
     ]
 
     graph = helper.make_graph(nodes, "QOrderedLongformerAttention_Graph", [
-        helper.make_tensor_value_info('input', TensorProto.FLOAT, [2, 32, 768])
+        helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 32, 768])
     ], [
-        helper.make_tensor_value_info('output_quantized_longformer', TensorProto.FLOAT, [2, 32, 768]),
-        helper.make_tensor_value_info('output_non_quantized_longformer', TensorProto.FLOAT, [2, 32, 768]),        
+        helper.make_tensor_value_info('output_quantized_longformer', TensorProto.FLOAT, [1, 32, 768]),
+        helper.make_tensor_value_info('output_non_quantized_longformer', TensorProto.FLOAT, [1, 32, 768]),        
     ], initializers)
 
     model = helper.make_model(graph=graph)
@@ -82,7 +79,7 @@ sess_options = SessionOptions()
 ort_session = InferenceSession(onnx_model_str, sess_options, providers=['CUDAExecutionProvider'])
 
 ort_inputs = {
-    'input' : numpy.random.randint(1, 2, [2, 32, 768]).astype('float32')
+    'input' : numpy.random.randint(1, 2, [1, 32, 768]).astype('float32')
 }
 
 ort_output = ort_session.run(None, ort_inputs)
