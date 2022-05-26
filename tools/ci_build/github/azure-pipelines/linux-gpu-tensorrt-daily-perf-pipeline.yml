@@ -3,7 +3,7 @@ parameters:
 - name: BuildORT
   displayName: Build ORT
   type: boolean
-  default: false
+  default: true
 
 - name: PostToDashboard
   displayName: Post to Dashboard
