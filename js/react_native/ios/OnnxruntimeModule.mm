@@ -41,7 +41,7 @@ RCT_EXPORT_METHOD(loadModel
   @try {
     NSDictionary *resultMap = [self loadModel:modelPath options:options];
     resolve(resultMap);
-  } @catch (NSException *exception) {
+  } @catch (...) {
     reject(@"onnxruntime", @"can't load model", nil);
   }
 }
@@ -66,7 +66,7 @@ RCT_EXPORT_METHOD(run
   @try {
     NSDictionary *resultMap = [self run:url input:input output:output options:options];
     resolve(resultMap);
-  } @catch (NSException *exception) {
+  } @catch (...) {
     reject(@"onnxruntime", @"can't run model", nil);
   }
 }
