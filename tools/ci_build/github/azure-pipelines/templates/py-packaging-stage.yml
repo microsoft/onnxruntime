@@ -784,12 +784,6 @@ stages:
 
       - script: |
           set -ex
-          py_ver=$(PythonVersion)
-          echo $py_ver
-        displayName: 'Test Script'
-
-      - script: |
-          set -ex
           uname -m
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac machine info'
@@ -811,13 +805,22 @@ stages:
         displayName: 'Command Line Script'
 
       - script: |
+          sudo python3 -m pip install delocate
+          cd '$(Build.BinariesDirectory)/Release/dist'
+          for file in *.whl ;
+          delocate-listdeps $file
+          delocate-wheel --require-archs arm64 -w . $file"
+          done
+        displayName: "delocate wheel "
+
+      - script: |
           set -ex
           pushd .
           py_ver=$(PythonVersion)
           py_ver_nodot=${py_ver//.}
           mac_ver=11_0
-          cd '$(Build.BinariesDirectory)/Release/dist'
-          for file in *.whl ; do mv $file ${file//-cp"$py_ver_nodot"-macosx_"$mac_ver"_x86_64/-none-macosx_"$mac_ver"_arm64} ; done
+          # cd '$(Build.BinariesDirectory)/Release/dist'
+          # for file in *.whl ; do mv $file ${file//-cp"$py_ver_nodot"-macosx_"$mac_ver"_x86_64/-none-macosx_"$mac_ver"_arm64} ; done
           popd
         displayName: "Rename x86_64 to arm64"
 
