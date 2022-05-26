@@ -31,7 +31,7 @@ def create_qordered_longformer_attention_graph():
             'LongformerAttention',
             inputs=['input', 'weight', 'bias', 'mask', 'global_weight', 'global_bias', 'global'],
             outputs=['output_non_quantized_longformer'],
-            name='LongFormerAttention_quantized',
+            name='LongFormerAttention_non_quantized',
             domain='com.microsoft',
             num_heads=12,
             window=8,
