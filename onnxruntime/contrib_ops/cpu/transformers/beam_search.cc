@@ -622,7 +622,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   std::cout << "622" << std::endl;
   BeamSearchCpuState cpu_state;
   cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
-
+  std::cout << "625" << std::endl;
   // IAllocatorUniquePtr<char> buffer;
   // ORT_RETURN_IF_ERROR(
   //   decoder_subgraph_.CreateInitialFeeds(
@@ -644,8 +644,9 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
   const OrtValue* encoder_attn_mask_value = context_.GetInputOrtValue(10);
   //const Tensor& encoder_attn_mask = encoder_attn_mask_value->Get<Tensor>();
+  std::cout << "647" << std::endl;
   ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, encoder_attn_mask_value, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, parameters_->num_beams, feeds));
-
+  std::cout << "649" << std::endl;
   BeamSearchState<T> beam_state;
   beam_state.Init(temp_space_allocator_,
                   parameters_->batch_size,
@@ -654,12 +655,12 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                   parameters_->sequence_length,
                   parameters_->max_length,
                   parameters_->output_scores);
-
+  std::cout << "658" << std::endl;
   cpu_state.sequences.Init(cpu_state.sequences_space,
                            parameters_->BatchBeamSize(),
                            parameters_->sequence_length,
                            parameters_->max_length);
-
+  std::cout << "663" << std::endl;
   init_beam_state_func_(&beam_state,
                         &cpu_state,
                         cpu_state.sequence_lengths,// bugbug: no sequence_lengths here
@@ -669,7 +670,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                         parameters_->sequence_length,
                         parameters_->max_length,
                         cuda_stream_);
-
+  std::cout << "673" << std::endl;
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();
   dumper->Print("encoder_input_ids", feeds[0]);
@@ -677,11 +678,10 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   dumper->Print("decoder_input_ids", feeds[2]);
   dumper->Print("beam", feeds[3]);
 #endif
-
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
   while (current_length < parameters_->max_length) {
-    //std::cout << "cur_len " << current_length << std::endl;
+    std::cout << "cur_len " << current_length << std::endl;
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
     auto cur_len = std::to_string(current_length);
