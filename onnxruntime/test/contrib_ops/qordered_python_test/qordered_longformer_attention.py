@@ -9,8 +9,8 @@ def create_qordered_longformer_attention_graph():
 
     nodes = [
         helper.make_node('QuantizeWithOrder', inputs=['input', 'scale_input'], outputs=['input_s8_COL32'], name='1_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=2),    
-        helper.make_node('QuantizeWithOrder', inputs=['weight', 'scale_weight'], outputs=['weight_s8_COL4_4R2_8C_T'], name='2_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=4),
-        helper.make_node('QuantizeWithOrder', inputs=['global_weight', 'scale_global_weight'], outputs=['global_weight_s8_COL4_4R2_8C_T'], name='3_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=4),
+        helper.make_node('QuantizeWithOrder', inputs=['weight', 'scale_weight'], outputs=['weight_s8_COL4_4R2_8C_T'], name='2_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=3),
+        helper.make_node('QuantizeWithOrder', inputs=['global_weight', 'scale_global_weight'], outputs=['global_weight_s8_COL4_4R2_8C_T'], name='3_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=3),
  
         helper.make_node(
             'QOrderedLongformerAttention',
@@ -29,7 +29,7 @@ def create_qordered_longformer_attention_graph():
             order_global_weight=3            
         ),
         
-        helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output_quantized_longformer'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=2, order_output=1),
+        #helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output_quantized_longformer'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=2, order_output=1),
 
         helper.make_node(
             'LongformerAttention',
@@ -65,7 +65,7 @@ def create_qordered_longformer_attention_graph():
         helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 32, 768])
     ], [
         helper.make_tensor_value_info('output_quantized_longformer', TensorProto.FLOAT, [1, 32, 768]),
-        helper.make_tensor_value_info('output_non_quantized_longformer', TensorProto.FLOAT, [1, 32, 768]),        
+        helper.make_tensor_value_info('output_s8_COL32', TensorProto.INT8, [1, 32, 768]),        
     ], initializers)
 
     model = helper.make_model(graph=graph)
