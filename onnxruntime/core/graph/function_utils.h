@@ -38,7 +38,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                        const logging::Logger& logger,
                                                        bool allow_released_opsets_only);
 
-/** Get the unique id for function. This is used as a key to find the 
+/** Get the unique id for function. This is used as a key to find the
 * relevant model local function from it's container.
 * @param function_domain Domain for the function.
 * @param function_name Name of the function. Name should match the OpType of the node which references the function.
@@ -51,6 +51,9 @@ Status Instantiate(onnxruntime::Graph& graph,
        const onnxruntime::NodeIndex node_index,
        const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
        std::unique_ptr<Function>& output);
+
+void Specialize (ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
+const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix);
 
 }
 

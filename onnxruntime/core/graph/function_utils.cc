@@ -7,8 +7,14 @@
 #include "core/graph/function_impl.h"
 #include "core/graph/model_load_utils.h"
 
+#include "onnx/defs/printerplus.h"
+#include <iostream>
+
 namespace onnxruntime {
 namespace function_utils {
+
+using string = std::string;
+using namespace ONNX_NAMESPACE;
 
 // Utilify function to get the imported version of domain from opset imports
 // Returns -1 if requested domain is not found in the opset_imports
@@ -19,106 +25,6 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
     return -1;
   }
   return it->second;
-}
-
-struct Inliner {
-  std::string prefix;
-  const onnxruntime::NodeAttributes& attr_map;
-  std::vector<InlinedHashMap<std::string, std::string>> rename_scopes;
-
-  Inliner(std::string prefix_, const onnxruntime::NodeAttributes& attr_map_) : prefix(prefix_)
-                                                                                   attr_map(attr_map_) {
-    // Create an empty mapping for the top-level scope.
-    inliner.rename_scopes.push_back();
-  }
-
-  void rename(std::string& name) {
-    for (auto i = rename_scopes.size() - 1; i > 0; --i) {
-      const auto& map = rename_scopes[i];
-      auto iter = map.find(name);
-      if (iter != map.end()) {
-        name = iter->second;
-        return;
-      }
-    }
-    auto new_name = prefix + name;
-    auto& current_scope = rename_scopes.back();
-    current_scope[name] = new_name;
-    name = new_name;
-  }
-
-  template <bool isOutput>
-  void bind(const RepeatedPtrField<string>& formals, const RepeatedPtrField<string>& actuals) {
-    // Every formal parameter name FP should be replace by the corresponding actual parameter name AP.
-    // However, if AP is empty, it is a missing optional parameter. This does not make any difference
-    // for inputs. However, for outputs we use a unique dummy name to handle the case that it
-    // is used in an output-context where it is not optional.
-    ORT_ENFORCE(actuals.size() <= formals.size(),
-                "Number of actual parameters cannot exceed number of formal parameters");
-    auto& current_scope = rename_scopes.back();
-    int i = 0;
-    for (; i < actuals.size(); ++i) {
-      std::string formal = formals.Get(i);
-      std::string rename = actuals.Get(i);
-      if (isOutput && rename.empty())
-        rename = prefix + formal;
-      current_scope[formal] = rename;
-    }
-    for (; i < formals.size(); ++i) {
-      std::string formal = formals.Get(i);
-      std::string rename = isOutput ? prefix + formal : std::string("");
-      current_scope[formal] = rename;
-    }
-  }
-
-  void transform(NodeProto& n) {
-    auto& input = *n.mutable_input();
-    for (auto it = input.begin(); it != input.end(); ++it) {
-      *it = rename(*it);
-    }
-    auto& output = *n.mutable_output();
-    for (auto it = output.begin(); it != output.end(); ++it) {
-      *it = rename(*it);
-    }
-    auto& attributes = *n.mutable_attribute();
-    for (auto* attr_iter = attributes.begin(); attr_iter != attributes.end(); ++attr_iter) {
-      auto* attr = *attr_iter;
-      if (!attr->ref_attr_name().empty()) {
-        auto entry = attr_map.find(attr->ref_attr_name());
-        if (entry != attr_map.cend()) {
-          *attr = entry->second;
-        } else {
-          attr_iter = attributes.erase(attr_iter);
-          continue;
-        }
-      }
-      if (attr->has_g()) {
-        transform(attr->mutable_g());
-      }
-      ++attr_iter
-    }
-  }
-
-  void transform(GraphProto& graph) {
-    for (auto& n : fp.mutable_node())
-      transform(n);
-  }
-
-  static void createInlinableCopy(NodeProto& callnode, FunctionProto& callee) {
-    std::string uniq_identifier = callnode.name();
-    if (uniq_identifier.empty()) {
-      std::stringstream ss;
-      ss << static_cast<const void*>(&callnode);
-      uniq_identifier = ss.str();
-    }
-    Inliner inliner(uniq_identifier, callnode.GetAttributes());
-
-    inliner.bind(callee.input(), callnode.input());
-    inliner.bind(callee.output(), callnode.output());
-
-    for (auto& n : callee.mutable_node())
-      inliner.transform(n);
-  }
 }
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema>
@@ -368,70 +274,128 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   return op_schema;
 }
 
-Status Instantiate(onnxruntime::Graph& graph,
-                   const onnxruntime::NodeIndex node_index,
-                   const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
-                   std::unique_ptr<Function>& output) {
-  auto* node_in_parent_graph = graph.GetNode(node_index);
-  ORT_ENFORCE(node_in_parent_graph);
+struct Inliner {
+  std::string prefix;
+  const onnxruntime::NodeAttributes& attr_map;
+  std::vector<InlinedHashMap<std::string, std::string>> rename_scopes;
 
-  ONNX_NAMESPACE::NodeProto function_op_node_proto;  // NodeProto pertaining to the op with a FunctionBody
-  node_in_parent_graph->ToProto(function_op_node_proto);
-
-  output = std::make_unique<FunctionImpl>(graph, onnx_func_proto);
-  auto& function_body_graph = output->MutableBody();
-
-  // Create a copy of FunctionProto
-  ONNX_NAMESPACE::FunctionProto inlined_fp = onnx_func_proto;
-  Inliner::createInlinableCopy(*node_in_parent_graph, inlined_fp);
-
-  // iterate over each node in the FunctionProto and fix inputs/outputs
-  for (const auto* node : inlined_fp.node()) {
-    InlinedVector<onnxruntime::NodeArg*> inputs;
-    InlinedVector<onnxruntime::NodeArg*> outputs;
-
-    for (int idx = 0; idx < (*node).input_size(); ++idx) {
-      const std::string& tensor_name = (*node).input().Get(idx);
-      auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
-      inputs.push_back(&no_arg);
-    }
-
-    for (int idx = 0; idx < (*node).output_size(); ++idx) {
-      std::string tensor_name = (*node).output().Get(idx);
-      auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
-      outputs.push_back(&no_arg);
-    }
-
-    onnxruntime::NodeAttributes new_attr_map;
-    new_attr_map.reserve(node->attribute_size());
-    for (const auto* node_attr = (*node).attribute()) {
-      onnx::AttributeProto attr_copy = *node_attr;
-      new_attr_map[(*node_attr).name()] = std::move(attr_copy);
-    }
-    function_body_graph.AddNode(uniq_identifier, node->op_type(),
-                                node->doc_string(), inputs, outputs, &new_attr_map, node->domain());
+  Inliner(std::string prefix_, const onnxruntime::NodeAttributes& attr_map_) : prefix(prefix_),
+                                                                               attr_map(attr_map_) {
+    // Create an empty mapping for the top-level scope.
+    rename_scopes.emplace_back();
   }
 
-  std::vector<const NodeArg*> graph_inputs, graph_outputs;
+  // Replace given name with a unique version of the name, and cache the
+  // renaming-binding in current scope.
+  void make_unique(std::string& name) {
+    auto new_name = prefix + name;
+    auto& current_scope = rename_scopes.back();
+    current_scope[name] = new_name;
+    // std::cout << "Uniquifying " << name << " as " << new_name << std::endl;
+    name = new_name;
+  }
 
-  for (const auto& tensor_name : onnx_func_proto.input())
-    graph_inputs.pushback(&function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr));
+  void rename(std::string& name) {
+    for (auto i = rename_scopes.size(); i > 0; --i) {
+      const auto& map = rename_scopes[i - 1];
+      auto iter = map.find(name);
+      if (iter != map.end()) {
+        // std::cout << "Renaming " << name << " as " << iter->second << std::endl;
+        name = iter->second;
+        return;
+      }
+    }
+    make_unique(name);
+  }
 
-  for (const auto& tensor_name : onnx_func_proto.output())
-    graph_outputs.pushback(&function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr));
+  template <bool isOutput>
+  void bind(google::protobuf::RepeatedPtrField<string>& formals, const google::protobuf::RepeatedPtrField<string>& actuals) {
+    // Every formal parameter name FP should be replace by the corresponding actual parameter name AP.
+    // However, if AP is empty, it is a missing optional parameter. This does not make any difference
+    // for inputs. However, for outputs we use a unique dummy name to handle the case that it
+    // is used in an output-context where it is not optional.
+    ORT_ENFORCE(actuals.size() <= formals.size(),
+                "Number of actual parameters cannot exceed number of formal parameters");
+    auto& current_scope = rename_scopes.back();
+    int i = 0;
+    for (; i < actuals.size(); ++i) {
+      std::string& formal = *formals.Mutable(i);
+      std::string rename = actuals.Get(i);
+      if constexpr (isOutput)
+        if (rename.empty())
+          rename = prefix + formal;
+      current_scope[formal] = rename;
+      if (!rename.empty())
+        formal = rename;
+    }
+    for (; i < formals.size(); ++i) {
+      std::string& formal = *formals.Mutable(i);
+      std::string rename = isOutput ? prefix + formal : std::string("");
+      current_scope[formal] = rename;
+      if (!rename.empty())
+        formal = rename;
+    }
+  }
 
-  function_body_graph.SetInputs(graph_inputs);
-  function_body_graph.SetOutputs(graph_outputs);
+  void transform(NodeProto& n) {
+    if (!n.name().empty())
+      n.set_name(prefix + n.name());
+    auto& input = *n.mutable_input();
+    for (auto it = input.begin(); it != input.end(); ++it) {
+      rename(*it);
+    }
+    auto& output = *n.mutable_output();
+    for (auto it = output.begin(); it != output.end(); ++it) {
+      rename(*it);
+    }
+    auto& attributes = *n.mutable_attribute();
+    for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {
+      auto& attr = *attr_iter;
+      if (!attr.ref_attr_name().empty()) {
+        auto entry = attr_map.find(attr.ref_attr_name());
+        if (entry != attr_map.cend()) {
+          attr = entry->second;
+        } else {
+          attr_iter = attributes.erase(attr_iter);
+          continue;
+        }
+      }
+      if (attr.has_g()) {
+        transform(*attr.mutable_g());
+      }
+      ++attr_iter;
+    }
+  }
 
-  onnxruntime::Graph::ResolveOptions options;
-  ORT_RETURN_IF_ERROR(function_body_graph.Resolve(options));
+  void transform(GraphProto& graph) {
+    rename_scopes.emplace_back();
+    for (auto& x : *graph.mutable_input())
+      make_unique(*x.mutable_name());
+    for (auto& y : *graph.mutable_output())
+      make_unique(*y.mutable_name());
+    for (auto& n : *graph.mutable_node())
+      transform(n);
+    rename_scopes.pop_back();
+  }
 
-  // ORT_RETURN_IF(node_in_parent_graph->InputDefs().size() != function_body_graph.GetInputsIncludingInitializers().size(),
-  //   "Node " + node_in_parent_graph->Name() + "'s number of inputs is different from function body graph's number of input.");
+  static void createInlinableCopy(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+    Inliner inliner(unique_prefix, attr_map);
 
-  // ORT_RETURN_IF(node_in_parent_graph->OutputDefs().size() != function_body_graph.GetOutputs().size(),
-  //             "Node ", node_in_parent_graph->Name(), "'s number of outputs is different from function body graph's number of outputs.");
-  return Status::OK();
+    inliner.bind<false>(*callee.mutable_input(), callnode.input());
+    inliner.bind<true>(*callee.mutable_output(), callnode.output());
+
+    for (auto& n : *callee.mutable_node())
+      inliner.transform(n);
+  }
+};
+
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
+                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+  // std::cout << "Function before\n";
+  // ONNX_NAMESPACE::do_print(std::cout, called_function);
+  Inliner::createInlinableCopy(calling_node, called_function, attr_map, unique_prefix);
+  // std::cout << "Function after\n";
+  // ONNX_NAMESPACE::do_print(std::cout, called_function);
 }
 
 }  // namespace function_utils

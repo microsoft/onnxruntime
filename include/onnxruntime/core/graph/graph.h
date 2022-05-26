@@ -169,11 +169,14 @@ class Node {
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
 
-  Status InstantiateFunctionBody();
+  // Status InstantiateFunctionBody();
 
-  Status GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const;
+  // Status GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const;
 
   bool CanBeInlined() const;
+
+  /** Copy the called op's FunctionProto if it has one. Returns true if successful. */
+  bool TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& func_proto) const;
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_.get(); }
@@ -467,6 +470,7 @@ class Node {
   SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
 
   void SetFunctionTemplate(const FunctionTemplate& func_template);
+  // const FunctionTemplate* GetFunctionTemplate() const noexcept { return func_template_; }
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
@@ -1289,9 +1293,9 @@ class Graph {
   */
   Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
-  Graph(const Model& owning_model, 
-      IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
-      ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+  Graph(const Model& owning_model,
+      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+      ONNX_NAMESPACE::GraphProto& subgraph_proto,
       const std::unordered_map<std::string, int>& domain_version_map,
       const logging::Logger& logger,
       bool strict_shape_type_inference);
@@ -1571,7 +1575,7 @@ class Graph {
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
   //Currently to make the ORT in-memory graph work, we have to create a temporary op schema
-  //for the fused kernel. I really don't like it. but for short-term solution, let's host 
+  //for the fused kernel. I really don't like it. but for short-term solution, let's host
   //those schemas here.
   InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
