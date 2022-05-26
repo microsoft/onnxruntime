@@ -202,6 +202,14 @@ int DnnlNode::SinceVersion() {
   return since_version_;
 }
 
+void DnnlNode::AppendPostOp(std::string op) {
+  postops_.push_back(op);
+}
+
+const std::vector<std::string>& DnnlNode::GetPostOps() {
+  return postops_;
+}
+
 DnnlSubgraph::DnnlSubgraph(const GraphViewer& graph_viewer) {
   Build(graph_viewer);
   is_dynamic_ = false;
