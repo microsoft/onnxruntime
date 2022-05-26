@@ -145,7 +145,8 @@ def generate_adamw_test_data(seed, _model_setup_func, data_func, train_step_coun
         "Momentum2s": m2_dict,
     }
     import json
-    with open(json_file_name, 'w', encoding='utf-8') as f:
+
+    with open(json_file_name, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
@@ -182,6 +183,7 @@ def generate_adamw_multiple_weights_tests(adam_mode, run_step_count):
         input = torch.randn(batch_size, dimension_in, device=device, dtype=torch.float32)
         target = torch.randn(batch_size, dim_out, device=device, dtype=torch.float32)
         return input, target
+
     json_file_name = f"adamw_test_multiple_weights_mode_{adam_mode}.json"
     generate_adamw_test_data(seed, _model_setup_func, data_func, run_step_count, adam_mode, json_file_name)
 
