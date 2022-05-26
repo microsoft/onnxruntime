@@ -397,6 +397,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       if (OrtCudaProviderDeviceSync) {
         cudaDeviceSynchronize();
       }
+#else
+      ORT_IGNORE_RETURN_VALUE(OrtCudaProviderDeviceSync);
 #endif
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name_for_profiling + "_kernel_time",
