@@ -22,16 +22,27 @@ def create_qordered_longformer_attention_graph():
             name='LongFormerAttention_quantized',
             domain='com.microsoft',
             num_heads=12,
+            window=8
+        ),
+        
+        helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output_quantized_longformer'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=2, order_output=1),
+
+        helper.make_node(
+            'LongformerAttention',
+            inputs=['input', 'weight', 'bias', 'mask', 'global_weight', 'global_bias', 'global'],
+            outputs=['output_non_quantized_longformer'],
+            name='LongFormerAttention_quantized',
+            domain='com.microsoft',
+            num_heads=12,
             window=8,
             order_input=2,
             order_output=2,
             order_weight=3,
             order_global_weight=3
         ),
-        
-        helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=2, order_output=1),
-
     ]
+
+
 
     initializers = [
         numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float32').reshape([768, 2304]), name='weight'),
@@ -52,7 +63,8 @@ def create_qordered_longformer_attention_graph():
     graph = helper.make_graph(nodes, "QOrderedLongformerAttention_Graph", [
         helper.make_tensor_value_info('input', TensorProto.FLOAT, [2, 32, 768])
     ], [
-        helper.make_tensor_value_info('output', TensorProto.FLOAT, [2, 32, 768]),
+        helper.make_tensor_value_info('output_quantized_longformer', TensorProto.FLOAT, [2, 32, 768]),
+        helper.make_tensor_value_info('output_non_quantized_longformer', TensorProto.FLOAT, [2, 32, 768]),        
     ], initializers)
 
     model = helper.make_model(graph=graph)
@@ -71,3 +83,5 @@ ort_inputs = {
 
 ort_output = ort_session.run(None, ort_inputs)
 print(ort_output[0])
+print(ort_output[1])
+
