@@ -390,7 +390,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     if (enable_snpe) {
 #ifdef USE_SNPE
 #ifdef _MSC_VER
-      std::string option_string = ToMBString(ep_runtime_config_string);
+      std::string option_string = ToUTF8String(ep_runtime_config_string);
 #else
       std::string option_string = ep_runtime_config_string;
 #endif
