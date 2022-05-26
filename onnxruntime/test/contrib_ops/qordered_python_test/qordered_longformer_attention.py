@@ -8,9 +8,9 @@ def create_qordered_longformer_attention_graph():
     from onnx import helper, numpy_helper, TensorProto
 
     nodes = [
-        helper.make_node('QuantizeWithOrder', inputs=['input', 'scale_input'], outputs=['input_s8_COL32'], name='1_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=2),    
-        helper.make_node('QuantizeWithOrder', inputs=['weight', 'scale_weight'], outputs=['weight_s8_COL4_4R2_8C_T'], name='2_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=3),
-        helper.make_node('QuantizeWithOrder', inputs=['global_weight', 'scale_global_weight'], outputs=['global_weight_s8_COL4_4R2_8C_T'], name='3_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=3),
+        helper.make_node('QuantizeWithOrder', inputs=['input', 'scale_input'], outputs=['input_s8_COL32'], name='1_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),    
+        helper.make_node('QuantizeWithOrder', inputs=['weight', 'scale_weight'], outputs=['weight_s8_COL4_4R2_8C_T'], name='2_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),
+        helper.make_node('QuantizeWithOrder', inputs=['global_weight', 'scale_global_weight'], outputs=['global_weight_s8_COL4_4R2_8C_T'], name='3_QuantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),
  
         helper.make_node(
             'QOrderedLongformerAttention',
@@ -23,13 +23,13 @@ def create_qordered_longformer_attention_graph():
             domain='com.microsoft',
             num_heads=12,
             window=8,
-            order_input=2,
-            order_output=2,
-            order_weight=3,
-            order_global_weight=3            
+            order_input=1,
+            order_output=1,
+            order_weight=1,
+            order_global_weight=1            
         ),
         
-        #helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output_quantized_longformer'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=2, order_output=1),
+        helper.make_node('DequantizeWithOrder', inputs=['output_s8_COL32', 'scale_output'], outputs=['output_quantized_longformer'], name='1_DequantizeWithOrder', domain='com.microsoft', order_input=1, order_output=1),
 
         helper.make_node(
             'LongformerAttention',
