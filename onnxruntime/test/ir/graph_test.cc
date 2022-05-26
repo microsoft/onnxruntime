@@ -2112,7 +2112,7 @@ TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
   common::Status st = Model::Load(ORT_TSTR("./testdata/ort_github_issue_11536.onnx"), model, nullptr, *logger_);
   ASSERT_FALSE(st.IsOK());
   EXPECT_THAT(st.ErrorMessage(),
-              ::testing::HasSubstr("Subgraph output (one) is an outer scope value being returned directly."));
+              ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
 }
 
 }  // namespace test
