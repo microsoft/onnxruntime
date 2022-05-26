@@ -7,14 +7,23 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+#ifdef USE_ROCM
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
+#elif
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#endif
 
 namespace onnxruntime {
 namespace contrib {
 namespace test {
 
+#ifdef USE_ROCM
+using onnxruntime::rocm::BitmaskElementType;
+using onnxruntime::rocm::kNumBitsPerBitmaskElement;
+#elif
 using onnxruntime::cuda::BitmaskElementType;
 using onnxruntime::cuda::kNumBitsPerBitmaskElement;
+#endif
 using namespace onnxruntime::test;
 
 namespace {
