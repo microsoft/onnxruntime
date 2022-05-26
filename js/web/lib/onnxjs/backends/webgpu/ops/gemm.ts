@@ -50,6 +50,21 @@ const createGemmProgramInfoLoader = (inputs: Tensor[], attributes: GemmAttribute
   return {...metadata, get: () => createGemmProgramInfo(metadata, inputs, attributes)};
 };
 
+const offsetC = (m: number, n: number, dims: readonly number[]): string => {
+  const broadcastM = (dims.length === 1 && m !== 1) || (dims.length === 2 && dims[0] !== m);
+  const broadcastN = dims[dims.length - 1] !== n;
+
+  let offset = '0u';
+  if (!broadcastM) {
+    offset += `+ m * ${dims[dims.length - 1]}u`;
+  }
+  if (!broadcastN) {
+    offset += '+n';
+  }
+
+  return offset;
+};
+
 const createGemmProgramInfo =
     (metadata: ProgramMetadata, inputs: Tensor[], attributes: GemmAttributes): ProgramInfo => {
       const aShape = inputs[0].dims.slice();
@@ -63,17 +78,18 @@ const createGemmProgramInfo =
       const outputSize = ShapeUtil.size(outputShape);
       let line = '';
       if (attributes.transA && attributes.transB) {
-        line = 'value += _A_T(a) * _B_T(b);';
+        line = 'value += a[k * M + m] * b[n * K + k];';
       } else if (attributes.transA && !attributes.transB) {
-        line = 'value += _A_T(a) * _B(b);';
+        line = 'value += a[k * M + m] * b[k * N + n];';
       } else if (!attributes.transA && attributes.transB) {
-        line = 'value += _A(a) * _B_T(b);';
+        line = 'value += a[m * K + k] * b[n * K + k];';
       } else if (!attributes.transA && !attributes.transB) {
         line = 'value += a[m * K + k] * b[k * N + n];';
       }
 
       const dataType = 'f32';  // TODO: support other data type
-      const calculateC = inputs.length === 3 ? `value += ${dataType}(${attributes.beta}) * c[TODO];` : '';
+      const calculateAlpha = attributes.alpha === 1 ? '' : 'value *= alpha;';
+      const calculateC = inputs.length === 3 ? `value += beta * c[${offsetC(M, N, inputs[2].dims)}];` : '';
       const inputStorageBuffersDeclarations = [
         `@group(0) @binding(0) var<storage, read> a : array<${dataType}>;`,
         `@group(0) @binding(1) var<storage, read> b : array<${dataType}>;`
@@ -83,8 +99,11 @@ const createGemmProgramInfo =
       }
       const shaderSource = `
   let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  let M: u32 = ${M}u;
   let N: u32 = ${N}u;
   let K: u32 = ${K}u;
+  let alpha = ${dataType}(${attributes.alpha});
+  let beta = ${dataType}(${attributes.beta});
 
   ${inputStorageBuffersDeclarations.join('\n')}
   @group(0) @binding(${inputs.length}) var<storage, write> output : array<${dataType}>;
@@ -100,11 +119,12 @@ const createGemmProgramInfo =
     let m = global_id.x / N;
     let n = global_id.x % N;
 
-    let value = ${dataType}(0);
+    var value = ${dataType}(0);
     for (var k: u32 = 0u; k<${K}u; k++) {
       ${line}
     }
 
+    ${calculateAlpha}
     ${calculateC}
     output[global_id.x] = value;
 

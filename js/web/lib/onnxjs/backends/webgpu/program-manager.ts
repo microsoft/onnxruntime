@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Profiler} from '../../instrument';
+import {Logger, Profiler} from '../../instrument';
 
 import {Artifact, GpuData, ProgramInfo} from './types';
 
@@ -62,6 +62,7 @@ export class ProgramManager {
     const device = this.device;
 
     const shaderModule = device.createShaderModule({code: programInfo.shaderSource});
+    Logger.verbose('WebGpuProgram', programInfo.shaderSource);
 
     const computePipeline = device.createComputePipeline({compute: {module: shaderModule, entryPoint: 'main'}});
 
