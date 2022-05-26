@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/longformer_attention.h"
@@ -157,11 +160,12 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                       bias->Data<float>(), gemm_buffer.get() + qkv_size,
                                       (cublasLtOrder_t)order_weight_));
 
-  QOrderDequantizeCol32ToRow(stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);
-
-  std::vector<int8_t> q(shape.Size(), 10);
-  ORT_IGNORE_RETURN_VALUE(scale_output);
+    std::vector<int8_t> q(shape.Size(), 10);
   cudaMemcpy(output->template MutableData<int8_t>(), q.data(), shape.Size(), cudaMemcpyHostToDevice);
+
+    /*
+
+  QOrderDequantizeCol32ToRow(stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);  
 
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
@@ -234,9 +238,13 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
+  */
+
   return Status::OK();
 }
 
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#pragma GCC diagnostic pop
