@@ -177,15 +177,15 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
       // corresponding to which input (dy1, dy2..etc) and which value of the input (dy_flattened_vector[c]]
       // to pertrub to 1.
       if (execution_providers) {
-        op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-                       execution_providers);
+        op_session.Run(static_cast<int>(y_idx), static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {},
+                       nullptr, execution_providers);
       } else {
         // If EPs is not set, the OpTester will run over all possible EPs and keep the outputs of last run as the
         // actual output data, which is time wasting. So if caller doesn't pass in the EPs, we will use the default
         // EPs according to the environment.
         std::vector<std::unique_ptr<IExecutionProvider>> default_eps = GetExecutionProviders();
-        op_session.Run(y_idx, static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-                       &default_eps);
+        op_session.Run(static_cast<int>(y_idx), static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {},
+                       nullptr, &default_eps);
       }
       auto gradients = op_session.GetFetches();
 
