@@ -159,7 +159,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   QOrderDequantizeCol32ToRow(stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);
 
-  std::vector<int> q(shape.Size(), 1);
+  std::vector<int8_t> q(shape.Size(), 10);
   ORT_IGNORE_RETURN_VALUE(scale_output);
   cudaMemcpy(output->template MutableData<int8_t>(), q.data(), shape.Size(), cudaMemcpyDeviceToDevice);
 
