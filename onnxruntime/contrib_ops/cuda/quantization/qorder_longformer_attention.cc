@@ -160,7 +160,11 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                       bias->Data<float>(), gemm_buffer.get() + qkv_size,
                                       (cublasLtOrder_t)order_weight_));
 
-    std::vector<int8_t> q(shape.Size(), 10);
+  std::vector<int8_t> q;
+  q.reserve(shape.Size());
+
+  q[0] = 1;
+
   cudaMemcpy(output->template MutableData<int8_t>(), q.data(), shape.Size(), cudaMemcpyHostToDevice);
 
     /*
