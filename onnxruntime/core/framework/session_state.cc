@@ -1406,6 +1406,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
   SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
+  p_seq_exec_plan_ = std::make_unique<SequentialExecutionPlan>();
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
@@ -1418,6 +1419,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   OpStreamMap op_stream_map{std::unordered_set<std::string>{std::string{"MemcpyToHost"}, std::string{"MemcpyFromHost"}}};  // memory transfer in a separate stream
   // OpStreamMap op_stream_map;
   p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, op_stream_map); // 4 streams in total
+
+  std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(p_para_exec_plan_.get());
+  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
+                                                    execution_providers_, kernel_create_info_map_,
+                                                    subgraphs_kernel_create_info_maps,
+                                                    outer_scope_node_arg_to_location_map,
+                                                    ort_value_name_idx_map_, context, tmp_para_exec_plan_wrapper));
+  tmp_para_exec_plan_wrapper.release();
 
   // Record the allocation plan
 

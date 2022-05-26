@@ -1005,8 +1005,9 @@ class PlannerImpl {
               }
             }
           }
-        } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+        } else if (/*!context_.IsParallelExecutionEnabled() &&*/
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused) &&
+                   plan_.CanReuse(reused, current)) {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
@@ -1017,8 +1018,9 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
-        } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableTensor(*node_output, &reused)) {
+        } else if (/*!context_.IsParallelExecutionEnabled() &&*/
+                   FindReusableTensor(*node_output, &reused) &&
+                   plan_.CanReuse(current, reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
           OrtValueIndex original = Buffer(reused);
@@ -1340,7 +1342,8 @@ Status SequentialPlanner::CreatePlan(
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
-  plan = std::make_unique<SequentialExecutionPlan>();
+  ORT_ENFORCE(plan, "plan ptr must be filled with instance!");
+  // plan = std::make_unique<SequentialExecutionPlan>(); // jesus ... so we hate polymophism really?
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, subgraphs_kernel_create_info_maps,
