@@ -1877,6 +1877,8 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
   bool changed = false;
   bool have_dq = false;
+  // if nodes are assigned we only process those that match the EP in the context
+  bool ignore_assigned_nodes = ctx.provider_type.empty();
 
   // Optimize graph. Nodes will be modified during iteration, but nodes are never deleted before we reach them.
   // New transpose nodes are inserted, but always as an input to an existing node.
@@ -1886,8 +1888,19 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       have_dq = true;
     }
 
+    // it's not clear how we should handle assignment of new Transpose nodes created during optimization, so ignore.
+    // e.g. we may need to transpose the input of a node we move a Transpose past. if that node is assigned to
+    // an EP that doesn't support Transpose, the new node should use the CPU EP. but if that node is assigned to
+    // an EP that does support the Transpose we should assign the new node to that EP.
+    // as we do not know what each EP supports, it's safer to not optimize in order to maintain the EP assignments
+    // made during partitioning.
+    if (ignore_assigned_nodes && !node.GetExecutionProviderType().empty()) {
+      continue;
+    }
+
     if (ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM &&
-        ctx.layout_sensitive_ops.count(node.OpType()) && node.GetExecutionProviderType() != ctx.provider_type) {
+        ctx.layout_sensitive_ops.count(node.OpType()) &&
+        node.GetExecutionProviderType() != ctx.provider_type) {
       // If the current op is layout sensitive and it is not assigned to the given provider
       // then do not process transpose.
       continue;
@@ -1926,7 +1939,14 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   // transpose node now handles less data.
   auto graph_nodes = ctx.graph.Nodes();
   for (size_t i = 1; i < graph_nodes.size(); i++) {
-    if (graph_nodes[i]->OpType() == "Transpose") {
+    const auto& node = *graph_nodes[i];
+
+    // TODO: if we want to handle this we need to propagate the assigned EP to the new Transpose node.
+    if (ignore_assigned_nodes && !node.GetExecutionProviderType().empty()) {
+      continue;
+    }
+
+    if (node.OpType() == "Transpose") {
       auto& transpose_node = *graph_nodes[i];
       auto dq_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);
       if (!dq_node || dq_node->OpType() != "DequantizeLinear") {
@@ -1947,9 +1967,11 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       if (!perm.has_value()) {
         continue;
       }
+
       if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
         continue;
       }
+
       TransposeFirstInput(ctx, *dq_node, *perm);
 
       // remove existing transpose node

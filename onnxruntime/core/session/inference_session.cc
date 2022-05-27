@@ -918,8 +918,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // 1. run level 1 optimizations. these only use ONNX operators.
   // 2. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
   // 3. run all optimizations. level 2 and 3 optimizations use contrib ops.
-  // 4. insert copy nodes
-  // 5. insert cast nodes.
+  // 4. insert cast nodes
+  // 5. insert copy nodes
 
   // first apply execution provider independent level 1 graph optimizations.
   ORT_RETURN_IF_ERROR_SESSIONID_(
