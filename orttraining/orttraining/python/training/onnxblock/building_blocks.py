@@ -36,11 +36,9 @@ class Block(ABC):
 
 
 class _BinaryOp(Block):
-    def __init__(self):
+    def __init__(self, op_name):
         super(_BinaryOp, self).__init__()
-
-        # Derived class must override this name
-        self._op_name = ""
+        self._op_name = op_name
 
     def build(self, input_name1, input_name2):
         # get the model to manipulate
@@ -71,24 +69,21 @@ class Add(_BinaryOp):
     """Adds Add node to an onnx model."""
 
     def __init__(self):
-        super(Add, self).__init__()
-        self._op_name = "Add"
+        super(Add, self).__init__("Add")
 
 
 class Sub(_BinaryOp):
     """Adds Sub node to an onnx model."""
 
     def __init__(self):
-        super(Sub, self).__init__()
-        self._op_name = "Sub"
+        super(Sub, self).__init__("Sub")
 
 
 class Mul(_BinaryOp):
     """Adds Mul node to an onnx model."""
 
     def __init__(self):
-        super(Mul, self).__init__()
-        self._op_name = "Mul"
+        super(Mul, self).__init__("Mul")
 
 
 class Pow(Block):
@@ -127,11 +122,9 @@ class Pow(Block):
 
 
 class _UnaryOp(Block):
-    def __init__(self):
+    def __init__(self, op_name):
         super(_UnaryOp, self).__init__()
-
-        # Derived class must override this name
-        self._op_name = ""
+        self._op_name = op_name
 
     def build(self, input_name):
         # get the model to manipulate
@@ -162,31 +155,26 @@ class ReduceMean(_UnaryOp):
     """Adds ReduceMean node to the onnx model."""
 
     def __init__(self):
-        super(ReduceMean, self).__init__()
-        self._op_name = "ReduceMean"
+        super(ReduceMean, self).__init__("ReduceMean")
 
 
 class ReduceSum(_UnaryOp):
     """Adds ReduceSum node to the onnx model."""
 
     def __init__(self):
-        super(ReduceSum, self).__init__()
-        self._op_name = "ReduceSum"
+        super(ReduceSum, self).__init__("ReduceSum")
 
 
 class Sigmoid(_UnaryOp):
     def __init__(self):
-        super(Sigmoid, self).__init__()
-        self._op_name = "Sigmoid"
+        super(Sigmoid, self).__init__("Sigmoid")
 
 
 class Log(_UnaryOp):
     def __init__(self):
-        super(Log, self).__init__()
-        self._op_name = "Log"
+        super(Log, self).__init__("Log")
 
 
 class Neg(_UnaryOp):
     def __init__(self):
-        super(Neg, self).__init__()
-        self._op_name = "Neg"
+        super(Neg, self).__init__("Neg")

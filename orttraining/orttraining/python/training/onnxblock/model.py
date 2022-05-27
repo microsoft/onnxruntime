@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 # model.py
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import onnx
 import onnxruntime.training.onnxblock.model_accessor as accessor
 import onnxruntime.training.onnxblock.building_blocks as building_blocks
