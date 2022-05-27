@@ -2293,23 +2293,30 @@ TEST(QDQTransformerTests, QDQPropagation_GH11605) {
       transpose_node.AddAttribute("perm", perms);
 
       // add Softmax with axis=2 (to block the Transpose moving past it due to the transpose perms)
-      Node& softmax_node = builder.AddNode("Softmax", {transpose_output}, {builder.MakeOutput()});
+      auto* softmax_output = builder.MakeIntermediate();
+      Node& softmax_node = builder.AddNode("Softmax", {transpose_output}, {softmax_output});
       softmax_node.AddAttribute("axis", int64_t(2));
+
+      // add second Transpose. this is so the check in TransposeOptimizer::ProcessTranspose for outputs leading to
+      // a Transpose is satisfied, allowing the first Transpose to move past the Q/DQ inserted by QDQ Propagation
+      Node& transpose_node2 = builder.AddNode("Transpose", {softmax_output}, {builder.MakeOutput()});
+      transpose_node2.AddAttribute("perm", perms);
     };
 
     // check that an edge case where transpose optimization gets blocked is handled gracefully.
-    // DQ -> Tr -> SoftM
-    // QDQ Prop inserts a Q/DQ pair to create a QDQ node group for the Transpose: DQ -> Tr -> Q -> DQ -> SoftM
-    // Transpose opt phase 1 moves the Tr down until it blocks on the SoftMax: DQ -> Q -> DQ -> Tr -> SoftM
+    // Original: DQ -> Tr -> SoftM -> Tr
+    // QDQ Prop inserts a Q/DQ pair to create a QDQ node group for the Transpose: DQ -> Tr -> Q -> DQ -> SoftM -> Tr
+    // Transpose opt phase 1 moves the Tr down until it blocks on the SoftMax: DQ -> Q -> DQ -> Tr -> SoftM -> Tr
     // Transpose opt phase 2 flips the Tr to prior to the DQ as it's not part of a QDQ node group at that point, as
-    // running the transpose on 8-bit data should be cheaper: DQ -> Q -> Tr -> DQ -> SoftM
-    // QDQ cleanup in Level2 removes the unnecessary DQ/Q pair at the start: TR -> DQ -> SoftM
+    // running the transpose on 8-bit data should be cheaper: DQ -> Q -> Tr -> DQ -> SoftM -> Tr
+    // QDQ cleanup in Level2 removes the unnecessary DQ/Q pair at the start: Tr -> DQ -> SoftM -> Tr
     // this is the optimal result as the Transpose is using 8-bit data and we have no surplus Q/DQ pairs
     auto check_graph = [&](InferenceSessionWrapper& session) {
       std::vector<std::string> expected_op_types_in_order{
           "Transpose",
           "DequantizeLinear",
-          "Softmax"};
+          "Softmax",
+          "Transpose"};
 
       const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
