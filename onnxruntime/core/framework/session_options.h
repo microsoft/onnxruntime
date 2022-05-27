@@ -136,6 +136,14 @@ struct SessionOptions {
 
   // custom function callback to join a thread
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+
+  // specify logic streams per ep, default 1
+  // "CPUExecutionProvider:1;CUDAExecutionProvider:2"
+  std::string streams_per_ep{};
+
+  // operators that must be grouped in one separate stream, default empty
+  // for "op1,op2,op3;op4,op5", [op1,op2,op3], [op4,op5] will occupy separate streams exclusively 
+  std::string grouped_ops{};
 };
 
 }  // namespace onnxruntime
