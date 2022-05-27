@@ -1,3 +1,7 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
 import argparse
 import copy
 import csv
@@ -729,7 +733,7 @@ def read_map_from_file(map_file):
     with open(map_file) as f:
         try:
             data = json.load(f)
-        except Exception:
+        except Exception as e:
             return None
 
     return data

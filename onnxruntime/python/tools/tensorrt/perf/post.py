@@ -237,6 +237,15 @@ def get_session(session, model_group):
 
 
 def get_op_metrics(op_metrics, model_group):
+    """
+    Returns a new Pandas table that contains operator usage and performance information.
+
+    :param op_metrics: The Pandas table containing operator usage and performance information.
+    :param model_group: The model group namespace to append as a column.
+
+    :return: The updated table.
+    """
+
     csv_columns, db_columns = [], []
 
     for _, csv_col, db_col in op_metrics_columns:
