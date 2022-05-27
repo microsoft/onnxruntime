@@ -45,10 +45,10 @@ struct OptimizerCheckpointState {
   const DataTransferManager* optimizer_session_data_transfer_mgr;
 };
 
-enum OptimizerType {
-  AdamW = 0,
+enum class OptimizerType {
+  AdamW,
   // More optimizers can be added later as:
-  // Lamb = 1,
+  // Lamb,
 };
 
 struct Optimizer {
@@ -68,7 +68,6 @@ struct Optimizer {
     return optimizer_state_.step;
   }
   
- protected:
   Status SetLearningRate(float lr) {
     optimizer_state_.learning_rate = lr;
     return Status::OK();

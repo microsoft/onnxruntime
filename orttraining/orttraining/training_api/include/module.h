@@ -11,7 +11,7 @@ namespace api {
 struct Parameter {
  public:
   // Create parameter
-  Parameter(std::string name, const OrtValue& data, bool requires_grad)
+  Parameter(const std::string& name, const OrtValue& data, const bool requires_grad)
       : name_(name), data_(data), requires_grad_(requires_grad) {
     ORT_ENFORCE(data_.IsAllocated());
     ORT_ENFORCE(!name_.empty(), "Parameter must have a non-empty name.");
@@ -19,7 +19,7 @@ struct Parameter {
 
   // Return the mutable data.
   OrtValue& Data() { return data_; }
-  std::string Name() const { return name_; }
+  const std::string& Name() const { return name_; }
 
   // Return if trainable. The trainable property of a param
   // cannot change over the lifetime of the on-device training
@@ -28,7 +28,7 @@ struct Parameter {
 
   // Return the mutable gradient for trainable parameter.
   OrtValue& Gradient() { return gradient_; }
-  std::string GradientName() const { return gradient_name_; }
+  const std::string& GradientName() const { return gradient_name_; }
 
   // Reset and release the gradient buffer of this Parameter.
   Status ResetGrad();
@@ -76,11 +76,11 @@ struct Module {
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs.
   // Gradients will be accumulated within the Parameter object
-  Status TrainStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
+  Status TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
-  Status EvalStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/);
+  Status EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs);
 
   // Return the states of the module as a map.
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
