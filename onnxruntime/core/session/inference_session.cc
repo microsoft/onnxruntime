@@ -915,13 +915,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 SessionState& session_state,
                                                 bool saving_model_in_ort_format) {
   // The transformer order:
-  // 1. built-in graph rewriter
-  // 2. each execution provider's transformer
-  // 3. do node placement according to kernel definition
+  // 1. run level 1 optimizations. these only use ONNX operators.
+  // 2. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
+  // 3. run all optimizations. level 2 and 3 optimizations use contrib ops.
   // 4. insert copy nodes
   // 5. insert cast nodes.
 
-  // first apply global(execution provider independent), level 1(default/system/basic) graph to graph optimizations
+  // first apply execution provider independent level 1 graph optimizations.
   ORT_RETURN_IF_ERROR_SESSIONID_(
       graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
@@ -949,7 +949,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
-  // Do partitioning based on execution providers' capability.
+  // Do partitioning based on execution providers' capabilities.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
                                                        session_state.GetMutableFuncMgr(),
