@@ -218,7 +218,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
     }
 
     ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_A, batchCount, k, m, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // for A'
-    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchB, k, n, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));      // For B'
+    ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchB, k, n, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));      // For B
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
     ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_D, batchCount, n, m, CUDA_R_8I, CUBLASLT_ORDER_COL, CUBLAS_OP_N));  // For D'
     if (C != nullptr) {
@@ -234,7 +234,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
                                         BtXAt ? A : B, BtXAt ? desc_A : desc_B,
                                         beta, C == nullptr ? D : C, C == nullptr ? desc_D : desc_C,
                                         D, desc_D,
-                                        nullptr, nullptr, 0,  // algo, workspace, workspace_size
+                                        &algo, nullptr, 0,  // algo, workspace, workspace_size
                                         stream));
   return Status::OK();
 }
