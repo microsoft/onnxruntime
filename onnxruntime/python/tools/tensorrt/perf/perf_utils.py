@@ -101,6 +101,15 @@ def pretty_print(pp, json_object):
 
 
 def parse_next_model_run(data, start_index):
+    """
+    Parses profile data to obtain operator usage information for the next 'model run'.
+
+    :param data: List of profile data entries.
+    :param start_index: Starting index of the first data entry to parse.
+
+    :return: A tuple consisting of the parsed operator usage information and the index of the next model run.
+    """
+
     provider_op_map = {}  # ep -> map of operator to duration
     num_entries = len(data)
     index = -1
@@ -166,6 +175,13 @@ def parse_next_model_run(data, start_index):
 
 
 def parse_single_file(f):
+    """
+    Parses a JSON profile file and returns information on op usage per EP.
+
+    :param f: The string contents of the profile file.
+
+    :return: Dictionary containing operator usage information per EP.
+    """
 
     try:
         data = json.load(f)
@@ -186,6 +202,29 @@ def parse_single_file(f):
 
 
 def get_ep_operator_metrics(ep, ep_nodes):
+    """
+    Returns a dictionary of summarized operator metrics.
+
+    :param ep: The EP for which to summarize operator metrics. Should be a key in `ep_nodes`.
+    :param ep_nodes: A dictionary that maps an ORT execution provider to a dictionary of node information.
+
+        Ex: {
+                "CUDAExecutionProvider": {
+                    "node0": {"dur": 200, "op_name": "Conv"},
+                    "node1": {"dur": 100, "op_name": "Conv"},
+                    ...
+                },
+                "CPUExecutionProvider": {...}
+            }
+
+    :return: A dictionary of summarized operator metrics.
+
+        Ex: {
+                "Conv": {"num_instances": 20, "total_dur": 32003, "min_dur": 10, "max_dur": 200},
+                "Add": {"num_instances": 22, "total_dur": ... }
+            }
+    """
+
     ep_operator_metrics = {}
 
     if ep in ep_nodes:

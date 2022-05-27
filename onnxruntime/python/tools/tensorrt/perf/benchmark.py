@@ -641,6 +641,15 @@ def update_fail_report(fail_results, model, ep, e_type, e):
 
 
 def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
+    """
+    Updates `model_to_metrics` to include operator metrics for the given model.
+
+    :param model_to_metrics: Dictionary that maps a model to a dictionary of operator metrics per EP.
+                             This function sets the operator metrics.
+    :param model_name: The name of the model.
+    :param ep_to_operator: Dictionary that maps an EP to information on operator usage.
+    """
+
     if len(ep_to_operator) == 0:
         return
 
@@ -1584,27 +1593,27 @@ def output_session_creation(results, csv_filename):
         trt_fp16_time_2 = ""
 
         for model_name, ep_dict in results.items():
-            for ep, t in ep_dict.items():
-                if ep == cpu:
-                    cpu_time = t
-                elif ep == cuda:
-                    cuda_fp32_time = t
-                elif ep == trt:
-                    trt_fp32_time = t
-                elif ep == cuda_fp16:
-                    cuda_fp16_time = t
-                elif ep == trt_fp16:
-                    trt_fp16_time = t
-                if ep == cpu + second:
-                    cpu_time_2 = t
-                elif ep == cuda + second:
-                    cuda_fp32_time_2 = t
-                elif ep == trt + second:
-                    trt_fp32_time_2 = t
-                elif ep == cuda_fp16 + second:
-                    cuda_fp16_time_2 = t
-                elif ep == trt_fp16 + second:
-                    trt_fp16_time_2 = t
+            for ep_key, sess_time in ep_dict.items():
+                if ep_key == cpu:
+                    cpu_time = sess_time
+                elif ep_key == cuda:
+                    cuda_fp32_time = sess_time
+                elif ep_key == trt:
+                    trt_fp32_time = sess_time
+                elif ep_key == cuda_fp16:
+                    cuda_fp16_time = sess_time
+                elif ep_key == trt_fp16:
+                    trt_fp16_time = sess_time
+                if ep_key == cpu + second:
+                    cpu_time_2 = sess_time
+                elif ep_key == cuda + second:
+                    cuda_fp32_time_2 = sess_time
+                elif ep_key == trt + second:
+                    trt_fp32_time_2 = sess_time
+                elif ep_key == cuda_fp16 + second:
+                    cuda_fp16_time_2 = sess_time
+                elif ep_key == trt_fp16 + second:
+                    trt_fp16_time_2 = sess_time
                 else:
                     continue
 
