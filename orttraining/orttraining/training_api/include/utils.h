@@ -11,8 +11,6 @@ namespace training {
 namespace api {
 namespace utils {
 
-
-
 // Get names of graph inputs and outputs
 void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
                               std::vector<std::string>& input_names,

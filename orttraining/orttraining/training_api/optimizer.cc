@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights :MOMENT_STATE_NAMESreserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/cpu_execution_provider.h"
