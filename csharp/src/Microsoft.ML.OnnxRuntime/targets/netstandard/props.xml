@@ -12,7 +12,7 @@
 
   <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'ARM64'">
     <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64/native/onnxruntime.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
