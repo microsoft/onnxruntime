@@ -1460,6 +1460,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     ort_value_name_idx_map_, context, tmp_para_exec_plan_wrapper));
   tmp_para_exec_plan_wrapper.release();
 
+  LOGS(logger_, INFO) << "p_para_exec_plan initialized";
+
   // Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
