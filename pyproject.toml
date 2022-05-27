@@ -15,3 +15,10 @@ extend_skip_glob = [
 
 [tool.pydocstyle]
 convention = "google"
+
+[tool.pylint.'MESSAGES CONTROL']
+disable = ["format", "line-too-long", "import-error", "no-name-in-module"]
+
+[tool.pyright]
+exclude = ["onnxruntime/core/flatbuffers/*"]
+reportMissingImports = false

@@ -3,13 +3,15 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from onnxruntime.training import ortmodule
-
-from glob import glob
-from shutil import copyfile
 import os
 import subprocess
 import sys
+from glob import glob
+from shutil import copyfile
+
+import torch
+
+from onnxruntime.training import ortmodule
 
 
 def _list_extensions(path):
@@ -30,25 +32,26 @@ def _list_cuda_extensions():
 
 
 def _install_extension(ext_name, ext_path, cwd):
-    ret_code = subprocess.call(f"{sys.executable} {ext_path} build", cwd=cwd, shell=True)
+    ret_code = subprocess.call((sys.executable, ext_path, "build"), cwd=cwd)
     if ret_code != 0:
-        print(f'There was an error compiling "{ext_name}" PyTorch CPP extension')
+        print(f"There was an error compiling '{ext_name}' PyTorch CPP extension")
         sys.exit(ret_code)
 
 
 def build_torch_cpp_extensions():
-    """Builds PyTorch CPP extensions and returns metadata"""
-
+    """Builds PyTorch CPP extensions and returns metadata."""
     # Run this from within onnxruntime package folder
-    is_gpu_available = ortmodule.ONNXRUNTIME_CUDA_VERSION is not None or ortmodule.ONNXRUNTIME_ROCM_VERSION is not None
+    is_gpu_available = torch.cuda.is_available() and (
+        ortmodule.ONNXRUNTIME_CUDA_VERSION is not None or ortmodule.ONNXRUNTIME_ROCM_VERSION is not None
+    )
     os.chdir(ortmodule.ORTMODULE_TORCH_CPP_DIR)
 
     # Extensions might leverage CUDA/ROCM versions internally
     os.environ["ONNXRUNTIME_CUDA_VERSION"] = (
-        ortmodule.ONNXRUNTIME_CUDA_VERSION if not ortmodule.ONNXRUNTIME_CUDA_VERSION is None else ""
+        ortmodule.ONNXRUNTIME_CUDA_VERSION if ortmodule.ONNXRUNTIME_CUDA_VERSION is not None else ""
     )
     os.environ["ONNXRUNTIME_ROCM_VERSION"] = (
-        ortmodule.ONNXRUNTIME_ROCM_VERSION if not ortmodule.ONNXRUNTIME_ROCM_VERSION is None else ""
+        ortmodule.ONNXRUNTIME_ROCM_VERSION if ortmodule.ONNXRUNTIME_ROCM_VERSION is not None else ""
     )
 
     ############################################################################
