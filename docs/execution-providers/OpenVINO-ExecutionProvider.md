@@ -1,15 +1,15 @@
 ---
-title: OpenVINO
-description: Instructions to execute ONNX Runtime with the Intel OpenVINO execution provider
+title: OpenVINO™
+description: Instructions to execute OpenVINO™ Execution Provider for ONNX Runtime.
 parent: Execution Providers
 nav_order: 10
 redirect_from: /docs/reference/execution-providers/OpenVINO-ExecutionProvider
 ---
 
-# OpenVINO Execution Provider
+# OpenVINO™ Execution Provider
 {: .no_toc }
 
-Accelerate ONNX models on Intel CPUs, GPUs and VPUs with ONNX Runtime and the Intel OpenVINO execution provider. Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
+Accelerate ONNX models on Intel CPUs, GPUs and VPUs with Intel OpenVINO™ Execution Provider. Please refer to [this](https://software.intel.com/en-us/openvino-toolkit/hardware) page for details on the Intel hardware supported.
 
 ## Contents
 {: .no_toc }
@@ -19,14 +19,14 @@ Accelerate ONNX models on Intel CPUs, GPUs and VPUs with ONNX Runtime and the In
 
 ## Install
 
-Pre-built packages and Docker images are published for  ONNX Runtime with OpenVINO by Intel for each release.
-* OpenVINO-EP Release page: [Latest v4.0 Release](https://github.com/intel/onnxruntime/releases) 
-* Python wheels Ubuntu/Windows: [intel/onnxruntime](https://github.com/intel/onnxruntime/releases)
+Pre-built packages and Docker images are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v4.0 Release](https://github.com/intel/onnxruntime/releases) 
+* Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/1.11.0/)
 * Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
 
 ## Requirements
 
-|ONNX Runtime|OpenVINO|Notes|
+|ONNX Runtime|OOpenVINO™|Notes|
 |---|---|---|
 |1.11.0|2022.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.0)|
 |1.10.0|2021.4.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.4)|
@@ -38,54 +38,83 @@ Pre-built packages and Docker images are published for  ONNX Runtime with OpenVI
 
 For build instructions, please see the [BUILD page](../build/eps.md#openvino).
 
-**Announcement: OpenVINO-EP v4.0 Release with OpenVINO 2022.1 version**:
-* The new OpenVINO-EP v4.0 Release introduces a new version of OpenVINO API (API 2.0). For more information on the changes and transition steps, see the [transition guide](https://docs.openvino.ai/latest/openvino_2_0_transition_guide.html)
+**Announcement: OpenVINO™ Execution Provider for ONNX Runtime v4.0 Release with OpenVINO™ 2022.1 version**:
+* The new OpenVINO™ Execution Provider for ONNX Runtime v4.0 Release introduces a new version of OpenVINO™ API (API 2.0). For more information on the changes and transition steps, see the [transition guide](https://docs.openvino.ai/latest/openvino_2_0_transition_guide.html)
 
 * With this release, we have officially stopped supporting CentOS. We will start supporting RHEL OS from
-OpenVINO 2022.1.
+OpenVINO™ 2022.1.
 
 
 ## Usage
 
-**OpenVINO Environment**
+**OpenVINO™ Environment**
 
-Before running any ort samples(Python/C++/C#) with the OpenVINOExecutionProvider it is must to set up the OpenVINO Environment Variables using the full installer package of OpenVINO.
-Initialize the OpenVINO environment by running the setupvars script as shown below. This is a required step:
-   * For Linux run till OpenVINO 2021.4 version:
+**Python**
+
+Please download onnxruntime-openvino python packages from PyPi.org:
+```
+pip install onnxruntime-openvino==1.11.0
+```
+
+To enable OpenVINO™ Execution Provider with ONNX Runtime on Windows we must install OpenVINO™ separately:
+```
+pip install openvino==2022.1
+```
+Code to be added in ONNX Runtime Windows Samples:
+```
+import openvino.utils as utils
+utils.add_openvino_libs_to_path()
+
+```
+OpenVINO™ Execution Provider with Onnx Runtime on Linux installed from PyPi.org come with prebuilt OpenVINO™ libs and supports flag CXX11_ABI=0. So there is no need to install OpenVINO™ separately. 
+
+To enable CX11_ABI=1 flag, build Onnx Runtime python wheel packages from source. For build instructions, please see the [BUILD page](../build/eps.md#openvino).
+OpenVINO™ Execution Provider wheels on Linux built from source will not have prebuilt  OpenVINO™ libs so we must set the OpenVINO™ Environment Variable using the full installer package of OpenVINO™:
+
+```
+C:\ <openvino_install_directory>\setupvars.bat
+```
+
+
+**C++**
+
+For Running C++/C# ORT Samples with the OpenVINO™ Execution Provider it is must to set up the OpenVINO™ Environment Variables using the full installer package of OpenVINO™.
+Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
+   * For Linux run till OpenVINO™ 2021.4 version:
    ```
       $ source <openvino_install_directory>/bin/setupvars.sh
    ```
-   * For Linux run from OpenVINO 2022.1 version:
+   * For Linux run from OpenVINO™ 2022.1 version:
    ```
       $ source <openvino_install_directory>/setupvars.sh
    ```
-   * For Windows run till OpenVINO 2021.4 version:
+   * For Windows run till OpenVINO™ 2021.4 version:
    ```
       C:\ <openvino_install_directory>\bin\setupvars.bat
    ```
-   * For Windows run from OpenVINO 2022.1 version:
+   * For Windows run from OpenVINO™ 2022.1 version:
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO-EP, sourcing OpenVINO won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
+   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
 
 
 **C#**
 
 To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino. 
 
-### Multi-threading for OpenVINO EP
+### Multi-threading for OpenVINO™ Execution Provider
 
-OpenVINO Execution Provider enables thread-safe deep learning inference
+OpenVINO™ Execution Provider for ONNX Runtime enables thread-safe deep learning inference
 
-### Heterogeneous Execution for OpenVINO EP
+### Heterogeneous Execution for OpenVINO™ Execution Provider
 
 The heterogeneous execution enables computing for inference on one network on several devices. Purposes to execute networks in heterogeneous mode:
 
 * To utilize accelerator's power and calculate the heaviest parts of the network on the accelerator and execute unsupported layers on fallback devices like the CPU to utilize all available hardware more efficiently during one inference.
 
-For more information on Heterogeneous plugin of OpenVINO, please refer to the
-[Intel OpenVINO Heterogeneous Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Hetero_execution.html).
+For more information on Heterogeneous plugin of OpenVINO™, please refer to the
+[Intel OpenVINO™ Heterogeneous Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Hetero_execution.html).
 
 ### Multi-Device Execution for OpenVINO EP
 
@@ -94,19 +123,19 @@ Multi-Device plugin automatically assigns inference requests to available comput
 * Improved throughput that multiple devices can deliver (compared to single-device execution)
 * More consistent performance, since the devices can now share the inference burden (so that if one device is becoming too busy, another device can take more of the load)
 
-For more information on Multi-Device plugin of OpenVINO, please refer to the
-[Intel OpenVINO Multi Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Running_on_multiple_devices.html).
+For more information on Multi-Device plugin of OpenVINO™, please refer to the
+[Intel OpenVINO™ Multi Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Running_on_multiple_devices.html).
 
 ### Auto-Device Execution for OpenVINO EP
 
-Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO. With the 2021.4 release, Auto-device internally recognizes and selects devices from CPU, integrated GPU and discrete Intel GPUs (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
+Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO™. With the 2021.4 release, Auto-device internally recognizes and selects devices from CPU, integrated GPU and discrete Intel GPUs (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
 
 From the application point of view, this is just another device that handles all accelerators in full system.
 
-For more information on Auto-Device plugin of OpenVINO, please refer to the
-[Intel OpenVINO Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_AUTO.html).
+For more information on Auto-Device plugin of OpenVINO™, please refer to the
+[Intel OpenVINO™ Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_AUTO.html).
 
-### Model caching feature for OpenVINO EP
+### Model caching feature for OpenVINO™ Execution Provider
 
 The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
 
@@ -114,15 +143,15 @@ The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files 
 
 Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtime_ocl_gpu_prop_cpp_api.html?highlight=throttling) for GPU devices. Reduces CPU utilization when using GPUs with OpenVINO EP.
 
-#### Save/Load blob capability for Myriadx(VPU) with OpenVINO 2021.3 version
+#### Save/Load blob capability for Myriadx(VPU) with OpenVINO™ 2021.3 version
 This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
 
 #### Model caching
 
-Starting from version 2021.4, OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO 2021.4, it is supported on Myriadx(VPU)
+Starting from version 2021.4, OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO™  2021.4, it is supported on Myriadx(VPU)
 and iGPU.
 
-From OpenVINO 2022.1 version, this feature is supported on Myriadx(VPU), iGPU and CPU.
+From OpenVINO™ 2022.1 version, this feature is supported on Myriadx(VPU), iGPU and CPU.
 
 iGPU:
 This feature enables users to save and load the cl_cache files directly. These cl_cache files can be loaded directly onto the iGPU hardware device target and inferencing can be performed.
@@ -162,18 +191,18 @@ Example: set OV_BLOB_PATH=\home\blobs_dir\model.blob
 
 compile_tool:
 
-The device specific Myriadx blobs can be generated using an offline tool called compile_tool from OpenVINO Toolkit.[documentation](https://docs.openvino.ai/latest/openvino_inference_engine_tools_compile_tool_README.html).
+The device specific Myriadx blobs can be generated using an offline tool called compile_tool from OpenVINO™ Toolkit.[documentation](https://docs.openvino.ai/latest/openvino_inference_engine_tools_compile_tool_README.html).
 
 ### Support for INT8 Quantized models
 
-Starting from the OpenVINO EP 2021.4 Release, int8 models will be supported on CPU and GPU.
+Starting from the OpenVINO™ Execution Provider 2021.4 Release, int8 models will be supported on CPU and GPU.
 However, int8 support won't be available for VPU.
 
 ### Support for Weights saved in external files
 
-Starting from the OpenVINO EP 2021.4 Release, support for external weights is added. OpenVINO™ EP now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.
+Starting from the OpenVINO™ Execution Provider 2021.4 Release, support for external weights is added. OpenVINO™ Execution Provider now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.
 
-See the [OpenVINO ONNX Support documentation](https://docs.openvino.ai/latest/classov_1_1Core.html).
+See the [OpenVINO™ ONNX Support documentation](https://docs.openvino.ai/latest/classov_1_1Core.html).
 
 Converting and Saving an ONNX Model to External Data:
 Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs/ExternalData.md#converting-and-saving-an-onnx-model-to-external-data).
@@ -195,8 +224,7 @@ Note:
 
 ### Support for IO Buffer Optimization
 
-To enable IO Buffer Optimization we have to set OPENCL_LIBS, OPENCL_INCS environment variables before build. For IO Buffer Optimization, the model must be fully supported on
-OpenVINO and we must provide in the remote context cl_context void pointer as C++ Configuration Option. We can provide cl::Buffer address as Input using GPU Memory Allocator for input and output.
+To enable IO Buffer Optimization we have to set OPENCL_LIBS, OPENCL_INCS environment variables before build. For IO Buffer Optimization, the model must be fully supported on OpenVINO™ and we must provide in the remote context cl_context void pointer as C++ Configuration Option. We can provide cl::Buffer address as Input using GPU Memory Allocator for input and output.
 
 Example:
 ```bash
@@ -221,7 +249,7 @@ Ort::Value inputTensors = Ort::Value::CreateTensor(
 
 ### Configuration Options
 
-OpenVINO EP can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
+OpenVINO™ Execution Provider can be configured with certain options at runtime that control the behavior of the EP. These options can be set as key-value pairs as below:-
 
 ### Python API
 Key-Value pairs for config options can be set using InferenceSession API as follow:-
@@ -273,7 +301,7 @@ HETERO:MYRIAD,CPU  AUTO:GPU,CPU  MULTI:MYRIAD,GPU,CPU
 
 ### Other configuration settings
 #### Onnxruntime Graph Optimization level
-OpenVINO backend performs both hardware dependent as well as independent optimizations to the graph to infer it with on the target hardware with best possible performance. In most of the cases it has been observed that passing in the graph from the input model as is would lead to best possible optimizations by OpenVINO. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime before handing the graph over to OpenVINO backend. This can be done using Session options as shown below:-
+OpenVINO™ backend performs both hardware dependent as well as independent optimizations to the graph to infer it with on the target hardware with best possible performance. In most of the cases it has been observed that passing in the graph from the input model as is would lead to best possible optimizations by OpenVINO™. For this reason, it is advised to turn off high level optimizations performed by ONNX Runtime before handing the graph over to OpenVINO™ backend. This can be done using Session options as shown below:-
 
 #### Python API
 ```
@@ -289,7 +317,7 @@ SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 
 #### Deprecated: Dynamic device type selection
 **Note: This API has been deprecated. Please use the mechanism mentioned above to set the 'device-type' option.**
-When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
+When ONNX Runtime is built with OpenVINO™ Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
 Note: This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
 
@@ -316,7 +344,7 @@ Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenVINO(sf, settings
 
 **ONNX Layers supported using OpenVINO**
 
-The table below shows the ONNX layers supported and validated using OpenVINO Execution Provider.The below table also lists the Intel hardware support for each of the layers. CPU refers to Intel<sup>®</sup>
+The table below shows the ONNX layers supported and validated using OpenVINO™ Execution Provider.The below table also lists the Intel hardware support for each of the layers. CPU refers to Intel<sup>®</sup>
 Atom, Core, and Xeon processors. GPU refers to the Intel Integrated Graphics. VPU refers to USB based Intel<sup>®</sup> Movidius<sup>TM</sup>
 VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidius <sup>TM</sup> MyriadX VPU.
 
@@ -453,7 +481,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 
 ### Topology Support
 
-Below topologies from ONNX open model zoo are fully supported on OpenVINO Execution Provider and many more are supported through sub-graph partitioning
+Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Execution Provider and many more are supported through sub-graph partitioning
 
 ### Image Classification Networks
 
@@ -515,9 +543,9 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | pointilism | Yes | Yes | Yes |
 | udnie | Yes | Yes | Yes |
 
-## OpenVINO-EP samples Tutorials
+## OpenVINO™ Execution Provider Samples Tutorials
 
-In order to showcase what you can do with the OpenVINO Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
+In order to showcase what you can do with the OpenVINO™ Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
 
 ### Python API
 [Object detection with tinyYOLOv2 in Python](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/OpenVINO_EP/tiny_yolo_v2_object_detection)
