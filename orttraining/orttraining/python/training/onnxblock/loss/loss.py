@@ -5,13 +5,12 @@
 import copy
 import onnx
 
-import onnxruntime.training.onnxblock as onnxblock
 import onnxruntime.training.onnxblock.model_accessor as accessor
+import onnxruntime.training.onnxblock.building_blocks as building_blocks
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
-import onnxruntime.training.onnxblock._building_blocks as building_blocks
 
 
-class MSELoss(onnxblock.Model):
+class MSELoss(building_blocks.Block):
     """MSELoss onnxblock for adding MSE loss to an onnx model.
 
     Parameters:
@@ -53,6 +52,7 @@ class MSELoss(onnxblock.Model):
 
         # create a new graph input. this is the target input needed to compare
         # the graph output against to calculate loss.
+        # TODO: Move input creation outside of the blocks.
         target_input = copy.deepcopy(
             graph_utils.get_output_from_output_name(onnx_model, loss_input_name)
         )
@@ -64,19 +64,19 @@ class MSELoss(onnxblock.Model):
         return self._reduce(self._square(self._sub(loss_input_name, target_name)))
 
 
-class CrossEntropyLoss(onnxblock.Model):
+class CrossEntropyLoss(building_blocks.Block):
     """CrossEntropyLoss onnxblock for adding Cross Entropy loss to an onnx model.
 
     Parameters:
-        weight: boolean representing whether a manual rescaling weight given to
-                each class should be added to the inputs.
+        weight: numpy ndarray representing a manual rescaling weight given to
+                each class. If not provided, rescaling will not be applied.
         reduction: string representing the reduction method on the loss output.
                    can be one of "mean" or "sum"
         ignore_index: specifies a target value that is ignored and does not
                       contribute to the input gradient.
     """
 
-    def __init__(self, weight=False, reduction="mean", ignore_index=None):
+    def __init__(self, weight=None, reduction="mean", ignore_index=None):
         super(CrossEntropyLoss, self).__init__()
 
         # determine the reduction type
@@ -87,7 +87,7 @@ class CrossEntropyLoss(onnxblock.Model):
         self._reduction = reduction
         self._ignore_index = ignore_index
 
-    def build(self, scores_input_name, labels_name="labels", weight_name="loss_weight"):
+    def build(self, scores_input_name, labels_name="labels"):
         """Adds a CrossEntropyLoss subgraph on top of an onnx model.
 
         Creates a block that measures the softmax cross entropy between
@@ -104,6 +104,12 @@ class CrossEntropyLoss(onnxblock.Model):
         # get the model to manipulate
         onnx_model = accessor.global_accessor.model
 
+        weight_name = graph_utils.generate_random_graph_name("celoss.weight")
+        if self._weight is not None:
+            onnx_model.graph.initializer.append(
+                onnx.numpy_helper.from_array(self._weight, weight_name)
+            )
+
         # create a new graph input. this is the labels input needed to compare
         # the graph output against to calculate loss.
         labels_input = copy.deepcopy(
@@ -115,16 +121,6 @@ class CrossEntropyLoss(onnxblock.Model):
         # labels should be (num_examples x 1)
         del labels_input.type.tensor_type.shape.dim[1]
         onnx_model.graph.input.append(labels_input)
-
-        if self._weight:
-            weight_input = copy.deepcopy(
-                graph_utils.get_output_from_output_name(onnx_model, scores_input_name)
-            )
-            weight_input.name = weight_name
-            dim_to_keep = weight_input.type.tensor_type.shape.dim[1]
-            del weight_input.type.tensor_type.shape.dim[:]
-            weight_input.type.tensor_type.shape.dim.append(dim_to_keep)
-            onnx_model.graph.input.append(weight_input)
 
         # create a new graph node for the loss
         loss_node_input_names = [scores_input_name, labels_name]
@@ -145,13 +141,112 @@ class CrossEntropyLoss(onnxblock.Model):
         )
         onnx_model.graph.node.append(loss_node)
 
-        # create a new graph output for the loss
-        graph_outputs = [
-            onnx.helper.make_tensor_value_info(
-                loss_node_output_name, onnx.TensorProto.FLOAT, []
-            )
-        ]
-        del onnx_model.graph.output[:]
-        onnx_model.graph.output.extend(graph_outputs)
-
         return loss_node_output_name
+
+
+class BCEWithLogitsLoss(building_blocks.Block):
+    """BCEWithLogitsLoss onnxblock for adding binary cross entropy loss to an onnx model.
+
+    Parameters:
+        weight: numpy ndarray representing a manual rescaling weight given to
+                each batch. If not provided, rescaling will not be applied.
+        reduction: string representing the reduction method on the loss output.
+                   can be one of "mean" or "sum"
+        pos_weight: numpy ndarray representing the weight of positive examples.
+    """
+
+    def __init__(self, weight=None, reduction="mean", pos_weight=None):
+        super(BCEWithLogitsLoss, self).__init__()
+
+        # determine the reduction type
+        if reduction != "mean" and reduction != "sum":
+            raise RuntimeError(f"Reduction {reduction} not supported.")
+
+        self._weight = weight
+        self._reduce = (
+            building_blocks.ReduceMean()
+            if reduction == "mean"
+            else building_blocks.ReduceSum()
+        )
+        self._pos_weight = pos_weight
+
+        self._sigmoid = building_blocks.Sigmoid()
+        self._log = building_blocks.Log()
+        self._sub = building_blocks.Sub()
+        self._add = building_blocks.Add()
+        self._mul = building_blocks.Mul()
+        self._neg = building_blocks.Neg()
+
+    def build(self, loss_input_name, target_name="target"):
+        """Adds a BCEWithLogitsLoss subgraph on top of an onnx model.
+
+        Creates a block that measures the binary cross entropy with logits between
+        loss_input_name and the target_name. This block combines Sigmoid layer
+        followed by a BCELoss.
+
+        Args:
+            loss_input_name: string input representing the loss input
+            target_name: string input representing the target
+
+        Returns:
+            Returns a string of the output name from the loss
+        """
+
+        # get the model to manipulate
+        onnx_model = accessor.global_accessor.model
+
+        # create the graph initializers for pos_weight, weight, and the sub operands ([1])
+        pos_weight_name = graph_utils.generate_random_graph_name("bceloss.pos_weight")
+        if self._pos_weight is not None:
+            onnx_model.graph.initializer.append(
+                onnx.numpy_helper.from_array(self._pos_weight, pos_weight_name)
+            )
+
+        weight_name = graph_utils.generate_random_graph_name("bceloss.weight")
+        if self._weight is not None:
+            onnx_model.graph.initializer.append(
+                onnx.numpy_helper.from_array(self._weight, weight_name)
+            )
+
+        sub_ones_operand_name1 = graph_utils.generate_random_graph_name(
+            "bceloss.sub_ones"
+        )
+        onnx_model.graph.initializer.append(
+            onnx.helper.make_tensor(
+                sub_ones_operand_name1, onnx.TensorProto.FLOAT, [1], [1.0]
+            )
+        )
+        sub_ones_operand_name2 = graph_utils.generate_random_graph_name(
+            "bceloss.sub_ones"
+        )
+        onnx_model.graph.initializer.append(
+            onnx.helper.make_tensor(
+                sub_ones_operand_name2, onnx.TensorProto.FLOAT, [1], [1.0]
+            )
+        )
+
+        # create a new graph input. this is the target input needed to compare
+        # the graph output against to calculate loss.
+        target_input = copy.deepcopy(
+            graph_utils.get_output_from_output_name(onnx_model, loss_input_name)
+        )
+        target_input.name = target_name
+        onnx_model.graph.input.append(target_input)
+
+        # create the bceloss
+        sigmoid_output = self._sigmoid(loss_input_name)
+        add_operand1 = self._mul(self._log(sigmoid_output), target_name)
+        if self._pos_weight is not None:
+            add_operand1 = self._mul(add_operand1, pos_weight_name)
+
+        add_operand2 = self._mul(
+            self._log(self._sub(sub_ones_operand_name1, sigmoid_output)),
+            self._sub(sub_ones_operand_name2, target_name),
+        )
+
+        loss_output = self._neg(self._add(add_operand1, add_operand2))
+
+        if self._weight is not None:
+            loss_output = self._mul(weight_name, loss_output)
+
+        return self._reduce(loss_output)

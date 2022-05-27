@@ -89,9 +89,7 @@ def build_gradient_graph(
     gradient_model = onnx.load_from_string(builder.get_model())
 
     # copy the gradient graph into the user's graph
-    model.graph.CopyFrom(gradient_model.graph)
-    del model.opset_import[:]
-    model.opset_import.extend(gradient_model.opset_import)
+    model.CopyFrom(gradient_model)
 
     return all_args_requiring_gradient
 
@@ -203,3 +201,40 @@ def get_model_parameters(model, args_not_requiring_gradient):
                 trainable_params.append(initializer)
 
     return trainable_params, non_trainable_params
+
+
+def build_graph_outputs(model, output_names):
+    """Append graph outputs for the model for the given output names.
+
+    The graph outputs are extracted from the graph value_infos and
+    existing graph outputs. The graph output can only be added to the
+    graph for those outputs whose value info is known. If value info
+    is not known, an error will be raised.
+    """
+
+    if isinstance(output_names, str):
+        output_names = [output_names]
+
+    name_value_info_mapping = {
+        value_info.name: value_info for value_info in model.graph.value_info
+    }
+    name_graph_output_mapping = {output.name: output for output in model.graph.output}
+
+    # collect all new graph outputs (i.e. graph outputs that are not
+    # already graph outputs)
+    graph_outputs = []
+    for output_name in output_names:
+        if output_name in name_graph_output_mapping:
+            graph_outputs.append(name_graph_output_mapping[output_name])
+        elif output_name in name_value_info_mapping:
+            graph_outputs.append(name_value_info_mapping[output_name])
+        else:
+            raise LookupError(
+                f"The provided name {output_name} is not a graph value info or a graph output."
+            )
+
+    # Clear all existing graph outputs
+    del model.graph.output[:]
+
+    # Add the new graph outputs.
+    model.graph.output.extend(graph_outputs)
