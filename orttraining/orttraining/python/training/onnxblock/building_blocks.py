@@ -39,21 +39,28 @@ class _BinaryOp(Block):
     def __init__(self):
         super(_BinaryOp, self).__init__()
 
-    def _build(self, input_name1, input_name2, op_name):
+        # Derived class must override this name
+        self._op_name = ""
+
+    def build(self, input_name1, input_name2):
         # get the model to manipulate
         onnx_model = accessor.global_accessor.model
+
+        # Assert that the op name is not empty
+        if not self._op_name:
+            raise RuntimeError("Unknown op name. Please override _op_name")
 
         # create the graph node for sub
         node_input_names = [input_name1, input_name2]
         node_output_name = graph_utils.generate_random_graph_name(
-            f"{op_name.lower()}_output"
+            f"{self._op_name.lower()}_output"
         )
         node_output_names = [node_output_name]
         node = onnx.helper.make_node(
-            op_name,
+            self._op_name,
             node_input_names,
             node_output_names,
-            name=graph_utils.generate_random_graph_name(op_name),
+            name=graph_utils.generate_random_graph_name(self._op_name),
         )
         onnx_model.graph.node.append(node)
 
@@ -65,9 +72,7 @@ class Add(_BinaryOp):
 
     def __init__(self):
         super(Add, self).__init__()
-
-    def build(self, add_input_name1, add_input_name2):
-        return super(Add, self)._build(add_input_name1, add_input_name2, "Add")
+        self._op_name = "Add"
 
 
 class Sub(_BinaryOp):
@@ -75,9 +80,7 @@ class Sub(_BinaryOp):
 
     def __init__(self):
         super(Sub, self).__init__()
-
-    def build(self, sub_input_name1, sub_input_name2):
-        return super(Sub, self)._build(sub_input_name1, sub_input_name2, "Sub")
+        self._op_name = "Sub"
 
 
 class Mul(_BinaryOp):
@@ -85,9 +88,7 @@ class Mul(_BinaryOp):
 
     def __init__(self):
         super(Mul, self).__init__()
-
-    def build(self, mul_input_name1, mul_input_name2):
-        return super(Mul, self)._build(mul_input_name1, mul_input_name2, "Mul")
+        self._op_name = "Mul"
 
 
 class Pow(Block):
@@ -125,97 +126,67 @@ class Pow(Block):
         return pow_node_output_name
 
 
-class _Reduce(Block):
-    """Base class for the reduce blocks."""
-
-    def __init__(self):
-        super(_Reduce, self).__init__()
-
-    def _build(self, reduce_input_name, reduction_op):
-        # get the model to manipulate
-        onnx_model = accessor.global_accessor.model
-
-        # create the graph node for reduce
-        reduce_node_input_names = [reduce_input_name]
-        reduce_node_output_name = graph_utils.generate_random_graph_name(
-            "reduce_output"
-        )
-        reduce_node_output_names = [reduce_node_output_name]
-        reduce_node = onnx.helper.make_node(
-            reduction_op,
-            reduce_node_input_names,
-            reduce_node_output_names,
-            name=graph_utils.generate_random_graph_name(reduction_op),
-        )
-        onnx_model.graph.node.append(reduce_node)
-
-        return reduce_node_output_name
-
-
-class ReduceMean(_Reduce):
-    """Adds ReduceMean node to the onnx model."""
-
-    def __init__(self):
-        super(ReduceMean, self).__init__()
-
-    def build(self, reduce_input_name):
-        return super()._build(reduce_input_name, "ReduceMean")
-
-
-class ReduceSum(_Reduce):
-    """Adds ReduceSum node to the onnx model."""
-
-    def __init__(self):
-        super(ReduceSum, self).__init__()
-
-    def build(self, reduce_input_name):
-        return super(ReduceSum, self)._build(reduce_input_name, "ReduceSum")
-
-
 class _UnaryOp(Block):
     def __init__(self):
         super(_UnaryOp, self).__init__()
 
-    def _build(self, input_name, op_name):
+        # Derived class must override this name
+        self._op_name = ""
+
+    def build(self, input_name):
         # get the model to manipulate
         onnx_model = accessor.global_accessor.model
+
+        # Assert that the op name is not empty
+        if not self._op_name:
+            raise RuntimeError("Unknown op name. Please override _op_name")
 
         # create the graph node for this unary op
         node_input_names = [input_name]
         node_output_name = graph_utils.generate_random_graph_name(
-            f"{op_name.lower()}_output"
+            f"{self._op_name.lower()}_output"
         )
         node_output_names = [node_output_name]
         node = onnx.helper.make_node(
-            op_name,
+            self._op_name,
             node_input_names,
             node_output_names,
-            graph_utils.generate_random_graph_name(op_name),
+            graph_utils.generate_random_graph_name(self._op_name),
         )
         onnx_model.graph.node.append(node)
 
         return node_output_name
 
 
+class ReduceMean(_UnaryOp):
+    """Adds ReduceMean node to the onnx model."""
+
+    def __init__(self):
+        super(ReduceMean, self).__init__()
+        self._op_name = "ReduceMean"
+
+
+class ReduceSum(_UnaryOp):
+    """Adds ReduceSum node to the onnx model."""
+
+    def __init__(self):
+        super(ReduceSum, self).__init__()
+        self._op_name = "ReduceSum"
+
+
 class Sigmoid(_UnaryOp):
     def __init__(self):
         super(Sigmoid, self).__init__()
-
-    def build(self, sigmoid_input_name):
-        return super(Sigmoid, self)._build(sigmoid_input_name, "Sigmoid")
+        self._op_name = "Sigmoid"
 
 
 class Log(_UnaryOp):
     def __init__(self):
         super(Log, self).__init__()
-
-    def build(self, log_input_name):
-        return super(Log, self)._build(log_input_name, "Log")
+        self._op_name = "Log"
 
 
 class Neg(_UnaryOp):
     def __init__(self):
         super(Neg, self).__init__()
-
-    def build(self, neg_input_name):
-        return super(Neg, self)._build(neg_input_name, "Neg")
+        self._op_name = "Neg"
