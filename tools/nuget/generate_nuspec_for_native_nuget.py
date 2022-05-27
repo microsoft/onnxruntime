@@ -480,14 +480,18 @@ def generate_files(list, args):
             )
 
     if (args.package_name == 'Microsoft.ML.OnnxRuntime.Snpe_Win'):
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnx_test_runner.exe') +
-                          runtimes + ' />')
-        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe') +
-                          runtimes + ' />')
+        files_list.append(
+            '<file src=' + '"' + os.path.join(args.native_build_path, 'onnx_test_runner.exe') + runtimes + ' />'
+        )
+        files_list.append(
+            '<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe')
+            + runtimes + ' />'
+        )
 
     is_ado_packaging_build = False
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
+    # for Snpe android build
     if is_windows_build:
         nuget_artifacts_dir = Path(args.native_build_path) / "nuget-artifacts"
         # the winml package includes pdbs. for other packages exclude them.
@@ -514,6 +518,11 @@ def generate_files(list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
                 )
+    elif (args.package_name == 'Microsoft.ML.OnnxRuntime.Snpe'):
+        files_list.append(
+            '<file src=' + '"' + os.path.join(args.native_build_path, 'libonnxruntime.so') +
+            '" target="runtimes\\android-arm64\\native" />'
+        )
     else:
         files_list.append(
             "<file src="
