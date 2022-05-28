@@ -20,7 +20,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace test {
 
-using onnxruntime::test;
+using namespace onnxruntime::test;
 
 #if defined(USE_SNPE)
 
@@ -100,7 +100,7 @@ bool FloatToTfN(uint8_t* out,
 
       if (quantizedValue < 0)
         quantizedValue = 0;
-      else if (quantizedValue > static_cast<int>(trueBitWidthMax)
+      else if (quantizedValue > static_cast<int>(trueBitWidthMax))
         quantizedValue = static_cast<int>(trueBitWidthMax);
 
       if (bit_width == 8) {
