@@ -605,6 +605,10 @@ Status Node::InstantiateFunctionBody() {
   return GetInstantiateFunctionBody(func_body_);
 }
 
+const FunctionTemplate* Node::GetFunctionTemplate() {
+  return func_template_;
+}
+
 void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
   op_ = func_template.op_schema_.get();
   since_version_ = op_->since_version();

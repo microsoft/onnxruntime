@@ -65,18 +65,10 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
 
 // Inline functions that do not have a gradient builder registered
 Status OrtModuleGraphBuilder::InlineFunctions(Graph& graph, bool& modified_graph) const {
-  // recurse into nested graphs first so we process from bottom up
-  for (auto& node : graph.Nodes()) {
-    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(InlineFunctions(*subgraph, modified_graph));
-    }
-  }
-
   std::vector<Node*> nodes_to_inline;
   for (auto& node : graph.Nodes()) {
     bool gradient_registered = GradientDefinitionRegistry::Instance().Contains(GetGradientDefinitionKeyByNode(node));
-    if (node.GetExecutionProviderType().empty() && node.CanBeInlined() && !gradient_registered) {
+    if (node.GetExecutionProviderType().empty() && node.GetFunctionTemplate() && !gradient_registered) {
       nodes_to_inline.push_back(&node);
     }
   }
@@ -85,6 +77,9 @@ Status OrtModuleGraphBuilder::InlineFunctions(Graph& graph, bool& modified_graph
     LOGS(*logger_, INFO) << "Inlining node " << node->Name() << " of type " << node->OpType()
                          << " with missing gradient builder.";
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
+    if (!modified_graph) {
+      modified_graph = true;
+    }
   }
 
   return Status::OK();

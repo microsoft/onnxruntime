@@ -466,6 +466,7 @@ class Node {
   flatbuffers::Offset<onnxruntime::fbs::NodeEdge>
   SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
 
+  const FunctionTemplate* GetFunctionTemplate();
   void SetFunctionTemplate(const FunctionTemplate& func_template);
 #endif
 
