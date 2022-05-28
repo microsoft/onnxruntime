@@ -131,18 +131,21 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
 }
 
 common::Status OpenVINOExecutionProvider::Compile(
-    const std::vector<onnxruntime::Node*>& fused_nodes,
+    const std::vector<FusedNodeAndGraph>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node : fused_nodes) {
-    NodeComputeInfo compute_info;
-    
-    #if defined (OV_API_20)
-    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
-    # else
-    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
-    #endif 
+  for (const auto& fused_node_graph : fused_nodes) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
 
-    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger());
+    NodeComputeInfo compute_info;
+
+#if defined(OV_API_20)
+    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
+#else
+    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
+#endif 
+
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

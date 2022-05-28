@@ -7,6 +7,7 @@ import numpy as np
 import os
 import onnxruntime_pybind11_state as torch_ort
 
+
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNet, self).__init__()
@@ -19,6 +20,7 @@ class NeuralNet(nn.Module):
         out = self.relu(out)
         out = self.fc2(out)
         return out
+
 
 input_size = 784
 hidden_size = 500

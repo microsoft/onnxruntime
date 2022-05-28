@@ -1,0 +1,38 @@
+{
+    // Always remove trailing whitespaces
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "editor.rulers": [
+        120
+    ],
+    "[python]": {
+        "editor.tabSize": 4,
+        // Auto sort imports
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+        },
+    },
+    // Enable Python linting and Pylance type checking
+    "python.analysis.typeCheckingMode": "basic",
+    "python.formatting.provider": "black",
+    "python.formatting.blackArgs": [
+        "--line-length",
+        "120"
+    ],
+    "python.sortImports.args": [
+        "--profile",
+        "black",
+        "--line-length",
+        "120"
+    ],
+    "python.linting.enabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.pydocstyleEnabled": true,
+    "python.linting.pydocstyleArgs": [
+        "--convention=google"
+    ],
+    "python.linting.banditEnabled": true
+}

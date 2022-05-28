@@ -1,21 +1,22 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto, OperatorSetIdProto
 from enum import Enum
+
+import onnx
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 opsets = []
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 12
-onnxdomain.domain = "" # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
+onnxdomain.domain = ""  # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
 opsets.append(onnxdomain)
 
 msdomain = OperatorSetIdProto()
 msdomain.version = 1
-msdomain.domain = 'com.microsoft'
+msdomain.domain = "com.microsoft"
 
 opsets.append(msdomain)
-kwargs={}
-kwargs['opset_imports'] = opsets
+kwargs = {}
+kwargs["opset_imports"] = opsets
+
 
 def GenerateModel(model_name):
     nodes = [  # subgraph
@@ -34,30 +35,32 @@ def GenerateModel(model_name):
     ]
 
     inputs = [  # inputs
-            helper.make_tensor_value_info('X', TensorProto.BOOL, ['M', 'K']),
-        ]
+        helper.make_tensor_value_info("X", TensorProto.BOOL, ["M", "K"]),
+    ]
 
     initializers = [
-            helper.make_tensor('v0', TensorProto.FLOAT, [1], [1.0]),
-            helper.make_tensor('v1', TensorProto.FLOAT, [1], [-1.0]),
-        ]
+        helper.make_tensor("v0", TensorProto.FLOAT, [1], [1.0]),
+        helper.make_tensor("v1", TensorProto.FLOAT, [1], [-1.0]),
+    ]
 
     graph = helper.make_graph(
         nodes,
-        "NotWhere",  #name
+        "NotWhere",  # name
         inputs,
         [  # outputs
-            helper.make_tensor_value_info('not_X_2', TensorProto.BOOL, ['M', 'K']),
-            helper.make_tensor_value_info('Y1', TensorProto.FLOAT, ['M', 'K']),
-            helper.make_tensor_value_info('Y2', TensorProto.FLOAT, ['M', 'K']),
-            helper.make_tensor_value_info('Y3', TensorProto.FLOAT, ['M', 'K']),
-            helper.make_tensor_value_info('Y4', TensorProto.FLOAT, ['M', 'K']),
-            helper.make_tensor_value_info('Y5', TensorProto.FLOAT, ['M', 'K']),
+            helper.make_tensor_value_info("not_X_2", TensorProto.BOOL, ["M", "K"]),
+            helper.make_tensor_value_info("Y1", TensorProto.FLOAT, ["M", "K"]),
+            helper.make_tensor_value_info("Y2", TensorProto.FLOAT, ["M", "K"]),
+            helper.make_tensor_value_info("Y3", TensorProto.FLOAT, ["M", "K"]),
+            helper.make_tensor_value_info("Y4", TensorProto.FLOAT, ["M", "K"]),
+            helper.make_tensor_value_info("Y5", TensorProto.FLOAT, ["M", "K"]),
         ],
-        initializers)
+        initializers,
+    )
 
     model = helper.make_model(graph, **kwargs)
     onnx.save(model, model_name)
 
+
 if __name__ == "__main__":
-    GenerateModel('not_where.onnx')
+    GenerateModel("not_where.onnx")
