@@ -169,14 +169,10 @@ class Node {
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
 
-  // Status InstantiateFunctionBody();
-
-  // Status GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const;
+  /** Create a copy of the called op's FunctionProto if it has one. Returns true if successful. */
+  bool TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& func_proto) const;
 
   bool CanBeInlined() const;
-
-  /** Copy the called op's FunctionProto if it has one. Returns true if successful. */
-  bool TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& func_proto) const;
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_.get(); }
@@ -470,7 +466,6 @@ class Node {
   SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
 
   void SetFunctionTemplate(const FunctionTemplate& func_template);
-  // const FunctionTemplate* GetFunctionTemplate() const noexcept { return func_template_; }
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
