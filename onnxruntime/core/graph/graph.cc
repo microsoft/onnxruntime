@@ -561,41 +561,6 @@ bool Node::CanBeInlined() const {
   return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
 }
 
-// Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const {
-//   // Initialize function body
-//   if (func_template_) {
-//     return function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, output);
-//   } else if (op_ && (op_->HasFunction() || op_->HasContextDependentFunction())) {
-//     // This node has a schema defined function proto. If it is a context dependent function
-//     // then build it otherwise fetch the FunctionProto from schema.
-//     ONNX_NAMESPACE::FunctionProto onnx_function_proto;
-//     if (op_->HasContextDependentFunction()) {
-//       NodeProto node_proto;
-//       ToProto(node_proto);
-//       std::vector<TypeProto> input_types;
-//       for (size_t i = 0, n = InputDefs().size(); i < n; i++) {
-//         auto p_node_arg = InputDefs().at(i);
-//         if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
-//           auto& type = *(p_node_arg->TypeAsProto());
-//           input_types.emplace_back(type);
-//         } else
-//           input_types.emplace_back();
-//       }
-//       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-//       if (!op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto)) {
-//         // I don't know why but the existing behavior is ignore the failure here.
-//         // keep the same.
-//         return Status::OK();
-//       }
-//     } else {
-//       onnx_function_proto = *(op_->GetFunction());
-//     }
-//     return function_utils::Instantiate(*graph_, index_, onnx_function_proto, output);
-//   } else {
-//     return Status::OK();
-//   }
-// }
-
 bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
   if (func_template_) {
     onnx_function_proto = *func_template_->onnx_func_proto_;
@@ -623,15 +588,6 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
   }
   return false;
 }
-
-// Status Node::InstantiateFunctionBody() {
-//   if (nullptr != func_body_) {
-//     //already instantiated.
-//     return Status::OK();
-//   }
-
-//   return GetInstantiateFunctionBody(func_body_);
-// }
 
 void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
   op_ = func_template.op_schema_.get();
@@ -4010,11 +3966,11 @@ Status Graph::InlineFunction(Node& callnode) {
     RemoveEdge(callnode.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 
-      // create a uniq_identifier to append to every node name and intermediate input\outputs
-    // to make sure there are no unintended duplicates
-    std::stringstream ss;
-    ss << "_" << static_cast<const void*>(&callnode) << "_";
-    auto uniq_identifier = ss.str();
+  // create a uniq_identifier to append to every node name and intermediate input\outputs
+  // to make sure there are no unintended duplicates
+  std::stringstream ss;
+  ss << "_" << static_cast<const void*>(&callnode) << "_";
+  auto uniq_identifier = ss.str();
 
   // Replace a (function-call) node by an inlined graph.
   if (!callnode.GetFunctionBody()) {
@@ -4053,12 +4009,13 @@ Status Graph::InlineFunction(Node& callnode) {
           new_attr_map[node_attr.name()] = std::move(attr_copy);
         }
         AddNode(inlined_node.name(), inlined_node.op_type(),
-                                    inlined_node.doc_string(), inputs, outputs, &new_attr_map, inlined_node.domain());
+                inlined_node.doc_string(), inputs, outputs, &new_attr_map, inlined_node.domain());
       }
     }
 
   } else {
     // Uncommon scenario. Inlining a node representing a fused sub-graph.
+    // TODO: Unclear that this feature is needed. Can this be removed?
     const Graph& subgraph = callnode.GetFunctionBody()->Body();
 
     // Map of function input outputs to nodes input/outputs

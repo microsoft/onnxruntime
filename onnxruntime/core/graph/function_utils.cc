@@ -274,7 +274,8 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   return op_schema;
 }
 
-struct Inliner {
+class Inliner {
+private:
   std::string prefix;
   const onnxruntime::NodeAttributes& attr_map;
   std::vector<InlinedHashMap<std::string, std::string>> rename_scopes;
@@ -337,21 +338,23 @@ struct Inliner {
     }
   }
 
+  // Process a node:
   void transform(NodeProto& n) {
     if (!n.name().empty())
       n.set_name(prefix + n.name());
-    auto& input = *n.mutable_input();
-    for (auto it = input.begin(); it != input.end(); ++it) {
-      rename(*it);
+
+    for (auto& x : *n.mutable_input()) {
+      rename(x);
     }
-    auto& output = *n.mutable_output();
-    for (auto it = output.begin(); it != output.end(); ++it) {
-      rename(*it);
+    for (auto& y : *n.mutable_output()) {
+      rename(y);
     }
     auto& attributes = *n.mutable_attribute();
     for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {
       auto& attr = *attr_iter;
       if (!attr.ref_attr_name().empty()) {
+        // Attribute-references must be replaced by the corresponding attribute-value in the call-node
+        // if the call-node contains the attribute. Otherwise, this attribute must be removed.
         auto entry = attr_map.find(attr.ref_attr_name());
         if (entry != attr_map.cend()) {
           attr = entry->second;
@@ -360,13 +363,17 @@ struct Inliner {
           continue;
         }
       }
+      // Subgraphs must be recursively processed.
       if (attr.has_g()) {
         transform(*attr.mutable_g());
       }
+      for (auto& graph: *attr.mutable_graphs())
+        transform(graph);
       ++attr_iter;
     }
   }
 
+  // Process a sub-graph, contained as an attribute in a control-flow op node.
   void transform(GraphProto& graph) {
     rename_scopes.emplace_back();
     for (auto& x : *graph.mutable_input())
@@ -378,7 +385,9 @@ struct Inliner {
     rename_scopes.pop_back();
   }
 
-  static void createInlinableCopy(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+public:
+  // The main specialization method: specialize a FunctionProto for a particular call-site.
+  static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
     Inliner inliner(unique_prefix, attr_map);
 
     inliner.bind<false>(*callee.mutable_input(), callnode.input());
@@ -393,7 +402,7 @@ void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMES
                 const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
   // std::cout << "Function before\n";
   // ONNX_NAMESPACE::do_print(std::cout, called_function);
-  Inliner::createInlinableCopy(calling_node, called_function, attr_map, unique_prefix);
+  Inliner::specialize(calling_node, called_function, attr_map, unique_prefix);
   // std::cout << "Function after\n";
   // ONNX_NAMESPACE::do_print(std::cout, called_function);
 }
