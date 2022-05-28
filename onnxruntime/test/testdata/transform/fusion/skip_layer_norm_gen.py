@@ -1,12 +1,12 @@
-import onnx
-from onnx import helper
-from onnx import TensorProto
 from enum import Enum
+
+import onnx
+from onnx import TensorProto, helper
 
 
 class Format(Enum):
-    Format1 = 1,
-    Format2 = 2,
+    Format1 = (1,)
+    Format2 = (2,)
     Format3 = 3
 
 
@@ -25,32 +25,42 @@ def GenerateModel(format, model_name, multi_output_add=False, add_output_in_grap
     ]
 
     initializers = [  # initializers
-        helper.make_tensor('pow_in_2', TensorProto.FLOAT, [], [2]),
-        helper.make_tensor('const_e12', TensorProto.FLOAT, [], [1e-12]),
-        helper.make_tensor('gamma', TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0]),
-        helper.make_tensor('beta', TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
+        helper.make_tensor("pow_in_2", TensorProto.FLOAT, [], [2]),
+        helper.make_tensor("const_e12", TensorProto.FLOAT, [], [1e-12]),
+        helper.make_tensor("gamma", TensorProto.FLOAT, [4], [1.0, 2.0, 3.0, 4.0]),
+        helper.make_tensor("beta", TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
     ]
 
     if format is Format.Format1:
-        nodes.extend([
-            helper.make_node("Add", ["A", "bias"], ["add3_out"], "add3"),
-            helper.make_node("Add", ["add3_out", "B"], ["ln_in"], "add2"),
-        ])
-        initializers.extend([
-            helper.make_tensor('bias', TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
-        ])
+        nodes.extend(
+            [
+                helper.make_node("Add", ["A", "bias"], ["add3_out"], "add3"),
+                helper.make_node("Add", ["add3_out", "B"], ["ln_in"], "add2"),
+            ]
+        )
+        initializers.extend(
+            [
+                helper.make_tensor("bias", TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
+            ]
+        )
     elif format is Format.Format2:
-        nodes.extend([
-            helper.make_node("Add", ["B", "bias"], ["add3_out"], "add3"),
-            helper.make_node("Add", ["A", "add3_out"], ["ln_in"], "add2"),
-        ])
-        initializers.extend([
-            helper.make_tensor('bias', TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
-        ])
+        nodes.extend(
+            [
+                helper.make_node("Add", ["B", "bias"], ["add3_out"], "add3"),
+                helper.make_node("Add", ["A", "add3_out"], ["ln_in"], "add2"),
+            ]
+        )
+        initializers.extend(
+            [
+                helper.make_tensor("bias", TensorProto.FLOAT, [4], [0.1, 0.2, 0.3, 0.4]),
+            ]
+        )
     elif format is Format.Format3:
-        nodes.extend([
-            helper.make_node("Add", ["A", "B"], ["ln_in"], "add2"),
-        ])
+        nodes.extend(
+            [
+                helper.make_node("Add", ["A", "B"], ["ln_in"], "add2"),
+            ]
+        )
 
     if multi_output_add:
         neg_input = "ln_in" if format is Format.Format3 else "add3_out"
@@ -58,16 +68,17 @@ def GenerateModel(format, model_name, multi_output_add=False, add_output_in_grap
 
     graph = helper.make_graph(
         nodes,
-        "SkipLayerNorm_format3",  #name
+        "SkipLayerNorm_format3",  # name
         [  # inputs
-            helper.make_tensor_value_info('A', TensorProto.FLOAT, [16, 32, 4]),
-            helper.make_tensor_value_info('B', TensorProto.FLOAT, [16, 32, 4]),
+            helper.make_tensor_value_info("A", TensorProto.FLOAT, [16, 32, 4]),
+            helper.make_tensor_value_info("B", TensorProto.FLOAT, [16, 32, 4]),
         ],
         [  # outputs
-            helper.make_tensor_value_info('C', TensorProto.FLOAT, [16, 32, 4]),
+            helper.make_tensor_value_info("C", TensorProto.FLOAT, [16, 32, 4]),
         ],
-        initializers)
-    
+        initializers,
+    )
+
     if add_output_in_graph_output:
         extra_output = "ln_in" if format is Format.Format3 else "add3_out"
         graph.output.extend([helper.make_tensor_value_info(extra_output, TensorProto.FLOAT, [16, 32, 4])])
@@ -76,13 +87,25 @@ def GenerateModel(format, model_name, multi_output_add=False, add_output_in_grap
     onnx.save(model, model_name)
 
 
-GenerateModel(Format.Format1, 'skip_layer_norm_format1.onnx')
-GenerateModel(Format.Format2, 'skip_layer_norm_format2.onnx')
-GenerateModel(Format.Format3, 'skip_layer_norm_format3.onnx')
-GenerateModel(Format.Format1, 'skip_layer_norm_format1_partial.onnx', multi_output_add = True)
-GenerateModel(Format.Format2, 'skip_layer_norm_format2_partial.onnx', multi_output_add = True)
-GenerateModel(Format.Format3, 'skip_layer_norm_format3_no_fusion.onnx', multi_output_add = True)
+GenerateModel(Format.Format1, "skip_layer_norm_format1.onnx")
+GenerateModel(Format.Format2, "skip_layer_norm_format2.onnx")
+GenerateModel(Format.Format3, "skip_layer_norm_format3.onnx")
+GenerateModel(Format.Format1, "skip_layer_norm_format1_partial.onnx", multi_output_add=True)
+GenerateModel(Format.Format2, "skip_layer_norm_format2_partial.onnx", multi_output_add=True)
+GenerateModel(Format.Format3, "skip_layer_norm_format3_no_fusion.onnx", multi_output_add=True)
 
-GenerateModel(Format.Format1, 'skip_layer_norm_format1_graph_output.onnx', add_output_in_graph_output = True)
-GenerateModel(Format.Format2, 'skip_layer_norm_format2_graph_output.onnx', add_output_in_graph_output = True)
-GenerateModel(Format.Format3, 'skip_layer_norm_format3_graph_output.onnx', add_output_in_graph_output = True)
+GenerateModel(
+    Format.Format1,
+    "skip_layer_norm_format1_graph_output.onnx",
+    add_output_in_graph_output=True,
+)
+GenerateModel(
+    Format.Format2,
+    "skip_layer_norm_format2_graph_output.onnx",
+    add_output_in_graph_output=True,
+)
+GenerateModel(
+    Format.Format3,
+    "skip_layer_norm_format3_graph_output.onnx",
+    add_output_in_graph_output=True,
+)

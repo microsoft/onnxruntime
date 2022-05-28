@@ -4,10 +4,12 @@
 
 import flatbuffers
 from flatbuffers.compat import import_numpy
+
 np = import_numpy()
 
+
 class TrtTable(object):
-    __slots__ = ['_tab']
+    __slots__ = ["_tab"]
 
     @classmethod
     def GetRootAs(cls, buf, offset=0):
@@ -20,6 +22,7 @@ class TrtTable(object):
     def GetRootAsTrtTable(cls, buf, offset=0):
         """This method is deprecated. Please switch to GetRootAs."""
         return cls.GetRootAs(buf, offset)
+
     # TrtTable
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
@@ -32,6 +35,7 @@ class TrtTable(object):
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
             x = self._tab.Indirect(x)
             from onnxruntime.quantization.CalTableFlatBuffers.KeyValue import KeyValue
+
             obj = KeyValue()
             obj.Init(self._tab.Bytes, x)
             return obj
@@ -49,19 +53,38 @@ class TrtTable(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
-def Start(builder): builder.StartObject(1)
+
+def Start(builder):
+    builder.StartObject(1)
+
+
 def TrtTableStart(builder):
     """This method is deprecated. Please switch to Start."""
     return Start(builder)
-def AddDict(builder, dict): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(dict), 0)
+
+
+def AddDict(builder, dict):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(dict), 0)
+
+
 def TrtTableAddDict(builder, dict):
     """This method is deprecated. Please switch to AddDict."""
     return AddDict(builder, dict)
-def StartDictVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+
+
+def StartDictVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+
 def TrtTableStartDictVector(builder, numElems):
     """This method is deprecated. Please switch to Start."""
     return StartDictVector(builder, numElems)
-def End(builder): return builder.EndObject()
+
+
+def End(builder):
+    return builder.EndObject()
+
+
 def TrtTableEnd(builder):
     """This method is deprecated. Please switch to End."""
     return End(builder)

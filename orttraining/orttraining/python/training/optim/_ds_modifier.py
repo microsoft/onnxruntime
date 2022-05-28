@@ -18,7 +18,9 @@ from numpy import inf
 
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
 from ._multi_tensor_apply import MultiTensorApply
+
 multi_tensor_applier = MultiTensorApply(2048 * 32)
+
 
 class DeepSpeedZeROModifier(FP16OptimizerModifier):
     def __init__(self, optimizer, **kwargs) -> None:
@@ -27,34 +29,39 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
     def can_be_modified(self):
         try:
             import deepspeed
+
             v = LooseVersion(deepspeed.__version__)
             if v > LooseVersion("0.5.4") or v < LooseVersion("0.4.0"):
-                warnings.warn('Unsupported DeepSpeed version to override, skipped.', UserWarning)
+                warnings.warn("Unsupported DeepSpeed version to override, skipped.", UserWarning)
                 return False
         except Exception as _:
             return False
 
-        return self.check_requirements(["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"],
-                                       require_apex=True, require_torch_non_finite_check=True)
+        return self.check_requirements(
+            ["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"],
+            require_apex=True,
+            require_torch_non_finite_check=True,
+        )
 
     def override_function(self):
-        warnings.warn('DeepSpeed fp16_optimizer functions are overrided with faster implementation.', UserWarning)
+        warnings.warn("DeepSpeed fp16_optimizer functions are overrided with faster implementation.", UserWarning)
+
         def get_grad_norm_direct(target, gradients, params, norm_type=2):
             import amp_C
+
             def is_model_parallel_parameter(p):
-                return hasattr(p, 'model_parallel') and p.model_parallel
+                return hasattr(p, "model_parallel") and p.model_parallel
 
             norm_type = float(norm_type)
             if norm_type == inf:
                 total_norm = max(g.data.abs().max() for g in gradients)
                 total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
-                torch.distributed.all_reduce(total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.MAX,
-                                            group=target.dp_process_group)
+                torch.distributed.all_reduce(
+                    total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=target.dp_process_group
+                )
 
                 # Take max across all GPUs.
-                target._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                                op=torch.distributed.ReduceOp.MAX)
+                target._model_parallel_all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.MAX)
                 total_norm = total_norm_cuda[0].item()
             else:
                 total_norm = 0.0
@@ -88,30 +95,25 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
                     # Multi-tensor applier takes a function and a list of list
                     # and performs the operation on that list all in one kernel.
                     grad_norm, _ = multi_tensor_applier(
-                        amp_C.multi_tensor_l2norm,
-                        dummy_overflow_buf,
-                        [grads_for_norm],
-                        False # no per-parameter norm
+                        amp_C.multi_tensor_l2norm, dummy_overflow_buf, [grads_for_norm], False  # no per-parameter norm
                     )
                     # Since we will be summing across data parallel groups,
                     # we need the pow(norm-type).
-                    total_norm_cuda = grad_norm ** norm_type
+                    total_norm_cuda = grad_norm**norm_type
                 else:
                     total_norm_cuda = torch.cuda.FloatTensor([float(total_norm)])
                 #### END OF THE FASTER IMPLEMENTATION ####
 
                 # Sum across all model parallel GPUs.
-                torch.distributed.all_reduce(total_norm_cuda,
-                                            op=torch.distributed.ReduceOp.SUM,
-                                            group=target.dp_process_group)
+                torch.distributed.all_reduce(
+                    total_norm_cuda, op=torch.distributed.ReduceOp.SUM, group=target.dp_process_group
+                )
 
-                target._model_parallel_all_reduce(tensor=total_norm_cuda,
-                                                op=torch.distributed.ReduceOp.SUM)
+                target._model_parallel_all_reduce(tensor=total_norm_cuda, op=torch.distributed.ReduceOp.SUM)
 
-                total_norm = total_norm_cuda[0].item()**(1. / norm_type)
+                total_norm = total_norm_cuda[0].item() ** (1.0 / norm_type)
 
-            if total_norm == float(
-                    'inf') or total_norm == -float('inf') or total_norm != total_norm:
+            if total_norm == float("inf") or total_norm == -float("inf") or total_norm != total_norm:
                 total_norm = -1
 
             return total_norm
@@ -149,4 +151,6 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         self._optimizer.has_overflow_serial = types.MethodType(has_overflow_serial, self._optimizer)
         self._optimizer.get_grad_norm_direct = types.MethodType(get_grad_norm_direct, self._optimizer)
         # zero1 should not call into following function, is this a deepspeed bug?
-        self._optimizer.has_overflow_partitioned_grads_serial = types.MethodType(has_overflow_partitioned_grads_serial, self._optimizer)
+        self._optimizer.has_overflow_partitioned_grads_serial = types.MethodType(
+            has_overflow_partitioned_grads_serial, self._optimizer
+        )

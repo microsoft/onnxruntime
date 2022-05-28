@@ -564,6 +564,9 @@ class PlannerImpl {
 
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
+    InlinedHashMap<OrtValueIndex, const IExecutionProvider*> map_implicitly_consumed_node_arg_to_ep;
+    InlinedHashSet<OrtValueIndex> set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers;
+
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) {
@@ -589,6 +592,8 @@ class PlannerImpl {
       // increment UseCount and add location information if applicable for the provided input def
       auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
                             &set_node_arg_has_explicit_consumer,
+                            &map_implicitly_consumed_node_arg_to_ep,
+                            &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
                             this](const NodeArg& input, size_t arg_idx) {
         const auto& name = input.Name();
         UseCount(name)++;
@@ -612,15 +617,17 @@ class PlannerImpl {
             plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
             set_node_arg_has_explicit_consumer.insert(index);
           } else {  // implicit input
-            // Only process an implicit input:
-            // 1) Within a subgraph
-            // 2) If there is no explicit consumer at this graph level
+            // Only process an implicit input if there are explicit consumers at this graph level
             // If there is an explicit consumer, the location MUST be where it is consumed
             // and not where it is located in the outer scope.
             // It is okay if we process a node consuming this arg as an implicit input
             // ahead of a node that is an explicit consumer, because we will just reset
             // this location in the 'if' branch above.
 
+            // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
+            // then set its location to be its corresponding location in the outer scope.
+            // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
+            // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
             if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
               auto iter = outer_scope_node_arg_to_location_map_.find(name);
               bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
@@ -636,6 +643,61 @@ class PlannerImpl {
 
               if (found_in_outer_scope_location_map) {
                 plan_.SetLocation(static_cast<size_t>(index), iter->second);
+              }
+            } else if (set_node_arg_has_explicit_consumer.count(index) == 0) {
+              // CASE 2: We see an implicit input without explicit consumers in the main graph,
+              // then set its location to be the device corresponding to the EP that the subgraph
+              // holding node has been partitioned to.
+
+              // The "ideal" solution is to set the location of its first "explicit" usage which may occur
+              // in any nested subgraph of the node, but that is potentially too costly to
+              // get at this stage (TODO: Investigate feasibility of this, see TODO in FinalizeSessionStateImpl() around this)
+
+              // Instead, we take a "less than ideal" route which is to set the location to be the device
+              // corresponding to the EP that the node is partitioned to. The hypothesis is that it is "most likely"
+              // that the implicit input will eventually be consumed on that device in a nested subgraph.
+
+              // The previous behavior was to default to CPU which will cause unnecessary copies when
+              // (1) The user invokes Run() with an OrtValue backed by non-CPU memory (eg CUDA) and
+              // the node in the subgraph that consumes the subgraph's implicit input is on a non-CPU device
+              // in the subgraph
+              // (2) The user tries to IOBind implicitly consumed graph inputs (GH Issue 11254) and
+              // the node in the subgraph that consumes the subgraph's implicit input is on
+              // a non-CPU device in the subgraph
+
+              // Even if the user provides an input on CPU and the node in the subgraph that consumes the subgraph's
+              // implicit input is on a non-CPU device, instead of the subgraph copying mechanism taking it to the device,
+              // all we will do is "front-load" this copy in utils::CopyInputsAcrossDevices() with this approach.
+
+              // NOTE 1: The only case this will be sub-optimal is when a node containing a subgraph is partitioned to a
+              // non-CPU EP and the user provides an input (or tries to IOBind the input) AND it will eventually be
+              // explicitly consumed on CPU - this scenario should be very rare and we forgo performance in this case
+              // (the subgraph copying mechanism will make the copy to CPU eventually) in favor of optimizing for the
+              // common case (which is that we expect the implicit input to be consumed on the non-CPU device corresponding
+              // to the non-CPU EP).
+
+              // NOTE 2: If the implicit input is consumed by multiple nodes (as implicit inputs in all of them) and
+              // all of them are partitioned to the same EP, then we go ahead with the above stated logic.
+              // If there are multiple EPs involved, we default the location to just CPU as there is ambiguity involved
+              // as to which non-CPU device is "most optimal" for the implicit input.
+
+              if (set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.count(index) == 0) {
+                auto already_seen_ep_for_node_arg = map_implicitly_consumed_node_arg_to_ep.find(index);
+
+                if (already_seen_ep_for_node_arg == map_implicitly_consumed_node_arg_to_ep.end()) {
+                  // First time we are encountering this implicitly consumed input at this graph level (or)
+                  plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
+                  map_implicitly_consumed_node_arg_to_ep.insert({index, exec_provider});
+                } else if (already_seen_ep_for_node_arg->second == exec_provider) {
+                  // The EP that we previously seen for this implicit input is the same one as the current EP
+                  // we have seen
+                  plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
+                } else {
+                  // Default the location to CPU
+                  plan_.SetLocation(static_cast<size_t>(index),
+                                    execution_providers_.Get(CPU)->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
+                  set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
+                }
               }
             }
           }
@@ -824,7 +886,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       size_t max_pc = plan_.execution_plan.size();
       std::string node_arg_name;
-      ort_value_name_idx_map_.GetName(static_cast<int>(i), node_arg_name);
+      ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetName(static_cast<int>(i), node_arg_name));
       auto node_arg = graph_viewer_.GetNodeArg(node_arg_name);
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);

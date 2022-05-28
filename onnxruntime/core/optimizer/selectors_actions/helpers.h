@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/basic_types.h"
 #include "core/graph/runtime_optimization_record.h"
 
 namespace onnxruntime {
@@ -134,9 +135,6 @@ struct NodesToOptimizeIndicesBuilder {
 //
 // Action helpers
 //
-
-enum class ArgType { kInput,
-                     kOutput };
 
 // struct to define the location of an input or output definition for a Node
 struct InOutDefSlot {

@@ -108,7 +108,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // X = LayerNornm(X)
   // Check if we are training and need the extra outputs for backprop
   dnnl::prop_kind prop_kind;
-#if defined(ENABLE_TRAINING)
+#if 0 //defined(ENABLE_TRAINING)
   prop_kind = dnnl::prop_kind::forward_training;
 #else
   prop_kind = dnnl::prop_kind::forward_inference;
@@ -146,18 +146,20 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
 // Check outputs used for training
-#if defined(ENABLE_TRAINING)
+#if 0 //defined(ENABLE_TRAINING)
   // If Mean exists
-  if (node.Output(OUT_MEAN).Exists()) {
-    auto mean_mem = dnnl::memory(lnorm_pd.mean_desc(), dnnl_engine);
-    lnorm_args.insert({DNNL_ARG_MEAN, mean_mem});
-    sp.SetMemory(node.Output(OUT_MEAN), mean_mem);
-  }
-  // If Variance exists
-  if (node.Output(OUT_INV_STD_VAR).Exists()) {
-    auto variance_mem = dnnl::memory(lnorm_pd.variance_desc(), dnnl_engine);
-    lnorm_args.insert({DNNL_ARG_VARIANCE, variance_mem});
-    sp.SetMemory(node.Output(OUT_INV_STD_VAR), variance_mem);
+  if (node.OutputCount() > 1) {
+    if (node.Output(OUT_MEAN).Exists()) {
+      auto mean_mem = dnnl::memory(lnorm_pd.mean_desc(), dnnl_engine);
+      lnorm_args.insert({DNNL_ARG_MEAN, mean_mem});
+      sp.SetMemory(node.Output(OUT_MEAN), mean_mem);
+    }
+    // If Variance exists
+    if (node.Output(OUT_INV_STD_VAR).Exists()) {
+      auto variance_mem = dnnl::memory(lnorm_pd.variance_desc(), dnnl_engine);
+      lnorm_args.insert({DNNL_ARG_VARIANCE, variance_mem});
+      sp.SetMemory(node.Output(OUT_INV_STD_VAR), variance_mem);
+    }
   }
 #endif  // ENABLE_TRAINING
 

@@ -27,4 +27,4 @@ if [ "${AUDITWHEEL_POLICY}" = "musllinux_1_1" ]; then
 	apk add --no-cache bash
 fi
 yum install -y yum-plugin-versionlock
-yum versionlock cuda* libcudnn*
+yum versionlock cuda* libcudnn* libnccl*

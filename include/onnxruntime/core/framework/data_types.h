@@ -14,6 +14,7 @@
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
 #include "core/framework/float16.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
@@ -228,67 +229,6 @@ std::ostream& operator<<(std::ostream& out, MLDataType data_type);
 namespace data_types_internal {
 /// TensorType helpers
 ///
-
-template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<float>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<int64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<std::string>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<bool>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<MLFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<double>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<uint64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-}
 
 /// Is a given type on the list of types?
 /// Accepts a list of types and the first argument is the type
@@ -512,7 +452,7 @@ class TensorType : public TensorTypeBase {
  private:
   TensorType() {
     using namespace data_types_internal;
-    TensorTypeHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
+    TensorTypeHelper::Set(utils::ToTensorProtoElementType<elemT>(), MutableTypeProto());
   }
 };
 
@@ -601,7 +541,7 @@ class SparseTensorType : public SparseTensorTypeBase {
  private:
   SparseTensorType() {
     using namespace data_types_internal;
-    SparseTensorTypeHelper::Set(ToTensorDataType<elemT>(), MutableTypeProto());
+    SparseTensorTypeHelper::Set(utils::ToTensorProtoElementType<elemT>(), MutableTypeProto());
   }
 };
 
@@ -799,7 +739,7 @@ class MapType : public NonTensorType<CPPType> {
  private:
   MapType() {
     using namespace data_types_internal;
-    MapTypeHelper::Set(ToTensorDataType<typename CPPType::key_type>(),
+    MapTypeHelper::Set(utils::ToTensorProtoElementType<typename CPPType::key_type>(),
                        MapTypeHelper::GetValueType<typename CPPType::mapped_type>()->GetTypeProto(),
                        this->MutableTypeProto());
   }
@@ -990,7 +930,7 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
  private:
   PrimitiveDataType()
       : PrimitiveDataTypeBase{sizeof(T),
-                              data_types_internal::ToTensorDataType<T>()} {
+                              utils::ToTensorProtoElementType<T>()} {
   }
 };
 
