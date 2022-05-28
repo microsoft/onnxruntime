@@ -3,11 +3,12 @@
 # loss.py
 
 import copy
+
 import onnx
 
-import onnxruntime.training.onnxblock.model_accessor as accessor
-import onnxruntime.training.onnxblock.building_blocks as building_blocks
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
+import onnxruntime.training.onnxblock.building_blocks as building_blocks
+import onnxruntime.training.onnxblock.model_accessor as accessor
 
 
 class MSELoss(building_blocks.Block):
@@ -25,11 +26,7 @@ class MSELoss(building_blocks.Block):
         if reduction != "mean" and reduction != "sum":
             raise RuntimeError(f"Reduction {reduction} not supported.")
 
-        self._reduce = (
-            building_blocks.ReduceMean()
-            if reduction == "mean"
-            else building_blocks.ReduceSum()
-        )
+        self._reduce = building_blocks.ReduceMean() if reduction == "mean" else building_blocks.ReduceSum()
         self._sub = building_blocks.Sub()
         self._square = building_blocks.Pow(2.0)
 
@@ -53,9 +50,7 @@ class MSELoss(building_blocks.Block):
         # create a new graph input. this is the target input needed to compare
         # the graph output against to calculate loss.
         # TODO: Move input creation outside of the blocks.
-        target_input = copy.deepcopy(
-            graph_utils.get_output_from_output_name(onnx_model, loss_input_name)
-        )
+        target_input = copy.deepcopy(graph_utils.get_output_from_output_name(onnx_model, loss_input_name))
         target_input.name = target_name
         onnx_model.graph.input.append(target_input)
 
@@ -106,15 +101,11 @@ class CrossEntropyLoss(building_blocks.Block):
 
         weight_name = graph_utils.generate_random_graph_name("celoss.weight")
         if self._weight is not None:
-            onnx_model.graph.initializer.append(
-                onnx.numpy_helper.from_array(self._weight, weight_name)
-            )
+            onnx_model.graph.initializer.append(onnx.numpy_helper.from_array(self._weight, weight_name))
 
         # create a new graph input. this is the labels input needed to compare
         # the graph output against to calculate loss.
-        labels_input = copy.deepcopy(
-            graph_utils.get_output_from_output_name(onnx_model, scores_input_name)
-        )
+        labels_input = copy.deepcopy(graph_utils.get_output_from_output_name(onnx_model, scores_input_name))
         labels_input.name = labels_name
         labels_input.type.tensor_type.elem_type = onnx.TensorProto.INT32
         # if the predictions are (num_examples x num_classes)
@@ -163,11 +154,7 @@ class BCEWithLogitsLoss(building_blocks.Block):
             raise RuntimeError(f"Reduction {reduction} not supported.")
 
         self._weight = weight
-        self._reduce = (
-            building_blocks.ReduceMean()
-            if reduction == "mean"
-            else building_blocks.ReduceSum()
-        )
+        self._reduce = building_blocks.ReduceMean() if reduction == "mean" else building_blocks.ReduceSum()
         self._pos_weight = pos_weight
 
         self._sigmoid = building_blocks.Sigmoid()
@@ -198,38 +185,24 @@ class BCEWithLogitsLoss(building_blocks.Block):
         # create the graph initializers for pos_weight, weight, and the sub operands ([1])
         pos_weight_name = graph_utils.generate_random_graph_name("bceloss.pos_weight")
         if self._pos_weight is not None:
-            onnx_model.graph.initializer.append(
-                onnx.numpy_helper.from_array(self._pos_weight, pos_weight_name)
-            )
+            onnx_model.graph.initializer.append(onnx.numpy_helper.from_array(self._pos_weight, pos_weight_name))
 
         weight_name = graph_utils.generate_random_graph_name("bceloss.weight")
         if self._weight is not None:
-            onnx_model.graph.initializer.append(
-                onnx.numpy_helper.from_array(self._weight, weight_name)
-            )
+            onnx_model.graph.initializer.append(onnx.numpy_helper.from_array(self._weight, weight_name))
 
-        sub_ones_operand_name1 = graph_utils.generate_random_graph_name(
-            "bceloss.sub_ones"
-        )
+        sub_ones_operand_name1 = graph_utils.generate_random_graph_name("bceloss.sub_ones")
         onnx_model.graph.initializer.append(
-            onnx.helper.make_tensor(
-                sub_ones_operand_name1, onnx.TensorProto.FLOAT, [1], [1.0]
-            )
+            onnx.helper.make_tensor(sub_ones_operand_name1, onnx.TensorProto.FLOAT, [1], [1.0])
         )
-        sub_ones_operand_name2 = graph_utils.generate_random_graph_name(
-            "bceloss.sub_ones"
-        )
+        sub_ones_operand_name2 = graph_utils.generate_random_graph_name("bceloss.sub_ones")
         onnx_model.graph.initializer.append(
-            onnx.helper.make_tensor(
-                sub_ones_operand_name2, onnx.TensorProto.FLOAT, [1], [1.0]
-            )
+            onnx.helper.make_tensor(sub_ones_operand_name2, onnx.TensorProto.FLOAT, [1], [1.0])
         )
 
         # create a new graph input. this is the target input needed to compare
         # the graph output against to calculate loss.
-        target_input = copy.deepcopy(
-            graph_utils.get_output_from_output_name(onnx_model, loss_input_name)
-        )
+        target_input = copy.deepcopy(graph_utils.get_output_from_output_name(onnx_model, loss_input_name))
         target_input.name = target_name
         onnx_model.graph.input.append(target_input)
 

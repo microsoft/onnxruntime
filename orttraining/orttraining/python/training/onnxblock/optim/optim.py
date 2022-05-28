@@ -2,160 +2,208 @@
 # Licensed under the MIT License.
 # optim.py
 
-import copy
 import onnx
 
-import onnxruntime.training.onnxblock as onnxblock
+import onnxruntime.training.onnxblock._graph_utils as graph_utils
+import onnxruntime.training.onnxblock.building_blocks as building_blocks
+import onnxruntime.training.onnxblock.model as model
 import onnxruntime.training.onnxblock.model_accessor as accessor
 
+# TODO: Find a better place for these constants
+_PRODUCER_NAME = "onnxblock offline tooling"
+_OPSET_IMPORTS = [onnx.helper.make_opsetid("com.microsoft", 1), onnx.helper.make_opsetid("", 14)]
 
-class AdamW(onnxblock.Model):
-    """Builds AdamW optimizer onnxblock for the given training model."""
 
-    def __init__(
-        self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0
-    ):
-        super(AdamW, self).__init__()
+class AdamWOptimizer(building_blocks.Block):
+    """Adds an AdamWOptimizer node to the onnx model."""
+
+    def __init__(self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0):
+        super(AdamWOptimizer, self).__init__()
+
         self._bias_correction = bias_correction
         self._betas = betas
         self._eps = eps
         self._weight_decay = weight_decay
-        self._max_norm_clip = 1.0
+
+    def build(
+        self,
+        learning_rate_name,
+        step_name,
+        parameter_sequence_name,
+        gradient_sequence_name,
+        first_order_moment_sequence_name,
+        second_order_moment_sequence_name,
+    ):
+
+        # get the model to manipulate
+        onnx_model = accessor.global_accessor.model
+
+        # define the node attributes
+        node_attributes = {
+            "alpha": self._betas[0],  # beta1
+            "beta": self._betas[1],  # beta2
+            "epsilon": self._eps,  # epsilon
+            "weight_decay": self._weight_decay,  # weight decay
+            "correct_bias": 1 if self._bias_correction else 0,  # bias_correction
+            "adam_mode": 1,  # adam mode (1 for hf/transformers/AdamW)
+        }
+
+        # add the adamw node to the onnx model
+        adamw_input_names = [
+            learning_rate_name,  # learning rate
+            step_name,  # training step
+            parameter_sequence_name,  # param to be updated
+            gradient_sequence_name,  # gradient of the param to be used for update
+            first_order_moment_sequence_name,  # first order moment for this param
+            second_order_moment_sequence_name,  # second order moment for this param
+        ]
+        adamw_output_name = graph_utils.generate_random_graph_name("adamw.updated_flag")
+        adamw_output_names = [adamw_output_name]
+        adamw_node = onnx.helper.make_node(
+            "AdamWOptimizer",
+            adamw_input_names,
+            adamw_output_names,
+            name=graph_utils.generate_random_graph_name("AdamWOptimizer"),
+            domain="com.microsoft",
+            **node_attributes,
+        )
+        onnx_model.graph.node.append(adamw_node)
+
+        return adamw_output_name
+
+
+class ClipGradNorm(building_blocks.Block):
+    """Builds a gradient clipping by norm sub graph for the onnx model.
+
+    Creates a block that performs gradient clipping by l2 norm for the calculated
+    gradient.
+
+    Args:
+        max_norm: float indicating the max norm of the gradients.
+
+    Returns:
+        Returns a string of the output names of the gradients after clipping.
+    """
+
+    def __init__(self, max_norm):
+        super(ClipGradNorm, self).__init__()
+
+        self._max_norm = max_norm
+
+        self._reduce = building_blocks.ReduceAllL2()
+        self._add = building_blocks.Add()
+        self._div = building_blocks.Div()
+        self._mul = building_blocks.Mul()
+        self._clip = building_blocks.Clip(clip_max=1.0)
+
+    def build(self, *gradient_names):
+
+        # get the model to manipulate
+        onnx_model = accessor.global_accessor.model
+
+        # add the necessary graph initializers
+        add_node_eps_name = graph_utils.generate_random_graph_name("add_eps")
+        onnx_model.graph.initializer.append(
+            onnx.helper.make_tensor(add_node_eps_name, onnx.TensorProto.FLOAT, [1], [1e-6])
+        )
+        max_norm_name = graph_utils.generate_random_graph_name("max_norm")
+        onnx_model.graph.initializer.append(
+            onnx.helper.make_tensor(max_norm_name, onnx.TensorProto.FLOAT, [1], [self._max_norm])
+        )
+
+        # perform gradient clipping
+        total_norm_name = self._reduce(*gradient_names)
+        adjusted_total_norm_name = self._add(total_norm_name, add_node_eps_name)
+        clip_coef_name = self._clip(self._div(max_norm_name, adjusted_total_norm_name))
+        return [self._mul(grad_name, clip_coef_name) for grad_name in gradient_names]
+
+
+class AdamW(model.Model):
+    """Builds AdamW optimizer onnxblock for the given training parameters.
+
+    Creates a block that updates the model parameters based on the calculated
+    gradient following the AdamW algorithm.
+
+    Args:
+        bias_correction: bool indicating whether to perform bias correction.
+        betas: AdamW decay rate hyperparameters.
+        eps: term added to the denominator for computing the moments.
+        weight_decay: AdamW weight decay
+        clip_grad (optional): an instance of the ClipGradNorm. If not provided,
+                              gradient clipping will not be done.
+
+    Returns:
+        Returns a string of the output names from this optimizer node.
+    """
+
+    def __init__(self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0, clip_grad=None):
+        super(AdamW, self).__init__()
+
+        self._adamw = AdamWOptimizer(
+            bias_correction=bias_correction,
+            betas=betas,
+            eps=eps,
+            weight_decay=weight_decay,
+        )
+        self._clip_grad = clip_grad
+        self._sc = building_blocks.SequenceConstruct()
 
     def build(self, parameters):
-        """Returns an AdamW optimizer model based on the input training model."""
+        """Returns an AdamW optimizer model based on the input parameters."""
+
+        # get the model to manipulate and update its namespace
+        onnx_model = accessor.global_accessor.model
+        onnx_model.graph.name = "AdamW Optimizer Model"
+        onnx_model.producer_name = _PRODUCER_NAME
+        onnx_model.opset_import.extend(_OPSET_IMPORTS)
+        onnx_model.ir_version = onnx.IR_VERSION
 
         # TODO: Avoid hard coded input/output strings
         learning_rate_name = "learning_rate"
         step_name = "step"
-        gradient_output_suffix = "_grad.accumulation.out"
+        gradient_suffix = "_grad"
         first_order_moment_suffix = "exp_avg"
         second_order_moment_fuffix = "exp_avg_sq"
-        output_name_suffix = "out"
 
         trainable_parameters, _ = parameters
 
-        graph_nodes = []
-        graph_inputs = [
-            onnx.helper.make_tensor_value_info(
-                learning_rate_name, onnx.TensorProto.FLOAT, [1]
-            ),
-            onnx.helper.make_tensor_value_info(step_name, onnx.TensorProto.INT64, [1]),
-        ]
-        graph_outputs = []
-
-        # Iterate over all training graph outputs that are gradient outputs
-        for idx, param in enumerate(trainable_parameters):
-
-            param_name = param.name
-            grad_name = f"{param_name}{gradient_output_suffix}"
-            first_order_moment_name = f"{param_name}.{first_order_moment_suffix}"
-            second_order_moment_name = f"{param_name}.{second_order_moment_fuffix}"
-            # prepare node (and graph) inputs and outputs
-            node_input_names = [
-                learning_rate_name,  # learning rate
-                step_name,  # training step (used for beta correction)
-                param_name,  # param to be updated
-                grad_name,  # gradient of the param to be used for update
-                first_order_moment_name,  # first order moment for this param
-                second_order_moment_name,  # second order moment for this param
+        # create the graph inputs for the lr, step, params, grads, moments
+        onnx_model.graph.input.extend(
+            [
+                onnx.helper.make_tensor_value_info(learning_rate_name, onnx.TensorProto.FLOAT, [1]),
+                onnx.helper.make_tensor_value_info(step_name, onnx.TensorProto.INT64, [1]),
             ]
-
-            param_tensor_value_info = onnx.helper.make_tensor_value_info(
-                param_name, param.data_type, param.dims
-            )
-            grad_tensor_value_info = onnx.helper.make_tensor_value_info(
-                grad_name, param.data_type, param.dims
-            )
-            first_order_moment_tensor_value_info = onnx.helper.make_tensor_value_info(
-                first_order_moment_name, param.data_type, param.dims
-            )
-            second_order_moment_tensor_value_info = onnx.helper.make_tensor_value_info(
-                second_order_moment_name, param.data_type, param.dims
-            )
-            node_inputs = [
-                param_tensor_value_info,
-                grad_tensor_value_info,
-                first_order_moment_tensor_value_info,
-                second_order_moment_tensor_value_info,
-            ]
-            graph_inputs.extend(node_inputs)
-
-            step_output_name = f"{param_name}.{step_name}.{output_name_suffix}"
-            param_output_name = f"{param_name}.{output_name_suffix}"
-            first_order_moment_output_name = (
-                f"{first_order_moment_name}.{output_name_suffix}"
-            )
-            second_order_moment_output_name = (
-                f"{second_order_moment_name}.{output_name_suffix}"
-            )
-
-            param_output_tensor_value_info = onnx.helper.make_tensor_value_info(
-                param_output_name, param.data_type, param.dims
-            )
-            first_order_moment_output_tensor_value_info = (
-                onnx.helper.make_tensor_value_info(
-                    first_order_moment_output_name, param.data_type, param.dims
-                )
-            )
-            second_order_moment_output_tensor_value_info = (
-                onnx.helper.make_tensor_value_info(
-                    second_order_moment_output_name, param.data_type, param.dims
-                )
-            )
-
-            node_output_names = [
-                step_output_name,  # step out
-                first_order_moment_output_name,  # first order moment output
-                second_order_moment_output_name,  # second order moment output
-                param_output_name,  # updated weights
-            ]
-
-            node_outputs = [
-                onnx.helper.make_tensor_value_info(
-                    step_output_name, onnx.TensorProto.INT64, [1]
-                ),
-                first_order_moment_output_tensor_value_info,
-                second_order_moment_output_tensor_value_info,
-                param_output_tensor_value_info,
-            ]
-            graph_outputs.extend(node_outputs)
-
-            # AdamOptimizer node attributes
-            node_attributes = {
-                "alpha": self._betas[0],  # beta1
-                "beta": self._betas[1],  # beta2
-                "lambda": self._weight_decay,  # weight decay
-                "epsilon": self._eps,  # epsilon
-                "do_bias_correction": 1
-                if self._bias_correction
-                else 0,  # bias_correction
-                "weight_decay_mode": 1,  # weight decay mode
-                "max_norm_clip": self._max_norm_clip,  # used for gradient scaling
-            }
-
-            # make the node
-            optimizer_node = onnx.helper.make_node(
-                "AdamOptimizer",
-                node_input_names,
-                node_output_names,
-                name=f"AdamOptimizer{idx}",
-                domain="com.microsoft",
-                **node_attributes,
-            )
-
-            graph_nodes.append(optimizer_node)
-
-        # make the graph and the model
-        graph = onnx.helper.make_graph(
-            graph_nodes, "Optimizer Graph", graph_inputs, graph_outputs
-        )
-        model = onnx.helper.make_model(
-            graph,
-            producer_name=onnxblock._producer_name,
-            opset_imports=[onnxblock._opset_import],
         )
 
-        accessor.global_accessor.model = model
+        param_names, grad_names, moment1_names, moment2_names = [], [], [], []
+        for param in trainable_parameters:
+            param_names.append(param.name)
+            grad_names.append(f"{param.name}{gradient_suffix}")
+            moment1_names.append(f"{param.name}.{first_order_moment_suffix}")
+            moment2_names.append(f"{param.name}.{second_order_moment_fuffix}")
 
-        return [output.name for output in graph_outputs]
+            for input_name in [param_names[-1], grad_names[-1], moment1_names[-1], moment2_names[-1]]:
+                onnx_model.graph.input.append(
+                    onnx.helper.make_tensor_value_info(input_name, param.data_type, param.dims)
+                )
+
+        # Clip the gradients if needed
+        if self._clip_grad is not None:
+            grad_names = self._clip_grad(*grad_names)
+
+        # Run multi tensor AdamWOptimizer
+        updated_flag_name = self._adamw(
+            learning_rate_name,
+            step_name,
+            self._sc(*param_names),
+            self._sc(*grad_names),
+            self._sc(*moment1_names),
+            self._sc(*moment2_names),
+        )
+
+        # Create the graph outputs
+        onnx_model.graph.output.append(
+            onnx.helper.make_tensor_value_info(updated_flag_name, onnx.TensorProto.INT64, [1])
+        )
+
+        return updated_flag_name

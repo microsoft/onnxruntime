@@ -2,13 +2,10 @@
 # Licensed under the MIT License.
 # __init__.py
 
-from .building_blocks import Block
-from .model import Model, TrainingModel
-from .checkpoint_utils import save_checkpoint
-from . import loss, optim
-from .model_accessor import onnx_model
-
 import onnx
 
-_producer_name = "onnxblock offline tooling"
-_opset_import = onnx.helper.make_opsetid("com.microsoft", 1)
+from . import loss, optim
+from .building_blocks import Block
+from .checkpoint_utils import save_checkpoint
+from .model import Model, TrainingModel
+from .model_accessor import onnx_model
