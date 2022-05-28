@@ -122,20 +122,8 @@ def parse_arguments():
         choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "None"],
         help="The selected execution provider for this build.",
     )
-    parser.add_argument(
-        "--dependency_id",
-        required=False,
-        default='None',
-        type=str,
-        help="ependency id."
-    )
-    parser.add_argument(
-        "--dependency_version",
-        required=False,
-        default='None',
-        type=str,
-        help="dependency version."
-    )
+    parser.add_argument("--dependency_id", required=False, default="None", type=str, help="ependency id.")
+    parser.add_argument("--dependency_version", required=False, default="None", type=str, help="dependency version.")
 
     return parser.parse_args()
 
@@ -194,10 +182,10 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version, dependency_id, dependency_version):
-    if (package_name == 'Microsoft.ML.OnnxRuntime.Snpe' or package_name == 'Microsoft.ML.OnnxRuntime.Snpe_Win'):
-        list.append('<dependencies>')
+    if package_name == "Microsoft.ML.OnnxRuntime.Snpe" or package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win":
+        list.append("<dependencies>")
         list.append('<dependency id="' + dependency_id + '" version="' + dependency_version + '"/>')
-        list.append('</dependencies>')
+        list.append("</dependencies>")
         return
 
     dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.8.2"/>'
@@ -296,8 +284,9 @@ def generate_metadata(list, args):
     generate_license(metadata_list)
     generate_project_url(metadata_list, "https://github.com/Microsoft/onnxruntime")
     generate_repo_url(metadata_list, "https://github.com/Microsoft/onnxruntime.git", args.commit_id)
-    generate_dependencies(metadata_list, args.package_name, args.package_version, args.dependency_id,
-                          args.dependency_version)
+    generate_dependencies(
+        metadata_list, args.package_name, args.package_version, args.dependency_id, args.dependency_version
+    )
     generate_release_notes(metadata_list)
     metadata_list.append("</metadata>")
 
@@ -312,7 +301,7 @@ def generate_files(list, args):
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
-    is_snpe_package_win = args.package_name == 'Microsoft.ML.OnnxRuntime.Snpe_Win'
+    is_snpe_package_win = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win"
 
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and (
@@ -479,13 +468,12 @@ def generate_files(list, args):
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />'
             )
 
-    if (args.package_name == 'Microsoft.ML.OnnxRuntime.Snpe_Win'):
+    if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win":
         files_list.append(
-            '<file src=' + '"' + os.path.join(args.native_build_path, 'onnx_test_runner.exe') + runtimes + ' />'
+            "<file src=" + '"' + os.path.join(args.native_build_path, "onnx_test_runner.exe") + runtimes + " />"
         )
         files_list.append(
-            '<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime_perf_test.exe')
-            + runtimes + ' />'
+            "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"
         )
 
     is_ado_packaging_build = False
@@ -518,10 +506,12 @@ def generate_files(list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
                 )
-    elif (args.package_name == 'Microsoft.ML.OnnxRuntime.Snpe'):
+    elif args.package_name == "Microsoft.ML.OnnxRuntime.Snpe":
         files_list.append(
-            '<file src=' + '"' + os.path.join(args.native_build_path, 'libonnxruntime.so') +
-            '" target="runtimes\\android-arm64\\native" />'
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, "libonnxruntime.so")
+            + '" target="runtimes\\android-arm64\\native" />'
         )
     else:
         files_list.append(
@@ -822,7 +812,13 @@ def generate_files(list, args):
         # Process targets file
         if is_snpe_package_win:
             source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "targets_snpe.xml"
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "netstandard",
+                "targets_snpe.xml",
             )
         else:
             source_targets = os.path.join(
