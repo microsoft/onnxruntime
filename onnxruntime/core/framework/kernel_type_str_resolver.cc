@@ -3,13 +3,17 @@
 
 #include "core/framework/kernel_type_str_resolver.h"
 
+#include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/graph/op_identifier_utils.h"
+
+namespace fb = flatbuffers;
 
 namespace onnxruntime {
 
 gsl::span<const ArgTypeAndIndex> KernelTypeStrResolver::ResolveKernelTypeStr(
     const OpIdentifier& op_id, const std::string& kernel_type_str) const {
-  if (auto op_it = op_type_str_map_.find(op_id); op_it != op_type_str_map_.end()) {
+  if (auto op_it = op_kernel_type_str_map_.find(op_id); op_it != op_kernel_type_str_map_.end()) {
     const auto& type_str_map = op_it->second;
     if (const auto type_str_it = type_str_map.find(kernel_type_str); type_str_it != type_str_map.end()) {
       return type_str_it->second;
@@ -20,13 +24,13 @@ gsl::span<const ArgTypeAndIndex> KernelTypeStrResolver::ResolveKernelTypeStr(
 
 bool KernelTypeStrResolver::RegisterKernelTypeStrToArgsMap(OpIdentifier op_id,
                                                            KernelTypeStrToArgsMap kernel_type_str_to_args) {
-  return op_type_str_map_.try_emplace(std::move(op_id), std::move(kernel_type_str_to_args)).second;
+  return op_kernel_type_str_map_.try_emplace(std::move(op_id), std::move(kernel_type_str_to_args)).second;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
   auto op_id = MakeOpId(op_schema);
-  if (Contains(op_type_str_map_, op_id)) {
+  if (Contains(op_kernel_type_str_map_, op_id)) {
     return false;
   }
 
@@ -72,7 +76,8 @@ bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_
 
         ORT_ENFORCE(formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
                     "Kernel type string already exists for formal parameter name '", param.GetName(),
-                    "', but the existing argument's formal parameter type string is different.");
+                    "', but the existing argument with that formal parameter name has a different formal parameter "
+                    "type string.");
       }
       args_for_io_name.push_back(std::move(curr_arg_type_and_idx));
     }
@@ -90,4 +95,96 @@ bool KernelTypeStrResolver::RegisterNodeOpSchema(const Node& node) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+Status KernelTypeStrResolver::SaveToOrtFormat(
+    fb::FlatBufferBuilder& builder,
+    fb::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const {
+  std::vector<fb::Offset<fbs::OpIdKernelTypeStrArgsEntry>> fbs_op_kernel_type_str_args{};
+  fbs_op_kernel_type_str_args.reserve(op_kernel_type_str_map_.size());
+
+  for (const auto& [op_id, kernel_type_str_map] :
+       op_kernel_type_str_map_) {
+    std::vector<fb::Offset<fbs::KernelTypeStrArgsEntry>> fbs_kernel_type_str_args{};
+    fbs_kernel_type_str_args.reserve(kernel_type_str_map.size());
+
+    for (const auto& [kernel_type_str, args] : kernel_type_str_map) {
+      std::vector<fb::Offset<fbs::ArgTypeAndIndex>> fbs_args{};
+      fbs_args.reserve(args.size());
+
+      for (const auto& arg : args) {
+        auto fbs_arg = fbs::CreateArgTypeAndIndex(
+            builder,
+            arg.first == ArgType::kInput ? fbs::ArgType::INPUT : fbs::ArgType::OUTPUT,
+            gsl::narrow<uint32_t>(arg.second));
+        fbs_args.push_back(fbs_arg);
+      }
+
+      auto fbs_kernel_type_str_args_entry = fbs::CreateKernelTypeStrArgsEntry(
+          builder,
+          builder.CreateSharedString(kernel_type_str),
+          builder.CreateVector(fbs_args));
+      fbs_kernel_type_str_args.push_back(fbs_kernel_type_str_args_entry);
+    }
+
+    auto fbs_op_kernel_type_str_args_entry = fbs::CreateOpIdKernelTypeStrArgsEntry(
+        builder,
+        builder.CreateSharedString(op_id),
+        builder.CreateVectorOfSortedTables(&fbs_kernel_type_str_args));
+    fbs_op_kernel_type_str_args.push_back(fbs_op_kernel_type_str_args_entry);
+  }
+
+  fbs_kernel_type_str_resolver = fbs::CreateKernelTypeStrResolver(
+      builder,
+      builder.CreateVectorOfSortedTables(&fbs_op_kernel_type_str_args));
+  return Status::OK();
 }
+
+Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver) {
+  const auto* fbs_op_kernel_type_str_args = fbs_kernel_type_str_resolver.op_kernel_type_str_args();
+  ORT_FORMAT_RETURN_IF_NULL(fbs_op_kernel_type_str_args, "op_kernel_type_str_args");
+
+  OpKernelTypeStrMap op_kernel_type_str_map{};
+  op_kernel_type_str_map.reserve(fbs_op_kernel_type_str_args->size());
+  for (const auto* fbs_op_kernel_type_str_args_entry : *fbs_op_kernel_type_str_args) {
+    ORT_FORMAT_RETURN_IF_NULL(fbs_op_kernel_type_str_args_entry, "op_kernel_type_str_args entry");
+
+    const auto* fbs_op_id = fbs_op_kernel_type_str_args_entry->op_id();
+    ORT_FORMAT_RETURN_IF_NULL(fbs_op_id, "op_id");
+
+    const auto* fbs_kernel_type_str_args = fbs_op_kernel_type_str_args_entry->kernel_type_str_args();
+    ORT_FORMAT_RETURN_IF_NULL(fbs_kernel_type_str_args, "kernel_type_str_args");
+
+    KernelTypeStrToArgsMap kernel_type_str_map{};
+    kernel_type_str_map.reserve(fbs_kernel_type_str_args->size());
+    for (const auto* fbs_kernel_type_str_args_entry : *fbs_kernel_type_str_args) {
+      ORT_FORMAT_RETURN_IF_NULL(fbs_kernel_type_str_args_entry, "kernel_type_str_args entry");
+
+      const auto* fbs_kernel_type_str = fbs_kernel_type_str_args_entry->kernel_type_str();
+      ORT_FORMAT_RETURN_IF_NULL(fbs_kernel_type_str, "kernel_type_str");
+
+      const auto* fbs_args = fbs_kernel_type_str_args_entry->args();
+      ORT_FORMAT_RETURN_IF_NULL(fbs_args, "args");
+
+      InlinedVector<ArgTypeAndIndex> args{};
+      args.reserve(fbs_args->size());
+      for (const auto* fbs_arg : *fbs_args) {
+        ORT_FORMAT_RETURN_IF_NULL(fbs_arg, "args entry");
+        args.push_back(ArgTypeAndIndex{
+            fbs_arg->arg_type() == fbs::ArgType::INPUT ? ArgType::kInput : ArgType::kOutput,
+            fbs_arg->index()});
+      }
+
+      const auto [it, inserted] = kernel_type_str_map.try_emplace(fbs_kernel_type_str->str(), std::move(args));
+      ORT_RETURN_IF_NOT(inserted, "Duplicate entry for kernel type str: ", it->first, ". ",
+                        fbs::utils::kInvalidOrtFormatModelMessage);
+    }
+
+    const auto [it, inserted] = op_kernel_type_str_map.try_emplace(fbs_op_id->str(), std::move(kernel_type_str_map));
+    ORT_RETURN_IF_NOT(inserted, "Duplicate entry for op id: ", it->first, ". ",
+                      fbs::utils::kInvalidOrtFormatModelMessage);
+  }
+
+  op_kernel_type_str_map_ = std::move(op_kernel_type_str_map);
+  return Status::OK();
+}
+
+}  // namespace onnxruntime

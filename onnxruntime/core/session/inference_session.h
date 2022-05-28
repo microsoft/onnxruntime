@@ -257,9 +257,9 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
+  common::Status Load(const std::basic_string<ORTCHAR_T>& model_uri) ORT_MUST_USE_RESULT;
 #ifdef _WIN32
-  common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
+  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
 #endif
   /**
    * Load an ONNX or ORT format model.
@@ -568,10 +568,7 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status LoadOrtModel(const std::string& model_uri) ORT_MUST_USE_RESULT;
-#ifdef _WIN32
-  common::Status LoadOrtModel(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
-#endif
+  common::Status LoadOrtModel(const std::basic_string<ORTCHAR_T>& model_uri) ORT_MUST_USE_RESULT;
 
   /**
    * Load an ORT format model.
@@ -685,6 +682,8 @@ class InferenceSession {
   // Determines which threadpools will be intialized and used for the duration of this session.
   // If true, use the per session ones, or else the global threadpools.
   bool use_per_session_threads_;
+
+  KernelTypeStrResolver kernel_type_str_resolver_;
 
   KernelRegistryManager kernel_registry_manager_;
 

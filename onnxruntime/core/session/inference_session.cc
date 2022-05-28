@@ -14,6 +14,7 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
+#include "core/common/path_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/framework/bfc_arena.h"
@@ -390,7 +391,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 #if !defined(ORT_MINIMAL_BUILD)
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const std::string& model_uri)
-    : model_location_(ToWideString(model_uri)),
+    : model_location_(ToPathString(model_uri)),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
@@ -411,7 +412,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
-  model_location_ = ToWideString(model_uri);
+  model_location_ = ToPathString(model_uri);
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
@@ -679,7 +680,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
 
 template <typename T>
 common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
-  model_location_ = ToWideString(model_uri);
+  model_location_ = ToPathString(model_uri);
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_location_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
@@ -712,7 +713,7 @@ common::Status InferenceSession::FilterEnabledOptimizers(InlinedHashSet<std::str
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-common::Status InferenceSession::Load(const std::string& model_uri) {
+common::Status InferenceSession::Load(const std::basic_string<ORTCHAR_T>& model_uri) {
   std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
@@ -728,33 +729,15 @@ common::Status InferenceSession::Load(const std::string& model_uri) {
                            "Invoke Load().");
   }
 
-  return Load<char>(model_uri);
+  return Load(model_uri);
 #else
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
 #endif
 }
 
 #ifdef _WIN32
-common::Status InferenceSession::Load(const std::wstring& model_uri) {
-  std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
-  bool has_explicit_type = !model_type.empty();
-
-  if ((has_explicit_type && model_type == "ORT") ||
-      (!has_explicit_type && fbs::utils::IsOrtFormatModel(model_uri))) {
-    return LoadOrtModel(model_uri);
-  }
-
-#if !defined(ORT_MINIMAL_BUILD)
-  if (is_model_proto_parsed_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "ModelProto corresponding to the model to be loaded has already been parsed. "
-                           "Invoke Load().");
-  }
-
-  return Load<PATH_CHAR_TYPE>(model_uri);
-#else
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
-#endif
+common::Status InferenceSession::Load(const std::string& model_uri) {
+  return Load(ToPathString(model_uri));
 }
 #endif
 
@@ -982,23 +965,20 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-template <typename T>
-static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
-                                std::basic_string<ORTCHAR_T>& model_location,
+static Status LoadOrtModelBytes(const std::basic_string<ORTCHAR_T>& model_location,
                                 gsl::span<const uint8_t>& bytes,
                                 std::vector<uint8_t>& bytes_data_holder) {
   size_t num_bytes = 0;
-  model_location = ToWideString(model_uri);
   ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
 
   bytes_data_holder.resize(num_bytes);
 
-  std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
+  std::ifstream bytes_stream(model_location, std::ifstream::in | std::ifstream::binary);
   bytes_stream.read(reinterpret_cast<char*>(bytes_data_holder.data()), num_bytes);
 
   if (!bytes_stream) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Load model from ", ToUTF8String(model_uri), " failed. Only ",
+                           "Load model from ", ToUTF8String(model_location), " failed. Only ",
                            bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
   }
 
@@ -1007,27 +987,16 @@ static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
   return Status::OK();
 }
 
-Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
+Status InferenceSession::LoadOrtModel(const std::basic_string<ORTCHAR_T>& model_uri) {
+  model_location_ = model_uri;
   return LoadOrtModel(
       [&]() {
         ORT_RETURN_IF_ERROR(
-            LoadOrtModelBytes(model_uri, model_location_,
+            LoadOrtModelBytes(model_location_,
                               ort_format_model_bytes_, ort_format_model_bytes_data_holder_));
         return Status::OK();
       });
 }
-
-#ifdef WIN32
-Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
-  return LoadOrtModel(
-      [&]() {
-        ORT_RETURN_IF_ERROR(
-            LoadOrtModelBytes(model_uri, model_location_,
-                              ort_format_model_bytes_, ort_format_model_bytes_data_holder_));
-        return Status::OK();
-      });
-}
-#endif
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
   return LoadOrtModel([&]() {
@@ -1437,8 +1406,10 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
+    // TODO initialize kernel_type_str_resolver_
+
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_, kernel_type_str_resolver_,
                                              session_options_,
                                              serialized_session_state,
                                              // need to keep the initializers if saving the optimized model

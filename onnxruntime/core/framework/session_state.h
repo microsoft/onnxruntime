@@ -23,6 +23,7 @@
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"
@@ -301,6 +302,7 @@ class SessionState {
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
+                              const KernelTypeStrResolver& kernel_type_str_resolver,
                               const SessionOptions& session_options = {},
                               const onnxruntime::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
@@ -366,7 +368,9 @@ class SessionState {
                                std::unique_ptr<SessionState> session_state);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
+  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
+                                  const KernelTypeStrResolver& kernel_type_str_resolver,
+                                  bool saving_ort_format);
 #endif
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,

@@ -293,7 +293,7 @@ table OpIdKernelTypeStrArgsEntry {
   kernel_type_str_args:[KernelTypeStrArgsEntry];
 }
 
-table OpInfo {
+table KernelTypeStrResolver {
   op_kernel_type_str_args:[OpIdKernelTypeStrArgsEntry];
 }
 
@@ -306,7 +306,7 @@ table InferenceSession {
   model:Model;
   session_state:SessionState;
 
-  op_info:OpInfo;
+  kernel_type_str_resolver:KernelTypeStrResolver;
 }
 
 root_type InferenceSession;

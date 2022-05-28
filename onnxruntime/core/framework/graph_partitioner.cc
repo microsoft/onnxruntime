@@ -580,7 +580,6 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   }
 
   // We will compile the fused nodes one by one, and fuse the subgraph if successful.
-  // If a compilation fails we undo the fusion and leave the original nodes available for other EPs to take
   for (size_t j = 0, end = nodes_and_viewers.size(); j < end; ++j) {
     Node& node = nodes_and_viewers[j].fused_node;
     std::vector<NodeComputeInfo> single_node_compute_func;

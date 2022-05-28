@@ -1075,13 +1075,6 @@ class Graph {
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
-  /**
-  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
-  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
-  @param fused_node The fused node and it's function body to be removed from the graph
-  */
-  void CancelFuseSubGraph(const Node& fused_node);
-
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
 
@@ -1322,6 +1315,7 @@ class Graph {
     return runtime_optimizations_;
   }
 
+  // TODO is this needed? can we just use the op/EP from the node to look up the kernel?
   // Stores information collected during the replay of loaded runtime optimizations
   struct RuntimeOptimizationReplayContext {
     std::unordered_map<NodeIndex, OpIdAndEpType> produced_node_index_to_info{};

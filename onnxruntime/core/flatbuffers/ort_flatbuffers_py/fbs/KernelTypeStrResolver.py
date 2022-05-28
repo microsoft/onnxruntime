@@ -6,25 +6,25 @@ import flatbuffers
 from flatbuffers.compat import import_numpy
 np = import_numpy()
 
-class OpInfo(object):
+class KernelTypeStrResolver(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsOpInfo(cls, buf, offset):
+    def GetRootAsKernelTypeStrResolver(cls, buf, offset):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
-        x = OpInfo()
+        x = KernelTypeStrResolver()
         x.Init(buf, n + offset)
         return x
 
     @classmethod
-    def OpInfoBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
+    def KernelTypeStrResolverBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
 
-    # OpInfo
+    # KernelTypeStrResolver
     def Init(self, buf, pos):
         self._tab = flatbuffers.table.Table(buf, pos)
 
-    # OpInfo
+    # KernelTypeStrResolver
     def OpKernelTypeStrArgs(self, j):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
@@ -37,19 +37,19 @@ class OpInfo(object):
             return obj
         return None
 
-    # OpInfo
+    # KernelTypeStrResolver
     def OpKernelTypeStrArgsLength(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
-    # OpInfo
+    # KernelTypeStrResolver
     def OpKernelTypeStrArgsIsNone(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         return o == 0
 
-def OpInfoStart(builder): builder.StartObject(1)
-def OpInfoAddOpKernelTypeStrArgs(builder, opKernelTypeStrArgs): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(opKernelTypeStrArgs), 0)
-def OpInfoStartOpKernelTypeStrArgsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def OpInfoEnd(builder): return builder.EndObject()
+def KernelTypeStrResolverStart(builder): builder.StartObject(1)
+def KernelTypeStrResolverAddOpKernelTypeStrArgs(builder, opKernelTypeStrArgs): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(opKernelTypeStrArgs), 0)
+def KernelTypeStrResolverStartOpKernelTypeStrArgsVector(builder, numElems): return builder.StartVector(4, numElems, 4)
+def KernelTypeStrResolverEnd(builder): return builder.EndObject()

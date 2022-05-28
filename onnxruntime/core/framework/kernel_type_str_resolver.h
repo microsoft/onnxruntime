@@ -14,7 +14,17 @@
 #include "core/graph/basic_types.h"
 #include "core/graph/graph.h"
 
+namespace flatbuffers {
+class FlatBufferBuilder;
+template <typename T>
+struct Offset;
+}  // namespace flatbuffers
+
 namespace onnxruntime {
+
+namespace fbs {
+struct KernelTypeStrResolver;
+}  // namespace fbs
 
 using ArgTypeAndIndex = std::pair<ArgType, size_t>;
 
@@ -31,10 +41,16 @@ class KernelTypeStrResolver {
   bool RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema);
 
   bool RegisterNodeOpSchema(const Node& node);
+
+  Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                         flatbuffers::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  Status LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver);
+
  private:
-  InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap> op_type_str_map_;
+  using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;
+  OpKernelTypeStrMap op_kernel_type_str_map_;
 };
 
 }  // namespace onnxruntime

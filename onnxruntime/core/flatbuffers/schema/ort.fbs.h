@@ -95,8 +95,8 @@ struct KernelTypeStrArgsEntryBuilder;
 struct OpIdKernelTypeStrArgsEntry;
 struct OpIdKernelTypeStrArgsEntryBuilder;
 
-struct OpInfo;
-struct OpInfoBuilder;
+struct KernelTypeStrResolver;
+struct KernelTypeStrResolverBuilder;
 
 struct InferenceSession;
 struct InferenceSessionBuilder;
@@ -2925,8 +2925,8 @@ inline flatbuffers::Offset<OpIdKernelTypeStrArgsEntry> CreateOpIdKernelTypeStrAr
       kernel_type_str_args__);
 }
 
-struct OpInfo FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
-  typedef OpInfoBuilder Builder;
+struct KernelTypeStrResolver FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef KernelTypeStrResolverBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_OP_KERNEL_TYPE_STR_ARGS = 4
   };
@@ -2942,38 +2942,38 @@ struct OpInfo FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
 };
 
-struct OpInfoBuilder {
-  typedef OpInfo Table;
+struct KernelTypeStrResolverBuilder {
+  typedef KernelTypeStrResolver Table;
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_op_kernel_type_str_args(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OpIdKernelTypeStrArgsEntry>>> op_kernel_type_str_args) {
-    fbb_.AddOffset(OpInfo::VT_OP_KERNEL_TYPE_STR_ARGS, op_kernel_type_str_args);
+    fbb_.AddOffset(KernelTypeStrResolver::VT_OP_KERNEL_TYPE_STR_ARGS, op_kernel_type_str_args);
   }
-  explicit OpInfoBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit KernelTypeStrResolverBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  OpInfoBuilder &operator=(const OpInfoBuilder &);
-  flatbuffers::Offset<OpInfo> Finish() {
+  KernelTypeStrResolverBuilder &operator=(const KernelTypeStrResolverBuilder &);
+  flatbuffers::Offset<KernelTypeStrResolver> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<OpInfo>(end);
+    auto o = flatbuffers::Offset<KernelTypeStrResolver>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<OpInfo> CreateOpInfo(
+inline flatbuffers::Offset<KernelTypeStrResolver> CreateKernelTypeStrResolver(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OpIdKernelTypeStrArgsEntry>>> op_kernel_type_str_args = 0) {
-  OpInfoBuilder builder_(_fbb);
+  KernelTypeStrResolverBuilder builder_(_fbb);
   builder_.add_op_kernel_type_str_args(op_kernel_type_str_args);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<OpInfo> CreateOpInfoDirect(
+inline flatbuffers::Offset<KernelTypeStrResolver> CreateKernelTypeStrResolverDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     std::vector<flatbuffers::Offset<onnxruntime::fbs::OpIdKernelTypeStrArgsEntry>> *op_kernel_type_str_args = nullptr) {
   auto op_kernel_type_str_args__ = op_kernel_type_str_args ? _fbb.CreateVectorOfSortedTables<onnxruntime::fbs::OpIdKernelTypeStrArgsEntry>(op_kernel_type_str_args) : 0;
-  return onnxruntime::fbs::CreateOpInfo(
+  return onnxruntime::fbs::CreateKernelTypeStrResolver(
       _fbb,
       op_kernel_type_str_args__);
 }
@@ -2984,7 +2984,7 @@ struct InferenceSession FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_ORT_VERSION = 4,
     VT_MODEL = 6,
     VT_SESSION_STATE = 8,
-    VT_OP_INFO = 10
+    VT_KERNEL_TYPE_STR_RESOLVER = 10
   };
   const flatbuffers::String *ort_version() const {
     return GetPointer<const flatbuffers::String *>(VT_ORT_VERSION);
@@ -2995,8 +2995,8 @@ struct InferenceSession FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const onnxruntime::fbs::SessionState *session_state() const {
     return GetPointer<const onnxruntime::fbs::SessionState *>(VT_SESSION_STATE);
   }
-  const onnxruntime::fbs::OpInfo *op_info() const {
-    return GetPointer<const onnxruntime::fbs::OpInfo *>(VT_OP_INFO);
+  const onnxruntime::fbs::KernelTypeStrResolver *kernel_type_str_resolver() const {
+    return GetPointer<const onnxruntime::fbs::KernelTypeStrResolver *>(VT_KERNEL_TYPE_STR_RESOLVER);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -3006,8 +3006,8 @@ struct InferenceSession FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(model()) &&
            VerifyOffset(verifier, VT_SESSION_STATE) &&
            verifier.VerifyTable(session_state()) &&
-           VerifyOffset(verifier, VT_OP_INFO) &&
-           verifier.VerifyTable(op_info()) &&
+           VerifyOffset(verifier, VT_KERNEL_TYPE_STR_RESOLVER) &&
+           verifier.VerifyTable(kernel_type_str_resolver()) &&
            verifier.EndTable();
   }
 };
@@ -3025,8 +3025,8 @@ struct InferenceSessionBuilder {
   void add_session_state(flatbuffers::Offset<onnxruntime::fbs::SessionState> session_state) {
     fbb_.AddOffset(InferenceSession::VT_SESSION_STATE, session_state);
   }
-  void add_op_info(flatbuffers::Offset<onnxruntime::fbs::OpInfo> op_info) {
-    fbb_.AddOffset(InferenceSession::VT_OP_INFO, op_info);
+  void add_kernel_type_str_resolver(flatbuffers::Offset<onnxruntime::fbs::KernelTypeStrResolver> kernel_type_str_resolver) {
+    fbb_.AddOffset(InferenceSession::VT_KERNEL_TYPE_STR_RESOLVER, kernel_type_str_resolver);
   }
   explicit InferenceSessionBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -3045,9 +3045,9 @@ inline flatbuffers::Offset<InferenceSession> CreateInferenceSession(
     flatbuffers::Offset<flatbuffers::String> ort_version = 0,
     flatbuffers::Offset<onnxruntime::fbs::Model> model = 0,
     flatbuffers::Offset<onnxruntime::fbs::SessionState> session_state = 0,
-    flatbuffers::Offset<onnxruntime::fbs::OpInfo> op_info = 0) {
+    flatbuffers::Offset<onnxruntime::fbs::KernelTypeStrResolver> kernel_type_str_resolver = 0) {
   InferenceSessionBuilder builder_(_fbb);
-  builder_.add_op_info(op_info);
+  builder_.add_kernel_type_str_resolver(kernel_type_str_resolver);
   builder_.add_session_state(session_state);
   builder_.add_model(model);
   builder_.add_ort_version(ort_version);
@@ -3059,14 +3059,14 @@ inline flatbuffers::Offset<InferenceSession> CreateInferenceSessionDirect(
     const char *ort_version = nullptr,
     flatbuffers::Offset<onnxruntime::fbs::Model> model = 0,
     flatbuffers::Offset<onnxruntime::fbs::SessionState> session_state = 0,
-    flatbuffers::Offset<onnxruntime::fbs::OpInfo> op_info = 0) {
+    flatbuffers::Offset<onnxruntime::fbs::KernelTypeStrResolver> kernel_type_str_resolver = 0) {
   auto ort_version__ = ort_version ? _fbb.CreateString(ort_version) : 0;
   return onnxruntime::fbs::CreateInferenceSession(
       _fbb,
       ort_version__,
       model,
       session_state,
-      op_info);
+      kernel_type_str_resolver);
 }
 
 inline bool VerifyTypeInfoValue(flatbuffers::Verifier &verifier, const void *obj, TypeInfoValue type) {

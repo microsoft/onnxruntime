@@ -1277,16 +1277,16 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             parent_graph.strict_shape_type_inference_) {
 }
 
-Graph::Graph(const Model& owning_model, 
-    IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
-    ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+Graph::Graph(const Model& owning_model,
+    IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+    ONNX_NAMESPACE::GraphProto& subgraph_proto,
     const std::unordered_map<std::string, int>& domain_version_map,
     const logging::Logger& logger,
     bool strict_shape_type_inference)
     : Graph(owning_model,
             &subgraph_proto,
-            domain_version_map, 
-            owning_model.IrVersion(), 
+            domain_version_map,
+            owning_model.IrVersion(),
             schema_registry,
             nullptr,
             nullptr,
@@ -2553,8 +2553,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (node.since_version_ == -1) {
         node.since_version_ = node.op_->since_version();
       }
-    } 
-   
+    }
+
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
@@ -3860,31 +3860,6 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   return node;
-}
-
-void Graph::CancelFuseSubGraph(const Node& fused_node) {
-  auto node_idx = fused_node.Index();
-  if (!GetNode(node_idx))
-    return;
-
-  if (fused_node.NodeType() != Node::Type::Fused)
-    return;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // Remove the tempoary schema from schema container container
-  auto* temp_schema_ptr = fused_node.Op();
-  auto it = std::find_if(
-      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-        return schema.get() == temp_schema_ptr;
-      });
-  if (it != fused_schemas_containers_.end()) {
-    fused_schemas_containers_.erase(it);
-  }
-#endif
-
-  // Remove the fused_node
-  RemoveNode(node_idx);
 }
 
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
