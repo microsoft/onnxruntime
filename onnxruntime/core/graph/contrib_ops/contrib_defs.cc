@@ -2424,7 +2424,11 @@ void RegisterContribSchemas() {
       .SinceVersion(1)
       .SetDoc("Onnx node for SNPE.")
       .Attr("DLC", "payload of the SNPE DLC file.", AttributeProto::STRING)
-      .Attr("snpe_version", "(Optional) SNPE version used to convert the model.", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr(
+          "snpe_version",
+          "(Optional) SNPE version used to convert the model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
       .Attr("target_device", "(Optional) Target device like CPU, DSP, etc.", AttributeProto::STRING, OPTIONAL_VALUE)
       .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
       .AllowUncheckedAttributes()

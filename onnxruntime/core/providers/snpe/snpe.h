@@ -3,13 +3,17 @@
 
 #pragma once
 
+#include <sstream>
+#include <iostream>
+#include <memory>
+#include <unordered_map>
+#include <string>
+#include <vector>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "SnpeLib.h"
 #include "snpe_execution_provider.h"
-#include <sstream>
-#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -30,7 +34,7 @@ class Snpe : public OpKernel {
         output_dims_.at(output_i).push_back(output_shape->dim(i).dim_value());
       }
       output_names.push_back(output->Name());
-      output_names_index_.emplace(output->Name(), (size_t)output_i);
+      output_names_index_.emplace(output->Name(), static_cast<size_t>(output_i));
     }
     for (uint32_t input_i = 0; input_i < input_cout_; ++input_i) {
       auto input = info.node().InputDefs().at(input_i);

@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "snpe_execution_provider.h"
-
+#include "core/providers/snpe/snpe_execution_provider.h"
+#include <vector>
+#include <memory>
+#include <utility>
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
@@ -32,7 +34,7 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 
 Status RegisterSnpeContribKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
-      BuildKernelCreateInfo<void>,  //default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kSnpeExecutionProvider, kMSDomain, 1, Snpe)>,
   };
 
@@ -58,7 +60,7 @@ KernelRegistryAndStatus GetSnpeKernelRegistry() {
 
 std::shared_ptr<KernelRegistry> SNPEExecutionProvider::GetKernelRegistry() const {
   static KernelRegistryAndStatus ret = GetSnpeKernelRegistry();
-  //throw if the registry failed to initialize
+  // throw if the registry failed to initialize
   ORT_THROW_IF_ERROR(ret.st);
   return ret.kernel_registry;
 }
@@ -105,7 +107,8 @@ SNPEExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 
     // none of the provided registries has a SNPE kernel for this node
     if (snpe_kernel_def == nullptr) {
-      LOGS_DEFAULT(WARNING) << "Snpe kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
+      LOGS_DEFAULT(WARNING) << "Snpe kernel not found in registries for Op type: " << node.OpType()
+                            << " node name: " << node.Name();
       continue;
     }
     

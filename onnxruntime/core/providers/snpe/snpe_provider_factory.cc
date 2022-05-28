@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/snpe/snpe_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
-#include "snpe_execution_provider.h"
 #include "core/session/ort_apis.h"
 
 namespace onnxruntime {
 struct SNPEProviderFactory : IExecutionProviderFactory {
-  SNPEProviderFactory(const ProviderOptions& provider_options_map) : provider_options_map_(provider_options_map) {
+  explicit SNPEProviderFactory(const ProviderOptions& provider_options_map) : provider_options_map_(provider_options_map) {
   }
   ~SNPEProviderFactory() override {}
 
@@ -15,7 +15,8 @@ struct SNPEProviderFactory : IExecutionProviderFactory {
   ProviderOptions provider_options_map_;
 };
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_SNPE(const ProviderOptions& provider_options_map) {
+std::shared_ptr<IExecutionProviderFactory>
+CreateExecutionProviderFactory_SNPE(const ProviderOptions& provider_options_map) {
   return std::make_shared<onnxruntime::SNPEProviderFactory>(provider_options_map);
 }
 
@@ -43,5 +44,3 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_SNPE, _In_ Or
       reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map)));
   return nullptr;
 }
-
-

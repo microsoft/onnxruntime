@@ -1,17 +1,17 @@
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include "core/common/logging/macros.h"
+#include "core/common/logging/logging.h"
 #include "SNPE/SNPE.hpp"
 #include "SNPE/SNPEBuilder.hpp"
 #include "SNPE/SNPEFactory.hpp"
 #include "DlSystem/ITensorFactory.hpp"
 #include "DlContainer/IDlContainer.hpp"
 #include "DlSystem/DlError.hpp"
-
-#include <memory>
-#include <string>
-#include <vector>
-#include "core/common/logging/macros.h"
-#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -30,14 +30,13 @@ class SnpeLibRuntimeTarget {
   SnpeLibRuntimeTarget() {
     runtime_ =
 #if defined(_M_X64)
-        zdl::DlSystem::Runtime_t::CPU
+        zdl::DlSystem::Runtime_t::CPU;
 #else
-        zdl::DlSystem::Runtime_t::DSP_FIXED8_TF
+        zdl::DlSystem::Runtime_t::DSP_FIXED8_TF;
 #endif
-        ;
   }
 
-  SnpeLibRuntimeTarget(const std::string& runtime) : SnpeLibRuntimeTarget() {
+  explicit SnpeLibRuntimeTarget(const std::string& runtime) : SnpeLibRuntimeTarget() {
     Set(runtime);
   }
 
@@ -95,7 +94,7 @@ class SnpeLibRuntimeTarget {
 
 class SnpeRuntimeOptions {
  public:
-  explicit SnpeRuntimeOptions()
+  SnpeRuntimeOptions()
       : runtime_target_()
       , execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL)
       , runtime_options_()
@@ -196,13 +195,23 @@ class SnpeLib {
   SnpeLib() : buffer_type_(BufferType::ITENSOR) {}
   ~SnpeLib() {}
 
-  bool SnpeProcess(const unsigned char* input, size_t input_size, unsigned char* output, size_t output_size,
+  bool SnpeProcess(const unsigned char* input,
+                   size_t input_size,
+                   unsigned char* output,
+                   size_t output_size,
                    const std::unordered_map<std::string, size_t>& output_names_index);
-  bool SnpeProcessMultipleOutput(const unsigned char* input, size_t input_size,
-                                 size_t output_number, unsigned char* outputs[], size_t output_sizes[],
+  bool SnpeProcessMultipleOutput(const unsigned char* input,
+                                 size_t input_size,
+                                 size_t output_number,
+                                 unsigned char* outputs[],
+                                 size_t output_sizes[],
                                  const std::unordered_map<std::string, size_t>& output_names_index);
-  bool SnpeProcessMultipleInputsMultipleOutputs(const unsigned char** inputs, const size_t* input_sizes, size_t input_number,
-                                                unsigned char** outputs, const size_t* output_sizes, size_t output_number,
+  bool SnpeProcessMultipleInputsMultipleOutputs(const unsigned char** inputs,
+                                                const size_t* input_sizes,
+                                                size_t input_number,
+                                                unsigned char** outputs,
+                                                const size_t* output_sizes,
+                                                size_t output_number,
                                                 const std::unordered_map<std::string, size_t>& output_names_index);
   bool SnpeProcessWithUserBuffer(const std::vector<std::string>& input_names,
                                  const unsigned char** inputs,

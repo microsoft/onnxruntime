@@ -3,20 +3,24 @@
 
 #pragma once
 
-#include "core/framework/execution_provider.h"
 #include "SnpeLib.h"
+#include <vector>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 
 class SNPEExecutionProvider : public IExecutionProvider {
  public:
-  SNPEExecutionProvider(const ProviderOptions& provider_options_map);
+  explicit SNPEExecutionProvider(const ProviderOptions& provider_options_map);
   virtual ~SNPEExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& ) const override;
-    
+      const std::vector<const KernelRegistry*>&  ) const override;
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unordered_map<std::string, std::string> GetRuntimeOptions() const { return runtime_options_; }
 

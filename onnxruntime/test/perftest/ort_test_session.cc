@@ -1,4 +1,5 @@
 #include "ort_test_session.h"
+#include <set>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -351,19 +352,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
       auto pos = token.find("|");
       if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-        ORT_THROW("[ERROR] [SNPE] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+        ORT_THROW("Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
 
       std::string key(token.substr(0, pos));
       std::string value(token.substr(pos + 1));
 
       if (key == "runtime") {
-        std::set<std::string> snpe_supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
-        if (snpe_supported_runtime.find(value) != snpe_supported_runtime.end()) {
+        std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
+        if (supported_runtime.find(value) != supported_runtime.end()) {
           snpe_option_keys.push_back("runtime");
           values.push_back(value);
         } else {
-          ORT_THROW("[ERROR] [SNPE] Wrong configuration value for the key 'runtime'. \
+          ORT_THROW("Wrong configuration value for the key 'runtime'. \
                      select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n");
         }
       } else if (key == "priority") {
@@ -375,17 +376,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           snpe_option_keys.push_back("buffer_type");
           values.push_back(value);
         } else {
-          ORT_THROW("[ERROR] [SNPE] Wrong configuration value for the key 'buffer_type'. \
+          ORT_THROW("Wrong configuration value for the key 'buffer_type'. \
                      select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n");
         }
       } else {
-        ORT_THROW("[ERROR] [SNPE] wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+        ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
       }
     }
     for (auto& it : values) {
       snpe_option_values.push_back(it.c_str());
     }
-    session_options.AppendExecutionProvider_SNPE(snpe_option_keys.data(), snpe_option_values.data(), snpe_option_keys.size());
+    session_options.AppendExecutionProvider_SNPE(snpe_option_keys.data(),
+                                                 snpe_option_values.data(),
+                                                 snpe_option_keys.size());
 #else
     ORT_THROW("SNPE is not supported in this build\n");
 #endif

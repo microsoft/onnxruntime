@@ -407,7 +407,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
         auto pos = token.find("|");
         if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-          ORT_THROW("[ERROR] [SNPE] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+          ORT_THROW("Use a '|' to separate the key and value for \
+            the run-time option you are trying to use.\n");
         }
 
         std::string key(token.substr(0, pos));
@@ -419,8 +420,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             snpe_option_keys.push_back("runtime");
             values.push_back(value);
           } else {
-            ORT_THROW("[ERROR] [SNPE] Wrong configuration value for the key 'runtime'. \
-                select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n");
+            ORT_THROW("Wrong configuration value for the key 'runtime'. \
+              select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n");
           }
         } else if (key == "priority") {
           snpe_option_keys.push_back("priority");
@@ -431,11 +432,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             snpe_option_keys.push_back("buffer_type");
             values.push_back(value);
           } else {
-            ORT_THROW("[ERROR] [SNPE] Wrong configuration value for the key 'buffer_type'. \
-                       select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n");
+            ORT_THROW("Wrong configuration value for the key 'buffer_type'. \
+              select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n");
           }
         } else {
-          ORT_THROW("[ERROR] [SNPE] wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+          ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
         }
       }
       for (auto &it : values) {

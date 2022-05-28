@@ -5,7 +5,6 @@
 #pragma warning(disable : 4389)
 #endif
 
-
 #include <algorithm>
 #include <memory>
 #include <numeric>
@@ -21,7 +20,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace test {
 
-using namespace onnxruntime::test;
+using onnxruntime::test;
 
 #if defined(USE_SNPE)
 
@@ -37,7 +36,7 @@ void TfNToFloat(float* out,
       double step_eq_to_0 = static_cast<double>(step_equivalent_to_0);
       out[i] = static_cast<double>((quantized_value - step_eq_to_0) * quantized_step_size);
     } else if (16 == bit_width) {
-      uint16_t* temp = (uint16_t*)in;
+      uint16_t* temp = reinterpret_cast<uint16_t*>(in);
       double quantized_value = static_cast<double>(temp[i]);
       double step_eq_to_0 = static_cast<double>(step_equivalent_to_0);
       out[i] = static_cast<double>((quantized_value - step_eq_to_0) * quantized_step_size);
@@ -101,13 +100,13 @@ bool FloatToTfN(uint8_t* out,
 
       if (quantizedValue < 0)
         quantizedValue = 0;
-      else if (quantizedValue > (int)trueBitWidthMax)
-        quantizedValue = (int)trueBitWidthMax;
+      else if (quantizedValue > static_cast<int>(trueBitWidthMax)
+        quantizedValue = static_cast<int>(trueBitWidthMax);
 
       if (bit_width == 8) {
         out[i] = static_cast<uint8_t>(quantizedValue);
       } else if (bit_width == 16) {
-        uint16_t* temp = (uint16_t*)out;
+        uint16_t* temp = reinterpret_cast<uint16_t*>(out);
         temp[i] = static_cast<uint16_t>(quantizedValue);
       }
     }
@@ -223,7 +222,12 @@ TEST(Snpe_ConvertFromAbs, QuantizedModelTf8Test) {
 
   std::vector<float> input_test_data_f{11.0f, -12.0f, 13.0f, 14.0f, -15.0f, 16.0f, 21.0f, 22.0f, -23.0f, 24.0f};
   std::vector<uint8_t> input_test_data_ui8(10);
-  FloatToTfN(input_test_data_ui8.data(), step_equivalent_to_0, quantized_step_size, input_test_data_f.data(), input_test_data_f.size(), bit_width);
+  FloatToTfN(input_test_data_ui8.data(),
+             step_equivalent_to_0,
+             quantized_step_size,
+             input_test_data_f.data(),
+             input_test_data_f.size(),
+             bit_width);
 
   std::vector<uint8_t> input_data;
   auto it = input_data.begin();
@@ -231,11 +235,12 @@ TEST(Snpe_ConvertFromAbs, QuantizedModelTf8Test) {
     it = input_data.insert(it, input_test_data_ui8.begin(), input_test_data_ui8.end());
   }
 
-  //std::vector<float> output_test_data_f{11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 21.0f, 22.0f, 23.0f, 24.0f};
-  //std::vector<uint8_t> output_test_data_ui8(10);
-  //FloatToTfN(output_test_data_ui8.data(), step_equivalent_to_0, quantized_step_size, output_test_data_f.data(), output_test_data_f.size(), bit_width);
-  //data converted from float: {117, 128, 138, 149, 159, 170, 223, 234, 244, 255},
-  //different with run result which is acceptable since it's quantized model.
+  // std::vector<float> output_test_data_f{11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 21.0f, 22.0f, 23.0f, 24.0f};
+  // std::vector<uint8_t> output_test_data_ui8(10);
+  // FloatToTfN(output_test_data_ui8.data(), step_equivalent_to_0, quantized_step_size,
+  //            output_test_data_f.data(), output_test_data_f.size(), bit_width);
+  // data converted from float: {117, 128, 138, 149, 159, 170, 223, 234, 244, 255},
+  // different with run result which is acceptable since it's quantized model.
   std::vector<uint8_t> output_test_data_ui8 {118, 128, 139, 149, 159, 171, 224, 233, 245, 255};
 
   std::vector<uint8_t> output_data;

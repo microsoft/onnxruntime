@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "snpe.h"
+#include "core/providers/snpe/snpe.h"
 
 namespace onnxruntime {
 namespace contrib {
