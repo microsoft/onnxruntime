@@ -71,7 +71,7 @@ function(bundle_static_library bundled_target_name)
     add_dependencies(bundling_target ${target_name})
   endforeach()
 
-  add_library(${bundled_target_name} STATIC IMPORTED)
+  add_library(${bundled_target_name} STATIC IMPORTED GLOBAL)
   foreach(target_name IN ITEMS ${ARGN})
     set_target_properties(${bundled_target_name}
       PROPERTIES
