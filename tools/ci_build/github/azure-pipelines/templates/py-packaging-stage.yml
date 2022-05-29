@@ -799,30 +799,11 @@ stages:
           export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
           export ONNX_ML=1
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
+          export _PYTHON_HOST_PLATFORM=arm64
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
-
-      - script: |
-          sudo python3 -m pip install delocate
-          cd '$(Build.BinariesDirectory)/Release/dist'
-          for file in *.whl ;
-          delocate-listdeps $file
-          delocate-wheel --require-archs arm64 -w . $file"
-          done
-        displayName: "delocate wheel "
-
-      - script: |
-          set -ex
-          pushd .
-          py_ver=$(PythonVersion)
-          py_ver_nodot=${py_ver//.}
-          mac_ver=11_0
-          # cd '$(Build.BinariesDirectory)/Release/dist'
-          # for file in *.whl ; do mv $file ${file//-cp"$py_ver_nodot"-macosx_"$mac_ver"_x86_64/-none-macosx_"$mac_ver"_arm64} ; done
-          popd
-        displayName: "Rename x86_64 to arm64"
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
