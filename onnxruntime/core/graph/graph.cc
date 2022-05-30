@@ -598,7 +598,7 @@ Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const
 
 Status Node::InstantiateFunctionBody() {
   if (nullptr != func_body_) {
-    //already instantiated.
+    // already instantiated.
     return Status::OK();
   }
 
@@ -1277,16 +1277,16 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             parent_graph.strict_shape_type_inference_) {
 }
 
-Graph::Graph(const Model& owning_model, 
-    IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
-    ONNX_NAMESPACE::GraphProto& subgraph_proto, 
-    const std::unordered_map<std::string, int>& domain_version_map,
-    const logging::Logger& logger,
-    bool strict_shape_type_inference)
+Graph::Graph(const Model& owning_model,
+             IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+             ONNX_NAMESPACE::GraphProto& subgraph_proto,
+             const std::unordered_map<std::string, int>& domain_version_map,
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : Graph(owning_model,
             &subgraph_proto,
-            domain_version_map, 
-            owning_model.IrVersion(), 
+            domain_version_map,
+            owning_model.IrVersion(),
             schema_registry,
             nullptr,
             nullptr,
@@ -1347,10 +1347,17 @@ void Graph::InitializeStateFromModelFileGraphProto() {
         // Graph output is not found as any initializer.
         auto iter3 = graph_inputs.find(graph_output_name);
         if (graph_inputs.end() == iter3) {
-          // Graph output is not found as any graph input.
-          ORT_THROW(
-              "This is an invalid model. Graph output (", graph_output_name,
-              ") does not exist in the graph.");
+          if (parent_graph_ == nullptr ||
+              parent_graph_->GetNodeArgIncludingParentGraphs(graph_output_name) == nullptr) {
+            // Graph output is not found as any graph input.
+            ORT_THROW("This is an invalid model. Graph output (", graph_output_name, ") does not exist in the graph.");
+          } else {
+            // Special case of a subgraph directly returning an outer scope value. This is not explicitly allowed
+            // by the ONNX spec, and supporting it would potentially be complicated.
+            ORT_THROW("This is an invalid model. Subgraph output (", graph_output_name,
+                      ") is an outer scope value being returned directly. Please update the model to add an "
+                      "Identity node between the outer scope value and the subgraph output.");
+          }
         }
         graph_outputs_.push_back(iter3->second);
         continue;
@@ -2553,8 +2560,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (node.since_version_ == -1) {
         node.since_version_ = node.op_->since_version();
       }
-    } 
-   
+    }
+
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
@@ -2913,7 +2920,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
   }
   return Status::OK();
 }
-#endif // DISABLE_EXTERNAL_INITIALIZERS
+#endif  // DISABLE_EXTERNAL_INITIALIZERS
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -4072,10 +4079,10 @@ Status Graph::InlineFunction(Node& node) {
       }
 
       AddNode(subgraph_node.Name() + uniq_identifier, subgraph_node.OpType(), subgraph_node.Description(),
-                               inputs,
-                               outputs,
-                               &subgraph_node.GetAttributes(),
-                               subgraph_node.Domain());
+              inputs,
+              outputs,
+              &subgraph_node.GetAttributes(),
+              subgraph_node.Domain());
     }
   }
 
