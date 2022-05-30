@@ -955,9 +955,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                        session_state.GetMutableFuncMgr(),
                                                        layout_transformer::TransformLayoutForCompilingEP, mode));
 
-  // apply all levels of transformers.
-  // we run Level 1 again in case we expanded any ONNX Function based nodes during partitioning.
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+  // apply Level2 and higher transformers.
+  // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
+  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR_SESSIONID_(
         graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
