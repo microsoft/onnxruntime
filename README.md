@@ -11,7 +11,7 @@
 
 **General Information**: [onnxruntime.ai](https://onnxruntime.ai)
 
-**Usage documention and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
+**Usage documentation and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
 
 **Companion sample repositories**: 
 - ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)

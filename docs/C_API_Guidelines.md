@@ -18,7 +18,7 @@ All APIs must have a proper documentation header that includes:
 
 XML format is automatically supported by Visual Studio when one types 3 consecutive slashes. Both C++ and C# compilers can generate XML documentation with /doc switch as described here. The documentation then can be converted to HTML pages using tools such as Sandcastle. We will use XML format to document C#.
 
-XML format does not support C. We will use Doxygen style to document C API and C++ warappers.
+XML format does not support C. We will use Doxygen style to document C API and C++ wrappers.
 
 ### 2. Public API must be declared using appropriate macros to ensure that they all have proper calling convention
 
