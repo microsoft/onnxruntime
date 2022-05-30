@@ -103,5 +103,9 @@ struct TArray {
   T data_[capacity];
 };
 
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr int kNumBitsPerBitmaskElement = std::numeric_limits<BitmaskElementType>::digits;
+
 }  // namespace cuda
 }  // namespace onnxruntime
