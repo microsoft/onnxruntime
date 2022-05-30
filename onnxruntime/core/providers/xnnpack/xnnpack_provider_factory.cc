@@ -19,7 +19,7 @@ std::unique_ptr<IExecutionProvider> XnnpackProviderFactory::CreateProvider() {
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Xnnpack() {
-  return std::make_shared<onnxruntime::XnnpackProviderFactory>();
+  return std::make_shared<XnnpackProviderFactory>();
 }
 
 }  // namespace onnxruntime

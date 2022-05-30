@@ -45,8 +45,8 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
 
   const ONNX_NAMESPACE::TensorProto* getInputData(size_t index) const override {
     // we can't return the NHWC input data without transposing it, but wouldn't expect to be asked for it
-    // during shape inferencing as getInputData is only used to retrieve things that may have small 
-	// constant initializers (e.g. something like the min and max values of a Clip operator).
+    // during shape inferencing as getInputData is only used to retrieve things that may have small
+    // constant initializers (e.g. something like the min and max values of a Clip operator).
     return index == 0 ? nullptr : ctx_.getInputData(index);
   }
 
@@ -103,9 +103,10 @@ class NhwcInferenceContext : public ONNX_NAMESPACE::InferenceContext {
     if (nhwc_tp.tensor_type().has_shape()) {
       const auto& nhwc_shape = nhwc_tp.tensor_type().shape();
       const int rank = nhwc_shape.dim_size();
-      // N and C dims are required. Some operators like AveragePool allow 1D input
+      // N and C dims are required. Some operators like AveragePool allow 1D input.
       if (rank < 3) {
-        fail_shape_inference("Input tensor must have at least 3 dimensions");
+        fail_shape_inference(
+            "Tensor must have at least 3 dimensions to convert between channels first and channels last.");
       }
 
       // Convert input shape from {N, H, W, ..., C} to {N, C, H, W, ...}.

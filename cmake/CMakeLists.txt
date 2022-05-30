@@ -1505,8 +1505,8 @@ endif()
 # XNNPACK EP
 if (onnxruntime_USE_XNNPACK)
   if (onnxruntime_DISABLE_CONTRIB_OPS)
-    message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available \
-                         but onnxruntime_DISABLE_CONTRIB_OPS is ON")
+    message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available "
+                         "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
   endif()
 
   set(XNNPACK_DIR external/XNNPACK)

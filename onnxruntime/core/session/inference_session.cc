@@ -1885,9 +1885,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
       std::unique_ptr<logging::Logger> owned_run_logger;
       auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
-      std::unique_ptr<std::lock_guard<OrtMutex>> sequential_run_lock;
+      std::optional<std::lock_guard<OrtMutex>> sequential_run_lock;
       if (is_concurrent_run_supported_ == false) {
-        sequential_run_lock = std::make_unique<std::lock_guard<OrtMutex>>(session_mutex_);
+        sequential_run_lock.emplace(session_mutex_);
       }
 
       // info all execution providers InferenceSession:Run started

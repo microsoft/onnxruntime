@@ -134,8 +134,8 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                                               kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
 
       // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
-      std::unordered_set<NodeIndex> new_nodes_in_capabilities;
-      for (auto& capability : capabilities) {
+      InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
+      for (const auto& capability : capabilities) {
         for (auto node_index : capability->sub_graph->nodes) {
           if (node_index >= first_new_node) {
             new_nodes_in_capabilities.insert(node_index);
@@ -144,15 +144,15 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
       }
 
       for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
-        Node* node = graph.GetNode(idx);
+        const Node* node = graph.GetNode(idx);
         if (node != nullptr && node->Domain() == kMSInternalNHWCDomain) {
           if (new_nodes_in_capabilities.count(node->Index()) == 0) {
             return ORT_MAKE_STATUS(
                 ONNXRUNTIME, FAIL,
                 "Node '", node->Name(), "' OpType:", node->OpType(), " with domain:", kMSInternalNHWCDomain,
-                " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected ",
-                " by that EP. This means the graph is now invalid as there will not be an EP able to run the node. "
-                "This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
+                " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected",
+                " by that EP. This means the graph is now invalid as there will not be an EP able to run the node."
+                " This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
           }
         }
       }

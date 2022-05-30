@@ -12,7 +12,7 @@ namespace internal_nhwc_onnx {
 // The schemas are a copy of the ONNX versions, but input 0 and output 0 will be in NHWC format.
 class OpSet_Internal_NHWC_ONNX {
  public:
-  static void ForEachSchema(std::function<void(ONNX_NAMESPACE::OpSchema&&)> fn);
+  static void ForEachSchema(const std::function<void(ONNX_NAMESPACE::OpSchema&&)>& fn);
 };
 
 }  // namespace internal_nhwc_onnx

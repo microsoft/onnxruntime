@@ -3,7 +3,7 @@
 
 #include "xnnpack_execution_provider.h"
 #include "detail/utils.h"
-#include "detail/op_support_checker.h"
+#include "detail/node_support_checker.h"
 
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
@@ -134,7 +134,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
           // checks the fuse_with node is in supported_nodes.
           auto iter = node_to_compute_capability.find(fuse_with);
           ORT_ENFORCE(iter != node_to_compute_capability.cend(),
-                      "node_to_compute_capability is not is sync with supported_nodes. ");
+                      "node_to_compute_capability is not in sync with supported_nodes.");
 
           // update the MetaDef to cover the nodes being fused.
           // the fused node will have OpType:'Conv' and Domain:kMSInternalNHWCDomain.
@@ -143,7 +143,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
           ComputeCapability& capability = *iter->second;
           capability.sub_graph->SetMetaDef(FuseActivation(*fuse_with, node, graph));
           capability.sub_graph->nodes.push_back(node.Index());
-          capability.sub_graph->SetUseExistingSchema(true);
+          capability.sub_graph->use_existing_schema = true;
         }
       }
     } else if (node.GetExecutionProviderType() == Type()) {

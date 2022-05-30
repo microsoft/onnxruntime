@@ -87,11 +87,10 @@ MaxPool::MaxPool(const OpKernelInfo& info)
   uint32_t stride_height = gsl::narrow<uint32_t>(pool_attrs_.strides[0]);
   uint32_t stride_width = gsl::narrow<uint32_t>(pool_attrs_.strides[1]);
   uint32_t dilation_height = gsl::narrow<uint32_t>(pool_attrs_.dilations[0]);
-  uint32_t dilation_width = gsl::narrow<uint32_t>(pool_attrs_.dilations[0]);
+  uint32_t dilation_width = gsl::narrow<uint32_t>(pool_attrs_.dilations[1]);
 
   // get values from any fusion with an activation
-  std::string activation;
-  if (info.GetAttr<std::string>("activation", &activation).IsOK()) {
+  if (std::string activation; info.GetAttr<std::string>("activation", &activation).IsOK()) {
     if (activation == "Clip" || activation == "Relu") {
       std::vector<float> activation_params;
 

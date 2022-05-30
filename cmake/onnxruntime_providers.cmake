@@ -1456,7 +1456,7 @@ endif()
 if (onnxruntime_USE_XNNPACK)
   add_compile_definitions(USE_XNNPACK=1)
 
-  file(GLOB_RECURSE onnxruntime_providers_xnnpack_cc_srcs
+  file(GLOB_RECURSE onnxruntime_providers_xnnpack_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"

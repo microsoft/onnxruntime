@@ -52,6 +52,10 @@ struct IndexedSubGraph {
   /** Nodes covered by this subgraph. The NodeIndex values are from the parent Graph.*/
   std::vector<onnxruntime::NodeIndex> nodes;
 
+  // use an existing schema instead of generating one when fusing nodes using the MetaDef.
+  // MetaDef.domain + MetaDef.name => the domain.op_type that a schema must exist for with a valid since_version.
+  bool use_existing_schema{false};
+
   /** Set the meta definition needed to represent this subgraph as a FunctionProto
   It's needed IF AND ONLY IF there are multiple indexes contained in #nodes. */
   void SetMetaDef(std::unique_ptr<MetaDef>&& meta_def) {
@@ -64,18 +68,9 @@ struct IndexedSubGraph {
     return meta_def_.get();
   }
 
-  // use an existing schema instead of generating one when fusing nodes using the MetaDef.
-  // MetaDef.domain + MetaDef.name => the domain.op_type that a schema must exist for with a valid since_version.
-  void SetUseExistingSchema(bool value) {
-    use_existing_schema_ = value;
-  }
-
-  bool UseExistingSchema() const { return use_existing_schema_; }
-
  private:
   // subgraph meta definition.
   std::unique_ptr<MetaDef> meta_def_;
-  bool use_existing_schema_{false};
 };
 
 }  // namespace onnxruntime
