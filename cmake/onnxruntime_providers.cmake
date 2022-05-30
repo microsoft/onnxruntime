@@ -478,6 +478,10 @@ if (onnxruntime_USE_CUDA)
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
     )
 
+    # minimize the Windows includes. 
+    # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE "WIN32_LEAN_AND_MEAN")
+    
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
     if (onnxruntime_USE_NUPHAR_TVM)

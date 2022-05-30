@@ -1347,10 +1347,17 @@ void Graph::InitializeStateFromModelFileGraphProto() {
         // Graph output is not found as any initializer.
         auto iter3 = graph_inputs.find(graph_output_name);
         if (graph_inputs.end() == iter3) {
-          // Graph output is not found as any graph input.
-          ORT_THROW(
-              "This is an invalid model. Graph output (", graph_output_name,
-              ") does not exist in the graph.");
+          if (parent_graph_ == nullptr ||
+              parent_graph_->GetNodeArgIncludingParentGraphs(graph_output_name) == nullptr) {
+            // Graph output is not found as any graph input.
+            ORT_THROW("This is an invalid model. Graph output (", graph_output_name, ") does not exist in the graph.");
+          } else {
+            // Special case of a subgraph directly returning an outer scope value. This is not explicitly allowed
+            // by the ONNX spec, and supporting it would potentially be complicated.
+            ORT_THROW("This is an invalid model. Subgraph output (", graph_output_name,
+                      ") is an outer scope value being returned directly. Please update the model to add an "
+                      "Identity node between the outer scope value and the subgraph output.");
+          }
         }
         graph_outputs_.push_back(iter3->second);
         continue;

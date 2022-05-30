@@ -28,6 +28,7 @@ class DnnlGraphTransformer {
   bool FastGeluFormulaCommon(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlNode* gelu_start_node, int32_t x_input_index, DnnlNode* tanh_node, std::vector<size_t>& gelu_indices, int& fastgelu_index);
   bool IsInitilizedWithExpectedValue(const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlTensor& input_arg, float expected_value);
   void ConvRelu(DnnlSubgraph& subgraph);
+  void MatMulBinaryEltwise(DnnlSubgraph& subgraph);
   void MatMulAdd(DnnlSubgraph& subgraph);
   void RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer);
   // This function checks a few things
