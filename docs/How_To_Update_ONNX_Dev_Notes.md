@@ -1,3 +1,5 @@
+# How to update ONNX
+
 This is a note only for ONNX Runtime developers.
 
 It's very often, you need to update the ONNX submodule to a newer version in the upstream. Please follow the steps below, don't miss any!
