@@ -1019,10 +1019,13 @@ void EndParallelSection(ThreadPoolParallelSection &ps) override {
 //   to separate workers, avoiding the need for further work stealing.
  
 void InitializePreferredWorkers(std::vector<int> &preferred_workers) {
+  static std::atomic<unsigned> next_worker;
+
   // preferred_workers[0] isn't supposed to be used, so initializng it with -1 to:
   // a) fault if inapropriately accessed
-  // b) have elements [1..N] filled with 0..(N-1)
-  static std::atomic<unsigned> next_worker = static_cast<unsigned>(-1);
+  // b) avoid wasting next_worker value
+  if (preferred_workers.size() == 0)
+    preferred_workers.push_back(-1);
 
   // preferred_workers maps from a par_idx to a q_idx, hence we
   // initialize slots in the range [0,num_threads_]
