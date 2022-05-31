@@ -37,3 +37,5 @@ Status ComputeQLinearGlobalAvgPool(
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#include "qlinear_global_average_pool.inl"
