@@ -23,6 +23,7 @@ constexpr const char* kTarget = "target";
 constexpr const char* kTargetHost = "target_host";
 constexpr const char* kOptLevel = "opt_level";
 constexpr const char* kFreezeWeights = "freeze_weights";
+constexpr const char* kSetOutputZeroCopy = "set_output_zero_copy";
 constexpr const char* kToNHWC = "to_nhwc";
 constexpr const char* kTuningFilePath = "tuning_file_path";
 constexpr const char* kTuningType = "tuning_type";
@@ -38,6 +39,7 @@ static const std::unordered_set<std::string> valid_keys {
   std::string{kTargetHost},
   std::string{kOptLevel},
   std::string{kFreezeWeights},
+  std::string{kSetOutputZeroCopy},
   std::string{kToNHWC},
   std::string{kTuningFilePath},
   std::string{kTuningType},
@@ -124,6 +126,7 @@ TvmEPOptions TvmEPOptionsHelper::FromProviderOptions(const ProviderOptions& pr_o
       .AddAssignmentToReference(tvm::provider_option_names::kTargetHost, options.target_host)
       .AddAssignmentToReference(tvm::provider_option_names::kOptLevel, options.opt_level)
       .AddAssignmentToReference(tvm::provider_option_names::kFreezeWeights, options.freeze_weights)
+      .AddAssignmentToReference(tvm::provider_option_names::kSetOutputZeroCopy, options.set_output_zero_copy)
       .AddAssignmentToReference(tvm::provider_option_names::kToNHWC, options.to_nhwc)
       .AddAssignmentToReference(tvm::provider_option_names::kTuningFilePath, options.tuning_file_path)
       .AddAssignmentToReference(tvm::provider_option_names::kTuningType, options.tuning_type)
@@ -261,6 +264,7 @@ std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options) {
   "target_host: " << options.target_host << "\n" <<
   "opt level: " << options.opt_level << "\n" <<
   "freeze weights: " << options.freeze_weights << "\n" <<
+  "set_output_zero_copy: " << options.set_output_zero_copy << "\n" <<
   "tuning file path: " << options.tuning_file_path << "\n" <<
   "tuning type: " << options.tuning_type << "\n" <<
   "convert layout to NHWC: " << options.to_nhwc << "\n" <<
