@@ -68,7 +68,7 @@ ACLNEPool PoolOperation(onnxruntime::OpKernelContext* context,
       aclStrides[0] = (strides.size() == 2) ? strides[1] : 1;
       aclStrides[1] = strides[0];
 
-      InlinedVector<int64_t, 4> aclPads(4);
+      InlinedVector<int64_t> aclPads(4);
     // The pad order in acl is: pad_left, pad_right, pad_top, pad_bottom
       if (pads.size() == 2) {
         if (strides.size() == 1) {
@@ -147,7 +147,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
   TensorShapeVector dilations(PoolBase::pool_attrs_.dilations);
-  InlinedVector<int64_t, 2> aclDilations(2);
+  InlinedVector<int64_t> aclDilations(2);
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
@@ -193,7 +193,7 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
 
   TensorShapeVector dilations(PoolBase::pool_attrs_.dilations);
-  InlinedVector<int64_t, 2> aclDilations(2);
+  InlinedVector<int64_t> aclDilations(2);
   aclDilations[0] = (dilations.size() == 2) ? dilations[1] : 1;
   aclDilations[1] = (!dilations.empty()) ? dilations[0] : 1;
 
