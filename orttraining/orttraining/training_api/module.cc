@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
@@ -44,23 +45,12 @@ Status Parameter::ResetGrad() {
   }
   return Status::OK();
 }
-Module::Module(const std::string& train_model_path_or_bytes,
-               std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-               const std::optional<std::string>& eval_model_path_or_bytes) : named_parameters_(parameters) {
-  // create value copy as same params are passed to Optimizer constructor
 
-  auto so = onnxruntime::SessionOptions();
-  std::unique_ptr<Environment> env;
-  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  train_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
-  ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
-  ORT_THROW_IF_ERROR(train_sess_->Initialize());
-  if (eval_model_path_or_bytes.has_value()) {
-    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
-    ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
-    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
-    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
-  }
+Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+               InferenceSession* train_session) {
+  // create value copy as same params are passed to Optimizer constructor
+  train_sess_ = train_session;
+  named_parameters_ = parameters;
 
   utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
   auto& train_sess_state = train_sess_->GetSessionState();
@@ -90,16 +80,24 @@ Module::Module(const std::string& train_model_path_or_bytes,
   train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
   train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
+}
 
-  // Eval model validation
-  if (nullptr != eval_sess_) {
+Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+               InferenceSession* train_session,
+               InferenceSession* eval_session) : Module(parameters, train_session) {
+  if (eval_session) {
+    eval_sess_ = eval_session;
+    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
+
+    // Eval model validation
     // We are making certain assumptions: Like the order in which parameters
     // occur will be same between train and eval graphs,
     // and all the weights present in both graphs match.
-    std::vector<std::string> eval_user_input_names;
+    std::vector<std::string> eval_user_input_names, param_input_names;
     for (const auto& input_name : eval_input_names_) {
       if (named_parameters_.find(input_name) != named_parameters_.end()) {
         // it is a parameter
+        param_input_names.emplace_back(input_name);
         continue;
       } else {
         // It is a user input. We handle user inputs separately in eval 
@@ -128,6 +126,9 @@ Status Module::ResetGrad() {
 }
 
 Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  size_t output_names_len = train_output_names_.size();
+  outputs.resize(output_names_len);
+
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
@@ -149,7 +150,10 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
 }
 
 Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
-  ORT_ENFORCE(nullptr != eval_sess_);
+  ORT_ENFORCE(nullptr != eval_sess_, "Evaluation session not initialized.");
+  size_t output_names_len = eval_output_names_.size();
+  outputs.resize(output_names_len);
+
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   auto status = eval_sess_->Run(RunOptions(), eval_input_names_, feeds, eval_output_names_, &outputs);

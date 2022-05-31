@@ -53,7 +53,13 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
 
-  auto module_sess = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  auto module_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
+  ORT_THROW_IF_ERROR(module_sess->Load(model_uri));
+  ORT_THROW_IF_ERROR(module_sess->Initialize());
+  auto model = std::make_unique<Module>(state.module_checkpoint_state.named_parameters, module_sess.get());
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -63,14 +69,14 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   size_t step = 0;
   std::vector<float> single_bias_grad_vec, current_bias_grad_vec;
   std::string param_name = "fc2.weight";
-  std::shared_ptr<Parameter> bias_param = module_sess->NamedParameters()[param_name];
+  std::shared_ptr<Parameter> bias_param = model->NamedParameters()[param_name];
   OrtValue& bias_grad = bias_param->Gradient();
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
     step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
-    ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
+    ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
     bias_grad = bias_param->Gradient();
 
     if (step > 1) {
@@ -83,12 +89,12 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     }
   }
   // reset grad
-  ORT_ENFORCE(module_sess->ResetGrad().IsOK());
+  ORT_ENFORCE(model->ResetGrad().IsOK());
 
   // run a single step
   std::vector<OrtValue>& inputs = *data_loader.begin();
   std::vector<OrtValue> fetches;
-  ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
+  ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
   OrtValueToVec(bias_grad, current_bias_grad_vec);
   for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
     ORT_ENFORCE(current_bias_grad_vec[i] == single_bias_grad_vec[i]);
@@ -102,8 +108,19 @@ TEST(TrainingApiTest, OptimStep) {
   CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
-  auto module_sess = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
-  auto optim_sess = std::make_unique<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  auto module_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
+  auto optim_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
+  ORT_THROW_IF_ERROR(module_sess->Load(model_uri));
+  ORT_THROW_IF_ERROR(module_sess->Initialize());
+  ORT_THROW_IF_ERROR(optim_sess->Load(optim_uri));
+  ORT_THROW_IF_ERROR(optim_sess->Initialize());
+
+  auto model = std::make_unique<Module>(state.module_checkpoint_state.named_parameters, module_sess.get());
+  auto optim = std::make_unique<Optimizer>(state.module_checkpoint_state.named_parameters, optim_sess.get());
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -115,7 +132,7 @@ TEST(TrainingApiTest, OptimStep) {
 
   // before training, check if optim state is initialized to 0
   OptimizerCheckpointState optimizer_states;
-  ORT_ENFORCE(optim_sess->GetStateDict(optimizer_states).IsOK());
+  ORT_ENFORCE(optim->GetStateDict(optimizer_states).IsOK());
   ParameterOptimizerState& param_state = optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
 
@@ -129,8 +146,8 @@ TEST(TrainingApiTest, OptimStep) {
     step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
-    ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
-    ORT_ENFORCE(optim_sess->Step().IsOK());
+    ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
+    ORT_ENFORCE(optim->Step().IsOK());
 
     // get optim state and check if it is updated
     OrtValueToVec(moment_1, moment_1_vec);

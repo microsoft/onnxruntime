@@ -60,9 +60,12 @@ struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  Module(const std::string& train_model_path_or_bytes,
-         std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-         const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt);
+  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+         InferenceSession* train_session);
+
+  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+         InferenceSession* train_session,
+         InferenceSession* eval_session);
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> Parameters() const;
@@ -86,8 +89,8 @@ struct Module {
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
  private:
-  std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
-  std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
+  InferenceSession* train_sess_;
+  InferenceSession* eval_sess_;
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::vector<std::string> train_input_names_;
   std::vector<std::string> train_output_names_;
