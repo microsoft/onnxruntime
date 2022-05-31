@@ -36,7 +36,6 @@ struct Notification {
   virtual ~Notification() {}
 
   virtual void Activate() = 0;
-  virtual void Reset() = 0;
 };
 }  // namespace synchronize
 
