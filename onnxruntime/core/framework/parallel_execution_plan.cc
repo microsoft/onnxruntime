@@ -32,12 +32,6 @@ struct Barrier {
 
 using NotificationIndex = size_t;
 
-// similiar as Stream
-struct Notification {
-  NotificationHandle handle;
-  const IExecutionProvider* provider;
-};
-
 void RegisterStreamCommandHanler(const SessionState& session_state) {
   auto& eps = session_state.GetExecutionProviders();
   for (auto& ep : eps) {
@@ -57,9 +51,12 @@ struct ExecutionContext {
   const SessionState* session_state;
   ExecutionFrame* frame;
   const logging::Logger* logger;
-  std::unique_ptr<Notification[]> notifications;
-  std::vector<ReleaseNotificationFn> notification_release_fns;
+  //std::unique_ptr<Notification[]> notifications;
+  //std::vector<ReleaseNotificationFn> notification_release_fns;
+  //std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
   //ReleasePlan release_plan;
+  const logging::Logger* logger;
+  std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
 
   ExecutionContext(const SessionState& sess_state,
@@ -67,33 +64,17 @@ struct ExecutionContext {
                    std::vector<Stream*> notification_owners,
                    const logging::Logger& sess_logger) : session_state(&sess_state),
                                                          frame(execution_frame),
-                                                         logger(&sess_logger),
-                                                         notifications(new Notification[notification_owners.size()]) {
+                                                         logger(&sess_logger) {
     for (auto i = 0; i < notification_owners.size(); ++i) {
-      auto create_notification_fn = GetStreamHandleRegistryInstance().GetCreateNotificationFn(notification_owners[i]);
-      notifications[i].handle = create_notification_fn(notification_owners[i]->handle);
-      notifications[i].provider = notification_owners[i]->provider;
-      notification_release_fns.push_back(
-          GetStreamHandleRegistryInstance().GetReleaseNotificationFn(notification_owners[i]));
+      notifications.push_back(std::move(notification_owners[i]->CreateNotification(/*TODO: calculate num of consumers*/0)));
     }
     auto* para_exe_plan = const_cast<SessionState&>(sess_state).GetParalllelExecutionPlan();
     release_plan = para_exe_plan->GenerateReleasePlan();
   }
 
   ~ExecutionContext() {
-    for (auto i = 0; i < notification_release_fns.size(); ++i) {
-      notification_release_fns[i](notifications[i].handle);
-    }
   }
 
- /* void RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
-    for (auto& i : release_plan.node_ref_count_map[node_index]) {
-      if (--release_plan.ref_counts[i] == 0) {
-        ORT_THROW_IF_ERROR(frame->ReleaseMLValue(i));
-        LOGS(*logger, INFO) << "value " << i << " released";
-      }
-    }
-  }*/
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
     if (release_plan.find(node_index) != release_plan.end()) {
       for (auto value_index : release_plan[node_index]) {
@@ -120,20 +101,12 @@ struct LogicStream {
     }
     // flush
     for (auto& device_stream : device_streams_) {
-      auto flush_stream_fn = GetStreamHandleRegistryInstance().GetFlushStreamFn(device_stream->provider->Type());
-      flush_stream_fn(device_stream->handle);
+      device_stream->Flush();
     }
   }
 
-  ~LogicStream() {
-    for (auto& device_stream : device_streams_) {
-      auto release_stream_fn = GetStreamHandleRegistryInstance().GetReleaseStreamFn(device_stream->provider->Type());
-      release_stream_fn(device_stream->handle);
-    }
-  }
+  ~LogicStream() {}
 };
-
-struct LogicStream;
 
 struct ParallelExecutionPlanImpl {
   ParallelExecutionPlanImpl(const SessionState& session_state,
@@ -281,7 +254,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       if (providers.find(ep) == providers.end()) {
         auto create_stream_fn = GetStreamHandleRegistryInstance().GetCreateStreamFn(ep->Type());
         ORT_ENFORCE(create_stream_fn);
-        logic_streams_[i]->device_streams_.emplace_back(std::make_unique<Stream>(create_stream_fn(), ep));
+        logic_streams_[i]->device_streams_.emplace_back(create_stream_fn(ep));
         providers.insert(ep);
       }
       // setup node to stream map
@@ -327,7 +300,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           auto* cur_stream = node_to_stream_map_[node_index];
           const std::string& upstream_node_name = it->Name();
           logic_streams_[i]->commands_.push_back([wait_handle, cur_stream, notification_index, i, node, upstream_node_name](ExecutionContext& ctx) {
-            wait_handle(cur_stream->handle, ctx.notifications[notification_index].handle);
+            wait_handle(*cur_stream, *ctx.notifications[notification_index]);
             LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
           });
         }
@@ -390,13 +363,12 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         //test indirect release - done
         LOGS(*ctx.logger, INFO) << "stream " << i << " complete with " << node->Name();
       });
-      // check if any notification generated by this node, if yes, push a notify
+      // check if any notification generated by this node, if yes, push a activate
       auto notification_it = node_to_notification.find(node_index);
       if (notification_it != node_to_notification.end()) {
-        auto notify_handle = GetStreamHandleRegistryInstance().GetNotifyHandle(stream_it->get());
         NotificationIndex notification_index = notification_it->second;
-        logic_streams_[i]->commands_.push_back([notify_handle, notification_index, i, node](ExecutionContext& ctx) {
-          notify_handle(ctx.notifications[notification_index].handle);
+        logic_streams_[i]->commands_.push_back([notification_index, i, node](ExecutionContext& ctx) {
+          ctx.notifications[notification_index]->Activate();
           LOGS(*ctx.logger, INFO) << "stream " << i << " send notification for " << node->Name();
         });
       }
