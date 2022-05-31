@@ -153,14 +153,13 @@ bool SCELossInternalFunBuilder(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
     FunctionProto& functionProto) {
-
   bool hasWeight = ctx.hasInput(2);
   bool hasIgnoreIndex = ctx.hasInput(3);
 
   FunctionBuilder builder(functionProto);
 
-  builder //
-      .Const("Shape3D", std::vector<int64_t>({0, 0, -1})) //
+  builder
+      .Const("Shape3D", std::vector<int64_t>({0, 0, -1}))
       .Add(R"(
         X_NCD = Reshape (scores, Shape3D)
         X_NDC = Transpose <perm = [0, 2, 1]> (X_NCD)
@@ -179,11 +178,10 @@ bool SCELossInternalFunBuilder(
       builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
     else
       builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights)");
+  else if (hasIgnoreIndex)
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
   else
-    if (hasIgnoreIndex)
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
-    else
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
 
   schema.BuildFunction(functionProto);
   return true;
@@ -380,10 +378,10 @@ bool BuildNllLossInternalFunctionHelper(
 
   if (opset_version > 12)
     body.push_back(
-      {{"const_one_64"},
-       "Constant",
-       {},
-       {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
+        {{"const_one_64"},
+         "Constant",
+         {},
+         {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
 
   body.push_back(
       {{"expanded_target"},
@@ -1265,6 +1263,130 @@ void RegisterTrainingOpSchemas() {
           {"tensor(bool)"},
           "Constrain types to boolean tensors.");
 
+  /**
+   * AdamWOptimizer operator, taking multiple parameters as inputs (seq<tensor>).
+   * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single AdamWOptimizer.
+   * Implementation-wise, this bring opportunities for achieving better performance.
+   *
+   * The differences with AdamOptimizer:
+   * > Different inputs.
+   *
+   *   AdamWOptimizer can accept multiple parameters and other states related to them as inputs (seq<tensor>).
+   *   This make multi-tensor-apply applicable to the GPU implementation. Existing LambOptimizer has similar
+   *   capability, while it is using many fixed-length optional vardaric inputs, which is not a clean op definition.
+   *
+   *   AdamOptimizer takes one single parameter and its other states.
+   *
+   * > Different computation.
+   *
+   *   Despite of normal adam computation, for better perf in ORTTrainer, AdamOptimizer also fused gradient norm
+   *   clipping in its implementation. This sometimes makes it hard to align the optimizer with other frameworks during
+   *   model onboarding, on the other hand, the fusion did not bring very significant gains actually.
+   *
+   *   AdamWOptimizer has simplified definitions, excludes inputs/attributes not related to optimizer computations.
+   *
+   * AdamWOptimizer is recommended for new usage, AdamOptimizer is left as it is to support existing ORTTrainer
+   * solutions.
+   */
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AdamWOptimizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "lr", "The learning rate.", "T1")
+      .Input(1, "step", "The update count of weights. It should be a scalar.", "T2")
+      .Input(2, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
+      .Input(3, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Input(4, "momentums_1", "Sequence of exponentially averaged historical gradients.", "S_MOMENT")
+      .Input(5, "momentums_2", "Sequence of exponentially averaged historical squared gradients.", "S_MOMENT")
+      .Input(6, "update_signal",
+             "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
+             " in mixed precision training. ",
+             "T_BOOL", OpSchema::Optional)
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
+      .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
+      .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
+      .Attr(
+          "alpha",
+          "Coefficient of previously accumulated gradient in running average.",
+          AttributeProto::FLOAT,
+          0.9f)
+      .Attr(
+          "beta",
+          "Coefficient of previously accumulated squared-gradient in running average.",
+          AttributeProto::FLOAT,
+          0.999f)
+      .Attr(
+          "epsilon",
+          "Small scalar to avoid dividing by zero.",
+          AttributeProto::FLOAT,
+          1e-8f)
+      .Attr(
+          "weight_decay",
+          "weight decay coefficient.",
+          AttributeProto::FLOAT,
+          1e-2f)
+      .Attr(
+          "correct_bias",
+          "Whether or not to correct bias, enabled by default.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "adam_mode",
+          "Modes for applying bias correction and weight decay (default 0) "
+          "0 : Weight decay is applied before weight is updated."
+          "  Computation aligned with Torch AdamW. In this mode, "
+          "  correct_bias should be 1 to keep aligned with PyTorch."
+          "1 : Weight decay is applied after weight is updated."
+          "    Computation is aligned with Huggingface AdamW.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain learning rate to float")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int64)"},
+          "Constrain step count to 64-bit integer")
+      .TypeConstraint(
+          "S_WEIGHT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain weights' types.")
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain gradients' types.")
+      .TypeConstraint(
+          "S_MOMENT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain momentums' types.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        size_t num_of_outputs = ctx.getNumOutputs();
+        std::unordered_map<size_t, size_t> output_to_input_index_map{{0, 1}, {1, 2}, {2, 4}, {3, 5}};
+        assert(output_to_input_index_map.size() >= num_of_outputs);
+
+        size_t sequence_source_input_index = 0;  // Be noted: 0 is invalid for sequence source input index
+        for (size_t output_index = 0; output_index < num_of_outputs; ++output_index) {
+          auto& input_index = output_to_input_index_map[output_index];
+          propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+
+          // All 3 sequence inputs/outputs should have same shapes, searched for the first available shape
+          // and use it to infer output shapes.
+          if (output_index > 0 && sequence_source_input_index == 0 && hasInputShape(ctx, input_index)) {
+            sequence_source_input_index = input_index;
+          }
+        }
+
+        for (size_t output_index = 1; sequence_source_input_index > 1 && output_index < num_of_outputs;
+             ++output_index) {
+          propagateShapeFromInputToOutput(ctx, sequence_source_input_index, output_index);
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)
@@ -1666,9 +1788,9 @@ Example 4:
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
-        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-          return SCELossGradFunBuilder (true, ctx, schema, functionProto);
-        })
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(true, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
@@ -1977,6 +2099,29 @@ Example 4:
             schema.BuildFunction(functionProto);
             return true;
           });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BitmaskDropoutGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("BitmaskDropoutGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dy", "The gradient tensor from output.", "T")
+      .Input(1, "mask", "The mask output of the dropout. ", "T3")
+      .Input(2, "ratio",
+             "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
+             "If this input is not specified, a default value of 0.5 is used.",
+             "T1", OpSchema::Optional)
+      .Input(3, "training_mode",
+             "Same value as the training_mode input supplied to the dropout op. "
+             "If this input is not specified, a default value of false is used.",
+             "T2", OpSchema::Optional)
+      .Output(0, "dx", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint("T2", {"tensor(bool)"}, "Constrain 'training_mode' type to boolean tensor.")
+      .TypeConstraint("T3", {"tensor(uint32)"}, "Constrain 'mask' type to bit-packed uint32 tensor.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
       .SetDomain(kMSDomain)
@@ -3636,7 +3781,6 @@ Return true if all elements are true and false otherwise.
       .SetContextDependentFunctionBodyBuilder(SCELossInternalFunBuilder)
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
 
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternalGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3662,9 +3806,9 @@ Return true if all elements are true and false otherwise.
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
-        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-          return SCELossGradFunBuilder  (false, ctx, schema, functionProto);
-        })
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(false, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternalGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal)
@@ -3693,7 +3837,7 @@ Return true if all elements are true and false otherwise.
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
 
-    ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
