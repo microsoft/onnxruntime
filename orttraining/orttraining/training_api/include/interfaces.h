@@ -3,21 +3,18 @@
 
 #pragma once
 
-#include "orttraining/training_api/include/module.h"
-#include "orttraining/training_api/include/optimizer.h"
-#include "orttraining/training_api/include/checkpoint_property.h"
-#include "orttraining/training_api/include/checkpoint.h"
+#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 namespace training {
 namespace api {
 
-/*
-  module.train_sess.RegisterExecutionProvider(provider);
-  module.eval_sess.RegisterExecutionProvider(provider);
-  optimizer.optim_sess.RegisterExecutionProvider(provider);
-*/
-void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/);
+class Module;    //forward declaration
+class Optimizer; //forward declaration
+
+// Sets the Execution provider for train, eval and optimizer sessions
+Status SetExecutionProvider(const Module& module, const Optimizer& optimizer, const std::shared_ptr<IExecutionProvider>& p_exec_provider);
+
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

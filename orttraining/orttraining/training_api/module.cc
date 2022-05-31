@@ -54,14 +54,15 @@ Module::Module(const std::string& train_model_path_or_bytes,
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
-  ORT_THROW_IF_ERROR(train_sess_->Initialize());
+
   if (eval_model_path_or_bytes.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
-    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
-    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
   }
+}
 
+Status Module::Initialize() {
+  ORT_THROW_IF_ERROR(train_sess_->Initialize());
   utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
   auto& train_sess_state = train_sess_->GetSessionState();
   std::vector<std::string> param_input_names, grad_input_names, user_input_names, reset_grad_name;
@@ -93,6 +94,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
 
   // Eval model validation
   if (nullptr != eval_sess_) {
+    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
+    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
     // We are making certain assumptions: Like the order in which parameters
     // occur will be same between train and eval graphs,
     // and all the weights present in both graphs match.
@@ -102,9 +105,9 @@ Module::Module(const std::string& train_model_path_or_bytes,
         // it is a parameter
         continue;
       } else {
-        // It is a user input. We handle user inputs separately in eval 
-        // because eval graph might have different user inputs. 
-        // Eg if loss is not a part of eval graph, it won't have 
+        // It is a user input. We handle user inputs separately in eval
+        // because eval graph might have different user inputs.
+        // Eg if loss is not a part of eval graph, it won't have
         // certain inputs like targets
         eval_user_input_names.emplace_back(input_name);
       }
@@ -112,6 +115,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
     eval_input_names_ = eval_user_input_names;
     eval_input_names_.insert(eval_input_names_.end(), param_input_names.begin(), param_input_names.end());
   }
+  is_initialized = true;
+  return Status::OK();
 }
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
@@ -128,6 +133,10 @@ Status Module::ResetGrad() {
 }
 
 Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  if (!is_initialized) {
+    ORT_THROW_IF_ERROR(Initialize());
+  }
+
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
@@ -149,6 +158,9 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
 }
 
 Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
+  if (!is_initialized) {
+    ORT_THROW_IF_ERROR(Initialize());
+  }
   ORT_ENFORCE(nullptr != eval_sess_);
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());

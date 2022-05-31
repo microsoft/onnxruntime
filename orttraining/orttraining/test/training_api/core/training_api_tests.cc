@@ -9,8 +9,14 @@
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/include/utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
 
 #include "orttraining/training_api/include/interfaces.h"
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/checkpoint_property.h"
+#include "orttraining/training_api/include/checkpoint.h"
 
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::api;
@@ -46,14 +52,18 @@ void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
   CreateInputOrtValue<float>(dims, data, &input);
 }
 
-TEST(TrainingApiTest, ModuleTrainStep) {
+void TestModuleTrainStep(std::unique_ptr<IExecutionProvider> provider) {
   auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
+  auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
   CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
 
   auto module_sess = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
+  auto optim_sess = std::make_unique<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+
+  ORT_ENFORCE(SetExecutionProvider(*module_sess.get(), *optim_sess.get(), std::move(provider)).IsOK());
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -95,7 +105,17 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   }
 }
 
-TEST(TrainingApiTest, OptimStep) {
+TEST(TrainingApiTest, ModuleTrainStep_CPU) {
+  TestModuleTrainStep(onnxruntime::test::DefaultCpuExecutionProvider());
+}
+
+#ifdef USE_CUDA
+TEST(TrainingApiTest, ModuleTrainStep_CUDA) {
+  TestModuleTrainStep(onnxruntime::test::DefaultCudaExecutionProvider());
+}
+#endif
+
+void TestOptimStep(std::unique_ptr<IExecutionProvider> provider) {
   auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
@@ -104,6 +124,7 @@ TEST(TrainingApiTest, OptimStep) {
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
   auto module_sess = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
   auto optim_sess = std::make_unique<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+  ORT_ENFORCE(SetExecutionProvider(*module_sess.get(), *optim_sess.get(), std::move(provider)).IsOK());
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -113,17 +134,7 @@ TEST(TrainingApiTest, OptimStep) {
   size_t step = 0;
   std::string param_name = "fc2.weight";
 
-  // before training, check if optim state is initialized to 0
-  OptimizerCheckpointState optimizer_states;
-  ORT_ENFORCE(optim_sess->GetStateDict(optimizer_states).IsOK());
-  ParameterOptimizerState& param_state = optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
-  OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
-
   std::vector<float> moment_1_vec;
-  OrtValueToVec(moment_1, moment_1_vec);
-  for (size_t i = 0; i < moment_1_vec.size(); i++) {
-    ORT_ENFORCE(moment_1_vec[i] == 0.0f);
-  }
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
     step += 1;
@@ -131,6 +142,10 @@ TEST(TrainingApiTest, OptimStep) {
     std::vector<OrtValue> fetches;
     ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
     ORT_ENFORCE(optim_sess->Step().IsOK());
+    OptimizerCheckpointState optimizer_states;
+    ORT_ENFORCE(optim_sess->GetStateDict(optimizer_states).IsOK());
+    ParameterOptimizerState& param_state = optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
+    OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
 
     // get optim state and check if it is updated
     OrtValueToVec(moment_1, moment_1_vec);
@@ -142,6 +157,16 @@ TEST(TrainingApiTest, OptimStep) {
     }
   }
 }
+
+TEST(TrainingApiTest, OptimStep_CPU) {
+  TestOptimStep(onnxruntime::test::DefaultCpuExecutionProvider());
+}
+
+#ifdef USE_CUDA
+TEST(TrainingApiTest, OptimStep_CUDA) {
+  TestOptimStep(onnxruntime::test::DefaultCudaExecutionProvider());
+}
+#endif
 
 }  // namespace test
 }  // namespace training

@@ -6,6 +6,7 @@
 #include "core/session/environment.h"
 
 #include "orttraining/training_api/include/utils.h"
+#include "orttraining/training_api/include/module.h"
 #include "orttraining/training_api/include/optimizer.h"
 
 namespace onnxruntime {
@@ -82,6 +83,9 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, *env));
 
   ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
+}
+
+Status Optimizer::Initialize() {
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
@@ -92,9 +96,16 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
   }
   ORT_THROW_IF_ERROR(ConstructInputs());
+  is_initialized = true;
+
+  return Status::OK();
 }
 
 Status Optimizer::Step() {
+  if (!is_initialized) {
+    ORT_THROW_IF_ERROR(Initialize());
+  }
+
   OrtValue learning_rate_input, step_input;
   utils::WarpInOrtValue<float>(optimizer_state_.learning_rate, &learning_rate_input);
   utils::WarpInOrtValue<int64_t>(optimizer_state_.step, &step_input);

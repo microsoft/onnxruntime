@@ -6,12 +6,14 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
-#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/interfaces.h"
 
 namespace onnxruntime {
 namespace training {
 namespace api {
 
+struct Parameter; //forward declaration
+class Module;     //forward declaration
 /**
  * @brief States belong to one specific trainable Parameter.
  *   Momentum states for each Parameter.
@@ -74,6 +76,9 @@ struct Optimizer {
   }
 
  private:
+  // Initializes the optimizer session and creates the optimizer state
+  Status Initialize();
+
   // Generates optimizer momentum states for applicable optimizer types
   Status GenerateMomentumNamedStates();
   // Constructs the ortvalue inputs to be fed to the graph
@@ -88,6 +93,10 @@ struct Optimizer {
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> inputs_;
+
+  bool is_initialized = false;
+
+  friend Status SetExecutionProvider(const Module& module, const Optimizer& optimizer, const std::shared_ptr<IExecutionProvider>& p_exec_provider);
 };
 
 class LearningRateScheduler {

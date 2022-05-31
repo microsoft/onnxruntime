@@ -3,10 +3,13 @@
 
 #pragma once
 #include "core/session/inference_session.h"
+#include "orttraining/training_api/include/interfaces.h"
 
 namespace onnxruntime {
 namespace training {
 namespace api {
+
+class Optimizer; // forward declaration
 
 struct Parameter {
  public:
@@ -96,6 +99,10 @@ struct Module {
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
   bool accumulate_gradient_ = true;
+  bool is_initialized = false;
+  Status Initialize();
+
+  friend Status SetExecutionProvider(const Module& module, const Optimizer& optimizer,const std::shared_ptr<IExecutionProvider>& p_exec_provider);
 };
 
 }  // namespace api

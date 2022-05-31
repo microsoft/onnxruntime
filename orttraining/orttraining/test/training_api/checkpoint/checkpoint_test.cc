@@ -20,6 +20,10 @@
 
 #include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/training_api/include/interfaces.h"
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/checkpoint_property.h"
+#include "orttraining/training_api/include/checkpoint.h"
 
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"

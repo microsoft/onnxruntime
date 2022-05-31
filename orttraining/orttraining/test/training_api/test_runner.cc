@@ -14,6 +14,11 @@
 
 #include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/interfaces.h"
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/checkpoint_property.h"
+#include "orttraining/training_api/include/checkpoint.h"
+
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -165,7 +170,7 @@ std::vector<std::vector<OrtValue>> CreateSyntheticDataLoader(size_t batch_size,
   return std::vector<std::vector<OrtValue>>(batch_size, std::vector<OrtValue>{input, positions});
 }
 
-Status RunTraining(const TestRunnerParameters& params) {
+Status RunTraining(TestRunnerParameters& params) {
   std::string tensorboard_file = params.output_dir + "/tb.event";
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
 
@@ -180,7 +185,7 @@ Status RunTraining(const TestRunnerParameters& params) {
                       state.module_checkpoint_state.named_parameters);
 
 #ifdef USE_CUDA
-  api::SetExecutionProvider(module, optimizer, params.provider.get());
+  ORT_ENFORCE(api::SetExecutionProvider(module, optimizer, std::move(params.provider)).IsOK());
 #endif
 
   auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);

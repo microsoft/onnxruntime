@@ -14,6 +14,8 @@
 
 #include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
 #include "orttraining/training_api/include/checkpoint.h"
 
 namespace onnxruntime {
