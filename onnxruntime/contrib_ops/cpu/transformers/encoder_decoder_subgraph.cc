@@ -257,8 +257,10 @@ Status EncoderSubgraph::CreateInitialFeeds(
   std::cout << "EncoderSubgraph::CreateInitialFeeds 257" << std::endl;
   OrtValue encoder_input_ids;
   std::cout << "EncoderSubgraph::CreateInitialFeeds 259" << std::endl;
+  std::cout << default_allocator->Info().ToString() << std::endl;
+  std::cout << cpu_alloactor->Info().ToString() << std::endl;
   //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
-  Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, encoder_input_ids);
+  Tensor::InitOrtValue(element_type, input_ids_shape, default_allocator, encoder_input_ids);
   std::cout << "EncoderSubgraph::CreateInitialFeeds 262" << std::endl;
   int32_t* encoder_input_ids_data = encoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   std::cout << "EncoderSubgraph::CreateInitialFeeds 264" << std::endl;
@@ -276,7 +278,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
     ORT_UNUSED_PARAMETER(attn_mask);
     //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), location, attention_mask);
-    Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
+    Tensor::InitOrtValue(element_type, input_ids_shape, default_allocator, attention_mask);
     int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
     *mask_data = 1;
     mask_data++;
@@ -284,7 +286,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
     mask_data++;
     *mask_data = 1;
     mask_data++;
-    *mask_data = 1;  
+    *mask_data = 1;
     std::cout << "EncoderSubgraph::CreateInitialFeeds 282" << std::endl;
   } else {
     std::cout << "EncoderSubgraph::CreateInitialFeeds 284" << std::endl;
@@ -319,7 +321,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   std::cout << "EncoderSubgraph::CreateInitialFeeds 295" << std::endl;
   OrtValue decoder_input_ids;
   TensorShape decoder_input_ids_shape({batch_size, 1});
-  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, cpu_alloactor, decoder_input_ids);
+  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, default_allocator, decoder_input_ids);
   std::cout << "EncoderSubgraph::CreateInitialFeeds 299" << std::endl;
   int32_t* decoder_input_ids_data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   std::cout << "EncoderSubgraph::CreateInitialFeeds 301" << std::endl;
