@@ -64,7 +64,7 @@ with open(args.output_source, "w") as file:
         # WinML adapter should not be exported in platforms other than Windows.
         # Exporting OrtGetWinMLAdapter is exported without issues using .def file when compiling for Windows
         # so it isn't necessary to include it in generated_source.c
-        if c not in ('winml', 'cuda', 'migraphx', 'snpe'):
+        if c not in ("winml", "cuda", "migraphx", "snpe"):
             file.write("#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")
     for symbol in symbols:

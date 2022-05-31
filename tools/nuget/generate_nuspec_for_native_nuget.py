@@ -182,7 +182,7 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version, dependency_id, dependency_version):
-    if package_name in ('Microsoft.ML.OnnxRuntime.Snpe', 'Microsoft.ML.OnnxRuntime.Snpe_Win'):
+    if package_name in ("Microsoft.ML.OnnxRuntime.Snpe", "Microsoft.ML.OnnxRuntime.Snpe_Win"):
         xml_text.append("<dependencies>")
         xml_text.append('<dependency id="' + dependency_id + '" version="' + dependency_version + '"/>')
         xml_text.append("</dependencies>")
