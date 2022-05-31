@@ -120,7 +120,7 @@ static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dyn
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
-// SessionOption 'fixed_point_requant_on_arm' controls the requantization method on ARM devices.
+// SessionOption 'fixed_point_requant_on_arm64' controls the requantization method on ARM devices.
 // Requantization is computed with formula:
 //     v = round(clamp(S * (I - Z), min, max))
 // where v is the target value with type TOutput, which is either int8_t or uint8_t
@@ -137,4 +137,7 @@ static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "ses
 // "0": disable. ORT uses float point based requantization on ARM devices.
 // "1": enable. ORT uses fixed point based requantization on ARM devices.
 // Its default value is "0"
-static const char* const kOrtSessionOptionsConfigFixedPointRequantOnARM64 = "session.fixed_point_requant_on_arm";
+// **NOTE** that fixed point requantization rounds half to up, whereas ONNX spec rounds half to even, so for identical
+// model and input the inference results may not be exactly same with this option on and off. The impact should be
+// small in practice (NNApi EP uses same rounding).
+static const char* const kOrtSessionOptionsConfigFixedPointRequantOnARM64 = "session.fixed_point_requant_on_arm64";
