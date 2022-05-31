@@ -59,7 +59,7 @@ struct Optimizer {
   // Initialize an optimizer module from an ORT inference session with loaded
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
-  Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+  Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
             InferenceSession* optim_session);
 
   // Optimizer Step.
