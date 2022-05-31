@@ -19,7 +19,7 @@ class SNPEExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>&  ) const override;
+      const std::vector<const KernelRegistry*>&) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unordered_map<std::string, std::string> GetRuntimeOptions() const { return runtime_options_; }

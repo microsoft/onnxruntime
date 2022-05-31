@@ -42,9 +42,9 @@ void usage() {
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
-      "\t    [SNPE only] [runtime]: SNPE runtime engine, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
+      "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
-      "\t    [SNPE only] [buffer_type]: execution priority, options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
+      "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
@@ -407,21 +407,21 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
         auto pos = token.find("|");
         if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-          ORT_THROW("Use a '|' to separate the key and value for \
-            the run-time option you are trying to use.\n");
+          ORT_THROW(R"(Use a '|' to separate the key and value for 
+the run-time option you are trying to use.\n)");
         }
 
         std::string key(token.substr(0, pos));
         std::string value(token.substr(pos + 1));
 
         if (key == "runtime") {
-          std::set<std::string> snpe_supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
-          if (snpe_supported_runtime.find(value) != snpe_supported_runtime.end()) {
+          std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
+          if (supported_runtime.find(value) != supported_runtime.end()) {
             snpe_option_keys.push_back("runtime");
             values.push_back(value);
           } else {
-            ORT_THROW("Wrong configuration value for the key 'runtime'. \
-              select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n");
+            ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
+select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
           }
         } else if (key == "priority") {
           snpe_option_keys.push_back("priority");
@@ -432,8 +432,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             snpe_option_keys.push_back("buffer_type");
             values.push_back(value);
           } else {
-            ORT_THROW("Wrong configuration value for the key 'buffer_type'. \
-              select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n");
+            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
+select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
         } else {
           ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");

@@ -1,5 +1,5 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
+﻿
+#if defined(USE_SNPE)
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4389)
@@ -17,12 +17,7 @@
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace test {
-
-using namespace onnxruntime::test;
-
-#if defined(USE_SNPE)
 
 void TfNToFloat(float* out,
                 uint8_t* in,
@@ -285,5 +280,4 @@ TEST(Snpe_ConvertFromAbs, QuantizedModelItensorFloatTest) {
 #endif
 
 }  // namespace test
-}  // namespace contrib
 }  // namespace onnxruntime

@@ -111,7 +111,7 @@ SNPEExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                             << " node name: " << node.Name();
       continue;
     }
-    
+
     candidates.push_back(node.Index());
   }
 

@@ -7,7 +7,8 @@
 
 namespace onnxruntime {
 struct SNPEProviderFactory : IExecutionProviderFactory {
-  explicit SNPEProviderFactory(const ProviderOptions& provider_options_map) : provider_options_map_(provider_options_map) {
+  explicit SNPEProviderFactory(const ProviderOptions& provider_options_map)
+      : provider_options_map_(provider_options_map) {
   }
   ~SNPEProviderFactory() override {}
 

@@ -181,70 +181,70 @@ def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
 
 
-def generate_dependencies(list, package_name, version, dependency_id, dependency_version):
-    if package_name == "Microsoft.ML.OnnxRuntime.Snpe" or package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win":
-        list.append("<dependencies>")
-        list.append('<dependency id="' + dependency_id + '" version="' + dependency_version + '"/>')
-        list.append("</dependencies>")
+def generate_dependencies(xml_text, package_name, version, dependency_id, dependency_version):
+    if package_name in ('Microsoft.ML.OnnxRuntime.Snpe', 'Microsoft.ML.OnnxRuntime.Snpe_Win'):
+        xml_text.append("<dependencies>")
+        xml_text.append('<dependency id="' + dependency_id + '" version="' + dependency_version + '"/>')
+        xml_text.append("</dependencies>")
         return
 
     dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.8.2"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
-        list.append("<dependencies>")
+        xml_text.append("<dependencies>")
 
         # Support .Net Core
-        list.append('<group targetFramework="net5.0">')
-        list.append(dml_dependency)
-        list.append("</group>")
+        xml_text.append('<group targetFramework="net5.0">')
+        xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
-        list.append('<group targetFramework="UAP10.0.16299">')
-        list.append(dml_dependency)
-        list.append("</group>")
+        xml_text.append('<group targetFramework="UAP10.0.16299">')
+        xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # Support Native C++
-        list.append('<group targetFramework="native">')
-        list.append(dml_dependency)
-        list.append("</group>")
+        xml_text.append('<group targetFramework="native">')
+        xml_text.append(dml_dependency)
+        xml_text.append("</group>")
 
-        list.append("</dependencies>")
+        xml_text.append("</dependencies>")
     else:
         include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML"
 
-        list.append("<dependencies>")
+        xml_text.append("<dependencies>")
         # Support .Net Core
-        list.append('<group targetFramework="NETCOREAPP">')
-        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<group targetFramework="NETCOREAPP">')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         if include_dml:
-            list.append(dml_dependency)
-        list.append("</group>")
+            xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # Support .Net Standard
-        list.append('<group targetFramework="NETSTANDARD">')
-        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<group targetFramework="NETSTANDARD">')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         if include_dml:
-            list.append(dml_dependency)
-        list.append("</group>")
+            xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # Support .Net Framework
-        list.append('<group targetFramework="NETFRAMEWORK">')
-        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<group targetFramework="NETFRAMEWORK">')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         if include_dml:
-            list.append(dml_dependency)
-        list.append("</group>")
+            xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
             # Support monoandroid11.0
-            list.append('<group targetFramework="monoandroid11.0">')
-            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            list.append("</group>")
+            xml_text.append('<group targetFramework="monoandroid11.0">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
             # Support xamarinios10
-            list.append('<group targetFramework="xamarinios10">')
-            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            list.append("</group>")
+            xml_text.append('<group targetFramework="xamarinios10">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
         # Support Native C++
         if include_dml:
-            list.append('<group targetFramework="native">')
-            list.append(dml_dependency)
-            list.append("</group>")
+            xml_text.append('<group targetFramework="native">')
+            xml_text.append(dml_dependency)
+            xml_text.append("</group>")
 
-        list.append("</dependencies>")
+        xml_text.append("</dependencies>")
 
 
 def get_env_var(key):
