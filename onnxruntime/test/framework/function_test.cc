@@ -19,7 +19,8 @@
 namespace onnxruntime {
 namespace test {
 
-static void Check(const char* source, const NameMLValMap& feeds,
+static void Check(const char* source,
+                  const char* input_name, std::vector<float> input_values,
                   const char* output_name, std::vector<float> output_values) {
   // Convert source-representation of model to ModelProto:
   ONNX_NAMESPACE::OnnxParser parser(source);
@@ -45,6 +46,14 @@ static void Check(const char* source, const NameMLValMap& feeds,
   RunOptions run_options;
   run_options.run_tag = session_options.session_logid;
 
+  NameMLValMap feeds;
+
+  std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  OrtValue ort_value;
+  CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+
+  feeds.insert(std::make_pair(std::string(input_name), ort_value));
+
   std::vector<OrtValue> fetches;
 
   status = session_object.Run(run_options, feeds, {output_name}, &fetches);
@@ -60,17 +69,6 @@ static void Check(const char* source, const NameMLValMap& feeds,
   for (size_t i = 0; i < size; ++i) {
     ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
   }
-}
-
-NameMLValMap input(const char* name, std::vector<float> values) {
-  NameMLValMap input_value_map;
-
-  auto* provider = new CPUExecutionProvider(CPUExecutionProviderInfo());
-  OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), {int64_t(values.size())}, values, &ort_value);
-
-  input_value_map.insert(std::make_pair(std::string(name), ort_value));
-  return input_value_map;
 }
 
 TEST(FunctionTest, Basic) {
@@ -94,7 +92,7 @@ TEST(FunctionTest, Basic) {
         }
         )";
 
-  Check(code, input("x", {1.0, 2.0, 3.0}), "y", {2.0, 4.0, 6.0});
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
 }
 
 // Check that variables are renamed to avoid conflicts when multiple
@@ -121,7 +119,7 @@ TEST(FunctionTest, Renaming) {
         }
         )";
 
-  Check(code, input("x", {1.0, 2.0, 3.0}), "y", {4.0, 8.0, 12.0});
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {4.0, 8.0, 12.0});
 }
 
 
