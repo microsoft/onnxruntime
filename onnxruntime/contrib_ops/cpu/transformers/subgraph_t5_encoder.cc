@@ -7,11 +7,8 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "subgraph_t5_encoder.h"
-#include "dump_tensor.h"
-
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
+#include "./subgraph_t5_encoder.h"
+#include "./dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -22,7 +19,7 @@ namespace transformers {
    Inputs:
       encoder_input_ids: int64 (B, encode_sequence_length)
       encoder_attention_mask: int64 (B, encode_sequence_length)
-      decoder_input_ids: int64 (B, 1)
+      decoder_input_ids: int64 (B, 1) OPTIONAL
 
     Outputs:
       logits: (B, 1, vocab_size)
@@ -37,35 +34,42 @@ namespace transformers {
       ... (for each cross attention layer)
 
     Note:
-      Here, B = batch_size * num_beams since we expand the inputs. (Ideally, we could use B=batch_size and expand the outputs with a factor of num_beams).
-      Data type of input or output is float or float16 if not specifed.
+      Here, B = batch_size * num_beams since we expand the inputs.
+      Ideally, we could use B=batch_size and expand the outputs with a factor of num_beams.
+      Data type of input or output is float or float16 if not specified.
 */
 
 Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_inputs != 3, "expect 3 inputs, got:", num_subgraph_inputs);
+  // TODO: subgraph with 2 inputs is not supported in BeamSearchT5 yet
+  ORT_RETURN_IF(num_subgraph_inputs != 2 && num_subgraph_inputs != 3,
+                "expect 2 or 3 inputs, got:", num_subgraph_inputs);
 
   ORT_RETURN_IF(num_subgraph_outputs < 6, "expect >=6 outputs, got:", num_subgraph_outputs);
-  ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - 2) % 4 != 0, "number of outputs expected to be 2 + 4 * layers, got:", num_subgraph_outputs);
+  ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - 2) % 4 != 0,
+                "number of outputs expected to be 2 + 4 * layers, got:", num_subgraph_outputs);
 
-  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids", "encoder subgraph input 0 shall be named as encoder_input_ids, got: ",
-                subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask", "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
-                subgraph_inputs[1]->Name());
-  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids", "encoder subgraph input 2 shall be named as decoder_input_ids, got: ",
-                subgraph_inputs[2]->Name());
+  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids",
+                "encoder subgraph input 0 shall be named as encoder_input_ids, got: ", subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
+                "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
 
-  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits", "encoder subgraph output 0 shall be named as logits, got: ",
-                subgraph_outputs[0]->Name());
+  if (num_subgraph_inputs == 3) {
+    ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids",
+                  "encoder subgraph input 2 shall be named as decoder_input_ids, got: ", subgraph_inputs[2]->Name());
+  }
 
-  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "encoder_hidden_states", "encoder subgraph output 1 shall be named as encoder_hidden_states, got: ",
-                subgraph_outputs[1]->Name());
+  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
+                "encoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
 
-  ORT_RETURN_IF(subgraph_outputs[2]->Name() != "present_key_self_0", "encoder subgraph output 2 shall be named as present_key_self_0, got: ",
-                subgraph_outputs[2]->Name());
+  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "encoder_hidden_states",
+                "encoder subgraph output 1 shall be named encoder_hidden_states, got: ", subgraph_outputs[1]->Name());
 
-  ORT_RETURN_IF(subgraph_outputs[3]->Name() != "present_value_self_0", "encoder subgraph output 3 shall be named as present_value_self_0, got: ",
-                subgraph_outputs[3]->Name());
+  ORT_RETURN_IF(subgraph_outputs[2]->Name() != "present_key_self_0",
+                "encoder subgraph output 2 shall be named as present_key_self_0, got: ", subgraph_outputs[2]->Name());
+
+  ORT_RETURN_IF(subgraph_outputs[3]->Name() != "present_value_self_0",
+                "encoder subgraph output 3 shall be named as present_value_self_0, got: ", subgraph_outputs[3]->Name());
 
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[2]->Shape();
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
@@ -74,17 +78,23 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   num_layers = (static_cast<int>(subgraph_outputs.size()) - 2) / 4;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+  constexpr auto int64_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64;
+  constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+  constexpr auto float16_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
+
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int64_type,
                 "encoder subgraph input 0 (encoder_input_ids) shall have int64 type");
 
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int64_type,
                 "encoder subgraph input 1 (encoder_attention_mask) shall have int64 type");
 
-  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
-                "encoder subgraph input 2 (decoder_input_ids) shall have int64 type");
+  if (num_subgraph_inputs == 3) {
+    ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != int64_type,
+                  "encoder subgraph input 2 (decoder_input_ids) shall have int64 type");
+  }
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
-  ORT_RETURN_IF(output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
+  ORT_RETURN_IF(output_type != float32_type && output_type != float16_type,
                 "encoder subgraph output 0 (logits) shall be float or float16 data type");
 
   for (int i = 1; i < num_subgraph_outputs; i++) {
@@ -92,7 +102,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
                   "encoder subgraph outputs shall have same data type");
   }
 
-  is_output_float16_ = (output_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
+  is_output_float16_ = (output_type == float16_type);
 
   return Status::OK();
 }
@@ -104,7 +114,6 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
     int num_beams,
     int pad_token_id,
     int start_token_id,
-    gsl::span<int32_t>& sequence_lengths,
     std::vector<OrtValue>& feeds,
     const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
     const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
@@ -115,15 +124,28 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Allocate subgraph inputs to be same device as encoder_input_ids
-  AllocatorPtr cpu_alloactor = session_state_->GetAllocator(encoder_input_ids.Location());
+  AllocatorPtr cpu_allocator = session_state_->GetAllocator(encoder_input_ids.Location());
 
   // TODO: expand the outputs instead of inputs to save computation.
   OrtValue expanded_encoder_input_ids;
   OrtValue expanded_encoder_attention_mask;
   OrtValue expanded_decoder_input_ids;  // filled with start token ID
-  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids, num_beams, pad_token_id, start_token_id, sequence_lengths, cpu_alloactor, expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids));
+  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids,
+                                                 num_beams,
+                                                 pad_token_id,
+                                                 start_token_id,
+                                                 cpu_allocator,
+                                                 expanded_encoder_input_ids,
+                                                 expanded_encoder_attention_mask,
+                                                 expanded_decoder_input_ids));
+
   const IExecutionProvider* provider = GetProvider();
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider, expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids, feeds, buffer));
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
+                                        expanded_encoder_input_ids,
+                                        expanded_encoder_attention_mask,
+                                        expanded_decoder_input_ids,
+                                        feeds,
+                                        buffer));
 
   for (const auto* entry : implicit_inputs) {
     feeds.push_back(*entry);

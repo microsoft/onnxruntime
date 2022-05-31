@@ -2,14 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <memory>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/controlflow/utils.h"
-#include "beam_search_parameters.h"
-#include "subgraph_gpt.h"
-#include "subgraph_t5_encoder.h"
-#include "subgraph_t5_decoder.h"
-#include "beam_search_device_helper.h"
+#include "./beam_search_parameters.h"
+#include "./subgraph_gpt.h"
+#include "./subgraph_t5_encoder.h"
+#include "./subgraph_t5_decoder.h"
+#include "./beam_search_device_helper.h"
 
 namespace onnxruntime {
 class FeedsFetchesManager;

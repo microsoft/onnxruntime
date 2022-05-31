@@ -6,13 +6,17 @@
 This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
-   python convert_beam_search.py -m gpt2 --decoder_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
+   python convert_beam_search.py -m gpt2 --decoder_onnx ./onnx_models/gpt2_past_fp32.onnx         \
+          --output ./onnx_models/gpt2_beam_search.onnx --output_sequences_scores
 
 Example 2: convert T5 model with beam search:
    cd ./models/t5
-   python convert_to_onnx.py -m t5-small -s
+   python convert_to_onnx.py -m t5-small
    cd ../..
-   python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./models/t5/t5-small_decoder.onnx --encoder_decoder_init_onnx ./models/t5/t5-small_encoder_decoder_init.onnx --output ./models/t5/t5_small_beam_search.onnx
+   python convert_beam_search.py -m t5-small --model_type t5                                      \
+          --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
+          --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
+          --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 """
 
 import argparse
@@ -21,7 +25,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import onnx
@@ -30,7 +34,7 @@ from benchmark_helper import Precision
 from onnx import helper
 from onnx import onnx_pb as onnx_proto
 from packaging import version
-from transformers import GPT2Config, T5Config
+from transformers import GPT2Config, GPT2LMHeadModel, GPT2Tokenizer, T5Config, T5ForConditionalGeneration, T5Tokenizer
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
 from convert_to_onnx import main as convert_gpt2_to_onnx
@@ -187,7 +191,7 @@ def parse_arguments(argv=None):
         type=float,
         required=False,
         default=1,
-        help="Positive. >1 to penalize and <1 to encorage short sentence.",
+        help="Positive. >1 to penalize and <1 to encourage short sentence.",
     )
 
     beam_search_group.add_argument(
@@ -195,7 +199,7 @@ def parse_arguments(argv=None):
         type=float,
         required=False,
         default=1,
-        help="Positive. >1 to penalize and <1 to encorage.",
+        help="Positive. >1 to penalize and <1 to encourage.",
     )
 
     beam_search_group.add_argument(
@@ -235,7 +239,7 @@ def gpt2_to_onnx(args):
         "1",
         "--test_cases",
         "10",
-        "--use_int32_inputs",  # BeamSearch requires to use int32 for input_ids, postion_ids and attention_mask
+        "--use_int32_inputs",  # BeamSearch requires to use int32 for input_ids, position_ids and attention_mask
     ]
     if args.use_gpu:
         arguments.append("--use_gpu")
@@ -276,7 +280,7 @@ def create_ort_session(model_path, use_gpu):
     execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"]
     if use_gpu:
         if "CUDAExecutionProvider" not in get_available_providers():
-            raise RuntimeError("CUDAExecutionProvider is not avaiable for --use_gpu!")
+            raise RuntimeError("CUDAExecutionProvider is not available for --use_gpu!")
         else:
             print("use CUDAExecutionProvider")
 
@@ -334,6 +338,7 @@ def verify_t5_decoder_subgraph(graph, precision):
 
 def verify_t5_encoder_decoder_init_subgraph(graph, precision):
     # TODO: implement it
+    assert len(graph.input) == 3, "please run convert_to_onnx without --use_decoder_start_token"
     pass
 
 
@@ -424,6 +429,9 @@ def convert_model(args):
         node.attribute.extend(
             [
                 helper.make_attribute("encoder", init_model.graph),
+                helper.make_attribute(
+                    "decoder_start_token_id", config.decoder_start_token_id if len(init_model.graph.input) == 3 else -1
+                ),
             ]
         )
 
@@ -545,7 +553,7 @@ def test_torch_performance(args, model, input_ids, attention_mask, eos_token_id,
     return get_latency_result(torch_latency, batch_size)
 
 
-def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
+def test_gpt_model(args, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
     assert args.model_type == "gpt2"
 
     if args.temperature != 1.0:
@@ -556,8 +564,6 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = No
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
         return True
-
-    from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
@@ -587,7 +593,7 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = No
     if use_vocab_mask:
         print("bad_words_ids", bad_words_ids)
     else:
-        bad_words_ids = None
+        bad_words_ids = []
 
     global config
     config = model.config
@@ -596,6 +602,7 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = No
     vocab_size = config.vocab_size
 
     torch_decoded_sequences = []
+    beam_outputs = None
     if not args.disable_parity:
         print("-" * 50)
         print("Test PyTorch model and beam search with huggingface transformers...")
@@ -651,6 +658,9 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = No
         "vocab_mask": vocab_mask,
     }
 
+    print("inputs", inputs)
+    result = ort_session.run(None, inputs)
+
     test_data_dir = Path(args.output).parent.as_posix()
     print("test_data_dir", test_data_dir)
     from bert_test_data import output_test_data
@@ -660,13 +670,11 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = No
         dir = os.path.join(test_data_dir, "test_data_set_" + str(i))
         output_test_data(dir, inputs)
 
-    print("inputs", inputs)
-
     # Test performance
     latency = []
     for _ in range(args.total_runs):
         start = time.time()
-        result = ort_session.run(None, inputs)
+        _ = ort_session.run(None, inputs)
         latency.append(time.time() - start)
     batch_size = input_ids.shape[0]
     from benchmark_helper import get_latency_result
@@ -689,7 +697,7 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = No
             ort_decoded_sequences.append(decoded_sequence)
             print(f"batch {i} sequence {j}: {decoded_sequence}")
 
-    if not args.disable_parity:
+    if beam_outputs:
         torch_sequences = beam_outputs.sequences.reshape(batch_size, args.num_return_sequences, -1)
         ort_sequences = torch.LongTensor(sequences)
         print("-" * 50)
@@ -722,7 +730,7 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: List[str] = No
     return output
 
 
-def test_t5_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
+def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
     assert args.model_type == "t5"
 
     if args.temperature != 1.0:
@@ -733,8 +741,6 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: List[str] = Non
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
         return True
-
-    from transformers import T5ForConditionalGeneration, T5Tokenizer
 
     tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
@@ -750,7 +756,8 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: List[str] = Non
     if sentences is None:
         sentences = [
             "translate English to French: The product is released",
-            "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
+            "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
+            "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
         ]
 
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)
@@ -763,7 +770,7 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: List[str] = Non
     if use_vocab_mask:
         print("bad_words_ids", bad_words_ids)
     else:
-        bad_words_ids = None
+        bad_words_ids = []
 
     global config
     config = model.config
@@ -903,11 +910,10 @@ def main(argv=None, sentences=None):
     if args.model_type == "t5":
         assert args.encoder_decoder_init_onnx, "please export t5 to onnx models before using this tool"
 
-    # if os.path.exists(args.output):
-    #     print(f"skip conversion since path existed: {args.output}")
-    # else:
-    #     convert_model(args)
     convert_model(args)
+
+    # print("You have 30 seconds to attach a debugger...")
+    # time.sleep(30)
 
     if args.model_type == "t5":
         return test_t5_model(args, use_vocab_mask=True, sentences=sentences)

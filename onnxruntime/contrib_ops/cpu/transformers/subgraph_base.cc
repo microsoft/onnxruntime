@@ -1,17 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <utility>
 #include "core/framework/framework_common.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "subgraph_base.h"
-#include "dump_tensor.h"
-
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
+#include "./subgraph_base.h"
+#include "./dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -21,7 +19,15 @@ Subgraph::Subgraph(
     const onnxruntime::Node& node_in,
     const std::string& attribute_name,
     const GraphViewer& subgraph_in)
-    : node(node_in), attribute(attribute_name), subgraph(subgraph_in), num_heads(0), head_size(0), vocab_size(0), num_layers(0), allocator_(nullptr), is_output_float16_(false) {
+    : node(node_in),
+      attribute(attribute_name),
+      subgraph(subgraph_in),
+      num_heads(0),
+      head_size(0),
+      vocab_size(0),
+      num_layers(0),
+      allocator_(nullptr),
+      is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
 
   auto& subgraph_inputs = subgraph.GetInputs();
@@ -53,7 +59,8 @@ Status Subgraph::Setup(const SessionState& session_state,
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Currently, input_ids is in CPU even for CUDA operator, so we have to use first output to find device location.
-  const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state, subgraph_output_names[0]);
+  const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state,
+                                                                        subgraph_output_names[0]);
 
   // position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
   // as we skip them when we call FindDevicesForValues, and default them to be in the same device as input_ids
@@ -84,7 +91,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   std::vector<const OrtMemoryInfo*> fetch_locations;
   fetch_locations.reserve(num_subgraph_outputs);
 
-  // past state need to be where we can feed them in to the next iteration, so set the fetch location to match the feed location.
+  // past state need to be where we can feed them in to the next iteration, so set the location to match the feed.
   for (int i = 0; i < num_subgraph_outputs; ++i) {
     fetch_locations.push_back(&default_location);
   }
@@ -113,9 +120,9 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
                                const ONNX_NAMESPACE::TensorShapeProto* logits_shape,
                                bool merged_past) {
   if (merged_past) {
-    // Mereged Past state shape is like (2, batch_size, 12, past_seq_len, 64). Here 12 and 64 are constants of num_heads and hidden_size/num_heads.
-    ORT_RETURN_IF(past_shape->dim_size() != 5, "subgraph past state is expected to have 5 dimension, got ",
-                  past_shape->dim_size());
+    // Merged past state shape is like (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
+    ORT_RETURN_IF(past_shape->dim_size() != 5,
+                  "subgraph past state is expected to have 5 dimension, got ", past_shape->dim_size());
     ORT_RETURN_IF(!past_shape->dim(0).has_dim_value() || past_shape->dim(0).dim_value() != 2,
                   "subgraph past state dimension 0 shall have length of 2");
 
@@ -127,9 +134,9 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
     this->num_heads = static_cast<int>(past_shape->dim(2).dim_value());
     this->head_size = static_cast<int>(past_shape->dim(4).dim_value());
   } else {
-    // Past state shape is like (batch_size, 12, past_seq_len, 64). Here 12 and 64 are constants of num_heads and hidden_size/num_heads.
-    ORT_RETURN_IF(past_shape->dim_size() != 4, "subgraph output present_key_self_0 is expected to have 4 dimension, got ",
-                  past_shape->dim_size());
+    // Past state shape is like (batch_size, num_heads, past_seq_len, hidden_size/num_heads).
+    ORT_RETURN_IF(past_shape->dim_size() != 4,
+                  "subgraph output present_key_self_0 is expected to have 4 dimension, got ", past_shape->dim_size());
 
     ORT_RETURN_IF(!past_shape->dim(1).has_dim_value() || past_shape->dim(1).dim_value() <= 0,
                   "subgraph past state dimension 2 shall have a positive value for number of heads");
@@ -140,9 +147,9 @@ Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shap
     this->head_size = static_cast<int>(past_shape->dim(3).dim_value());
   }
 
-  // Logits shape is like (batch_size, seq_len, 50257). Here 50257 is the vocabulary size.
-  ORT_RETURN_IF(logits_shape->dim_size() != 3, "subgraph logits output is expected to have 3 dimension, got ",
-                logits_shape->dim_size());
+  // Logits shape is like (batch_size, seq_len, vocabulary_size)
+  ORT_RETURN_IF(logits_shape->dim_size() != 3,
+                "subgraph logits output is expected to have 3 dimension, got ", logits_shape->dim_size());
 
   ORT_RETURN_IF(!logits_shape->dim(2).has_dim_value() || logits_shape->dim(2).dim_value() <= 0,
                 "subgraph past state dimension 2 shall have a positive value for vocabulary size");

@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "subgraph_base.h"
+
+#include "./subgraph_base.h"
 
 namespace onnxruntime {
 namespace contrib {
