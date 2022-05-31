@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy
 import onnx
@@ -35,7 +35,7 @@ class T5EncoderDecoderInit(torch.nn.Module):
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
         config: T5Config,
-        decoder_start_token_id: int = None,
+        decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
         self.config = config
@@ -68,15 +68,19 @@ class T5EncoderDecoderInitInputs:
         encode_sequence_length: int,
         use_decoder_input_ids: int,
         device: torch.device,
+        use_int32_inputs: bool = False,
     ):  # -> T5EncoderDecoderInitInputs:
         encoder_inputs: T5EncoderInputs = T5EncoderInputs.create_dummy(
-            batch_size, encode_sequence_length, config.vocab_size, device
+            batch_size,
+            encode_sequence_length,
+            config.vocab_size,
+            device,
+            use_int32_inputs=use_int32_inputs,
         )
         decoder_input_ids = None
         if use_decoder_input_ids:
-            decoder_input_ids = (
-                torch.ones((batch_size, 1), dtype=torch.long, device=device) * config.decoder_start_token_id
-            )
+            dtype = torch.int32 if use_int32_inputs else torch.int64
+            decoder_input_ids = torch.ones((batch_size, 1), dtype=dtype, device=device) * config.decoder_start_token_id
 
         return T5EncoderDecoderInitInputs(encoder_inputs.input_ids, encoder_inputs.attention_mask, decoder_input_ids)
 
@@ -96,6 +100,7 @@ class T5EncoderDecoderInitHelper:
         use_decoder_input_ids: bool = True,
         verbose: bool = True,
         use_external_data_format: bool = False,
+        use_int32_inputs: bool = False,
     ):
         """Export decoder to ONNX
 
@@ -114,6 +119,7 @@ class T5EncoderDecoderInitHelper:
             encode_sequence_length=3,
             use_decoder_input_ids=use_decoder_input_ids,
             device=device,
+            use_int32_inputs=use_int32_inputs,
         )
         input_list = inputs.to_list()
 
@@ -136,7 +142,7 @@ class T5EncoderDecoderInitHelper:
         input_names = ["encoder_input_ids", "encoder_attention_mask"]
 
         # ONNX exporter might mark dimension like 'Transposepresent_value_self_1_dim_2' in shape inference.
-        # We use a walkaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
+        # We use a workaround here: first use dim_param "1" for sequence_length, and later change to dim_value.
         sequence_length = "1"
         num_heads = str(model.config.num_heads)
         hidden_size = str(model.config.d_model)
@@ -199,7 +205,7 @@ class T5EncoderDecoderInitHelper:
                 verbose=verbose,
             )
 
-            # Walkaround as mentioned earlier: change numeric dim_param to dim_value
+            # Workaround as mentioned earlier: change numeric dim_param to dim_value
             model = onnx.load(temp_onnx_model_path)
             for tensor in model.graph.output:
                 for dim_proto in tensor.type.tensor_type.shape.dim:
@@ -244,7 +250,8 @@ class T5EncoderDecoderInitHelper:
         model: T5EncoderDecoderInit,
         ort_session: InferenceSession,
         device: torch.device,
-        max_cases=4,
+        use_int32_inputs: bool,
+        max_cases: int = 4,
     ):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         ort_inputs = ort_session.get_inputs()
@@ -259,6 +266,7 @@ class T5EncoderDecoderInitHelper:
                 encode_sequence_length,
                 use_decoder_input_ids=use_decoder_input_ids,
                 device=device,
+                use_int32_inputs=use_int32_inputs,
             )
 
             ort_outputs = T5EncoderDecoderInitHelper.onnxruntime_inference(ort_session, inputs)

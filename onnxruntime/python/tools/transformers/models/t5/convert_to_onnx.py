@@ -109,6 +109,14 @@ def parse_arguments():
     )
     parser.set_defaults(separate_encoder_and_decoder_init=False)
 
+    parser.add_argument(
+        "--use_int32_inputs",
+        required=False,
+        action="store_true",
+        help="Use int32 instead of int64 for input_ids, position_ids and attention_mask.",
+    )
+    parser.set_defaults(use_int32_inputs=False)
+
     args = parser.parse_args()
 
     return args
@@ -127,6 +135,7 @@ def export_onnx_models(
     merge_encoder_and_decoder_init: bool = True,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
+    use_int32_inputs: bool = False,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -159,6 +168,7 @@ def export_onnx_models(
                 verbose,
                 use_external_data_format,
                 use_decoder_input_ids=not use_decoder_start_token,
+                use_int32_inputs=use_int32_inputs,
             )
         else:
             logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
@@ -193,7 +203,7 @@ def export_onnx_models(
             use_gpu=use_gpu,
             provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
         )
-        max_diff = T5Helper.verify_onnx(model, ort_session, device)
+        max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
         if max_diff > 1e-4:
             logger.warn("PyTorch and OnnxRuntime results are NOT close")
@@ -236,6 +246,7 @@ def main():
             not args.separate_encoder_and_decoder_init,
             args.overwrite,
             args.disable_auto_mixed_precision,
+            args.use_int32_inputs,
         )
 
     logger.info(f"Done! Outputs: {output_paths}")
