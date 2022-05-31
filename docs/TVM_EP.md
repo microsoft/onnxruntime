@@ -136,9 +136,9 @@ tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, provider
 pip3 uninstall onnx -y
 pip3 install onnx==1.10.1
 pip3 uninstall protobuf -y
-pip3 install protobuf==3.19.1
+pip3 install protobuf==3.18.1
 ```
 
 The following pair of ONNX and protobuf versions have been found to be compatible:
 - 3.17.3 and 1.8.0
-- 3.19.1 and 1.10.1
+- 3.18.1 and 1.10.1

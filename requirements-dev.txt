@@ -10,7 +10,7 @@ onnxmltools
 packaging
 pandas
 parameterized>=0.8.1
-protobuf
+protobuf==3.18.1
 pydocstyle[toml]
 pytest
 pytest-cov

@@ -2,5 +2,5 @@ coloredlogs
 flatbuffers
 numpy >= @Python_NumPy_VERSION@
 packaging
-protobuf
+protobuf==3.18.1
 sympy
