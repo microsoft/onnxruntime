@@ -47,9 +47,13 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape,
                           std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
+  std::cout << "Tensor::InitOrtValue 50" << std::endl;
   auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+  std::cout << "Tensor::InitOrtValue 52" << std::endl;
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  std::cout << "Tensor::InitOrtValue 54" << std::endl;
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  std::cout << "Tensor::InitOrtValue 56" << std::endl;
 }
 
 void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& location,

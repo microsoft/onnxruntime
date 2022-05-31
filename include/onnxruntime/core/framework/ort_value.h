@@ -12,6 +12,9 @@
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
 
+#include <iostream>
+using namespace std;
+
 namespace onnxruntime {
 #if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
@@ -33,7 +36,9 @@ struct OrtValue {
   }
 
   void Init(void* pData, onnxruntime::MLDataType type, onnxruntime::DeleteFunc deleter) {
+    std::cout << "OrtValue::Init 36" << std::endl;
     data_.reset(pData, deleter);
+    std::cout << "OrtValue::Init 38" << std::endl;
     type_ = type;
   }
 
