@@ -39,10 +39,10 @@ void RegisterStreamCommandHanler(const SessionState& session_state) {
   }
 }
 
-struct ReleasePlan {
-  std::unique_ptr<std::atomic_int[]> ref_counts;
-  std::unordered_map<onnxruntime::NodeIndex, std::vector<int>> node_ref_count_map;
-};
+//struct ReleasePlan {
+//  std::unique_ptr<std::atomic_int[]> ref_counts;
+//  std::unordered_map<onnxruntime::NodeIndex, std::vector<int>> node_ref_count_map;
+//};
 
 // execution context that support to execute a command on stream.
 // The notifications got instantiated when execution context is constructed.
@@ -52,7 +52,7 @@ struct ExecutionContext {
   ExecutionFrame* frame;
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
-  ReleasePlan release_plan;
+  std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
 
   ExecutionContext(const SessionState& sess_state,
                    ExecutionFrame* execution_frame,
@@ -63,16 +63,18 @@ struct ExecutionContext {
     for (auto i = 0; i < notification_owners.size(); ++i) {
       notifications.push_back(std::move(notification_owners[i]->CreateNotification(/*TODO: calculate num of consumers*/0)));
     }
+    auto* para_exe_plan = const_cast<SessionState&>(sess_state).GetParalllelExecutionPlan();
+    release_plan = para_exe_plan->GenerateReleasePlan();
   }
 
   ~ExecutionContext() {
   }
 
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
-    for (auto& i : release_plan.node_ref_count_map[node_index]) {
-      if (--release_plan.ref_counts[i] == 0) {
-        ORT_THROW_IF_ERROR(frame->ReleaseMLValue(i));
-        LOGS(*logger, INFO) << "value " << i << " released";
+    if (release_plan.find(node_index) != release_plan.end()) {
+      for (auto value_index : release_plan[node_index]) {
+        ORT_THROW_IF_ERROR(frame->ReleaseMLValue(value_index));
+        LOGS(*logger, INFO) << "value " << value_index << " released";
       }
     }
   }
@@ -119,7 +121,6 @@ struct ParallelExecutionPlanImpl {
     return it == node_to_stream_map_.end() ? nullptr : it->second;
   }
 
-  ReleasePlan GenerateReleasePlan() const;
   const std::vector<int>& GetRefCounts() const { return value_ref_counts_; }
 
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
@@ -131,7 +132,8 @@ struct ParallelExecutionPlanImpl {
   std::unordered_map<NodeIndex, Stream*> node_to_stream_map_;
   std::unordered_map<size_t, Stream*> value_to_stream_map_;
   std::vector<int> value_ref_counts_;
-  std::unordered_map<onnxruntime::NodeIndex, std::vector<int>> node_value_map_;
+  std::unordered_map<onnxruntime::NodeIndex, std::vector<onnxruntime::OrtValueIndex>> node_value_map_;
+  std::unordered_map<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
   ProviderStreamMap provider_stream_map_;
   OpStreamMap op_stream_map_;
   std::vector<std::vector<std::string>> streams_log_;   // save up nodes per stream for logging
@@ -146,6 +148,10 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
                                                      const OpStreamMap& op_stream_map) : session_state_(session_state),
                                                                                          provider_stream_map_(provider_stream_map),
                                                                                          op_stream_map_(op_stream_map) {
+  const auto& value_map = session_state_.GetOrtValueNameIdxMap();
+  const auto& execution_providers = session_state_.GetExecutionProviders();
+  const auto& kernel_create_info_map = session_state_.GetKernelCreateInfoMap();
+
   // register handle once
   std::call_once(
       populate_command_handle_flag, [](const SessionState& sess_state) { RegisterStreamCommandHanler(sess_state); }, session_state);
@@ -301,7 +307,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
                                     streams.end(),
                                     [&](std::unique_ptr<Stream>& stream) { return stream->provider == ep; });
       ORT_ENFORCE(stream_it != streams.end());
-      logic_streams_[i]->commands_.push_back([node, node_index, i](ExecutionContext& ctx) {
+      logic_streams_[i]->commands_.push_back([this, node, node_index, i, &value_map](ExecutionContext& ctx) {
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         OpKernelContext kernel_ctx(ctx.frame, p_kernel, intra_tp, *ctx.logger);
@@ -330,6 +336,25 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           nvtxRangePop();
 #endif
         }
+        /*
+        //test indirect release - release input values of input nodes
+        const auto& input_node_args = node->InputDefs();
+        for (int input_index_local = 0; input_index_local < input_node_args.size(); ++input_index_local) {
+          const auto* input_arg = input_node_args[input_index_local];
+          OrtValueIndex input_idx_global;
+          if (value_map.GetIdx(input_arg->Name(), input_idx_global).IsOK()) {
+            if (value_node_map_.find(input_idx_global) != value_node_map_.end()) {
+              NodeIndex owning_node = value_node_map_[input_idx_global];
+              ctx.RecycleNodeInputs(owning_node);
+            }
+          }
+        }
+        if (p_kernel->IsAsync()) {
+          ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, []() {}).IsOK(), MakeString("kernel fail!"));
+        } else {
+          ORT_ENFORCE(p_kernel->Compute(&kernel_ctx).IsOK(), MakeString("kernel fail!"));
+        }*/
+        //test indirect release - done
         LOGS(*ctx.logger, INFO) << "stream " << i << " complete with " << node->Name();
       });
       // check if any notification generated by this node, if yes, push a activate
@@ -344,9 +369,6 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     }
   }
   // 6. now prepare for release plan
-  const auto& value_map = session_state_.GetOrtValueNameIdxMap();
-  const auto& execution_providers = session_state_.GetExecutionProviders();
-  const auto& kernel_create_info_map = session_state_.GetKernelCreateInfoMap();
   int num_ml_values = value_map.MaxIdx() + 1;
   std::unordered_set<int> node_outputs;
   value_ref_counts_.resize(num_ml_values);
@@ -361,6 +383,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       ORT_THROW_IF_ERROR(value_map.GetIdx(node_output->Name(), output_idx_global));
       node_outputs.insert(output_idx_global);
       value_to_stream_map_[output_idx_global] = node_to_stream_map_[node_index];
+      value_node_map_[output_idx_global] = node_index;
     }
   }
 
@@ -394,15 +417,15 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
 ParallelExecutionPlanImpl::~ParallelExecutionPlanImpl() {
 }
 
-ReleasePlan ParallelExecutionPlanImpl::GenerateReleasePlan() const {
-  ReleasePlan release_plan;
-  release_plan.ref_counts.reset(new std::atomic_int[value_ref_counts_.size()]);
-  for (int i = 0; i < value_ref_counts_.size(); ++i) {
-    release_plan.ref_counts[i] = value_ref_counts_[i];
-  }
-  release_plan.node_ref_count_map = this->node_value_map_;
-  return release_plan;
-}
+//ReleasePlan ParallelExecutionPlanImpl::GenerateReleasePlan() const {
+//  ReleasePlan release_plan;
+//  release_plan.ref_counts.reset(new std::atomic_int[value_ref_counts_.size()]);
+//  for (int i = 0; i < value_ref_counts_.size(); ++i) {
+//    release_plan.ref_counts[i] = value_ref_counts_[i];
+//  }
+//  release_plan.node_ref_count_map = this->node_value_map_;
+//  return release_plan;
+//}
 
 common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -413,7 +436,7 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
   auto* tp = session_state.GetInterOpThreadPool();
   // prepare the execution context, notifications got initialized.
   ExecutionContext execution_context(session_state, &frame, notification_owners_, logger);
-  execution_context.release_plan = GenerateReleasePlan();
+  // execution_context.release_plan = GenerateReleasePlan();
   std::unique_ptr<Barrier[]> barriers{new Barrier[num_logic_streams_-1]}; // TODO: handle case when num_logic_streams_ == 0
 
   // WARNING: all task scheduled must be less or equal to the number 
@@ -480,6 +503,17 @@ Stream* ParallelExecutionPlan::GetComputeStreamForNode(NodeIndex index) const {
 
 const std::vector<int>& ParallelExecutionPlan::GetRefCounts() const { 
     return impl_->value_ref_counts_; 
+}
+
+std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> ParallelExecutionPlan::GenerateReleasePlan() {
+  std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
+  for (const auto& exe_plan : execution_plan) {
+    release_plan[exe_plan.node_index] = {};
+    for (int i = exe_plan.free_from_index; i < exe_plan.free_to_index; ++i) {
+      release_plan[exe_plan.node_index].push_back(to_be_freed[i]);
+    }
+  }
+  return release_plan;
 }
 
 }  // namespace onnxruntime

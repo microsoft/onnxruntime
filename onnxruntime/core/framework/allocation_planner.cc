@@ -1020,7 +1020,7 @@ class PlannerImpl {
           AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (/*!context_.IsParallelExecutionEnabled() &&*/
                    FindReusableTensor(*node_output, &reused) &&
-                   plan_.CanReuse(current, reused)) {
+                   plan_.CanReuse(reused, current)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
           OrtValueIndex original = Buffer(reused);
