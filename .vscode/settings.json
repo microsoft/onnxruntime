@@ -29,8 +29,10 @@
     ],
     "python.linting.enabled": true,
     "python.linting.flake8Enabled": true,
+    "python.linting.pylintEnabled": true,
     "python.linting.pydocstyleEnabled": true,
     "python.linting.pydocstyleArgs": [
         "--convention=google"
-    ]
+    ],
+    "python.linting.banditEnabled": true
 }
