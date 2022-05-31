@@ -18,7 +18,7 @@ struct ParallelExecutionPlanImpl;
 // Specify how many logic streams for each provider type
 using ProviderStreamMap = std::unordered_map<std::string, int>;
 // Each set contains ops which should be grouped in an independent logic stream
-using OpStreamMap = std::vector<std::unordered_set<std::string>>;
+using OpStreamMap = std::vector<std::vector<std::string>>;
 
 class ParallelExecutionPlan : public IExecutor, public SequentialExecutionPlan {
  public:

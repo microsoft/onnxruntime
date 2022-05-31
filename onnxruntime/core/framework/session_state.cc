@@ -1412,13 +1412,45 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
-  // TODO: make it a session option
+
+  // read stream configuration from session option
+  auto split = [](const std::string& s, char splitor) {
+    std::stringstream ss(s);
+    std::string tmp;
+    std::vector<std::string> ret;
+    while (std::getline(ss, tmp, splitor)) {
+      ret.push_back(std::move(tmp));
+    }
+    return ret;
+  };
+
   ProviderStreamMap provider_stream_map;
-  provider_stream_map["CPUExecutionProvider"] = 1; // one cpu stream
-  provider_stream_map["CUDAExecutionProvider"] = 2; // two gpu streams
-  OpStreamMap op_stream_map{std::unordered_set<std::string>{std::string{"MemcpyToHost"}, std::string{"MemcpyFromHost"}}};  // memory transfer in a separate stream
-  // OpStreamMap op_stream_map;
-  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, op_stream_map); // 4 streams in total
+
+  if (!session_options.streams_per_ep.empty()) {
+    for (const auto& streams_per_ep : split(session_options.streams_per_ep, ';')) {
+      std::vector<std::string> stream_per_ep = split(streams_per_ep, ':');
+      provider_stream_map[stream_per_ep[0]] = atoi(stream_per_ep[1].c_str());
+    }
+  }
+
+  for (const auto& ep: execution_providers_.GetIds()) {
+    if (provider_stream_map.count(ep)) {
+      provider_stream_map[ep] = std::max(provider_stream_map[ep], 1);
+    } else {
+      provider_stream_map.emplace(ep,1);
+    }
+  }
+
+  auto read_op_map_from_str = [split](const std::string grouped_ops) {
+    OpStreamMap op_stream_map;
+    std::vector<std::string> groups = split(grouped_ops, ';');
+    for (const auto& group : groups) {
+      op_stream_map.push_back(split(group,','));
+    }
+    return op_stream_map;
+  };
+
+  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, read_op_map_from_str(session_options.grouped_ops));
 
   std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(p_para_exec_plan_.get());
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
@@ -1427,6 +1459,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context, tmp_para_exec_plan_wrapper));
   tmp_para_exec_plan_wrapper.release();
+
+  LOGS(logger_, INFO) << "p_para_exec_plan initialized";
 
   // Record the allocation plan
 

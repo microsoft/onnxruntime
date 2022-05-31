@@ -21,10 +21,6 @@ struct CudaNotification : public synchronize::Notification {
     ready_.store(true); 
   }
 
-  void Reset() override {
-    ready_.store(false); 
-  }
-
   void wait_on_device(Stream& device_stream) {
     ORT_ENFORCE(device_stream.provider->Type() == kCudaExecutionProvider);
     // wait for the notification to be activated

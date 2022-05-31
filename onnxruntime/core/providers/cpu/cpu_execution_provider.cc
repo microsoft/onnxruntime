@@ -2164,10 +2164,6 @@ struct CPUNotification : synchronize::Notification {
     ready_.store(true);
   }
 
-  void Reset() override {
-    ready_.store(false);
-  }
-
   void wait() {
     while (!ready_.load()) {
       onnxruntime::concurrency::SpinPause();

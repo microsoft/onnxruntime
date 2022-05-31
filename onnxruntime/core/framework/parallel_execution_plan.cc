@@ -8,6 +8,7 @@
 #include "core/framework/utils.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/graph/constants.h"
+#include "core/common/logging/macros.h"
 
 #ifdef USE_CUDA
 #include <nvtx3/nvToolsExtCuda.h>
@@ -71,7 +72,7 @@ struct ExecutionContext {
     for (auto& i : release_plan.node_ref_count_map[node_index]) {
       if (--release_plan.ref_counts[i] == 0) {
         ORT_THROW_IF_ERROR(frame->ReleaseMLValue(i));
-        std::cout << "value " << i << " released" << std::endl;
+        LOGS(*logger, INFO) << "value " << i << " released";
       }
     }
   }
@@ -134,6 +135,7 @@ struct ParallelExecutionPlanImpl {
   std::unordered_map<onnxruntime::NodeIndex, std::vector<int>> node_value_map_;
   ProviderStreamMap provider_stream_map_;
   OpStreamMap op_stream_map_;
+  std::vector<std::vector<std::string>> streams_log_;   // save up nodes per stream for logging
 };
 
 std::once_flag populate_command_handle_flag;
@@ -171,7 +173,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
   };  //StreamRange
 
   int stream_idx = 0;
-  std::vector<std::vector<std::string>> streams_stdout;
+
   std::map<std::string, std::unique_ptr<StreamRange>> stream_map;
   for (const auto& iter : provider_stream_map) {
     const auto& provider_name = iter.first;
@@ -179,7 +181,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     int prev_stream_idx = stream_idx;
     for (int i = 0; i < num_streams; ++i) {
       logic_streams_.push_back(std::make_unique<LogicStream>());
-      streams_stdout.push_back(std::vector<std::string>{});  // todo - replace this with logger
+      streams_log_.push_back(std::vector<std::string>{});  // todo - replace this with logger
       stream_idx++;
     }
     stream_map.insert({provider_name, std::make_unique<StreamRange>(prev_stream_idx, stream_idx)});
@@ -187,7 +189,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
 
   for (const auto& iter : op_stream_map_) {
     logic_streams_.push_back(std::make_unique<LogicStream>());
-    streams_stdout.push_back(std::vector<std::string>{});  // todo - replace this with logger
+    streams_log_.push_back(std::vector<std::string>{});  // todo - replace this with logger
     for (const auto& op : iter) {
       stream_map.insert({op, std::make_unique<StreamRange>(stream_idx, stream_idx + 1)});
     }
@@ -213,7 +215,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     ORT_ENFORCE(logic_stream_index > -1 && logic_stream_index < num_logic_streams_);
     nodes_in_stream[logic_stream_index].push_back(node_index);
     node_stream_map[node_index] = logic_stream_index;
-    streams_stdout[logic_stream_index].push_back(node->OpType());
+    streams_log_[logic_stream_index].push_back(node->OpType());
   }
 
   //2. for each node, if any of its consumer partitioned to another stream, generate a notification
@@ -285,8 +287,10 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           auto wait_handle = GetStreamHandleRegistryInstance().GetWaitHandle(notification_owners_[notfication_it->second], node->GetExecutionProviderType());
           NotificationIndex notification_index = notfication_it->second;
           auto* cur_stream = node_to_stream_map_[node_index];
-          logic_streams_[i]->commands_.push_back([wait_handle, cur_stream, notification_index](ExecutionContext& ctx) {
+          const std::string& upstream_node_name = it->Name();
+          logic_streams_[i]->commands_.push_back([wait_handle, cur_stream, notification_index, i, node, upstream_node_name](ExecutionContext& ctx) {
             wait_handle(*cur_stream, *ctx.notifications[notification_index]);
+            LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
           });
         }
       }
@@ -298,14 +302,13 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
                                     streams.end(),
                                     [&](std::unique_ptr<Stream>& stream) { return stream->provider == ep; });
       ORT_ENFORCE(stream_it != streams.end());
-      logic_streams_[i]->commands_.push_back([node_index, i](ExecutionContext& ctx) {
+      logic_streams_[i]->commands_.push_back([node, node_index, i](ExecutionContext& ctx) {
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         OpKernelContext kernel_ctx(ctx.frame, p_kernel, intra_tp, *ctx.logger);
         if (p_kernel->IsAsync()) {
           ExecutionContext* ctx_ptr = &ctx;
           ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, [node_index, i, ctx_ptr]() {
-                //std::cout << "Kernel for node index: " << node_index << " on logic stream: " << i << " execution is done. " << std::endl;
                 ctx_ptr->RecycleNodeInputs(node_index);
               }).IsOK(), MakeString("kernel fail!"));
         } else {
@@ -328,13 +331,15 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           nvtxRangePop();
 #endif
         }
+        LOGS(*ctx.logger, INFO) << "stream " << i << " complete with " << node->Name();
       });
       // check if any notification generated by this node, if yes, push a activate
       auto notification_it = node_to_notification.find(node_index);
       if (notification_it != node_to_notification.end()) {
         NotificationIndex notification_index = notification_it->second;
-        logic_streams_[i]->commands_.push_back([notification_index](ExecutionContext& ctx) {
+        logic_streams_[i]->commands_.push_back([notification_index, i, node](ExecutionContext& ctx) {
           ctx.notifications[notification_index]->Activate();
+          LOGS(*ctx.logger, INFO) << "stream " << i << " send notification for " << node->Name();
         });
       }
     }
@@ -374,31 +379,16 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     }
   }
 
-  std::function<std::string(const std::string&)> shape_output = [&](const std::string& s) {
-    if (s.size() < 10) {
-      return "node_" + s + "_computation";
+  //TODO: move this to logger
+  for (int i = 0; i < streams_log_.size(); ++i) {
+    if (streams_log_[i].empty()) {
+      std::cout << "stream " << i << ": <empty>" << std::endl;
     } else {
-      return s;
+      std::stringstream ss;
+      std::copy(streams_log_[i].begin(), streams_log_[i].end() - 1, std::ostream_iterator<std::string>(ss, ","));
+      ss << streams_log_[i].back();
+      std::cout << "stream " << i << ": " << ss.str() << std::endl;
     }
-  };
-
-  std::cout << logic_streams_.size() << " logic stream created" << std::endl;
-  for (int i = 0; i < logic_streams_.size(); ++i) {
-    std::cout << " -------- logic stream " << i;
-  }
-  std::cout << std::endl;
-  for (int i = 0;; ++i) {
-    bool has_out = false;
-    for (int j = 0; j < streams_stdout.size(); ++j) {
-      if (i < streams_stdout[j].size()) {
-        has_out = true;
-        std::cout << "      " << shape_output(streams_stdout[j][i]);
-      } else {
-        std::cout << "               ";
-      }
-    }
-    std::cout << std::endl;
-    if (!has_out) break;
   }
 }
 
