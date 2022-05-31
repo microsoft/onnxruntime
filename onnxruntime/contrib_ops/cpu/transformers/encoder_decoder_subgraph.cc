@@ -248,6 +248,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
   allocator_ = default_allocator;
   const OrtMemoryInfo& location = cpu_alloactor->Info();
+  ORT_UNUSED_PARAMETER(location);
   std::cout << "EncoderSubgraph::CreateInitialFeeds 251" << std::endl;
   // The ordering is the same as used in Setup
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
@@ -269,6 +270,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   if (attn_mask_value != nullptr) {
     std::cout << "EncoderSubgraph::CreateInitialFeeds 270" << std::endl;
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
+    ORT_UNUSED_PARAMETER(attn_mask);
     //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), location, attention_mask);
     Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
     int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
