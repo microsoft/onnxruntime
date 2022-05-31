@@ -277,7 +277,6 @@ TEST(Snpe_ConvertFromAbs, QuantizedModelItensorFloatTest) {
   test.Run();
 }
 
-#endif
-
 }  // namespace test
 }  // namespace onnxruntime
+#endif
