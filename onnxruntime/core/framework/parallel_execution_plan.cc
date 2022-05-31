@@ -51,11 +51,6 @@ struct ExecutionContext {
   const SessionState* session_state;
   ExecutionFrame* frame;
   const logging::Logger* logger;
-  //std::unique_ptr<Notification[]> notifications;
-  //std::vector<ReleaseNotificationFn> notification_release_fns;
-  //std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
-  //ReleasePlan release_plan;
-  const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
 
