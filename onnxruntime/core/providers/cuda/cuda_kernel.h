@@ -81,8 +81,7 @@ class CudaKernel : public OpKernel {
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
   inline cudaStream_t Stream() const { 
-    auto* stream = Info().GetComputeStream();
-    return static_cast<cudaStream_t>(stream ? stream->handle : nullptr);
+    return static_cast<cudaStream_t>(provider_->GetComputeStream());
   }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory

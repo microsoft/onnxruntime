@@ -724,7 +724,6 @@ struct ProviderHost {
   virtual uint32_t OpKernelInfo__GetInputCount(const OpKernelInfo* p) = 0;
   virtual uint32_t OpKernelInfo__GetOutputCount(const OpKernelInfo* p) = 0;
   virtual const Node& OpKernelInfo__node(const OpKernelInfo* p) = 0;
-  virtual Stream* OpKernelInfo__GetComputeStream(const OpKernelInfo* p) = 0;
 
   virtual const OrtMemoryInfo& OpKernelInfo__GetInputLocation(const OpKernelInfo* p, int input_index) = 0;
   virtual const OrtMemoryInfo& OpKernelInfo__GetOutputLocation(const OpKernelInfo* p, int output_index) = 0;

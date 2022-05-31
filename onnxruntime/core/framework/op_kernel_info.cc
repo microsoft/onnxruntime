@@ -15,9 +15,7 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
                            const DataTransferManager& data_transfer_mgr,
-                           const std::vector<AllocPlanPerValue>& allocation_plan,
-                           // which stream this kernel will be placed
-                           Stream* stream)
+                           const std::vector<AllocPlanPerValue>& allocation_plan)
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
@@ -26,12 +24,11 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
       proto_helper_context_(node),
-      stream_(stream),
       allocation_plan_(allocation_plan){}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
-                   other.ort_value_name_idx_map_, other.data_transfer_mgr_, other.allocation_plan_, other.stream_) {}
+                   other.ort_value_name_idx_map_, other.data_transfer_mgr_, other.allocation_plan_) {}
 
 const OrtMemoryInfo& OpKernelInfo::GetMemoryInfo(int device_id, OrtMemType mem_type) const {
   AllocatorPtr alloc = GetAllocator(device_id, mem_type);
@@ -81,10 +78,6 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_
 
   *constant_input_value = &iter->second.Get<Tensor>();
   return true;
-}
-
-Stream* OpKernelInfo::GetComputeStream() const noexcept {
-  return stream_;
 }
 
 const OrtMemoryInfo& OpKernelInfo::GetInputLocation(int input_index) const {

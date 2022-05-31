@@ -259,7 +259,6 @@ Status KernelRegistry::TryCreateKernel(const Node& node,
                                        FuncManager& funcs_mgr,
                                        const DataTransferManager& data_transfer_mgr,
                                        const std::vector<AllocPlanPerValue>& allocation_plan,
-                                       Stream* stream,
                                        /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
   const KernelCreateInfo* kernel_create_info = nullptr;
   ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
@@ -269,8 +268,7 @@ Status KernelRegistry::TryCreateKernel(const Node& node,
                            constant_initialized_tensors,
                            ort_value_name_idx_map,
                            data_transfer_mgr,
-                           allocation_plan,
-                           stream);
+                           allocation_plan);
   return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
 }
 

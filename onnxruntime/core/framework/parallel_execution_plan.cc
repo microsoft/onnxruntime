@@ -85,7 +85,6 @@ using CommandFn = std::function<void(ExecutionContext&)>;
 // a logic stream will be binded to multiple device stream, as the command in the same logic stream may be executed on different EPs.
 // i.e., if we set concurrency level to 1, the single logic stream will be equal to our sequential execution plan, which has both cpu and gpu kernels
 struct LogicStream {
-  std::vector<std::unique_ptr<Stream>> device_streams_;
   std::vector<CommandFn> commands_;
 
   void Run(ExecutionContext& ctx) {

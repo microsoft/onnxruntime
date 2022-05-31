@@ -30,8 +30,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
                         const DataTransferManager& data_transfer_mgr,
                         // the allocation plan for all the tensors, indexed by the ortvalue index which you can lookup from mlvalue_name_idx_map
-                        const std::vector<AllocPlanPerValue>& allocation_plan,
-                        Stream* stream);
+                        const std::vector<AllocPlanPerValue>& allocation_plan);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -49,8 +48,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
-  Stream* GetComputeStream() const noexcept; 
-
   const OrtMemoryInfo& GetInputLocation(int input_index) const;
   const OrtMemoryInfo& GetOutputLocation(int output_index) const;
 
@@ -67,8 +64,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
-  // which stream this kernel will be placed
-  Stream* stream_;
   // reference to the allocation plan for all the tensors
   const std::vector<AllocPlanPerValue>& allocation_plan_;
 };

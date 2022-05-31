@@ -297,7 +297,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   kernel_def_builder->SetName(op_name);
   kernel_def_builder->SetDomain(domain);
   kernel_def_builder->SinceVersion(version);
-  OpKernelInfo instant_kernel_info(node, *kernel_def_builder->Build(), *ep, {}, {}, {}, {}, nullptr);
+  OpKernelInfo instant_kernel_info(node, *kernel_def_builder->Build(), *ep, {}, {}, {}, {});
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
   FuncManager func_mgr;
   status = kernel_create_info->kernel_create_func(func_mgr, instant_kernel_info, op_kernel);

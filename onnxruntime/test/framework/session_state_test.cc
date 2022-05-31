@@ -77,7 +77,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr(), s.GetPerAllocPlan(), /*stream*/ nullptr);
+                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr(), s.GetPerAllocPlan());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
