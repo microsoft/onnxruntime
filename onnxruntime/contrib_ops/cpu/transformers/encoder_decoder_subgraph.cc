@@ -254,10 +254,14 @@ Status EncoderSubgraph::CreateInitialFeeds(
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
   std::cout << "EncoderSubgraph::CreateInitialFeeds 254" << std::endl;
   auto element_type = DataTypeImpl::GetType<int32_t>();
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 257" << std::endl;
   OrtValue encoder_input_ids;
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 259" << std::endl;
   //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
   Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, encoder_input_ids);
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 262" << std::endl;
   int32_t* encoder_input_ids_data = encoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 264" << std::endl;
   *encoder_input_ids_data = 250019;
   encoder_input_ids_data++;
   *encoder_input_ids_data = 2;
