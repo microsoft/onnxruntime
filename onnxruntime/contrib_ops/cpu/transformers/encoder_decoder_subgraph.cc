@@ -254,16 +254,34 @@ Status EncoderSubgraph::CreateInitialFeeds(
   std::cout << "EncoderSubgraph::CreateInitialFeeds 254" << std::endl;
   auto element_type = DataTypeImpl::GetType<int32_t>();
   OrtValue encoder_input_ids;
-  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
-  std::cout << "EncoderSubgraph::CreateInitialFeeds 258" << std::endl;
+  //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
+  Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, encoder_input_ids);
+  int32_t* encoder_input_ids_data = encoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  *encoder_input_ids_data = 250019;
+  encoder_input_ids_data++;
+  *encoder_input_ids_data = 2;
+  encoder_input_ids_data++;
+  *encoder_input_ids_data = 2673;
+  encoder_input_ids_data++;
+  *encoder_input_ids_data = 2;
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 267" << std::endl;
   OrtValue attention_mask;
   if (attn_mask_value != nullptr) {
-    std::cout << "EncoderSubgraph::CreateInitialFeeds 261" << std::endl;
+    std::cout << "EncoderSubgraph::CreateInitialFeeds 270" << std::endl;
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
-    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), location, attention_mask);
-    std::cout << "EncoderSubgraph::CreateInitialFeeds 264" << std::endl;
+    //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), location, attention_mask);
+    Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
+    int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+    *mask_data = 1;
+    mask_data++;
+    *mask_data = 1;
+    mask_data++;
+    *mask_data = 1;
+    mask_data++;
+    *mask_data = 1;  
+    std::cout << "EncoderSubgraph::CreateInitialFeeds 282" << std::endl;
   } else {
-    std::cout << "EncoderSubgraph::CreateInitialFeeds 266" << std::endl;
+    std::cout << "EncoderSubgraph::CreateInitialFeeds 284" << std::endl;
     Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
     // def _prepare_attention_mask_for_generation(
     //     self, input_ids: torch.Tensor, pad_token_id: int, eos_token_id: int
@@ -276,11 +294,11 @@ Status EncoderSubgraph::CreateInitialFeeds(
     //         return input_ids.ne(pad_token_id).long()
     //     return input_ids.new_ones(input_ids.shape)
     int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-    std::cout << "EncoderSubgraph::CreateInitialFeeds 279" << std::endl;
+    std::cout << "EncoderSubgraph::CreateInitialFeeds 297" << std::endl;
     const int32_t* word_id = encoder_input_ids.GetMutable<Tensor>()->Data<int32_t>();
-    std::cout << "EncoderSubgraph::CreateInitialFeeds 281" << std::endl;
+    std::cout << "EncoderSubgraph::CreateInitialFeeds 299" << std::endl;
     int32_t* mask = mask_data;
-    std::cout << "EncoderSubgraph::CreateInitialFeeds 283" << std::endl;
+    std::cout << "EncoderSubgraph::CreateInitialFeeds 301" << std::endl;
     for (int i = 0; i < batch_size; i++) {
       for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
         if (*word_id == pad_token_id) {
