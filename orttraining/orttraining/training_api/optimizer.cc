@@ -27,7 +27,8 @@ Status Optimizer::GenerateMomentumNamedStates() {
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
       for (auto& state_name : MOMENT_STATE_NAMES) {
         OrtValue param_state;
-        ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(), "Error generating moment state for ", pair.first);
+        ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(),
+                    "Error generating moment state for ", pair.first);
         cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
       }
     }
@@ -74,8 +75,8 @@ Status Optimizer::ConstructInputs() {
   return Status::OK();
 }
 
-Optimizer::Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-                     InferenceSession* optim_session) : named_parameters_(parameters) {
+Optimizer::Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+                     InferenceSession* optim_session) : named_parameters_(named_parameters) {
   optim_sess_ = optim_session;
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);

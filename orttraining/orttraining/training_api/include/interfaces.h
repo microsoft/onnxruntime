@@ -89,6 +89,10 @@ struct OrtModule {
     }
   }
 
+  std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>> NamedParameters() const {
+    return module_->NamedParameters();
+  }
+
   bool ResetGrad() {
     return module_->ResetGrad().IsOK();
   }

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/session/inference_session.h"
 
 namespace onnxruntime {
@@ -10,7 +11,6 @@ namespace api {
 
 struct Parameter {
  public:
-  // Create parameter
   Parameter(const std::string& name, const OrtValue& data, const bool requires_grad)
       : name_(name), data_(data), requires_grad_(requires_grad) {
     ORT_ENFORCE(data_.IsAllocated());
@@ -21,7 +21,7 @@ struct Parameter {
   OrtValue& Data() { return data_; }
   const std::string& Name() const { return name_; }
 
-  // Return if trainable. The trainable property of a param
+  // Return parameter trainable or not. The trainable property of a param
   // cannot change over the lifetime of the on-device training
   // session since the gradient graph is prebuilt for this setting.
   bool RequiresGrad() const { return requires_grad_; }
@@ -34,9 +34,8 @@ struct Parameter {
   Status ResetGrad();
 
  protected:
-  Status AllocateGrad(const std::string& gradient_name, const SessionState& allocator);
+  Status AllocateGrad(const std::string& gradient_name, const OrtValue& param_gradr);
 
-  // need to set grad but not public api
  private:
   std::string name_;
   OrtValue data_;
@@ -44,8 +43,6 @@ struct Parameter {
   OrtValue gradient_;
   std::string gradient_name_;
 
-  // Whether the param is trainable. The optimizer state is
-  // only created for a trainable param
   bool requires_grad_{true};
   friend class Module;
 };
@@ -60,10 +57,10 @@ struct Module {
  public:
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
-  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
          InferenceSession* train_session);
 
-  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+  Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
          InferenceSession* train_session,
          InferenceSession* eval_session);
 
