@@ -1,69 +1,44 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "cxxopts.hpp"
-#include "core/util/math.h"
-#include "core/common/common.h"
-#include "core/common/logging/logging.h"
-#include "core/common/logging/sinks/clog_sink.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/session/environment.h"
-#include "core/session/inference_session.h"
-#include "core/providers/cpu/cpu_provider_factory_creator.h"
-#include "orttraining/core/framework/tensorboard/event_writer.h"
-
-#include "orttraining/training_api/include/utils.h"
+#include <onnxruntime_cxx_api.h>
 #include "orttraining/training_api/include/interfaces.h"
 
-using namespace onnxruntime;
-using namespace onnxruntime::common;
-using namespace onnxruntime::training;
-using namespace onnxruntime::training::tensorboard;
+#include "cxxopts.hpp"
+#include "synthetic_data_loader.h"
+
 using namespace onnxruntime::training::api;
-using namespace onnxruntime::training::api::utils;
 using namespace std;
 
-#ifdef USE_CUDA
-namespace onnxruntime {
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-
-}  // namespace onnxruntime
-#endif
-
-static SessionOptions session_options;
-
 struct TestRunnerParameters {
-  PathString model_training_graph_path;
-  PathString model_evaluation_graph_path;
-  PathString optimizer_training_graph_path;
-  // path to checkpoint to load
-  PathString checkpoint_to_load_path;
+  // Models configs.
+  std::string model_training_graph_path;
+  std::optional<std::string> model_evaluation_graph_path;
+  std::string optimizer_training_graph_path;
+  std::string checkpoint_to_load_path;
   std::string model_name;
 
-  PathString train_data_dir;
-  PathString test_data_dir;
-  PathString output_dir;  // Output of training, e.g., trained model files.
+  // Data configs.
+  std::string train_data_dir;
+  std::string test_data_dir;
+  std::string output_dir;  // Output of training, e.g., trained model files.
 
-  size_t train_batch_size;
-  size_t num_train_epochs;
-  size_t eval_batch_size;
-  size_t eval_interval;
-  size_t checkpoint_interval;
-  int gradient_accumulation_steps = 1;
-
-  // Allocator to use for allocating inputs from the dataset (optional).
-  AllocatorPtr input_allocator;
-  std::unique_ptr<IExecutionProvider> provider;
+  // Training configs.
+  int64_t train_batch_size;
+  int64_t num_train_epochs;
+  int64_t eval_batch_size;
+  int64_t eval_interval;
+  int64_t checkpoint_interval;
+  int64_t gradient_accumulation_steps = 1;
 };
 
-struct OrtTestRunnerParameters {
-  logging::Severity log_severity{logging::Severity::kWARNING};
-  int vlog_level{-1};
-};
+void EnforceCheck(bool run_ret, std::string err_msg) {
+  if (!run_ret) {
+    throw std::runtime_error("EnforceCheck failed: " + err_msg);
+  }
+}
 
-Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtTestRunnerParameters& ort_params) {
+bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
   cxxopts::Options options("Training API Test", "Main Program to test training C++ APIs.");
   // clang-format off
   options
@@ -74,12 +49,9 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
         cxxopts::value<std::string>()->default_value(""))
       ("optimizer_training_graph_path", "The path to the optimizer graph to load. ",
         cxxopts::value<std::string>()->default_value(""))
-      ("checkpoint_to_load_path",
-       "The path to the checkpoint to load. If not provided, the latest "
-       "checkpoint in checkpoints_dir, if any, is used.",
+      ("checkpoint_to_load_path", "The path to the checkpoint to load if provided.",
         cxxopts::value<std::string>()->default_value(""))
-      ("model_name",
-       "The name of the model.",
+      ("model_name", "The name of the model.",
         cxxopts::value<std::string>()->default_value("model_test"))
 
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
@@ -97,21 +69,21 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
         cxxopts::value<int>()->default_value("1"));
 
-  options
-    .add_options("ORT configuration")
-      ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
-        cxxopts::value<int>()->default_value("2"/*logging::Severity::kWARNING*/))
-      ("ort_vlog_level", "ORT maximum VLOG level (verbose debug logging)",
-        cxxopts::value<int>()->default_value("-1"));
   // clang-format on
 
   try {
     auto flags = options.parse(argc, argv);
 
-    params.model_training_graph_path = ToPathString(flags["model_training_graph_path"].as<std::string>());
-    params.model_evaluation_graph_path = ToPathString(flags["model_evaluation_graph_path"].as<std::string>());
-    params.optimizer_training_graph_path = ToPathString(flags["optimizer_training_graph_path"].as<std::string>());
-    params.checkpoint_to_load_path = ToPathString(flags["checkpoint_to_load_path"].as<std::string>());
+    params.model_training_graph_path = flags["model_training_graph_path"].as<std::string>();
+    std::string eval_path = flags["model_evaluation_graph_path"].as<std::string>();
+    if (eval_path.empty()) {
+      params.model_evaluation_graph_path = std::nullopt;
+    } else {
+      params.model_evaluation_graph_path = eval_path;
+    }
+
+    params.optimizer_training_graph_path = flags["optimizer_training_graph_path"].as<std::string>();
+    params.checkpoint_to_load_path = flags["checkpoint_to_load_path"].as<std::string>();
     params.model_name = flags["model_name"].as<std::string>();
 
     params.train_batch_size = flags["train_batch_size"].as<int>();
@@ -125,146 +97,178 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
     params.checkpoint_interval = flags["checkpoint_interval"].as<int>();
 
     params.gradient_accumulation_steps = flags["gradient_accumulation_steps"].as<int>();
-    if (params.gradient_accumulation_steps < 1) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "Invalid gradient_accumulation_steps parameter: should be >= 1");
-    }
+    EnforceCheck(params.gradient_accumulation_steps >= 1,
+                 "Invalid gradient_accumulation_steps parameter: should be >= 1");
 
-    params.train_data_dir = ToPathString(flags["train_data_dir"].as<std::string>());
-    params.test_data_dir = ToPathString(flags["test_data_dir"].as<std::string>());
-    params.output_dir = ToPathString(flags["output_dir"].as<std::string>());
+    params.train_data_dir = flags["train_data_dir"].as<std::string>();
+    params.test_data_dir = flags["test_data_dir"].as<std::string>();
+    params.output_dir = flags["output_dir"].as<std::string>();
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
     }
 
-    session_options.use_deterministic_compute = flags["use_deterministic_compute"].as<bool>();
-
-    ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
-    ORT_RETURN_IF_NOT(
-        logging::Severity::kVERBOSE <= ort_params.log_severity && ort_params.log_severity <= logging::Severity::kFATAL,
-        "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
-        ", ", static_cast<int>(logging::Severity::kFATAL), "].");
-    ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
-  } catch (const exception& e) {
+  } catch (const std::exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
-    cerr << msg << ": " << e.what() << "\n"
-         << options.help() << "\n";
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, msg);
+    std::cerr << msg << ": " << e.what() << "\n"
+              << options.help() << "\n";
+    return false;
   }
 
-  return Status::OK();
+  return true;
 }
 
-std::vector<std::vector<OrtValue>> CreateSyntheticDataLoader(size_t batch_size,
-                                                             AllocatorPtr alloc = nullptr) {
-  OrtValue input, positions;
-  // hard coded each sample to have 4 elements so far.
-  // todo: we can make it support more generic once we are clear what our offline process graph needed.
-  CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 4}, &input, alloc = alloc);
-  CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 3}, &positions, alloc = alloc);
-  return std::vector<std::vector<OrtValue>>(batch_size, std::vector<OrtValue>{input, positions});
-}
-
-Status RunTraining(const TestRunnerParameters& params) {
-  std::string tensorboard_file = params.output_dir + "/tb.event";
-  std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
-
-  CheckpointState state;
-  ORT_ENFORCE(LoadCheckpoint(params.checkpoint_to_load_path, state).IsOK());
-
-  Module module(params.model_training_graph_path,
-                state.module_checkpoint_state.named_parameters,
-                params.model_evaluation_graph_path);
-
-  Optimizer optimizer(params.optimizer_training_graph_path,
-                      state.module_checkpoint_state.named_parameters);
-
-#ifdef USE_CUDA
-  api::SetExecutionProvider(module, optimizer, params.provider.get());
-#endif
-
-  auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);
-  std::vector<std::vector<OrtValue>>
-      data_loader = CreateSyntheticDataLoader(params.train_batch_size,
-                                              params.input_allocator);
-
-  size_t NUM_EPOCHS = params.num_train_epochs;
-  size_t GRAD_ACC_STEPS = params.gradient_accumulation_steps;
-  size_t EVAL_STEPS = params.eval_interval;
-  size_t SAVE_STEPS = params.checkpoint_interval;
-  std::string tag("train");
-
-  for (size_t epoch = 0, batch_idx = 0; epoch < NUM_EPOCHS; ++epoch) {
-    for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
-      std::vector<OrtValue>& inputs = *it;
-      std::vector<OrtValue> fetches;
-      ORT_ENFORCE(module.TrainStep(inputs, fetches).IsOK());
-
-      float loss = GetValue<float>(fetches[3]);
-      tensorboard->AddSummary(std::to_string(loss), batch_idx, tag);
-      std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
-
-      if (batch_idx % GRAD_ACC_STEPS == 0) {
-        // gradient accumulation steps completed
-        ORT_ENFORCE(optimizer.Step().IsOK());
-        // modify learning rate
-        ORT_ENFORCE(scheduler->Step().IsOK());
-        ORT_ENFORCE(module.ResetGrad().IsOK());
-      }
-
-      if (batch_idx % EVAL_STEPS == 0) {
-        std::vector<OrtValue> eval_results;
-        ORT_ENFORCE(module.EvalStep(inputs, eval_results).IsOK());
-      }
-
-      if (batch_idx % SAVE_STEPS == 0) {
-        // save trained weights
-        CheckpointState state_to_save;
-        ORT_ENFORCE(module.GetStateDict(state_to_save.module_checkpoint_state).IsOK());
-        ORT_ENFORCE(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
-        state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
-        std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
-        ORT_ENFORCE(SaveCheckpoint(state_to_save, ckpt_file).IsOK());
-      }
-
-      batch_idx++;
+void InitSyntheticDataLoader(
+    onnxruntime::training::test::training_api::SyntheticDataLoader& data_loader,
+    const TestRunnerParameters& params,
+    int64_t num_of_batches_per_epoch) {
+  bool sample_model = false;
+  if (sample_model) {
+    std::vector<int64_t> input1_shape{params.train_batch_size, 784};
+    std::vector<int64_t> target_shape{params.train_batch_size};
+    for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
+      auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
+      sample->AddFloatInput(input1_shape);
+      sample->AddInt32Input(target_shape, 0, 1);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
+    }
+  } else {
+    int64_t sequence_length = 128;
+    std::vector<int64_t> input_ids_shape{params.train_batch_size, sequence_length};
+    std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
+    std::vector<int64_t> target_shape{params.train_batch_size, 7};
+    for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
+      auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
+      sample->AddInt64Input(input_ids_shape, 0, 250002 - 1);
+      sample->AddInt64Input(attention_mask_shape, 0, 1);
+      sample->AddFloatInput(target_shape);
+      data_loader.AddSyntheticSampleBatch(std::move(sample));
     }
   }
-
-  return Status::OK();
 }
 
-#define RETURN_IF_FAIL(expr)                                \
-  do {                                                      \
-    auto status = (expr);                                   \
-    if ((!status.IsOK())) {                                 \
-      printf("Fail: %s \n", status.ErrorMessage().c_str()); \
-      return -1;                                            \
-    }                                                       \
-  } while (0);
+void RunTraining(const TestRunnerParameters& params) {
+  const auto& api = Ort::GetApi();
 
-int main(int argc, char* argv[]) {
-  TestRunnerParameters params;
-  OrtTestRunnerParameters ort_params{};
-  RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
+  CheckpointState state;
+  // TODO: update using public API's calling pattern, e.g. api.LoadCheckpoint().
+  EnforceCheck(LoadCheckpoint(params.checkpoint_to_load_path, state).IsOK(), "Failed to load checkpoint");
 
-  // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
-  string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
-                                                  ort_params.log_severity,
-                                                  false,
-                                                  logging::LoggingManager::InstanceType::Default,
-                                                  &default_logger_id,
-                                                  ort_params.vlog_level};
+  OrtSessionOptions* session_options = nullptr;
+  EnforceCheck(api.CreateSessionOptions(&session_options) == nullptr, "Failed to create session options.");
+
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions provider_options{};
-  if (auto factory = CreateExecutionProviderFactory_Cuda(&provider_options))
-    params.provider = std::move(factory->CreateProvider());
-
-  params.input_allocator = CreateCUDAPinnedAllocator(provider_options.device_id, CUDA_PINNED);
+  OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+  EnforceCheck(api.CreateCUDAProviderOptions(&cuda_options) == nullptr, "Failed to create cuda provider options");
+  EnforceCheck(api.SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options) == nullptr,
+               "Failed to append cuda ep.");
 #endif
 
-  // start training session
-  RETURN_IF_FAIL(RunTraining(params));
+  OrtEnv* env = nullptr;
+  EnforceCheck(api.CreateEnv(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner", &env) == nullptr, "Failed to create env");
+
+  // TODO: update using public API's calling pattern, e.g. api.CreateModule().
+  Ort::OrtModule module(api, env, session_options,
+                        params.model_training_graph_path,
+                        state.module_checkpoint_state.named_parameters,
+                        params.model_evaluation_graph_path);
+
+  bool do_eval = params.model_evaluation_graph_path.has_value();
+
+  // TODO: update using public API's calling pattern, e.g. api.CreateOptimizer().
+  Ort::OrtOptimizer optimizer(api, env, session_options,
+                              params.optimizer_training_graph_path,
+                              state.module_checkpoint_state.named_parameters);
+
+  int64_t sample_batch_count_per_epoch = 4;
+  if (sample_batch_count_per_epoch < params.train_batch_size || sample_batch_count_per_epoch % params.train_batch_size != 0) {
+    throw std::runtime_error("sample_count cannot be divisible by batch_size");
+  }
+  int64_t num_of_batches_per_epoch = sample_batch_count_per_epoch / params.train_batch_size;
+
+  onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
+  InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
+
+  int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
+  int64_t warmup_step_count = total_step_count / 3;
+
+  // TODO: update using public API's calling pattern, e.g. api.CreateLinearLRScheduler().
+  Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
+
+  const int64_t stabilized_perf_start_step = 0;
+  double stabilized_total_end_to_end_time{0};
+  auto end_to_end_start = std::chrono::high_resolution_clock::now();
+
+  for (int64_t epoch = 0, batch_idx = 0; epoch < params.num_train_epochs; ++epoch) {
+    for (size_t step_in_cur_epoch = 0; step_in_cur_epoch < data_loader.NumOfSampleBatches(); ++step_in_cur_epoch) {
+      if (batch_idx >= stabilized_perf_start_step) {
+        end_to_end_start = std::chrono::high_resolution_clock::now();
+      }
+
+      std::vector<Ort::Value> inputs;
+      data_loader.GetNextSampleBatch(inputs);
+
+      std::vector<Ort::Value> fetches;
+      EnforceCheck(module.TrainStep(inputs, fetches), "Failed during module.TrainStep.");
+
+      float loss = *(fetches[0].GetTensorMutableData<float>());
+      std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
+
+      if ((batch_idx + 1) % params.gradient_accumulation_steps == 0) {
+        // Gradient accumulation steps completed.
+        EnforceCheck(optimizer.Step(), "Failed during optimizer.Step().");
+        // Update learning rate.
+        EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
+        EnforceCheck(module.ResetGrad(), "Failed during module.ResetGrad().");
+      }
+
+      if (do_eval && (batch_idx + 1) % params.eval_interval == 0) {
+        std::vector<Ort::Value> eval_results;
+        EnforceCheck(module.EvalStep(inputs, eval_results), "Failed during Module.EvalStep().");
+      }
+
+      if ((batch_idx + 1) % params.checkpoint_interval == 0) {
+        // Save trained weights
+        CheckpointState state_to_save;
+        EnforceCheck(module.GetStateDict(state_to_save.module_checkpoint_state), "Failed to load module states.");
+        EnforceCheck(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state), "Failed to load optimizer states.");
+        state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
+        std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
+
+        // TODO: update using public API's calling pattern, e.g. api.SaveCheckpoint().
+        EnforceCheck(SaveCheckpoint(state_to_save, ckpt_file).IsOK(), "Failed to save checkpoint.");
+      }
+      batch_idx++;
+    }
+
+    data_loader.ResetIterateIndex();
+  }
+
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration_seconds = end - end_to_end_start;
+  stabilized_total_end_to_end_time = duration_seconds.count();
+
+  std::cout << "Training completed - end to end latency: " << stabilized_total_end_to_end_time << "(s)" << std::endl;
+
+  api.ReleaseEnv(env);
+
+#ifdef USE_CUDA
+  // Finally, don't forget to release the provider options
+  api.ReleaseCUDAProviderOptions(cuda_options);
+#endif
+
+  api.ReleaseSessionOptions(session_options);
+}
+
+int main(int argc, char* argv[]) {
+  // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
+  // This is to mitigate the issue " Attempt to use DefaultLogger but none has been registered".
+  // Need understand why the public CreateEnv did not get default logger ready.
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner");
+
+  TestRunnerParameters params;
+  EnforceCheck(ParseArguments(argc, argv, params), "Parse arguments failed.");
+
+  // Start training session
+  RunTraining(params);
   return 0;
 }
