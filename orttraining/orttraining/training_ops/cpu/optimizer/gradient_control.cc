@@ -24,14 +24,22 @@ Status InPlaceAccumulator<T>::Compute(OpKernelContext* context) const {
   const Tensor* gradient_buffer = context->Input<Tensor>(0);
   const Tensor* do_update_tensor = context->Input<Tensor>(2);
   Tensor* accumulated_gradient = context->Output(0, gradient_buffer->Shape());
-  const void* input_data = gradient_buffer->template Data<T>();
   void* output_data = accumulated_gradient->template MutableData<T>();
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
+#ifdef ENABLE_TRAINING_ON_DEVICE
+      // This is temporary fix till we potentially redesign inplaceaccumulator op
+      // to fit lazy reset grad functionality
+      const Tensor* new_gradient = context->Input<Tensor>(1);
+      const void* updated_data = new_gradient->template Data<T>();
+      memcpy(output_data, updated_data, new_gradient->SizeInBytes());
+#else
+      const void* input_data = gradient_buffer->template Data<T>();
       if (output_data != input_data) {
         memcpy(output_data, input_data, gradient_buffer->SizeInBytes());
       }
+#endif
       return Status::OK();
     }
   }

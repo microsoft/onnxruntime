@@ -75,7 +75,19 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
+#ifdef ENABLE_TRAINING_ON_DEVICE
+      // This is temporary fix till we potentially redesign inplaceaccumulator op
+      // to fit lazy reset grad functionality
+      if (std::is_same<T,T_GRAD>::value) {
+        const void* source = right_addee_buffer.template Data<T>();
+        T* target = accumulation_output.template MutableData<T>();
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+      } else {
+        ORT_NOT_IMPLEMENTED();
+      }
+#else
       ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T>(Stream(), left_addee_buffer, accumulation_output));
+#endif
       return Status::OK();
     }
   }

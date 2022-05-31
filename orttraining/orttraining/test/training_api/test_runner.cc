@@ -12,7 +12,7 @@
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 
-// ORT training C++ API includes
+#include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/interfaces.h"
 
 using namespace onnxruntime;
@@ -20,6 +20,7 @@ using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace onnxruntime::training::api;
+using namespace onnxruntime::training::api::utils;
 using namespace std;
 
 #ifdef USE_CUDA
@@ -154,30 +155,6 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
   return Status::OK();
 }
 
-template <typename T>
-static void CreateInputOrtValue(gsl::span<const int64_t> dims,
-                                const std::vector<T>& value,
-                                OrtValue* p_ortvalue,
-                                AllocatorPtr alloc = nullptr) {
-  static CPUExecutionProviderInfo info;
-  static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
-
-  TensorShape shape(dims);
-  assert(shape.Size() == static_cast<int64_t>(value.size()));
-  auto element_type = DataTypeImpl::GetType<T>();
-  auto allocator = alloc ? alloc : cpu_allocator;
-  auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
-
-  if (value.size() > 0) {
-    memcpy(p_tensor->MutableDataRaw(), value.data(), p_tensor->SizeInBytes());
-  }
-
-  p_ortvalue->Init(p_tensor.release(),
-                   DataTypeImpl::GetType<Tensor>(),
-                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-}
-
 std::vector<std::vector<OrtValue>> CreateSyntheticDataLoader(size_t batch_size,
                                                              AllocatorPtr alloc = nullptr) {
   OrtValue input, positions;
@@ -186,17 +163,6 @@ std::vector<std::vector<OrtValue>> CreateSyntheticDataLoader(size_t batch_size,
   CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 4}, &input, alloc = alloc);
   CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 3}, &positions, alloc = alloc);
   return std::vector<std::vector<OrtValue>>(batch_size, std::vector<OrtValue>{input, positions});
-}
-
-float GetLossValue(OrtValue& ort_value) {
-  const Tensor& loss_tensor = ort_value.Get<Tensor>();
-  float loss = 0;
-  if (DataTypeImpl::GetType<float>() == loss_tensor.DataType()) {
-    loss = *(loss_tensor.template Data<float>());
-  } else {
-    ORT_THROW("loss data type not supported.");
-  }
-  return loss;
 }
 
 Status RunTraining(const TestRunnerParameters& params) {
@@ -234,7 +200,7 @@ Status RunTraining(const TestRunnerParameters& params) {
       std::vector<OrtValue> fetches;
       ORT_ENFORCE(module.TrainStep(inputs, fetches).IsOK());
 
-      float loss = GetLossValue(fetches[3]);
+      float loss = GetValue<float>(fetches[3]);
       tensorboard->AddSummary(std::to_string(loss), batch_idx, tag);
       std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
 
@@ -243,7 +209,7 @@ Status RunTraining(const TestRunnerParameters& params) {
         ORT_ENFORCE(optimizer.Step().IsOK());
         // modify learning rate
         ORT_ENFORCE(scheduler->Step().IsOK());
-        ORT_ENFORCE(optimizer.ResetGrad().IsOK());
+        ORT_ENFORCE(module.ResetGrad().IsOK());
       }
 
       if (batch_idx % EVAL_STEPS == 0) {
