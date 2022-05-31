@@ -17,7 +17,7 @@ redirect_from: /docs/how-to/build/eps
 
 ## Execution Provider Shared Libraries
 
-The oneDNN, TensorRT, and OpenVINO providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+The oneDNN, TensorRT, and OpenVINO™ providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
 
 ### Built files
 {: .no_toc }
@@ -224,18 +224,18 @@ OneDNN EP build supports building Python wheel for both Windows and linux using 
 
 ## OpenVINO
 
-See more information on the OpenVINO Execution Provider [here](../execution-providers/OpenVINO-ExecutionProvider.md).
+See more information on the OpenVINO™ Execution Provider [here](../execution-providers/OpenVINO-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
 
-1. Install the openvino offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2022.1** for the appropriate OS and target hardware:
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2022.1** for the appropriate OS and target hardware:
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
    Follow [documentation](https://docs.openvino.ai/latest/index.html) for detailed instructions.
 
-  *2022.1 is the recommended OpenVINO version. [OpenVINO 2021.3](https://docs.openvinotoolkit.org/2021.3/index.html) is minimal OpenVINO version requirement.*
+  *2022.1 is the recommended OpenVINO™ version. [OpenVINO™ 2021.3](https://docs.openvinotoolkit.org/2021.3/index.html) is minimal OpenVINO™ version requirement.*
   *The minimum ubuntu version to support 2022.1 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
@@ -243,24 +243,24 @@ See more information on the OpenVINO Execution Provider [here](../execution-prov
    * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
    * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvino.ai/2021.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
 
-3. Initialize the OpenVINO environment by running the setupvars script as shown below. This is a required step:
-   * For Linux run till OpenVINO 2021.4 version:
+3. Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
+   * For Linux run till OpenVINO™ 2021.4 version:
    ```
       $ source <openvino_install_directory>/bin/setupvars.sh
    ```
-   * For Linux run from OpenVINO 2022.1 version:
+   * For Linux run from OpenVINO™ 2022.1 version:
    ```
       $ source <openvino_install_directory>/setupvars.sh
    ```
-   * For Windows run till OpenVINO 2021.4 version:
+   * For Windows run till OpenVINO™ 2021.4 version:
    ```
       C:\ <openvino_install_directory>\bin\setupvars.bat
    ```
-   * For Windows run from OpenVINO 2022.1 version:
+   * For Windows run from OpenVINO™ 2022.1 version:
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO-EP, sourcing OpenVINO won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
+   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
 
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
@@ -287,8 +287,8 @@ See more information on the OpenVINO Execution Provider [here](../execution-prov
 ./build.sh --config RelWithDebInfo --use_openvino <hardware_option> --build_shared_lib
 ```
 
-* `--use_openvino` builds the OpenVINO Execution Provider in ONNX Runtime.
-* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
+* `--use_openvino` builds the OpenVINO™ Execution Provider in ONNX Runtime.
+* `<hardware_option>`: Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -314,7 +314,7 @@ Example's: HETERO:MYRIAD,CPU or AUTO:GPU,CPU or MULTI:MYRIAD,GPU,CPU
 ```
 
 #### Disable subgraph partition Feature
-* Builds the OpenVINO Execution Provider in ONNX Runtime with sub graph partitioning disabled.
+* Builds the OpenVINO™ Execution Provider in ONNX Runtime with sub graph partitioning disabled.
 
 * With this option enabled. Fully supported models run on OpenVINO Execution Provider else they completely fall back to default CPU EP.
 
@@ -326,7 +326,7 @@ Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTIT
        --use_openvino VAD-F_FP32_NO_PARTITION or --use_openvino VAD-M_FP16_NO_PARTITION
 ```
 
-For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
+For more information on OpenVINO™ Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
 
 ---
 
