@@ -198,10 +198,9 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   // Optimizer creation and trainable parameter name definitions.
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
-    auto param = std::make_shared<Parameter>(it->first, it->second);
     bool is_trainable =
-        std::find(trainable_param_names.begin(), trainable_param_names.end(), param->Name()) != trainable_param_names.end();
-    ASSERT_STATUS_OK(param->SetRequiresGrad(is_trainable));
+        std::find(trainable_param_names.begin(), trainable_param_names.end(), it->first) != trainable_param_names.end();
+    auto param = std::make_shared<Parameter>(it->first, it->second, is_trainable);
     named_parameters.insert({it->first, param});
   }
   auto optimizer = Optimizer(model_uri, named_parameters);
@@ -271,7 +270,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   for (auto it = param_named_optimizer_states.begin(); it != param_named_optimizer_states.end(); ++it) {
     for (auto& state_pair : it->second.momentum_named_states) {
       ASSERT_TRUE(state_pair.first == "momentum0" || state_pair.first == "momentum1");
-      const OrtValue& restored_ort_value = *(state_pair.second);
+      const OrtValue& restored_ort_value = state_pair.second;
       const OrtValue& expected_ort_value = name_to_ort_value[it->first];
       ASSERT_TRUE(restored_ort_value.IsTensor() && expected_ort_value.IsTensor());
       const Tensor& restored_tensor = restored_ort_value.Get<Tensor>();

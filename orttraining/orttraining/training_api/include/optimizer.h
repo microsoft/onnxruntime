@@ -22,15 +22,15 @@ namespace api {
  *     }.
  */
 struct ParameterOptimizerState {
-  std::unordered_map<std::string, std::shared_ptr<OrtValue>> momentum_named_states;
+  std::unordered_map<std::string, OrtValue> momentum_named_states;
 };
 
 /**
  * @brief States belong to one specific group of trainable Parameters.
  */
 struct GroupOptimizerState {
-  int64_t step;
-  float learning_rate;
+  int64_t step = 0;
+  float learning_rate = 0.001; // default value used in torch AdamW
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
@@ -45,6 +45,12 @@ struct OptimizerCheckpointState {
   const DataTransferManager* optimizer_session_data_transfer_mgr;
 };
 
+enum class OptimizerType {
+  AdamW,
+  // More optimizers can be added later as:
+  // Lamb,
+};
+
 struct Optimizer {
  public:
   // Initialize an optimizer module from an ORT inference session with loaded
@@ -53,34 +59,35 @@ struct Optimizer {
   Optimizer(const std::string& optim_path_or_bytes,
             const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters);
 
-  // Reset and release the gradient buffer of all trainable params
-  Status ResetGrad() {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return Status::OK();
-  }
-
   // Optimizer Step.
-  Status Step() {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return Status::OK();
-  }
+  Status Step();
 
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
- protected:
   int64_t GetStep() const {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-    return 0;
+    return optimizer_state_.step;
   }
-  Status SetLearningRate(float /*lr*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
+  
+  Status SetLearningRate(float lr) {
+    optimizer_state_.learning_rate = lr;
     return Status::OK();
   }
 
  private:
+  // Generates optimizer momentum states for applicable optimizer types
+  Status GenerateMomentumNamedStates();
+  // Constructs the ortvalue inputs to be fed to the graph
+  // at each step
+  Status ConstructInputs();
+
+  // TODO: load this info from checkpoint
+  OptimizerType optimizer_type_ = OptimizerType::AdamW;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  std::vector<std::shared_ptr<Parameter>> parameters_;
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   GroupOptimizerState optimizer_state_;
+  std::vector<std::string> input_names_;
+  std::vector<std::string> output_names_;
+  std::vector<OrtValue> inputs_;
 };
 
 class LearningRateScheduler {

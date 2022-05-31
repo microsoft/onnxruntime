@@ -254,7 +254,9 @@ file(GLOB onnxruntime_test_training_src
 
 if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
   file(GLOB onnxruntime_test_training_on_device_src
-      "${ORTTRAINING_SOURCE_DIR}/test/training_api/checkpoint/*.cc")
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/checkpoint/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/test/training_api/core/*.cc"
+    )
 endif()
 
 if(WIN32)
