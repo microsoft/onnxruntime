@@ -50,7 +50,7 @@ class Memcpy final : public OpKernel {
     ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
     auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
     ORT_ENFORCE(gpu_data_transfer != nullptr, "Memcpy: can't find gpu data transfer.");
-    auto s = gpu_data_transfer->CopyTensorAsync(*X, *Y, nullptr);
+    auto s = gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
 
     if (s.IsOK()) {
       auto err = cudaGetLastError();
@@ -60,13 +60,13 @@ class Memcpy final : public OpKernel {
     }
     // now launch the callback to cuda stream, so it will be executed when the kernel is DONE.
     DoneCallback* p = new DoneCallback(done);
-    CUDA_CALL_THROW(cudaStreamAddCallback(static_cast<cudaStream_t>(nullptr), cudaStreamCallback, p, 0));
+    CUDA_CALL_THROW(cudaStreamAddCallback(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle), cudaStreamCallback, p, 0));
     return Status::OK();
   }
 
   Status Compute(OpKernelContext* ctx) const override {
     // sync the stream frist, since it is a sync memory copy
-    cudaStreamSynchronize(static_cast<cudaStream_t>(nullptr));
+    cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle));
 
     auto X_type = ctx->InputType(0);
     if (X_type->IsTensorType()) {

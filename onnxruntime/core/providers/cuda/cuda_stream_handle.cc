@@ -46,23 +46,22 @@ struct CudaNotification : public synchronize::Notification {
   cudaEvent_t event_;
 };
 
-struct CudaStream : Stream {
-  CudaStream(cudaStream_t stream, const IExecutionProvider* ep) : Stream(stream, ep) {
-  }
+CudaStream::CudaStream(cudaStream_t stream, const IExecutionProvider* ep) : Stream(stream, ep) {
+}
 
-  ~CudaStream() {
-    if (handle)
-      CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
-  }
+CudaStream::~CudaStream(){
+  if (handle)
+    CUDA_CALL(cudaStreamDestroy(static_cast<cudaStream_t>(handle)));
+}
 
-  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
-    return std::make_unique<CudaNotification>(this);
-  }
+std::unique_ptr<synchronize::Notification> CudaStream::CreateNotification(size_t /*num_consumers*/){
+  return std::make_unique<CudaNotification>(this);
+}
 
-  void Flush() override {
-    CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(handle))); 
-  }
-};
+void CudaStream::Flush(){
+  CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(handle))); 
+}
+
 
 // CPU Stream command handles
 void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {

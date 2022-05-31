@@ -33,7 +33,6 @@ class ParallelExecutionPlan : public IExecutor, public SequentialExecutionPlan {
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
   const std::vector<int>& GetRefCounts() const;
-  Stream* GetComputeStreamForNode(NodeIndex index) const;
   const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const;
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;
   std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> GenerateReleasePlan();

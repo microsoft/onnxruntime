@@ -3,6 +3,7 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
+struct Stream;
 namespace concurrency {
 class ThreadPool;
 }
@@ -12,6 +13,7 @@ class OpKernelContext {
   using ArgMap = std::unordered_map<std::string, size_t>;
 
   OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
+                  _In_ Stream* stream,
                   _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger);
 
   virtual ~OpKernelContext() = default;
@@ -171,8 +173,8 @@ class OpKernelContext {
   Return the compute stream associated with the EP that the kernel is partitioned to.
   For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
   */
-  virtual void* GetComputeStream() const {
-    return kernel_->Info().GetExecutionProvider()->GetComputeStream();
+  virtual Stream* GetComputeStream() const {
+    return stream_;
   }
 
   /**
@@ -204,7 +206,7 @@ class OpKernelContext {
 
  protected:
 
-  OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger);
+  OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger, Stream* stream);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
 
@@ -236,6 +238,8 @@ class OpKernelContext {
   int node_input_start_index_{-1};
   int node_implicit_input_start_index_{-1};
   int node_output_start_index_{-1};
+
+  Stream* stream_;
 };
 
 // Fetching output tensor without shape is not allowed except when it already exists

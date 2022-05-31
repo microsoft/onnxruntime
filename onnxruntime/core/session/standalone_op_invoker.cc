@@ -68,7 +68,7 @@ class StandAloneKernelContext : public OpKernelContext {
                           int output_count,
                           AllocatorPtr allocator,
                           onnxruntime::concurrency::ThreadPool* threadpool,
-                          const logging::Logger& logger) : OpKernelContext(threadpool, logger),
+                          const logging::Logger& logger) : OpKernelContext(threadpool, logger, nullptr),
                                                            input_values_(input_values),
                                                            input_count_(input_count),
                                                            output_values_(output_values),
@@ -158,7 +158,7 @@ class StandAloneKernelContext : public OpKernelContext {
     return 0;
   }
 
-  void* GetComputeStream() const override {
+  Stream* GetComputeStream() const override {
     return nullptr;
   }
 

@@ -136,7 +136,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
       ORT_THROW("Got nullptr from GetKernel for node: ", node.Name());
     }
 
-    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
+    OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_, nullptr);
 
     if (f_profiler_enabled) {
       sync_time_begin = session_state.Profiler().Start();

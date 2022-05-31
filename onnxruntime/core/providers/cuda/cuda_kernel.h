@@ -7,6 +7,7 @@
 #include "core/framework/stream_handles.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -27,6 +28,14 @@ class CudaKernel : public OpKernel {
   }
 
   Status ComputeAsync(OpKernelContext* p_op_kernel_context, DoneCallback done) const ORT_MUST_USE_RESULT override {
+    // !!!!
+    // TODO: this is a tempoarary workaround
+    // we set the stream when every compute start to avoid change signature of Stream()
+    // this avoid change too much files so make our sync with master branch difficult.
+    // Need to remove this hack when prepare PR.
+    std::lock_guard<OrtMutex> lock(stream_mutex_);
+    stream_ = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->handle);
+
     // all of our cuda EP kernels are actually "async", as the "ComputeInternal" just launch kernels to cuda stream
     // although there might be some host code in ComputeInternal (like calculate shape / upload to gpu), but those
     // code shouldn't be blocking.
@@ -81,7 +90,7 @@ class CudaKernel : public OpKernel {
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
   inline cudaStream_t Stream() const { 
-    return static_cast<cudaStream_t>(provider_->GetComputeStream());
+    return stream_;
   }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
@@ -168,6 +177,11 @@ class CudaKernel : public OpKernel {
 
  private:
   CUDAExecutionProvider* provider_;
+  // !!!!
+  // TODO: this is a tempoarary workaround
+  // Remove it before we PR this feature.
+  mutable OrtMutex stream_mutex_;
+  mutable cudaStream_t stream_;
 };
 
 }  // namespace cuda
