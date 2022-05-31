@@ -1409,12 +1409,13 @@ common::Status InferenceSession::Initialize() {
     // TODO initialize kernel_type_str_resolver_
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_, kernel_type_str_resolver_,
+        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              session_options_,
                                              serialized_session_state,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
-                                             saving_ort_format));
+                                             saving_ort_format,
+                                             &kernel_type_str_resolver_));
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {

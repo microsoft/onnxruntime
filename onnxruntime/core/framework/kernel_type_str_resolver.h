@@ -42,6 +42,14 @@ class KernelTypeStrResolver {
 
   bool RegisterNodeOpSchema(const Node& node);
 
+  void RegisterGraphNodeOpSchemas(const Graph& graph);
+
+  static KernelTypeStrResolver CreateFromGraphNodeOpSchemas(const Graph& graph) {
+    KernelTypeStrResolver k{};
+    k.RegisterGraphNodeOpSchemas(graph);
+    return k;
+  }
+
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const;
 #endif  // !defined(ORT_MINIMAL_BUILD)

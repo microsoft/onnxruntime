@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "flatbuffers_utils.h"
-#include "schema/ort.fbs.h"
+#include "core/flatbuffers/flatbuffers_utils.h"
+
+#include <cctype>
+
+#include "gsl/gsl"
 
 #include "core/common/common.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
-#include "gsl/gsl"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -300,6 +303,15 @@ Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fb
     }
   }
   return Status::OK();
+}
+
+bool IsOrtFormatModel(const PathString& filename) {
+  auto len = filename.size();
+  return len > 4 &&
+         filename[len - 4] == ORT_TSTR('.') &&
+         std::tolower(filename[len - 3]) == ORT_TSTR('o') &&
+         std::tolower(filename[len - 2]) == ORT_TSTR('r') &&
+         std::tolower(filename[len - 1]) == ORT_TSTR('t');
 }
 
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes) {

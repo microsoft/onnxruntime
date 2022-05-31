@@ -302,11 +302,11 @@ class SessionState {
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
-                              const KernelTypeStrResolver& kernel_type_str_resolver,
                               const SessionOptions& session_options = {},
                               const onnxruntime::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
-                              bool saving_ort_format = false);
+                              bool saving_ort_format = false,
+                              const KernelTypeStrResolver* kernel_type_str_resolver = nullptr);
 
   SessionState* Parent() {
     return parent_;

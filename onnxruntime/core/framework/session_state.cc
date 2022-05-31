@@ -1209,11 +1209,21 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
-                                          const KernelTypeStrResolver& kernel_type_str_resolver,
                                           const SessionOptions& session_options,
                                           const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
-                                          bool saving_ort_format) {
+                                          bool saving_ort_format,
+                                          const KernelTypeStrResolver* kernel_type_str_resolver) {
+#if !defined(ORT_MINIMAL_BUILD)
+  std::optional<KernelTypeStrResolver> kernel_type_str_resolver_from_graph;
+  if (kernel_type_str_resolver == nullptr) {
+    kernel_type_str_resolver_from_graph = KernelTypeStrResolver::CreateFromGraphNodeOpSchemas(graph_);
+    kernel_type_str_resolver = &*kernel_type_str_resolver;
+  }
+#else
+  ORT_RETURN_IF(kernel_type_str_resolver == nullptr, "kernel_type_str_resolver must be provided in this build.");
+#endif
+
   // recursively create the subgraph session state instances and populate the kernel create info in them.
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
@@ -1227,7 +1237,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
-    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, kernel_type_str_resolver,
+    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, *kernel_type_str_resolver,
                                                  saving_ort_format));
 #else
     ORT_UNUSED_PARAMETER(saving_ort_format);

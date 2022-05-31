@@ -93,7 +93,19 @@ bool KernelTypeStrResolver::RegisterNodeOpSchema(const Node& node) {
   ORT_ENFORCE(node.Op() != nullptr, "Op schema must be available.");
   return RegisterOpSchema(*node.Op());
 }
-#endif  // !defined(ORT_MINIMAL_BUILD)
+
+void KernelTypeStrResolver::RegisterGraphNodeOpSchemas(const Graph& graph) {
+  for (const Node& node : graph.Nodes()) {
+    RegisterNodeOpSchema(node);
+
+    if (node.ContainsSubgraph()) {
+      const auto subgraphs = node.GetSubgraphs();
+      for (const auto& subgraph : subgraphs) {
+        RegisterGraphNodeOpSchemas(*subgraph);
+      }
+    }
+  }
+}
 
 Status KernelTypeStrResolver::SaveToOrtFormat(
     fb::FlatBufferBuilder& builder,
@@ -137,6 +149,7 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
       builder.CreateVectorOfSortedTables(&fbs_op_kernel_type_str_args));
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver) {
   const auto* fbs_op_kernel_type_str_args = fbs_kernel_type_str_resolver.op_kernel_type_str_args();

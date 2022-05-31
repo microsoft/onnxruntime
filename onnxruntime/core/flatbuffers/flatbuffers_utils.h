@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <cctype>
 #include <unordered_map>
 
 #include "core/common/common.h"
@@ -61,14 +60,7 @@ onnxruntime::common::Status LoadOpsetImportOrtFormat(
     std::unordered_map<std::string, int>& domain_to_version);
 
 // check if filename ends in .ort
-bool IsOrtFormatModel(const PathString& filename) {
-  auto len = filename.size();
-  return len > 4 &&
-         filename[len - 4] == ORT_TSTR('.') &&
-         std::tolower(filename[len - 3]) == ORT_TSTR('o') &&
-         std::tolower(filename[len - 2]) == ORT_TSTR('r') &&
-         std::tolower(filename[len - 1]) == ORT_TSTR('t');
-}
+bool IsOrtFormatModel(const PathString& filename);
 
 // check if bytes has the flatbuffer ORT identifier
 bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
