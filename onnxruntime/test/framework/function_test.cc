@@ -70,7 +70,7 @@ NameMLValMap input(const char* name, std::vector<float> values) {
   CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), {int64_t(values.size())}, values, &ort_value);
 
   input_value_map.insert(std::make_pair(std::string(name), ort_value));
-  return std::move(input_value_map);
+  return input_value_map;
 }
 
 TEST(FunctionTest, Basic) {
