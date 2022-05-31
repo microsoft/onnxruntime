@@ -203,7 +203,15 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
     auto param = std::make_shared<Parameter>(it->first, it->second, is_trainable);
     named_parameters.insert({it->first, param});
   }
-  auto optimizer = Optimizer(model_uri, named_parameters);
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  auto optim_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
+  ORT_THROW_IF_ERROR(optim_sess->Load(model_uri));
+  ORT_THROW_IF_ERROR(optim_sess->Initialize());
+
+  auto optimizer = Optimizer(named_parameters, optim_sess.get());
 
   /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
   /// And check the result checkpoint files.

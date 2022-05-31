@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -73,16 +74,9 @@ Status Optimizer::ConstructInputs() {
   return Status::OK();
 }
 
-Optimizer::Optimizer(const std::string& optim_path_or_bytes,
-                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters) : named_parameters_(parameters) {
-  // TODO: share threadpool, env with module session
-  const SessionOptions session_options;
-  std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
-  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, *env));
-
-  ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
-  ORT_THROW_IF_ERROR(optim_sess_->Initialize());
+Optimizer::Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+                     InferenceSession* optim_session) : named_parameters_(parameters) {
+  optim_sess_ = optim_session;
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
   ORT_ENFORCE(input_names_[0] == "learning_rate");  // TODO: make this better

@@ -6,13 +6,14 @@
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+
 namespace onnxruntime {
 namespace training {
 namespace api {
 namespace utils {
 
 // Get names of graph inputs and outputs
-void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
+void GetGraphInputOutputNames(onnxruntime::InferenceSession* session_object,
                               std::vector<std::string>& input_names,
                               std::vector<std::string>& output_names);
 // Fetch the parameter name from suffix: name = param_name+suffix,
