@@ -42,6 +42,25 @@ onnx.save(
             [add, softmax1],
             "Add_Softmax_Fusion",
             [
+                helper.make_tensor_value_info("input", TensorProto.BFLOAT16, ["d_1", "d_2"]),
+                helper.make_tensor_value_info("bias", TensorProto.BFLOAT16, ["d_1", "d_2"]),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.BFLOAT16, ["d_1", "d_2"]),
+            ],
+            [],
+        ),
+        opset_imports=opsets,
+    ),
+    r"bias_softmax_fusion_bfloat16.onnx",
+)
+
+onnx.save(
+    helper.make_model(
+        helper.make_graph(
+            [add, softmax1],
+            "Add_Softmax_Fusion",
+            [
                 helper.make_tensor_value_info("input", TensorProto.FLOAT, ["d_1", "d_2"]),
                 helper.make_tensor_value_info("bias", TensorProto.FLOAT, ["d_1", "d_2"]),
             ],

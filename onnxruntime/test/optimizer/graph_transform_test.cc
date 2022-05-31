@@ -3565,6 +3565,12 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Opset13_DefaultAxi
   tester.TestFusionOccurs(1, 1);
 }
 
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BFloat16_Input) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_bfloat16.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestNoFusionOccurs();
+}
+
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_MiddleOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
