@@ -7,6 +7,12 @@
 #include "cxxopts.hpp"
 #include "synthetic_data_loader.h"
 
+#if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
+// This header is for profile using Nvidia's visual profilier.
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
+#endif
+
 using namespace onnxruntime::training::api;
 using namespace std;
 
@@ -177,7 +183,7 @@ void RunTraining(const TestRunnerParameters& params) {
   // TODO: update using public API's calling pattern, e.g. api.CreateOptimizer().
   Ort::OrtOptimizer optimizer(api, env, session_options,
                               params.optimizer_training_graph_path,
-                              state.module_checkpoint_state.named_parameters);
+                              module.NamedParameters());
 
   int64_t sample_batch_count_per_epoch = 4;
   if (sample_batch_count_per_epoch < params.train_batch_size || sample_batch_count_per_epoch % params.train_batch_size != 0) {
@@ -207,18 +213,52 @@ void RunTraining(const TestRunnerParameters& params) {
       std::vector<Ort::Value> inputs;
       data_loader.GetNextSampleBatch(inputs);
 
+#if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
+      onnxruntime::profile::NvtxRangeCreator train_step_range(
+          "module_TrainStep",
+          onnxruntime::profile::Color::Green);
+      train_step_range.Begin();
+#endif
+
       std::vector<Ort::Value> fetches;
       EnforceCheck(module.TrainStep(inputs, fetches), "Failed during module.TrainStep.");
+
+#if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
+      train_step_range.End();
+#endif
 
       float loss = *(fetches[0].GetTensorMutableData<float>());
       std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
 
       if ((batch_idx + 1) % params.gradient_accumulation_steps == 0) {
         // Gradient accumulation steps completed.
+#if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
+        onnxruntime::profile::NvtxRangeCreator opt_step_range(
+            "opt_Step",
+            onnxruntime::profile::Color::Blue);
+        opt_step_range.Begin();
+#endif
         EnforceCheck(optimizer.Step(), "Failed during optimizer.Step().");
+
+#if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
+        opt_step_range.End();
+#endif
+
         // Update learning rate.
         EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
+
+#if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
+        onnxruntime::profile::NvtxRangeCreator resetgrad_range(
+            "ResetGrad",
+            onnxruntime::profile::Color::Red);
+        resetgrad_range.Begin();
+#endif
+
         EnforceCheck(module.ResetGrad(), "Failed during module.ResetGrad().");
+
+#if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
+        resetgrad_range.End();
+#endif
       }
 
       if (do_eval && (batch_idx + 1) % params.eval_interval == 0) {
