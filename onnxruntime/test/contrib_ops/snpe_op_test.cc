@@ -148,7 +148,7 @@ class OpTesterSnpe : public OpTester {
 TEST(Snpe_ConvertFromConcat, MimoSupport) {
   OpTesterSnpe test("Snpe", 1, kMSDomain);
 
-  test.AddAttribute("DLC", LoadDlcFile("./testdata/dlc/test_concat_2d_axis_0.dlc"));
+  test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_concat_2d_axis_0.dlc"));
 
   test.AddInput<float>("value0", {2, 2}, {11.0f, 12.0f, 13.0f, 14.0f});
   test.AddInput<float>("value1", {2, 2}, {21.0f, 22.0f, 23.0f, 24.0f});
@@ -163,7 +163,7 @@ TEST(Snpe_ConvertFromConcat, MimoSupport) {
 TEST(Snpe_ConvertFromConcat, MimoSupportInputOrder) {
   OpTesterSnpe test("Snpe", 1, kMSDomain);
 
-  test.AddAttribute("DLC", LoadDlcFile("./testdata/dlc/test_concat_2d_axis_0.dlc"));
+  test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_concat_2d_axis_0.dlc"));
 
   test.AddInput<float>("value1", {2, 2}, {21.0f, 22.0f, 23.0f, 24.0f});
   test.AddInput<float>("value0", {2, 2}, {11.0f, 12.0f, 13.0f, 14.0f});
@@ -177,7 +177,7 @@ TEST(Snpe_ConvertFromConcat, MimoSupportInputOrder) {
 TEST(Snpe_ConvertFromSplit, SimoSupport) {
   OpTesterSnpe test("Snpe", 1, kMSDomain);
 
-  test.AddAttribute("DLC", LoadDlcFile("./testdata/dlc/test_split_equal_parts_2d.dlc"));
+  test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_split_equal_parts_2d.dlc"));
 
   test.AddInput<float>("input", {2, 6}, {11.0f, 12.0f, 13.0f,  14.0f, 15.0f, 16.0f,
                                          21.0f, 22.0f, 23.0f,  24.0f, 25.0f, 26.0f});
@@ -194,7 +194,7 @@ TEST(Snpe_ConvertFromSplit, SimoSupport) {
 TEST(Snpe_ConvertFromAbs, SisoSupport) {
   OpTesterSnpe test("Snpe", 1, kMSDomain);
 
-  test.AddAttribute("DLC", LoadDlcFile("./testdata/dlc/test_abs.dlc"));
+  test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_abs.dlc"));
 
   test.AddInput<float>("x", {2, 3, 2}, {11.0f, -12.0f, 13.0f, 14.0f, -15.0f, 16.0f,
                                         21.0f, 22.0f, -23.0f, 24.0f, -25.0f, 26.0f});
@@ -209,7 +209,7 @@ TEST(Snpe_ConvertFromAbs, SisoSupport) {
 TEST(Snpe_ConvertFromAbs, QuantizedModelTf8Test) {
   OpTesterSnpe test("Snpe", 1, kMSDomain);
 
-  test.AddAttribute("DLC", LoadDlcFile("./testdata/dlc/test_abs_q.dlc"));
+  test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_abs_q.dlc"));
 
   unsigned char step_equivalent_to_0 = 0;
   float quantized_step_size = 0.094118f;
@@ -253,7 +253,7 @@ TEST(Snpe_ConvertFromAbs, QuantizedModelTf8Test) {
 TEST(Snpe_ConvertFromAbs, QuantizedModelItensorFloatTest) {
   OpTesterSnpe test("Snpe", 1, kMSDomain);
 
-  test.AddAttribute("DLC", LoadDlcFile("./testdata/dlc/test_abs_q.dlc"));
+  test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_abs_q.dlc"));
 
   std::vector<float> input_test_data_f{11.0f, -12.0f, 13.0f, 14.0f, -15.0f, 16.0f, 21.0f, 22.0f, -23.0f, 24.0f};
   std::vector<float> input_data;
