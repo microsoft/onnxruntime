@@ -49,6 +49,10 @@ void InferShapeForFunctionNode(
     }
   }
 
+  for (auto& attr_proto : func_proto.attribute_proto()) {
+      attr_map[attr_proto.name()] = &attr_proto;
+  }
+
   for (auto& n : func_proto.node()) {
     NodeProto copy_n(n);
     // Add attribute information into the temporary node
@@ -457,6 +461,7 @@ Status Instantiate(onnxruntime::Graph& graph,
   // The subgraph preserved the input/output tensor names
   // in the parent graph for later inlining purpose
   const auto& attr_map = node_in_parent_graph->GetAttributes();
+  const auto& default_attr_proto = onnx_func_proto.attribute_proto();
 
   ONNX_NAMESPACE::NodeProto function_op_node_proto;  // NodeProto pertaining to the op with a FunctionBody
   node_in_parent_graph->ToProto(function_op_node_proto);
@@ -630,6 +635,15 @@ Status Instantiate(onnxruntime::Graph& graph,
           onnx::AttributeProto attr_copy = entry->second;
           attr_copy.set_name(node_attr->name());
           new_attr_map[(*node_attr).name()] = std::move(attr_copy);
+        } else {
+          for (const auto& attr_proto : default_attr_proto) {
+            if (attr_proto.name() == (*node_attr).ref_attr_name()) {
+              onnx::AttributeProto attr_copy = attr_proto;
+              attr_copy.set_name(node_attr->name());
+              new_attr_map[(*node_attr).name()] = std::move(attr_copy);
+              break;
+            }
+          }
         }
       } else {
         onnx::AttributeProto attr_copy = *node_attr;
