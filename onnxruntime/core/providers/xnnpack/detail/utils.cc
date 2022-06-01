@@ -29,9 +29,9 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const Node& node, const
   def.since_version = node.SinceVersion();
 
   // inputs
-  const auto& conv_inputs = node.InputDefs();
-  def.inputs.reserve(conv_inputs.size());
-  std::for_each(conv_inputs.cbegin(), conv_inputs.cend(),
+  const auto& inputs = node.InputDefs();
+  def.inputs.reserve(inputs.size());
+  std::for_each(inputs.cbegin(), inputs.cend(),
                 [&def](const NodeArg* arg) {
                   // keep the number of inputs the same by inserting an empty string for a missing optional input
                   def.inputs.push_back(arg ? arg->Name() : "");

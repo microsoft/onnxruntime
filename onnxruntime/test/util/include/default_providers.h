@@ -6,7 +6,6 @@
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
-struct SessionOptions;
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
