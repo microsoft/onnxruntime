@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "./beam_search_parameters.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -47,7 +47,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
 
   auto* num_beams_tensor = context->Input<Tensor>(3);
   num_beams = num_beams_tensor ? static_cast<int>(*num_beams_tensor->Data<int32_t>()) : 1;
-  // TODO: limit num_beams > 1 when we can have another operator for greedy search.
+  // TODO(tianleiwu): limit num_beams > 1 when we can have another operator for greedy search.
   ORT_ENFORCE(num_beams >= 1 && num_beams <= kMaxNumBeams,
               "num_beams shall be a positive integer no more than ", kMaxNumBeams, ", got ", num_beams);
 

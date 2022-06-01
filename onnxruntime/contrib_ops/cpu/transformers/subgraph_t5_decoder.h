@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "./subgraph_base.h"
+#include "contrib_ops/cpu/transformers/subgraph_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -23,7 +23,9 @@ class T5DecoderSubgraph : public Subgraph {
       const std::vector<const OrtValue*>& implicit_inputs,
       const std::vector<OrtValue>& encoder_feeds,
       const std::vector<OrtValue>& encoder_fetches,
-      std::vector<OrtValue>& decoder_feeds);
+      std::vector<OrtValue>& decoder_feeds,
+      const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+      void* stream);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;

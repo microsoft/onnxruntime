@@ -11,7 +11,7 @@ Example 1: convert gpt2 model with beam search:
 
 Example 2: convert T5 model with beam search:
    cd ./models/t5
-   python convert_to_onnx.py -m t5-small
+   python convert_to_onnx.py -m t5-small --use_int32_inputs
    cd ../..
    python convert_beam_search.py -m t5-small --model_type t5                                      \
           --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
@@ -248,7 +248,7 @@ def gpt2_to_onnx(args):
 
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
-        # TODO: Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
+        # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
         arguments.extend(["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
@@ -264,7 +264,7 @@ def shape_inference(decoder_onnx_path):
 
     out = SymbolicShapeInference.infer_shapes(onnx.load(decoder_onnx_path), auto_merge=True, guess_output_rank=False)
     if out:
-        # TODO: Use external format if input has extra data.
+        # TODO(tianleiwu): Use external format if input has extra data.
         onnx.save(out, decoder_onnx_path)
     else:
         print("Failed to run symbolic shape inference on the model.")
@@ -293,6 +293,7 @@ def verify_gpt2_subgraph(graph, precision):
 
     input_count = len(graph.input)
     layer_count = input_count - 3
+    assert layer_count >= 1
 
     expected_inputs = ["input_ids", "position_ids", "attention_mask"] + [f"past_{i}" for i in range(layer_count)]
     if len(graph.input) != len(expected_inputs):
@@ -327,19 +328,125 @@ def verify_gpt2_subgraph(graph, precision):
             )
     print("Verifying GPT-2 graph outputs: name and data type are good.")
 
-    # TODO: verify shapes of inputs and outputs.
+    # TODO(tianleiwu): verify shapes of inputs and outputs.
     return
 
 
 def verify_t5_decoder_subgraph(graph, precision):
-    # TODO: implement it
-    pass
+    is_float16 = Precision.FLOAT16 == precision
+    float_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+
+    input_count = len(graph.input)
+    layer_count = (input_count - 3) // 4
+    assert layer_count >= 1
+
+    # Expect inputs:
+    #   input_ids: int32 (B, 1)
+    #   encoder_attention_mask: int32 (B, encode_sequence_length)
+    #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
+
+    #   past_key_self_0: (B, num_heads, past_decode_sequence_length, head_size)
+    #   past_value_self_0: (B, num_heads, past_decode_sequence_length, head_size)
+    #   ... (for each self attention layer)
+
+    #   past_key_cross_0: (B, num_heads, encode_sequence_length, head_size)
+    #   past_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
+    #   ... (for each cross attention layer)
+    expected_inputs = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"]
+    for i in range(layer_count):
+        expected_inputs.append(f"past_key_self_{i}")
+        expected_inputs.append(f"past_value_self_{i}")
+    for i in range(layer_count):
+        expected_inputs.append(f"past_key_cross_{i}")
+        expected_inputs.append(f"past_value_cross_{i}")
+
+    if len(graph.input) != len(expected_inputs):
+        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
+
+    for i, expected_input in enumerate(expected_inputs):
+        if graph.input[i].name != expected_input:
+            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
+
+        expected_type = onnx_proto.TensorProto.INT32 if i < 2 else float_type
+        if graph.input[i].type.tensor_type.elem_type != expected_type:
+            raise ValueError(
+                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}"
+            )
+
+    # Expect outputs:
+    #   logits:               (B, 1, vocab_size)
+    #   present_key_self_0:   (B, num_heads, past_decode_sequence_length + 1, head_size)
+    #   present_value_self_0: (B, num_heads, past_decode_sequence_length + 1, head_size)
+    #                     ... (for each self attention layer)
+    expected_outputs = ["logits"]
+    for i in range(layer_count):
+        expected_outputs.append(f"present_key_self_{i}")
+        expected_outputs.append(f"present_value_self_{i}")
+
+    if len(graph.output) != len(expected_outputs):
+        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
+
+    for i, expected_output in enumerate(expected_outputs):
+        if graph.output[i].name != expected_output:
+            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
+
+        if graph.output[i].type.tensor_type.elem_type != float_type:
+            raise ValueError(
+                f"Output {i} is expected to have onnx data type {float_type}. Got {graph.output[i].type.tensor_type.elem_type}"
+            )
 
 
 def verify_t5_encoder_decoder_init_subgraph(graph, precision):
-    # TODO: implement it
-    assert len(graph.input) == 3, "please run convert_to_onnx without --use_decoder_start_token"
-    pass
+    is_float16 = Precision.FLOAT16 == precision
+    layer_count = (len(graph.output) - 2) // 4
+    assert layer_count >= 1
+
+    # Expect 3 inputs:
+    #   encoder_input_ids:      int32 (B, encode_sequence_length)
+    #   encoder_attention_mask: int32 (B, encode_sequence_length)
+    #   decoder_input_ids:      int32 (B, 1)
+    expected_inputs = ["encoder_input_ids", "encoder_attention_mask", "decoder_input_ids"]
+    if len(graph.input) != len(expected_inputs):
+        raise ValueError(f"Number of inputs expected to be {len(expected_inputs)}. Got {len(graph.input)}")
+
+    for i, expected_input in enumerate(expected_inputs):
+        if graph.input[i].name != expected_input:
+            raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
+
+        expected_type = onnx_proto.TensorProto.INT32
+        if graph.input[i].type.tensor_type.elem_type != expected_type:
+            raise ValueError(
+                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}"
+            )
+
+    # Expected outputs:
+    #   logits:                (B, 1, vocab_size)
+    #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
+    #   present_key_self_0:    (B, num_heads, 1, head_size)
+    #   present_value_self_0:  (B, num_heads, 1, head_size)
+    #                      ... (for each self attention layer)
+    #   present_key_cross_0:   (B, num_heads, encode_sequence_length, head_size)
+    #   present_value_cross_0: (B, num_heads, encode_sequence_length, head_size)
+    #                      ... (for each cross attention layer)
+    expected_outputs = ["logits", "encoder_hidden_states"]
+    for i in range(layer_count):
+        expected_outputs.append(f"present_key_self_{i}")
+        expected_outputs.append(f"present_value_self_{i}")
+    for i in range(layer_count):
+        expected_outputs.append(f"present_key_cross_{i}")
+        expected_outputs.append(f"present_value_cross_{i}")
+
+    for i, expected_output in enumerate(expected_outputs):
+        if graph.output[i].name != expected_output:
+            raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
+
+        expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
+        if graph.output[i].type.tensor_type.elem_type != expected_type:
+            raise ValueError(
+                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.output[i].type.tensor_type.elem_type}"
+            )
+
+    print("T5 encoder graph verified: name and data type of inputs and outputs are good.")
 
 
 def convert_model(args):
@@ -349,7 +456,7 @@ def convert_model(args):
         assert args.model_type == "gpt2", "please have onnx model ready for model type that is not gpt2"
         gpt2_to_onnx(args)
 
-    # TODO: fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
+    # TODO(tianleiwu): fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
     enable_shape_inference = args.model_type == "gpt2"
 
     if enable_shape_inference:
@@ -557,7 +664,7 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: Optional[List[
     assert args.model_type == "gpt2"
 
     if args.temperature != 1.0:
-        # TODO: implement temperature in BeamSearch operator.
+        # TODO(tianleiwu): implement temperature in BeamSearch operator.
         print("Skipping parity test as temperature is not implemented in BeamSearch operator")
         return True
 
@@ -734,7 +841,7 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
     assert args.model_type == "t5"
 
     if args.temperature != 1.0:
-        # TODO: implement temperature in BeamSearch operator.
+        # TODO(tianleiwu): implement temperature in BeamSearch operator.
         print("Skipping parity test as temperature is not implemented in BeamSearch operator")
         return True
 
@@ -757,7 +864,7 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
         sentences = [
             "translate English to French: The product is released",
             "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
-            "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
+            + "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
         ]
 
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)

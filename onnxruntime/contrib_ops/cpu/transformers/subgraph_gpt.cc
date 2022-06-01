@@ -7,8 +7,8 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "./subgraph_gpt.h"
-#include "./dump_tensor.h"
+#include "contrib_ops/cpu/transformers/subgraph_gpt.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -68,9 +68,7 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_attention_mask));
 
   ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
-                                        expanded_input_ids,
-                                        expanded_position_ids,
-                                        expanded_attention_mask,
+                                        {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
                                         buffer));
 

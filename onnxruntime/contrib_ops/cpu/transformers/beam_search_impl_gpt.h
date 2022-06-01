@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "./beam_search_impl_base.h"
+#include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,10 +27,11 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                 const BeamSearchDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                 const BeamSearchDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
                 const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+                const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
                 const BeamSearchDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           cuda_stream, cuda_dumper, params,
-                          topk_func, process_logits_func, device_copy_func),
+                          topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
         gpt_subgraph_(gpt_subgraph),
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),

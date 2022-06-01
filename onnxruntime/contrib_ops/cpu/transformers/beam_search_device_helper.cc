@@ -7,9 +7,9 @@
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/common/safeint.h"
 #include "gsl/gsl"
-#include "./sequences.h"
-#include "./beam_search_scorer.h"
-#include "./beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/beam_search_scorer.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -132,19 +132,13 @@ Status CreateGptInputs(
 }
 
 Status AddToFeeds(const IExecutionProvider* /*execution_provider*/,
-                  OrtValue& input1,
-                  OrtValue& input2,
-                  OrtValue& input3,
+                  std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& /*buffer*/) {
-  feeds.push_back(input1);
-
-  if (input2.IsAllocated()) {
-    feeds.push_back(input2);
-  }
-
-  if (input3.IsAllocated()) {
-    feeds.push_back(input3);
+  for (auto& input : inputs) {
+    if (input.IsAllocated()) {
+      feeds.push_back(input);
+    }
   }
 
   return Status::OK();
@@ -349,7 +343,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
 
     // Create a tensor with same shape.
-    // TODO: allocate one buffer for all layers
+    // TODO(tianleiwu): allocate one buffer for all layers
     OrtValue past;
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
@@ -399,7 +393,7 @@ Status UpdateGptFeeds(
   TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
-  // TODO: Reuse buffer for input_ids to reduce memory allocation.
+  // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   for (int i = 0; i < batch_beam_size; i++) {
@@ -468,29 +462,31 @@ Status CreateEncoderInputs(
   const int64_t& sequence_length = input_ids_shape[1];
 
   // Allocate attention_mask based on shape of input_ids
-  auto element_type = DataTypeImpl::GetType<int64_t>();
+  auto element_type = DataTypeImpl::GetType<int32_t>();
 
-  // Encoder subgraph requires the input_ids is int64, but input_ids from BeamSearch operator input is int32.
-  // Create a new tensor and convert data type from int64 to int32.
+  // Use original encoder_input_ids. This requires the input_ids for subgraph is also int32.
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
+  // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
   OrtValue encoder_input_ids;
-  Tensor::InitOrtValue(element_type, input_ids_shape, allocator, encoder_input_ids);
+  Tensor::InitOrtValue(element_type,
+                       input_ids_shape,
+                       const_cast<Tensor*>(original_encoder_input_ids)->MutableData<int32_t>(),
+                       allocator->Info(),
+                       encoder_input_ids);
 
   OrtValue encoder_attention_mask;
-  auto mask_type = DataTypeImpl::GetType<int64_t>();
+  auto mask_type = DataTypeImpl::GetType<int32_t>();
   Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
 
   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
   // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
-  int64_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int64_t>();
+  int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
   const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
-  int64_t* encoder_input_ids_data = encoder_input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
-  int64_t* mask = mask_data;
+  int32_t* mask = mask_data;
   for (int i = 0; i < batch_size; i++) {
     int32_t abs_position = 0;
-    for (int j = 0; j < sequence_length; j++, word_id++, encoder_input_ids_data++, mask++) {
-      *encoder_input_ids_data = static_cast<int64_t>(*word_id);
+    for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
       // Huggingface T5Tokenizer might add one pad token at the end with attention mask 1.
       // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
       if (*word_id == pad_token_id && abs_position == 0) {
@@ -505,8 +501,8 @@ Status CreateEncoderInputs(
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // for encoder_input_ids and encoder_attention_mask
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  expanded_encoder_input_ids = ExpandInputs<int64_t>(encoder_input_ids, num_beams, allocator);
-  expanded_encoder_attention_mask = ExpandInputs<int64_t>(encoder_attention_mask, num_beams, allocator);
+  expanded_encoder_input_ids = ExpandInputs<int32_t>(encoder_input_ids, num_beams, allocator);
+  expanded_encoder_attention_mask = ExpandInputs<int32_t>(encoder_attention_mask, num_beams, allocator);
 
   // decoder_input_ids is optional.
   if (start_token_id >= 0) {
@@ -514,39 +510,11 @@ Status CreateEncoderInputs(
     int64_t dims[] = {batch_size * num_beams, 1};
     TensorShape decoder_input_ids_shape(&dims[0], 2);
     Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, expanded_decoder_input_ids);
-    int64_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+    int32_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
     for (int i = 0; i < batch_size * num_beams; i++, data++) {
       *data = start_token_id;
     }
   }
-
-  return Status::OK();
-}
-
-// Set decoder inputs given encoder outputs
-template <typename T>
-Status InitDecoderFeeds(
-    AllocatorPtr allocator,
-    void* stream,
-    const std::vector<OrtValue>& encoder_outputs,
-    std::vector<OrtValue>& decoder_inputs,
-    int current_length,
-    OrtValue& position_ids,
-    gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
-    int num_beams,
-    const transformers::IConsoleDumper* dumper) {
-  // TODO(tianleiwu): remove this function since it is not used
-  ORT_UNUSED_PARAMETER(allocator);
-  ORT_UNUSED_PARAMETER(stream);
-  ORT_UNUSED_PARAMETER(encoder_outputs);
-  ORT_UNUSED_PARAMETER(decoder_inputs);
-  ORT_UNUSED_PARAMETER(current_length);
-  ORT_UNUSED_PARAMETER(position_ids);
-  ORT_UNUSED_PARAMETER(beam_next_tokens);
-  ORT_UNUSED_PARAMETER(beam_indices);
-  ORT_UNUSED_PARAMETER(num_beams);
-  ORT_UNUSED_PARAMETER(dumper);
 
   return Status::OK();
 }
@@ -563,7 +531,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
 
     // Create a tensor with same shape.
-    // TODO: allocate one buffer for all layers
+    // TODO(tianleiwu): allocate one buffer for all layers
     OrtValue past;
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), past_shape, allocator, past);
 
@@ -610,11 +578,10 @@ Status UpdateDecoderFeeds(
 
   // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   OrtValue input_ids;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), input_ids_shape, allocator, input_ids);
-  int64_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
-  for (int i = 0; i < batch_beam_size; i++) {
-    input_ids_data[i] = static_cast<int64_t>(beam_next_tokens[i]);
-  }
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
+
+  gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
+
   next_inputs[0] = input_ids;
 
 #ifdef DEBUG_BEAM_SEARCH
@@ -669,23 +636,17 @@ template Status DeviceCopy<float>(
     void* stream,
     int copyDirection);
 
+template Status DeviceCopy<int32_t>(
+    gsl::span<int32_t> target,
+    gsl::span<const int32_t> source,
+    void* stream,
+    int copyDirection);
+
 template Status UpdateGptFeeds<float>(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
-    OrtValue& position_ids,
-    gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
-    int num_beams,
-    const transformers::IConsoleDumper* dumper);
-
-template Status InitDecoderFeeds<float>(
-    AllocatorPtr allocator,
-    void* stream,
-    const std::vector<OrtValue>& encoder_outputs,
-    std::vector<OrtValue>& decoder_inputs,
     int current_length,
     OrtValue& position_ids,
     gsl::span<const int32_t> beam_next_tokens,
@@ -705,8 +666,6 @@ template Status UpdateDecoderFeeds<float>(
     const transformers::IConsoleDumper* dumper);
 
 template OrtValue ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator);
-
-template OrtValue ExpandInputs<int64_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

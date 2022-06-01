@@ -104,20 +104,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     for (size_t i = 0; i < batch_beam_size; i++) {
       for (int j = 0; j < sequence_length; j++) {
         const size_t index = SafeInt<gsl::index>(i) * max_length + j;
-        sequences_0[index] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
-      }
-    }
-  }
-
-  void SetSequence(gsl::span<const int64_t> input_ids_in_cpu,
-                   size_t batch_beam_size,
-                   int max_length,
-                   int sequence_length) {
-    gsl::span<int32_t> sequences_0 = sequences_space;
-    for (size_t i = 0; i < batch_beam_size; i++) {
-      for (int j = 0; j < sequence_length; j++) {
-        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
-        sequences_0[index] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j];
       }
     }
   }
@@ -143,7 +130,8 @@ class BeamSearchBase {
                  BeamSearchParameters& params,
                  const BeamSearchDeviceHelper::TopkFunc& topk_func,
                  const BeamSearchDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
-                 const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
+                 const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+                 const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func)
       : context_(context),
         decoder_session_state_(decoder_session_state),
         thread_pool_(thread_pool),
@@ -155,7 +143,8 @@ class BeamSearchBase {
         temp_space_allocator_(nullptr),
         topk_func_(topk_func),
         process_logits_func_(process_logits_func),
-        device_copy_func_(device_copy_func) {
+        device_copy_func_(device_copy_func),
+        device_copy_int32_func_(device_copy_int32_func) {
     parameters_->ParseFromInputs(&context);
 
     cpu_allocator_ = decoder_session_state.GetExecutionProviders()
@@ -215,6 +204,7 @@ class BeamSearchBase {
   BeamSearchDeviceHelper::TopkFunc topk_func_;
   BeamSearchDeviceHelper::ProcessLogitsFunc<T> process_logits_func_;
   BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
+  BeamSearchDeviceHelper::DeviceCopyFunc<int32_t> device_copy_int32_func_;
 };
 
 template <typename T>

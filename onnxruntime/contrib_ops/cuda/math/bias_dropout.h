@@ -15,20 +15,12 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-void BiasDropoutKernelImpl(
-    const cudaDeviceProp& prop,
-    cudaStream_t stream,
-    const int64_t N,
-    const fast_divmod fdm_dim,
-    const float ratio,
-    PhiloxGenerator& generator,
-    const T* X_data,
-    const T* bias_data,
-    const T* residual_data,
-    T* Y_data,
-    bool* mask_data,
-    bool has_same_shape_bias);
+void BiasDropoutKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N,
+                           const int64_t mask_element_count, const fast_divmod fdm_dim, const float ratio,
+                           PhiloxGenerator& generator, const T* X_data, const T* bias_data, const T* residual_data,
+                           T* Y_data, void* mask_data, bool has_same_shape_bias, bool use_bitmask);
 
+template <bool UseBitmask>
 class BiasDropout final : public CudaKernel {
  public:
   BiasDropout(const OpKernelInfo& info) : CudaKernel(info) {
