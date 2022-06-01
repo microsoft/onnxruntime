@@ -242,11 +242,12 @@ Status EncoderSubgraph::CreateInitialFeeds(
 
   // Allocate subgraph inputs to be same device as input_ids
   AllocatorPtr cpu_alloactor = session_state_->GetAllocator(input_ids.Location());
+  ORT_UNUSED_PARAMETER(cpu_alloactor);
 
   // Store allocator, which will be used in remaining feeds
   auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
   allocator_ = default_allocator;
-  const OrtMemoryInfo& location = cpu_alloactor->Info();
+  const OrtMemoryInfo& location = allocator_->Info();
 
   // The ordering is the same as used in Setup
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
@@ -260,7 +261,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
     Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), location, attention_mask);
   } else {
-    Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
+    Tensor::InitOrtValue(element_type, input_ids_shape, allocator_, attention_mask);
     // def _prepare_attention_mask_for_generation(
     //     self, input_ids: torch.Tensor, pad_token_id: int, eos_token_id: int
     // ) -> torch.LongTensor:
@@ -288,7 +289,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
 
   OrtValue decoder_input_ids;
   TensorShape decoder_input_ids_shape({batch_size, 1});
-  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, cpu_alloactor, decoder_input_ids);
+  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator_, decoder_input_ids);
   int32_t* decoder_input_ids_data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   for (int i = 0; i < batch_size; i++) {
     *decoder_input_ids_data = decoder_start_token_id;
@@ -297,7 +298,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
 
   OrtValue beam_num;
   TensorShape beam_num_shape({});
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), beam_num_shape, cpu_alloactor, beam_num);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), beam_num_shape, allocator_, beam_num);
   int64_t* beam_num_data = beam_num.GetMutable<Tensor>()->MutableData<int64_t>();
   *beam_num_data = static_cast<int64_t>(num_beams);
 
@@ -478,11 +479,12 @@ Status DecoderSubgraph::CreateInitialFeeds(
 
   // Allocate subgraph inputs to be same device as input_ids
   AllocatorPtr cpu_alloactor = session_state_->GetAllocator(encoder_input_ids.Location());
+  ORT_UNUSED_PARAMETER(cpu_alloactor);
 
   // Store allocator, which will be used in remaining feeds
   auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
   allocator_ = default_allocator;
-  const OrtMemoryInfo& location = cpu_alloactor->Info();
+  const OrtMemoryInfo& location = allocator_->Info();
 
   // The ordering is the same as used in Setup
   decoder_feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
@@ -491,7 +493,7 @@ Status DecoderSubgraph::CreateInitialFeeds(
 
   OrtValue decoder_input_ids;
   TensorShape decoder_input_ids_shape({batch_size, 1});
-  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, cpu_alloactor, decoder_input_ids);
+  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator_, decoder_input_ids);
   int32_t* decoder_input_ids_data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   for (int i = 0; i < batch_size; i++) {
     *decoder_input_ids_data = decoder_start_token_id;
@@ -507,9 +509,9 @@ Status DecoderSubgraph::CreateInitialFeeds(
   const Tensor* encoder_outputs = &encoder_fetches[0].Get<Tensor>();
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), encoder_outputs->Shape(), const_cast<Tensor*>(encoder_outputs)->MutableData<float>(), location, encoder_output);
 
-  OrtValue expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, cpu_alloactor);
-  OrtValue expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, cpu_alloactor);
-  OrtValue expanded_encoder_output = ExpandInputs2(encoder_output, num_beams, cpu_alloactor);
+  OrtValue expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, allocator_);
+  OrtValue expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, allocator_);
+  OrtValue expanded_encoder_output = ExpandInputs2(encoder_output, num_beams, allocator_);
 
   decoder_feeds.push_back(expanded_encoder_output);
   decoder_feeds.push_back(expanded_decoder_input_ids);
