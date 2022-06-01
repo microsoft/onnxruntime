@@ -21,7 +21,7 @@ The SNPE Execution Provider for ONNX Runtime enables hardware accelerated execut
 ## Install Pre-requisites
 
 Download the SNPE toolkit from the Qualcomm Developer Network for [Android/Linux](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk)
-and [Windows](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon)
+or [Windows](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon)
 
 ### SNPE Version Requirements
 

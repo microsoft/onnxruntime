@@ -407,8 +407,8 @@ See more information on the SNPE execution provider [here](../execution-provider
 
 ### Prerequisites
 {: .no_toc }
-* Qualcomm Neural Processing SDK (Linux/Android)[https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk]
-* Qualcomm Neural Processing SDK (Windows)[https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon]
+* Qualcomm Neural Processing SDK [Linux/Android](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk)
+* Qualcomm Neural Processing SDK [Windows](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon)
 
 ### Build Instructions
 {: .no_toc }
