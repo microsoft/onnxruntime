@@ -116,8 +116,8 @@ Status Optimizer::Step() {
   ORT_THROW_IF_ERROR(status);
 
   // extract step output and update
-  // TODO: need to remove hardcoding
-  optimizer_state_.step = utils::GetValue<int64_t>(outputs[0]);
+  if (utils::GetValue<int64_t>(outputs[0]) == 1LL)
+    optimizer_state_.step++;
 
   return Status::OK();
 }
