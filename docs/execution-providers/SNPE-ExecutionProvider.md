@@ -9,7 +9,7 @@ redirect_from: /docs/reference/execution-providers/SNPE-ExecutionProvider
 # SNPE Execution Provider
 {: .no_toc }
 
-The SNPE Execution Provider for ONNX Runtime enables hardware accelerated execution on Qualcomm Snapdragon CPU, the Qualcomm® Adreno<sup>TM</sup> GPU, or the Hexagon DSP. This execution provider makes use of the Qualcomm Snapdragon Neural Processing Engine SDK.
+The SNPE Execution Provider for ONNX Runtime enables hardware accelerated execution on Qualcomm Snapdragon CPU, the Qualcomm Adreno<sup>TM</sup> GPU, or the Hexagon DSP. This execution provider makes use of the Qualcomm Snapdragon Neural Processing Engine SDK.
 
 
 ## Contents
