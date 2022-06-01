@@ -259,7 +259,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   std::cout << "EncoderSubgraph::CreateInitialFeeds 259" << std::endl;
   std::cout << default_allocator->Info().ToString() << std::endl;
   std::cout << "EncoderSubgraph::CreateInitialFeeds 261" << std::endl;
-  std::cout << cpu_alloactor->Info().ToString() << std::endl;
+  //std::cout << cpu_alloactor->Info().ToString() << std::endl;
   std::cout << "EncoderSubgraph::CreateInitialFeeds 263" << std::endl;
   //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
   Tensor::InitOrtValue(element_type, input_ids_shape, default_allocator, encoder_input_ids);
