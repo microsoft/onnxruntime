@@ -938,7 +938,7 @@ if (CPUINFO_SUPPORTED)
   endif()
   
   # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved) 
-  # we do not use cpuinfo in ORT code, so don't set the.
+  # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
   if (NOT onnxruntime_BUILD_WEBASSEMBLY)
     string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
   endif()
