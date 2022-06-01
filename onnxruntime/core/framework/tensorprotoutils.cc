@@ -256,7 +256,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
                              ") does not match the data size(", tensor.field_size(), ") in proto");         \
     auto& data = tensor.field_name();                                                                       \
     for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                             \
-      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                   \
+      *p_data++ = static_cast<T>(*data_iter);                                                               \
     return Status::OK();                                                                                    \
   }
 
