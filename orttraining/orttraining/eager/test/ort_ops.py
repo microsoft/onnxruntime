@@ -2,9 +2,10 @@
 # Licensed under the MIT License.
 
 import unittest
-import torch
-import onnxruntime_pybind11_state as torch_ort
+
 import numpy as np
+import onnxruntime_pybind11_state as torch_ort
+import torch
 
 
 class OrtOpTests(unittest.TestCase):
@@ -111,6 +112,12 @@ class OrtOpTests(unittest.TestCase):
         x = cpu_tensor.min()
         assert torch.allclose(x, y.cpu())
 
+    def test_equal(self):
+        device = self.get_device()
+        cpu_x = torch.ones(3, 3, dtype=torch.float32)
+        cpu_y = torch.ones(3, 3, dtype=torch.float32)
+        assert torch.equal(cpu_x.to(device), cpu_y.to(device))
+
     def test_torch_ones(self):
         device = self.get_device()
         cpu_ones = torch.ones((10, 10))
@@ -126,14 +133,16 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_narrow, ort_narrow.cpu())
 
     def test_zero_stride(self):
-        print("ssssss")
         device = self.get_device()
-        t = torch.empty_strided(size=(6, 1024, 512), stride=(0, 0, 0))
-        assert (
-            t.storage().size() == 1
-        )  # This test is trying to confirm that transferring a tensor with a storage size of 1 works
-        ort_t = t.to(device)
-        assert torch.allclose(t, ort_t.cpu())
+        cpu_tensor = torch.empty_strided(size=(6, 1024, 512), stride=(0, 0, 0))
+        assert cpu_tensor.storage().size() == 1
+        ort_tensor_copied = cpu_tensor.to(device)
+        assert torch.allclose(cpu_tensor, ort_tensor_copied.cpu())
+        ort_tensor = torch.empty_strided(size=(6, 1024, 512), stride=(0, 0, 0), device=device)
+        assert ort_tensor.is_ort
+        assert ort_tensor.stride() == (0, 0, 0)
+        cpu_tensor_copied = ort_tensor.cpu()
+        assert cpu_tensor_copied.stride() == (0, 0, 0)
 
 
 if __name__ == "__main__":

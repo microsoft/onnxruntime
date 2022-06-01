@@ -20,11 +20,20 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_deprecated_operators.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
   )
 
   # no Function support initially
   list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/function*"
+  )
+
+  # remove graph proto serializer
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.h"
   )
 
   # no optimizer support in base minimal build

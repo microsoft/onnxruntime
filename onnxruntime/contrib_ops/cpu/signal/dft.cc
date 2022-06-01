@@ -23,7 +23,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+                      .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
     DFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -31,7 +32,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+                      .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
     IDFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -40,8 +42,28 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
-                                       .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
+                                       .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
     STFT);
+
+// dedupe with the other one in window_functions.cc
+template <typename T>
+static T get_scalar_value_from_tensor(const Tensor* tensor) {
+  ORT_ENFORCE(tensor->Shape().Size() == 1, "ratio input should have a single value.");
+
+  auto data_type = tensor->DataType()->AsPrimitiveDataType()->GetDataType();
+  switch (data_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return static_cast<T>(*reinterpret_cast<const float*>(tensor->DataRaw()));
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      return static_cast<T>(*reinterpret_cast<const double*>(tensor->DataRaw()));
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return static_cast<T>(*reinterpret_cast<const int32_t*>(tensor->DataRaw()));
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return static_cast<T>(*reinterpret_cast<const int64_t*>(tensor->DataRaw()));
+    default:
+      ORT_THROW("Unsupported input data type of ", data_type);
+  }
+}
 
 static bool is_real_valued_signal(const onnxruntime::TensorShape & shape) {
   return shape.NumDimensions() == 2 || shape[shape.NumDimensions() - 1] == 1;
@@ -141,7 +163,7 @@ static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
 template <typename T, typename U>
 static Status fft_radix2(OpKernelContext* /*ctx*/,
     const Tensor* X, Tensor* Y,
-    size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride, int64_t axis,
+    size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride, int64_t axis, size_t dft_length,
     const Tensor* window, bool is_onesided, bool inverse,
     std::vector<std::complex<T>>& V,
     std::vector<std::complex<T>>& temp_output) {
@@ -149,7 +171,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[axis]);
-  unsigned significant_bits = static_cast<unsigned>(log2(number_of_samples));
+  unsigned significant_bits = static_cast<unsigned>(log2(dft_length));
 
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
@@ -162,8 +184,8 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
   size_t Y_data_stride = 1;
   std::complex<T>* Y_data;
   if (is_onesided) {
-    if (temp_output.size() != number_of_samples) {
-      temp_output = std::vector<std::complex<T>>(number_of_samples);
+    if (temp_output.size() != dft_length) {
+      temp_output = std::vector<std::complex<T>>(dft_length);
     }
     Y_data = temp_output.data();
   } else {
@@ -171,34 +193,34 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
     Y_data_stride = Y_stride;
   }
 
-  auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
+  auto angular_velocity = compute_angular_velocity<T>(dft_length, inverse);
 
   // Create vandermonde matrix V ordered with the bit-reversed permutation
-  if (V.size() != number_of_samples) {
-    V = std::vector<std::complex<T>>(number_of_samples);  // e^(i *2*pi / N * k)
-    for (size_t i = 0; i < number_of_samples; i++) {
+  if (V.size() != dft_length) {
+    V = std::vector<std::complex<T>>(dft_length);  // e^(i *2*pi / N * k)
+    for (size_t i = 0; i < dft_length; i++) {
       size_t bit_reversed_index = bit_reverse(i, significant_bits);
       V[bit_reversed_index] = std::complex<T>(cos(i * angular_velocity), sin(i * angular_velocity));
     }
   }
 
-  for (size_t i = 0; i < number_of_samples; i++) {
+  for (size_t i = 0; i < dft_length; i++) {
     size_t bit_reversed_index = bit_reverse(i, significant_bits);
-    auto x = *(X_data + bit_reversed_index*X_stride);
-    auto window_element = window_data ? *(window_data + bit_reversed_index) : 1; 
+    auto x = (bit_reversed_index < number_of_samples) ?  * (X_data + bit_reversed_index * X_stride) : 0;
+    auto window_element = window_data ? *(window_data + bit_reversed_index) : 1;
     *(Y_data + i*Y_data_stride) = std::complex<T>(1, 0) * x * window_element;
   }
 
   // Run fft_radix2
   unsigned current_significant_bits = 0;
-  for (size_t i = 2; i <= number_of_samples; i <<= 1) {
+  for (size_t i = 2; i <= dft_length; i <<= 1) {
     size_t midpoint = i >> 1;
     current_significant_bits++;
 
     for (size_t k = 0; k < midpoint; k++) {
       auto first_idx = bit_reverse(k, current_significant_bits);
       auto second_idx = bit_reverse(midpoint + k, current_significant_bits);
-      for (size_t j = 0; j < number_of_samples; j += i) {
+      for (size_t j = 0; j < dft_length; j += i) {
         auto even_index = k + j;
         auto odd_index  = k + j + midpoint;
         std::complex<T>* even = (Y_data + even_index * Y_data_stride);
@@ -213,15 +235,15 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
 
   // Scale the output if inverse
   if (inverse) {
-    for (size_t i = 0; i < number_of_samples; i++) {
+    for (size_t i = 0; i < dft_length; i++) {
       std::complex<T>& val = *(Y_data + i * Y_data_stride);
-      val /= static_cast<T>(number_of_samples);
+      val /= static_cast<T>(dft_length);
     }
   }
 
   if (is_onesided) {
     auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
-    for (size_t i = 0; i < number_of_samples; i++) {
+    for (size_t i = 0; i < dft_length; i++) {
       *(destination + Y_stride * i) = *(Y_data + i * Y_data_stride);
     }
   }
@@ -232,7 +254,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
 template <typename T, typename U>
 static Status dft_naive(const Tensor* X, Tensor* Y,
   size_t X_offset, size_t X_stride, size_t Y_offset, size_t Y_stride, int64_t axis,
-  const Tensor* window, bool inverse) {
+  size_t dft_length, const Tensor* window, bool inverse) {
   // Get shape and significant bits
   const auto& X_shape = X->Shape();
   size_t number_of_samples = static_cast<size_t>(X_shape[axis]);
@@ -242,28 +264,29 @@ static Status dft_naive(const Tensor* X, Tensor* Y,
   // Get data
   auto* X_data = const_cast<U*>(reinterpret_cast<const U*>(X->DataRaw())) + X_offset;
   auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
-  
+
   U* window_data = nullptr;
   if (window) {
     window_data = const_cast<U*>(reinterpret_cast<const U*>(window->DataRaw()));
   }
 
-  auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
+  auto angular_velocity = compute_angular_velocity<T>(dft_length, inverse);
 
   for (size_t i = 0; i < dft_output_size; i++) {
     std::complex<T>& out = *(Y_data + i*Y_stride);
     out.real(0);
     out.imag(0);
 
-    for (size_t j = 0; j < number_of_samples; j++) {  // vectorize over this loop
+    for (size_t j = 0; j < dft_length; j++) {  // vectorize over this loop
       auto exponential = std::complex<T>(cos(i * j * angular_velocity), sin(i * j * angular_velocity));
       auto window_element = window_data ? * (window_data + j) : 1;
-      auto element = *(X_data + j*X_stride) * window_element;
+      auto x = (j < number_of_samples) ? *(X_data + j * X_stride) : 0;
+      auto element = x * window_element;
       out += exponential * element;
     }
 
     if (inverse) {
-      out /= static_cast<T>(number_of_samples);
+      out /= static_cast<T>(dft_length);
     }
   }
 
@@ -271,31 +294,28 @@ static Status dft_naive(const Tensor* X, Tensor* Y,
 }
 
 template <typename T, typename U>
-static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, int64_t axis, const Tensor* window, bool is_onesided, bool inverse,
+static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, Tensor* Y, int64_t axis, int64_t dft_length, const Tensor* window, bool is_onesided, bool inverse,
                                          std::vector<std::complex<T>>& V, std::vector<std::complex<T>>& temp_output) {
   // Get shape
   const auto& X_shape = X->Shape();
   const auto& Y_shape = Y->Shape();
-  size_t number_of_samples = static_cast<size_t>(X_shape[axis]);
-  
+
   auto batch_and_signal_rank = X->Shape().NumDimensions();
   auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[axis]);
 
   auto is_input_real = X->Shape().NumDimensions() == 2 || X->Shape()[X->Shape().NumDimensions() - 1] == 1;
-  auto compex_input_factor = is_input_real ? 1 : 2;
+  auto complex_input_factor = is_input_real ? 1 : 2;
   if (X->Shape().NumDimensions() > 2)
   {
     total_dfts /= X->Shape()[X->Shape().NumDimensions() - 1];
     batch_and_signal_rank -= 1;
   }
 
-
-
   // Calculate x/y offsets/strides
   for (size_t i = 0; i < total_dfts; i++)
   {
     size_t X_offset = 0;
-    size_t X_stride = X_shape.SizeFromDimension(axis+1) / compex_input_factor;
+    size_t X_stride = X_shape.SizeFromDimension(axis+1) / complex_input_factor;
     size_t cumulative_packed_stride = total_dfts;
     size_t temp = i;
     for (size_t r = 0; r < batch_and_signal_rank; r++) {
@@ -306,7 +326,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
       cumulative_packed_stride /= X_shape[r];
       auto index = temp / cumulative_packed_stride;
       temp -= (index * cumulative_packed_stride);
-      X_offset += index * X_shape.SizeFromDimension(r + 1) / compex_input_factor;
+      X_offset += index * X_shape.SizeFromDimension(r + 1) / complex_input_factor;
     }
 
     size_t Y_offset = 0;
@@ -324,12 +344,12 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
       Y_offset += index * Y_shape.SizeFromDimension(r + 1) / 2;
     }
 
-    if (is_power_of_2(number_of_samples)) {
-      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, window, is_onesided, inverse, V, temp_output)));
+    if (is_power_of_2(dft_length)) {
+      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, dft_length, window, is_onesided, inverse, V, temp_output)));
     } else {
-      ORT_RETURN_IF_ERROR((dft_naive<T, U>(X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, window, inverse)));
+      ORT_RETURN_IF_ERROR((dft_naive<T, U>(X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, dft_length, window, inverse)));
     }
-  } 
+  }
 
   return Status::OK();
 }
@@ -337,13 +357,33 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
 static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, bool is_onesided, bool inverse) {
   // Get input shape
   const auto* X = ctx->Input<Tensor>(0);
+  const auto* dft_length = ctx->Input<Tensor>(1);
   const auto& X_shape = X->Shape();
   const auto is_real_valued = is_real_valued_signal(X_shape);
   const auto is_complex_valued = is_complex_valued_signal(X_shape);
 
+  // Get the rank of the input tensor
+  // Ensure that the axis is in the valid range of [-rank, rank)
+  auto rank = static_cast<int64_t>(X_shape.GetDims().size());
+  if (!(-rank <= axis && axis < rank)) {
+    ORT_RETURN_IF(!(-rank <= axis && axis < rank),
+                  "axis attribute value ",
+                  axis,
+                  " is invalid for a tensor of rank ",
+                  rank);
+  }
+  axis = (axis >= 0 ? axis : axis + rank);
+
+  int64_t number_of_samples = static_cast<int64_t>(X_shape[axis]);
+  if (dft_length) {
+    const auto& dft_length_shape = dft_length->Shape();
+    ORT_RETURN_IF(!dft_length_shape.IsScalar(), "dft_length must be a scalar value.");
+    number_of_samples = static_cast<int>(get_scalar_value_from_tensor<int64_t>(dft_length));
+    ORT_RETURN_IF(number_of_samples <= 0, "dft_length must be greater than zero.");
+  }
+
   // Get the DFT output size. Onesided will return only the unique values!
   // note: x >> 1 === std::floor(x / 2.f)
-  int64_t number_of_samples = static_cast<int64_t>(X_shape[axis]);
   auto dft_output_size = is_onesided ?
       ((number_of_samples >> 1) + 1) :
       number_of_samples;
@@ -353,7 +393,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   if (X_shape.NumDimensions() == 2)
   {
     Y_shape = onnxruntime::TensorShape({X_shape[0], dft_output_size, 2});
-  } else 
+  } else
   {
     Y_shape[Y_shape.NumDimensions() - 1] = 2;
   }
@@ -368,9 +408,9 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
     std::vector<std::complex<float>> V;
     std::vector<std::complex<float>> temp_output;
     if (is_real_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, axis, nullptr, is_onesided, inverse, V, temp_output)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, float>(ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else if (is_complex_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(ctx, X, Y, axis, nullptr, is_onesided, inverse, V, temp_output)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<float, std::complex<float>>(ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
         ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
     }
@@ -378,9 +418,9 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
     std::vector<std::complex<double>> V;
     std::vector<std::complex<double>> temp_output;
     if (is_real_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, axis, nullptr, is_onesided, inverse, V, temp_output)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, double>(ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else if (is_complex_valued) {
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(ctx, X, Y, axis, nullptr, is_onesided, inverse, V, temp_output)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<double, std::complex<double>>(ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
       ORT_THROW("Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for complex inputs.", data_type);
     }
@@ -392,33 +432,21 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
 }
 
 Status DFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_ + 1, is_onesided_, false));
+  ORT_RETURN_IF_ERROR(
+    discrete_fourier_transform(ctx,
+                               axis_,
+                               is_onesided_,
+                               is_inverse_));
   return Status::OK();
 }
 
 Status IDFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_ + 1, false, true));
+  ORT_RETURN_IF_ERROR(
+    discrete_fourier_transform(ctx,
+                               axis_,
+                               false /*is_onesided_*/,
+                               true /*is_inverse_*/));
   return Status::OK();
-}
-
-// dedupe with the other one in window_functions.cc
-template <typename T>
-static T get_scalar_value_from_tensor(const Tensor* tensor) {
-  ORT_ENFORCE(tensor->Shape().Size() == 1, "ratio input should have a single value.");
-
-  auto data_type = tensor->DataType()->AsPrimitiveDataType()->GetDataType();
-  switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      return static_cast<T>(*reinterpret_cast<const float*>(tensor->DataRaw()));
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      return static_cast<T>(*reinterpret_cast<const double*>(tensor->DataRaw()));
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      return static_cast<T>(*reinterpret_cast<const int32_t*>(tensor->DataRaw()));
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      return static_cast<T>(*reinterpret_cast<const int64_t*>(tensor->DataRaw()));
-    default:
-      ORT_THROW("Unsupported input data type of ", data_type);
-  }
 }
 
 template <typename T, typename U>
@@ -429,7 +457,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   // Input(2, "window") type = T1, optional
   // Input(3, "frame_step") type = T2
   // Output(0, "output") type = T1
-  
+
   // Get signal
   const auto* signal = ctx->Input<Tensor>(0);
   const auto frame_step = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(1));
@@ -445,8 +473,8 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   ORT_ENFORCE(signal_components == 1 || signal_components == 2, "Ensure that the signal has either 1 or 2 components.");
 
   // Get the frame length
-  int64_t frame_length = std::numeric_limits<int64_t>::min();  
-  if (frame_length_tensor) 
+  int64_t frame_length = std::numeric_limits<int64_t>::min();
+  if (frame_length_tensor)
   {
     frame_length = get_scalar_value_from_tensor<int64_t>(frame_length_tensor);
   }
@@ -524,7 +552,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
               0);
 
       // Run individual dft
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, 1, window, is_onesided, false, V, temp_output)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, 1, window_size, window, is_onesided, false, V, temp_output)));
     }
   }
 
