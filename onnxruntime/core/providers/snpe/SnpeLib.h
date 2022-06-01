@@ -28,9 +28,9 @@ enum class BufferType : int {
   UINT8,
   FLOAT};
 
-class SnpeLibRuntimeTarget {
+class SnpeRuntime {
  public:
-  SnpeLibRuntimeTarget() {
+  SnpeRuntime() {
     runtime_ =
 #if defined(_M_X64)
         zdl::DlSystem::Runtime_t::CPU;
@@ -39,38 +39,40 @@ class SnpeLibRuntimeTarget {
 #endif
   }
 
-  explicit SnpeLibRuntimeTarget(const std::string& runtime) : SnpeLibRuntimeTarget() {
+  explicit SnpeRuntime(const std::string& runtime) : SnpeRuntime() {
     Set(runtime);
   }
 
   zdl::DlSystem::Runtime_t Get() const { return runtime_; }
 
   void Set(const std::string& runtime) {
-    if (!runtime.empty()) {
-      if (runtime == "DSP" || runtime == "DSP_FIXED8_TF") {
-        runtime_ = zdl::DlSystem::Runtime_t::DSP;
-        return;
-      }
+    if (runtime.empty()) {
+      return;
+    }
 
-      if (runtime == "CPU" || runtime == "CPU_FLOAT32") {
-        runtime_ = zdl::DlSystem::Runtime_t::CPU;
-        return;
-      }
+    if (runtime == "DSP" || runtime == "DSP_FIXED8_TF") {
+      runtime_ = zdl::DlSystem::Runtime_t::DSP;
+      return;
+    }
 
-      if (runtime == "GPU" || runtime == "GPU_FLOAT32_16_HYBRID") {
-        runtime_ = zdl::DlSystem::Runtime_t::GPU;
-        return;
-      }
+    if (runtime == "CPU" || runtime == "CPU_FLOAT32") {
+      runtime_ = zdl::DlSystem::Runtime_t::CPU;
+      return;
+    }
 
-      if (runtime == "GPU_FLOAT16") {
-        runtime_ = zdl::DlSystem::Runtime_t::GPU_FLOAT16;
-        return;
-      }
+    if (runtime == "GPU" || runtime == "GPU_FLOAT32_16_HYBRID") {
+      runtime_ = zdl::DlSystem::Runtime_t::GPU;
+      return;
+    }
 
-      if (runtime == "AIP_FIXED_TF" || runtime == "AIP_FIXED8_TF") {
-        runtime_ = zdl::DlSystem::Runtime_t::AIP_FIXED_TF;
-        return;
-      }
+    if (runtime == "GPU_FLOAT16") {
+      runtime_ = zdl::DlSystem::Runtime_t::GPU_FLOAT16;
+      return;
+    }
+
+    if (runtime == "AIP_FIXED_TF" || runtime == "AIP_FIXED8_TF") {
+      runtime_ = zdl::DlSystem::Runtime_t::AIP_FIXED_TF;
+      return;
     }
   }
 
@@ -89,7 +91,7 @@ class SnpeLibRuntimeTarget {
     return std::string(zdl::DlSystem::RuntimeList::runtimeToString(runtime_));
   }
 
-  ~SnpeLibRuntimeTarget() = default;
+  ~SnpeRuntime() = default;
 
  private:
   zdl::DlSystem::Runtime_t runtime_;
@@ -112,7 +114,7 @@ class SnpeRuntimeOptions {
       ParseOptions();
   }
 
-  const SnpeLibRuntimeTarget& GetRuntimeTarget() const {
+  const SnpeRuntime& GetRuntimeTarget() const {
     return runtime_target_;
   }
 
@@ -132,9 +134,10 @@ class SnpeRuntimeOptions {
 
     // Option - Runtime
     if (runtime_options_.find(OPT_RUNTIME) != runtime_options_.end()) {
-      runtime_target_ = SnpeLibRuntimeTarget(runtime_options_[OPT_RUNTIME]);
+      runtime_target_ = SnpeRuntime(runtime_options_[OPT_RUNTIME]);
       LOGS_DEFAULT(INFO) << "Located user specified runtime target: " << runtime_options_[OPT_RUNTIME];
     }
+    LOGS_DEFAULT(INFO) << "Runtime target: " << runtime_target_.ToString();
 
     // Option Priority
     if (runtime_options_.find(OPT_PRIORITY) != runtime_options_.end()) {
@@ -170,7 +173,7 @@ class SnpeRuntimeOptions {
   }
 
  private:
-  SnpeLibRuntimeTarget runtime_target_;
+  SnpeRuntime runtime_target_;
   zdl::DlSystem::ExecutionPriorityHint_t execution_priority_;
   std::unordered_map<std::string, std::string> runtime_options_;
   std::string udo_folder_;
@@ -253,8 +256,8 @@ class SnpeLib {
   int RegisterUDOs(const std::string udo_dir, const std::vector<std::string>& udo_file_names) {
     int udos_registered = 0;
 
-    for (auto udo_file = udo_file_names.begin(); udo_file != udo_file_names.end(); ++udo_file) {
-      std::string full_path = udo_dir + "/" + *udo_file;
+    for (const auto& udo_file : udo_file_names) {
+      std::string full_path = udo_dir + "/" + udo_file;
       bool result = zdl::SNPE::SNPEFactory::addOpPackage(full_path);
       if (result) {
         ++udos_registered;

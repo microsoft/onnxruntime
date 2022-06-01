@@ -19,9 +19,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace snpe {
 
-class Snpe : public OpKernel {
+class SnpeKernel : public OpKernel {
  public:
-  explicit Snpe(const OpKernelInfo& info) : OpKernel(info) {
+  explicit SnpeKernel(const OpKernelInfo& info) : OpKernel(info) {
     input_cout_ = info.GetInputCount();
     output_cout_ = info.GetOutputCount();
     std::vector<int64_t> input_sizes(input_cout_);

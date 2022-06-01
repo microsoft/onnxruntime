@@ -17,7 +17,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kSnpeExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T", BuildKernelDefConstraints<float, uint8_t, uint16_t>()),
-    Snpe);
+    SnpeKernel);
 
 }  // namespace snpe
 }  // namespace contrib
