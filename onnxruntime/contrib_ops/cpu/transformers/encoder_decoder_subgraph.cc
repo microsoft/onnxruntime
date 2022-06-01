@@ -258,12 +258,14 @@ Status EncoderSubgraph::CreateInitialFeeds(
   OrtValue encoder_input_ids;
   std::cout << "EncoderSubgraph::CreateInitialFeeds 259" << std::endl;
   std::cout << default_allocator->Info().ToString() << std::endl;
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 261" << std::endl;
   std::cout << cpu_alloactor->Info().ToString() << std::endl;
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 263" << std::endl;
   //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
   Tensor::InitOrtValue(element_type, input_ids_shape, default_allocator, encoder_input_ids);
-  std::cout << "EncoderSubgraph::CreateInitialFeeds 262" << std::endl;
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 266" << std::endl;
   int32_t* encoder_input_ids_data = encoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  std::cout << "EncoderSubgraph::CreateInitialFeeds 264" << std::endl;
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 268" << std::endl;
   *encoder_input_ids_data = 250019;
   encoder_input_ids_data++;
   *encoder_input_ids_data = 2;
@@ -271,10 +273,10 @@ Status EncoderSubgraph::CreateInitialFeeds(
   *encoder_input_ids_data = 2673;
   encoder_input_ids_data++;
   *encoder_input_ids_data = 2;
-  std::cout << "EncoderSubgraph::CreateInitialFeeds 267" << std::endl;
+  std::cout << "EncoderSubgraph::CreateInitialFeeds 276" << std::endl;
   OrtValue attention_mask;
   if (attn_mask_value != nullptr) {
-    std::cout << "EncoderSubgraph::CreateInitialFeeds 270" << std::endl;
+    std::cout << "EncoderSubgraph::CreateInitialFeeds 279" << std::endl;
     const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
     ORT_UNUSED_PARAMETER(attn_mask);
     //Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(), location, attention_mask);
