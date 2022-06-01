@@ -14,8 +14,8 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-constexpr int threads_per_block = GridDim::maxThreadsPerBlock;
-constexpr int thread_worksize = 4;
+constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
+constexpr int kThreadWorkSize = 4;
 }  // namespace
 
 template <class T>
@@ -28,24 +28,24 @@ __global__ void _GatherScatterElements2DKernel(const T* src_data, const TIndex* 
                                                const int64_t input_dim_along_axis,
                                                const fast_divmod indices_row_size_fmd, const int64_t input_row_size,
                                                const TFunc& func, CUDA_LONG N) {
-  CUDA_LONG start = threads_per_block * thread_worksize * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = kThreadsPerBlock * kThreadWorkSize * blockIdx.x + threadIdx.x;
   CUDA_LONG id;
-  T value[thread_worksize];
+  T value[kThreadWorkSize];
 
   if (!IsGather) {
     id = start;
 #pragma unroll
-    for (int work = 0; work < thread_worksize; ++work) {
+    for (int work = 0; work < kThreadWorkSize; ++work) {
       if (id < N) {
         value[work] = src_data[id];
-        id += threads_per_block;
+        id += kThreadsPerBlock;
       }
     }
   }
 
   id = start;
 #pragma unroll
-  for (int work = 0; work < thread_worksize; ++work) {
+  for (int work = 0; work < kThreadWorkSize; ++work) {
     if (id < N) {
       int64_t input_offset_along_axis = static_cast<int64_t>(indices_data[id]);
       if (input_offset_along_axis >= -input_dim_along_axis && input_offset_along_axis < input_dim_along_axis) {
@@ -62,17 +62,17 @@ __global__ void _GatherScatterElements2DKernel(const T* src_data, const TIndex* 
           func(output_data + input_offset, value + work);
         }
       }
-      id += threads_per_block;
+      id += kThreadsPerBlock;
     }
   }
 
   if (IsGather) {
     id = start;
 #pragma unroll
-    for (int work = 0; work < thread_worksize; ++work) {
+    for (int work = 0; work < kThreadWorkSize; ++work) {
       if (id < N) {
         output_data[id] = value[work];
-        id += threads_per_block;
+        id += kThreadsPerBlock;
       }
     }
   }
@@ -84,24 +84,24 @@ __global__ void _GatherScatterElementsKernel(const T* src_data, const TIndex* in
                                              const int64_t input_stride_along_axis,
                                              const TArray<int64_t> masked_input_strides,
                                              const TArray<fast_divmod> indices_fdms, const TFunc& func, CUDA_LONG N) {
-  CUDA_LONG start = threads_per_block * thread_worksize * blockIdx.x + threadIdx.x;
+  CUDA_LONG start = kThreadsPerBlock * kThreadWorkSize * blockIdx.x + threadIdx.x;
   CUDA_LONG id;
-  T value[thread_worksize];
+  T value[kThreadWorkSize];
 
   if (!IsGather) {
     id = start;
 #pragma unroll
-    for (int work = 0; work < thread_worksize; ++work) {
+    for (int work = 0; work < kThreadWorkSize; ++work) {
       if (id < N) {
         value[work] = src_data[id];
-        id += threads_per_block;
+        id += kThreadsPerBlock;
       }
     }
   }
 
   id = start;
 #pragma unroll
-  for (int work = 0; work < thread_worksize; ++work) {
+  for (int work = 0; work < kThreadWorkSize; ++work) {
     if (id < N) {
       int64_t input_offset_along_axis = static_cast<int64_t>(indices_data[id]);
       if (input_offset_along_axis >= -input_dim_along_axis && input_offset_along_axis < input_dim_along_axis) {
@@ -127,26 +127,26 @@ __global__ void _GatherScatterElementsKernel(const T* src_data, const TIndex* in
         }
       }
 
-      id += threads_per_block;
+      id += kThreadsPerBlock;
     }
   }
 
   if (IsGather) {
     id = start;
 #pragma unroll
-    for (int work = 0; work < thread_worksize; ++work) {
+    for (int work = 0; work < kThreadWorkSize; ++work) {
       if (id < N) {
         output_data[id] = value[work];
-        id += threads_per_block;
+        id += kThreadsPerBlock;
       }
     }
   }
 }
 
-#define LAUNCH_GATHER_SCATTER_ELEMENTS_2D_KERNEL(src_data, is_outer_axis, is_gather)                               \
-  _GatherScatterElements2DKernel<T, TIndex, is_outer_axis, is_gather, decltype(func)>                              \
-      <<<blocksPerGrid, threads_per_block, 0, stream>>>(src_data, indices_data, output_data, input_dim_along_axis, \
-                                                        indices_fdms[0], input_row_size, func, N)
+#define LAUNCH_GATHER_SCATTER_ELEMENTS_2D_KERNEL(src_data, is_outer_axis, is_gather)                              \
+  _GatherScatterElements2DKernel<T, TIndex, is_outer_axis, is_gather, decltype(func)>                             \
+      <<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(src_data, indices_data, output_data, input_dim_along_axis, \
+                                                       indices_fdms[0], input_row_size, func, N)
 
 template <typename T, typename TIndex>
 void GatherElementsImpl(cudaStream_t stream, const int64_t rank, const int64_t axis, const T* input_data,
@@ -154,7 +154,7 @@ void GatherElementsImpl(cudaStream_t stream, const int64_t rank, const int64_t a
                         const TArray<int64_t>& masked_input_strides, const TIndex* indices_data,
                         const int64_t indices_size, const TArray<fast_divmod>& indices_fdms, T* output_data) {
   CUDA_LONG N = static_cast<CUDA_LONG>(indices_size);
-  int blocksPerGrid = static_cast<int>(CeilDiv(N, threads_per_block * thread_worksize));
+  int blocksPerGrid = static_cast<int>(CeilDiv(N, kThreadsPerBlock * kThreadWorkSize));
   auto func = FuncAssignment<T>();
   if (rank == 2) {
     if (axis == 0) {
@@ -169,7 +169,7 @@ void GatherElementsImpl(cudaStream_t stream, const int64_t rank, const int64_t a
 
   // Save one divmod in kernel if axis is the last dim.
   int64_t new_rank = rank == axis + 1 ? rank - 1 : rank;
-  _GatherScatterElementsKernel<T, TIndex, true, decltype(func)><<<blocksPerGrid, threads_per_block, 0, stream>>>(
+  _GatherScatterElementsKernel<T, TIndex, true, decltype(func)><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(
       input_data, indices_data, output_data, new_rank, input_dim_along_axis, input_stride_along_axis,
       masked_input_strides, indices_fdms, func, N);
 }
@@ -189,7 +189,7 @@ Status ScatterElementsImplInternal(cudaStream_t stream, const int64_t rank, cons
   if (indices_size == 0) return Status::OK();
 
   CUDA_LONG N = static_cast<CUDA_LONG>(indices_size);
-  int blocksPerGrid = static_cast<int>(CeilDiv(N, threads_per_block * thread_worksize));
+  int blocksPerGrid = static_cast<int>(CeilDiv(N, kThreadsPerBlock * kThreadWorkSize));
   if (rank == 2) {
     if (axis == 0) {
       int64_t input_row_size = input_stride_along_axis;
@@ -203,11 +203,13 @@ Status ScatterElementsImplInternal(cudaStream_t stream, const int64_t rank, cons
 
   // Save one divmod in kernel if axis is the last dim.
   int64_t new_rank = rank == axis + 1 ? rank - 1 : rank;
-  _GatherScatterElementsKernel<T, TIndex, false, decltype(func)><<<blocksPerGrid, threads_per_block, 0, stream>>>(
+  _GatherScatterElementsKernel<T, TIndex, false, decltype(func)><<<blocksPerGrid, kThreadsPerBlock, 0, stream>>>(
       updates_data, indices_data, output_data, new_rank, input_dim_along_axis, input_stride_along_axis,
       masked_input_strides, indices_fdms, func, N);
   return Status::OK();
 }
+
+#undef LAUNCH_GATHER_SCATTER_ELEMENTS_2D_KERNEL
 
 template <typename T, typename TIndex>
 Status ScatterElementsImpl(cudaStream_t stream, const int64_t rank, const int64_t axis, const T* input_data,
@@ -243,6 +245,9 @@ GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(half)
 GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(float)
 GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(double)
 
+#undef GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL
+#undef GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL
+
 #ifdef ENABLE_TRAINING
 
 template <class T>
@@ -276,6 +281,9 @@ Status GatherElementsGradImpl(cudaStream_t stream, const int64_t rank, const int
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(half)
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(float)
 GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(double)
+
+#undef GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL
+#undef GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL
 
 #endif
 

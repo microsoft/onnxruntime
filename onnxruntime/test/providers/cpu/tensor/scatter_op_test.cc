@@ -6,29 +6,12 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
 namespace {
-
-template <typename T>
-std::vector<T> InputData(size_t size, size_t delta = 0) {
-  std::vector<T> result(size);
-  for (size_t i = 0; i < size; i++) {
-    result[i] = static_cast<T>(i * 2 + delta);
-  }
-  return result;
-}
-
-template <>
-std::vector<MLFloat16> InputData<MLFloat16>(size_t size, size_t delta) {
-  std::vector<MLFloat16> result(size);
-  for (size_t i = 0; i < size; i++) {
-    result[i] = MLFloat16(static_cast<float>(i * 2 + delta));
-  }
-  return result;
-}
 
 template <typename T, typename TIndex>
 void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims, bool has_axis = false,
@@ -37,7 +20,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   size_t indices_size =
       static_cast<size_t>(std::accumulate(indices_dims.begin(), indices_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> input_data = InputData<T>(input_size);
+  std::vector<T> input_data = ValueRange<T>(input_size, static_cast<T>(0.0f), static_cast<T>(2.0f));
   size_t rank = input_dims.size();
   std::vector<int64_t> input_strides(rank);
   std::vector<int64_t> indices_strides(rank);
@@ -51,7 +34,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
 
   int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(rank) : axis;
   std::vector<TIndex> indices_data(indices_size);
-  std::vector<T> updates_data = InputData<T>(indices_size, 1);
+  std::vector<T> updates_data = ValueRange<T>(indices_size, static_cast<T>(1.0f), static_cast<T>(2.0f));
   std::vector<T> output_data(input_data);
   std::srand(static_cast<unsigned>(std::time(0)));
   for (size_t i = 0; i < indices_size; ++i) {

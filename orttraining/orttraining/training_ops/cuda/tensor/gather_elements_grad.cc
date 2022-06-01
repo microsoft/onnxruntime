@@ -50,6 +50,8 @@ struct GatherElementsGrad::ComputeImpl {
   }
 };
 
+#undef CASE_GATHER_ELEMENTS_GRAD_IMPL
+
 Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   const auto* dY = context->Input<Tensor>(0);
   const Tensor* shape = context->Input<Tensor>(1);

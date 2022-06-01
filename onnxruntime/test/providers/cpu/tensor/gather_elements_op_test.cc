@@ -6,29 +6,12 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
 namespace {
-
-template <typename T>
-std::vector<T> InputData(size_t size) {
-  std::vector<T> result(size);
-  for (size_t i = 0; i < size; i++) {
-    result[i] = static_cast<T>(i);
-  }
-  return result;
-}
-
-template <>
-std::vector<MLFloat16> InputData<MLFloat16>(size_t size) {
-  std::vector<MLFloat16> result(size);
-  for (size_t i = 0; i < size; i++) {
-    result[i] = MLFloat16(static_cast<float>(i));
-  }
-  return result;
-}
 
 template <typename T, typename TIndex>
 void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims, bool has_axis = false,
@@ -37,7 +20,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   size_t indices_size =
       static_cast<size_t>(std::accumulate(indices_dims.begin(), indices_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> input_data = InputData<T>(input_size);
+  std::vector<T> input_data = ValueRange<T>(input_size, static_cast<T>(1.0f), static_cast<T>(1.0f));
   size_t rank = input_dims.size();
   std::vector<int64_t> input_strides(rank);
   std::vector<int64_t> indices_strides(rank);
@@ -171,8 +154,7 @@ void RunTestWrapper<std::string>() {
   test4.AddOutput<std::string>("output", {2, 2}, {"a", "a", "c", "c"});
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
-  test4.Run(OpTester::ExpectResult::kExpectFailure,
-            "GatherElements op: Out of range value in index tensor",
+  test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Out of range value in index tensor",
             {kNupharExecutionProvider, kOpenVINOExecutionProvider});
 
   // 3D input - axis 1
@@ -248,8 +230,7 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
             kTensorrtExecutionProvider});
 }

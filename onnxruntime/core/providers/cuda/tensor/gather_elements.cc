@@ -166,6 +166,8 @@ struct GatherElements::ComputeImpl {
   }
 };
 
+#undef CASE_GATHER_ELEMENTS_IMPL
+
 Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   // Process input data tensor
   const auto* input_tensor = context->Input<Tensor>(0);

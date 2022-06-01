@@ -6,30 +6,13 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
 namespace test {
 
 namespace {
-
-template <typename T>
-std::vector<T> GradData(size_t size) {
-  std::vector<T> result(size);
-  for (size_t i = 0; i < size; i++) {
-    result[i] = static_cast<T>(i);
-  }
-  return result;
-}
-
-template <>
-std::vector<MLFloat16> GradData<MLFloat16>(size_t size) {
-  std::vector<MLFloat16> result(size);
-  for (size_t i = 0; i < size; i++) {
-    result[i] = MLFloat16(static_cast<float>(i));
-  }
-  return result;
-}
 
 template <typename T>
 void Add(T* a, const T* b) {
@@ -48,7 +31,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
       static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   size_t indices_size =
       static_cast<size_t>(std::accumulate(indices_dims.begin(), indices_dims.end(), 1LL, std::multiplies<int64_t>()));
-  std::vector<T> dY_data = GradData<T>(indices_size);
+  std::vector<T> dY_data = onnxruntime::test::ValueRange<T>(indices_size, static_cast<T>(1.0f), static_cast<T>(1.0f));
   size_t rank = input_dims.size();
   std::vector<int64_t> input_strides(rank);
   std::vector<int64_t> indices_strides(rank);

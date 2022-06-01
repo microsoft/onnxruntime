@@ -64,6 +64,8 @@ struct ScatterElements::ComputeImpl {
   }
 };
 
+#undef CASE_SCATTER_ELEMENTS_IMPL
+
 Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto& input_shape = input_tensor->Shape();
