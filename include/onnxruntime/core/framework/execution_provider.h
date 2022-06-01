@@ -289,12 +289,10 @@ class IExecutionProvider {
  private:
   const std::string type_;
 
-  // allocator lookup is via device id and OrtMemType, but there's an implicit connection to the underlying OrtDevice
-  // involved that depends on what sort of EP this is.
+  // allocator lookup is done by combining the device id and OrtMemType.
+  // there's also an implicit connection to the underlying OrtDevice involved that is dependent on the EP.
   // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
   // GPU device.
-  // Alternatively we could build a map of deviceid+OrtMemType to OrtDevice when inserting allocators so that
-  // we have a clearer 1:1 relationship between an OrtDevice and an allocator.
   using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
   AllocatorMap allocators_;
 
