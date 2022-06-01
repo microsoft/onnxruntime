@@ -146,7 +146,9 @@ void VMRunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
   add_device_type_data2output_tensors(context);
 }
 
-void VMRunnerImpl::set_output_zero_copy() {}
+void VMRunnerImpl::set_output_zero_copy() {
+  tvm::TVM_VM_SetOutputsZeroCopy(*mod_, output_tensors_);
+}
 
 void VMRunnerImpl::run() {
   tvm::TVM_VM_Run(*mod_);

@@ -244,6 +244,15 @@ void TVMSetOutputsZeroCopy(TvmModule& mod,
   }
 }
 
+void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
+                               std::vector<DLTensor>& outputs)
+{
+  TvmPackedFunc set_output = mod.GetFunction("set_outputs", false);
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    set_output("main", i, &outputs[i]);
+  }
+}
+
 void TVMGetOutputs(TvmModule& mod,
                    std::vector<DLTensor>& outputs)
 {
