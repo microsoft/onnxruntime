@@ -37,8 +37,6 @@ namespace onnxruntime {
 /**
    Logical device representation.
 */
-using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
-using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
@@ -74,7 +72,7 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -194,7 +192,8 @@ class IExecutionProvider {
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
-  // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
+
+  // TODO: temporary solution, need to unify the interface in EP and AllocatorManager
   void TryInsertAllocator(AllocatorPtr allocator);
 
   struct FusedNodeAndGraph {
@@ -258,25 +257,24 @@ class IExecutionProvider {
     return logger_;
   }
 
-  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance. 
+  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance.
    The model hash is also returned if you wish to include that in the MetaDef name to ensure uniqueness across models.
    @param graph_viewer[in] Graph viewer that GetCapability was called with. Can be for the main graph or nested graph.
-   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model. 
-                          This is created using the model path if available, 
+   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model.
+                          This is created using the model path if available,
                           or the model input names and the output names from all nodes in the main graph.
    @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
             compiled kernels, so the name must be unique and deterministic across models and sessions.
-            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
+            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
   /**
-     Register allocators used for EP
-     TODO: Used for CUDA & TRT only for now, will have one more PR to apply this for all EPs.
-     EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
+     Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
+     If the EP implements this it should delay creating any allocators until this is called.
   */
-  virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
+  virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
 
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
@@ -290,9 +288,17 @@ class IExecutionProvider {
 
  private:
   const std::string type_;
+
+  // allocator lookup is via device id and OrtMemType, but there's an implicit connection to the underlying OrtDevice
+  // involved that depends on what sort of EP this is.
+  // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
+  // GPU device.
+  // Alternatively we could build a map of deviceid+OrtMemType to OrtDevice when inserting allocators so that
+  // we have a clearer 1:1 relationship between an OrtDevice and an allocator.
+  using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
   AllocatorMap allocators_;
-  MemoryInfoSet mem_info_set_;  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
-  //It will be set when this object is registered to a session
+
+  // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_

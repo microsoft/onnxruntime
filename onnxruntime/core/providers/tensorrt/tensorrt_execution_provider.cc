@@ -447,34 +447,42 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
   }
 }
 
-void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
+  OrtDevice::DeviceId short_device_id = gsl::narrow<OrtDevice::DeviceId>(device_id_);
+  OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
+  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+
   // Try to get a CUDA allocator from allocator manager first
   // Used to allocate CUDA device memory
-  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
+  allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
   if (nullptr == allocator_) {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
     allocator_ = CreateAllocator(default_memory_info);
-    allocator_manager->InsertAllocator(allocator_);
+    allocator_manager.InsertAllocator(allocator_);
   }
+
   TryInsertAllocator(allocator_);
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
   if (nullptr == cuda_pinned_alloc) {
     AllocatorCreationInfo pinned_allocator_info(
         [](OrtDevice::DeviceId device_id) {
           return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
         },
-        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+        pinned_device.Id());
+
     cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
-    allocator_manager->InsertAllocator(cuda_pinned_alloc);
+    allocator_manager.InsertAllocator(cuda_pinned_alloc);
   }
+
   TryInsertAllocator(cuda_pinned_alloc);
 
-  auto cuda_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
+  auto cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
   if (nullptr == cuda_cpu_alloc) {
     // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
     // This will be refactored/removed when allocator and execution provider are decoupled.
@@ -486,10 +494,12 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
               OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
                             OrtMemTypeCPUInput));
         },
-        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+        cpu_device.Id());
+
     cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
-    allocator_manager->InsertAllocator(cuda_cpu_alloc);
+    allocator_manager.InsertAllocator(cuda_cpu_alloc);
   }
+
   TryInsertAllocator(cuda_cpu_alloc);
 }
 
