@@ -31,19 +31,18 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const BeamSearchDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                const BeamSearchDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
                const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+               const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
                const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
-               const BeamSearchDeviceHelper::InitDecoderFeedsFunc<T>& init_decoder_feeds_func,
                const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           cuda_stream, cuda_dumper, params,
-                          topk_func, process_logits_func, device_copy_func),
+                          topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
         encoder_session_state_(encoder_session_state),
         encoder_subgraph_(encoder_subgraph),
         decoder_subgraph_(decoder_subgraph),
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
         create_encoder_inputs_func_(create_encoder_inputs_func),
-        init_decoder_feeds_func_(init_decoder_feeds_func),
         update_decoder_feeds_func_(update_decoder_feeds_func) {
   }
 
@@ -62,7 +61,6 @@ class BeamSearchT5 : public BeamSearchBase<T> {
   BeamSearchDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
 
   BeamSearchDeviceHelper::CreateEncoderInputsFunc create_encoder_inputs_func_;
-  BeamSearchDeviceHelper::InitDecoderFeedsFunc<T> init_decoder_feeds_func_;
   BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<T> update_decoder_feeds_func_;
 };
 
@@ -150,7 +148,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Output sequence shall start with decoder_start_token_id
   // TODO: support encoder with 2 input. The following assumes encoder has 3 inputs.
   this->parameters_->sequence_length = 1;
-  cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int64_t>(),
+  cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int32_t>(),
                         static_cast<size_t>(parameters->BatchBeamSize()),
                         parameters->max_length,
                         parameters->sequence_length);
@@ -208,7 +206,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              this->implicit_inputs_,
                                                              encoder_feeds,
                                                              encoder_fetches,
-                                                             decoder_feeds));
+                                                             decoder_feeds,
+                                                             this->device_copy_int32_func_,
+                                                             this->cuda_stream_));
   }
 
   // TODO: allocate fetches. use ping-pong buffers for past state.

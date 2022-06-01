@@ -40,19 +40,17 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
   SetDeviceHelpers(BeamSearchCudaDeviceHelper::AddToFeeds,
                    BeamSearchCudaDeviceHelper::TopK,
                    BeamSearchCudaDeviceHelper::DeviceCopy<float>,
+                   BeamSearchCudaDeviceHelper::DeviceCopy<int32_t>,
                    BeamSearchCudaDeviceHelper::ProcessLogits<float>,
                    BeamSearchCudaDeviceHelper::ProcessLogits<MLFloat16>,
                    BeamSearchCudaDeviceHelper::InitBeamState<float>,
                    BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>);
 
-  SetDeviceHelpers_Gpt(BeamSearchCudaDeviceHelper::UpdateFeeds<float>,
-                       BeamSearchCudaDeviceHelper::UpdateFeeds<MLFloat16>);
+  SetDeviceHelpers_Gpt(BeamSearchCudaDeviceHelper::UpdateGptFeeds<float>,
+                       BeamSearchCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
-  // SetDeviceHelpers_EncoderDecoder(BeamSearchCudaDeviceHelper::CreateEncoderInputs,
-  //                                 BeamSearchCudaDeviceHelper::InitDecoderFeeds<float>,
-  //                                 BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<float>,
-  //                                 BeamSearchCudaDeviceHelper::InitDecoderFeeds<MLFloat16>,
-  //                                 BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>);
+  SetDeviceHelpers_EncoderDecoder(BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<float>,
+                                  BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
 }

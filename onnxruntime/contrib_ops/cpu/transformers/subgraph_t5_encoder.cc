@@ -17,9 +17,9 @@ namespace transformers {
 /* T5 Encoder Subgraph (It also contains decoder initialization where decoder_input_ids are filled with start token ID).
 
    Inputs:
-      encoder_input_ids: int64 (B, encode_sequence_length)
-      encoder_attention_mask: int64 (B, encode_sequence_length)
-      decoder_input_ids: int64 (B, 1) OPTIONAL
+      encoder_input_ids: int32 (B, encode_sequence_length)
+      encoder_attention_mask: int32 (B, encode_sequence_length)
+      decoder_input_ids: int32 (B, 1) OPTIONAL
 
     Outputs:
       logits: (B, 1, vocab_size)
@@ -78,19 +78,19 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   num_layers = (static_cast<int>(subgraph_outputs.size()) - 2) / 4;
 
-  constexpr auto int64_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64;
+  constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
   constexpr auto float16_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int64_type,
-                "encoder subgraph input 0 (encoder_input_ids) shall have int64 type");
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+                "encoder subgraph input 0 (encoder_input_ids) shall have int32 type");
 
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int64_type,
-                "encoder subgraph input 1 (encoder_attention_mask) shall have int64 type");
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+                "encoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
 
   if (num_subgraph_inputs == 3) {
-    ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != int64_type,
-                  "encoder subgraph input 2 (decoder_input_ids) shall have int64 type");
+    ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+                  "encoder subgraph input 2 (decoder_input_ids) shall have int32 type");
   }
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
@@ -140,12 +140,11 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
                                                  expanded_decoder_input_ids));
 
   const IExecutionProvider* provider = GetProvider();
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
-                                        expanded_encoder_input_ids,
-                                        expanded_encoder_attention_mask,
-                                        expanded_decoder_input_ids,
-                                        feeds,
-                                        buffer));
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(
+      provider,
+      {expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids},
+      feeds,
+      buffer));
 
   for (const auto* entry : implicit_inputs) {
     feeds.push_back(*entry);

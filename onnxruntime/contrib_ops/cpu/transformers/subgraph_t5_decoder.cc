@@ -18,8 +18,8 @@ namespace transformers {
 /* T5 Decoder Subgraph.
 
    Inputs:
-      input_ids: int64 (B, 1)
-      encoder_attention_mask: int64 (B, encode_sequence_length)
+      input_ids: int32 (B, 1)
+      encoder_attention_mask: int32 (B, encode_sequence_length)
       encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
 
       past_key_self_0: (B, num_heads, past_decode_sequence_length, head_size)
@@ -67,14 +67,14 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
   num_layers = (static_cast<int>(subgraph_outputs.size()) - 1) / 2;
 
-  constexpr auto int64_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64;
+  constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
   constexpr auto float16_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int64_type,
-                "decoder subgraph input 0 (input_ids) shall have int64 type");
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int64_type,
-                "decoder subgraph input 1 (encoder_attention_mask) shall have int64 type");
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+                "decoder subgraph input 0 (input_ids) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+                "decoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
 
   auto float_type = subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
@@ -89,7 +89,6 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
     ORT_RETURN_IF(subgraph_outputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
                   "decoder subgraph output shall have same data type as that of encoder_hidden_states");
   }
-
 
   is_output_float16_ = (subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type() == float16_type);
 
@@ -110,23 +109,25 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const std::vector<const OrtValue*>& implicit_inputs,
     const std::vector<OrtValue>& encoder_feeds,
     const std::vector<OrtValue>& encoder_fetches,
-    std::vector<OrtValue>& decoder_feeds) {
+    std::vector<OrtValue>& decoder_feeds,
+    const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+    void* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs to be same as encoder subgraph
   AllocatorPtr allocator = session_state_->GetAllocator(encoder_feeds[0].Get<Tensor>().Location());
 
-  // input_ids is from beam next tokens that derived from logits of encoder output
-  // Here we convert data type from int32 to int64 as required by subgraph input
+  // copy beam next tokens in CPU to input_ids in provider device (CPU for CPU EP, or GPU for CUDA EP).
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
   OrtValue input_ids;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), input_ids_shape, allocator, input_ids);
-  int64_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
-  for (int i = 0; i < batch_beam_size; i++) {
-    input_ids_data[i] = static_cast<int64_t>(beam_next_tokens[i]);
-  }
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
+  ORT_RETURN_IF_ERROR(device_copy_int32_func(
+      input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>(),
+      beam_next_tokens,
+      stream,
+      DeviceCopyDirection::hostToDevice));
 
   // The ordering is the same as used in Setup
   decoder_feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));

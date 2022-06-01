@@ -68,9 +68,7 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_attention_mask));
 
   ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
-                                        expanded_input_ids,
-                                        expanded_position_ids,
-                                        expanded_attention_mask,
+                                        {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
                                         buffer));
 

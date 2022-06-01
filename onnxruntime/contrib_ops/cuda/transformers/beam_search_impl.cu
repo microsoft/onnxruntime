@@ -236,11 +236,11 @@ template void LaunchAddProbsKernel(
     cudaStream_t stream);
 
 template <typename T>
-__global__ void UpdateInputsKernel(const T* old_mask_data,
-                                   T* mask_data,
-                                   int32_t* next_positions,
-                                   int batch_beam_size,
-                                   int current_length) {
+__global__ void UpdateGptInputsKernel(const T* old_mask_data,
+                                      T* mask_data,
+                                      int32_t* next_positions,
+                                      int batch_beam_size,
+                                      int current_length) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index < batch_beam_size * current_length) {
     // Update attention mask.
@@ -255,17 +255,17 @@ __global__ void UpdateInputsKernel(const T* old_mask_data,
   }
 }
 
-void LaunchUpdateKernel(const int32_t* old_mask_data,
-                        int32_t* mask_data,
-                        int32_t* next_positions,
-                        int batch_beam_size,
-                        int current_length,
-                        cudaStream_t stream) {
+void LaunchUpdateGptKernel(const int32_t* old_mask_data,
+                           int32_t* mask_data,
+                           int32_t* next_positions,
+                           int batch_beam_size,
+                           int current_length,
+                           cudaStream_t stream) {
   assert(current_length > 0);
   int total_elements = batch_beam_size * current_length;
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
-  UpdateInputsKernel<int32_t><<<gridSize, blockSize, 0, stream>>>(
+  UpdateGptInputsKernel<int32_t><<<gridSize, blockSize, 0, stream>>>(
     old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
 }
 

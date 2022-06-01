@@ -49,6 +49,7 @@ class BeamSearch : public IControlFlowKernel {
       const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       const BeamSearchDeviceHelper::TopkFunc& topk_func,
       const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+      const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
       const BeamSearchDeviceHelper::ProcessLogitsFunc<float>& process_logits_func,
       const BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
       const BeamSearchDeviceHelper::InitBeamStateFunc<float>& init_beam_state_func,
@@ -56,16 +57,12 @@ class BeamSearch : public IControlFlowKernel {
     add_to_feeds_func_ = add_to_feeds_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
+    device_copy_int32_func_ = device_copy_int32_func;
     process_logits_func_ = process_logits_func;
     process_logits_fp16_func_ = process_logits_fp16_func;
     init_beam_state_func_ = init_beam_state_func;
     init_beam_state_fp16_func_ = init_beam_state_fp16_func;
   }
-
-  // device helpers for GPT model
-  // void SetDeviceHelpers_Gpt(const BeamSearchDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func) {
-  //   create_gpt_inputs_func_ = create_gpt_inputs_func;
-  // }
 
   void SetDeviceHelpers_Gpt(
       const BeamSearchDeviceHelper::UpdateGptFeedsFunc<float>& update_gpt_feeds_func,
@@ -76,15 +73,9 @@ class BeamSearch : public IControlFlowKernel {
 
   // device helpers for encoder-decoder model like T5
   void SetDeviceHelpers_EncoderDecoder(
-      const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
-      const BeamSearchDeviceHelper::InitDecoderFeedsFunc<float>& init_decoder_feeds_func,
       const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<float>& update_decoder_feeds_func,
-      const BeamSearchDeviceHelper::InitDecoderFeedsFunc<MLFloat16>& init_decoder_feeds_fp16_func,
       const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<MLFloat16>& update_decoder_feeds_fp16_func) {
-    create_encoder_inputs_func_ = create_encoder_inputs_func;
-    init_decoder_feeds_func_ = init_decoder_feeds_func;
     update_decoder_feeds_func_ = update_decoder_feeds_func;
-    init_decoder_feeds_fp16_func_ = init_decoder_feeds_fp16_func;
     update_decoder_feeds_fp16_func_ = update_decoder_feeds_fp16_func;
   }
 
@@ -93,6 +84,7 @@ class BeamSearch : public IControlFlowKernel {
   BeamSearchDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   BeamSearchDeviceHelper::TopkFunc topk_func_;
   BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
+  BeamSearchDeviceHelper::DeviceCopyFunc<int32_t> device_copy_int32_func_;
 
   BeamSearchDeviceHelper::ProcessLogitsFunc<float> process_logits_func_;
   BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16> process_logits_fp16_func_;
@@ -103,7 +95,6 @@ class BeamSearch : public IControlFlowKernel {
   //------------------------------------------------------------
   // Device specific functions for GPT
   //------------------------------------------------------------
-  BeamSearchDeviceHelper::CreateGptInputsFunc create_gpt_inputs_func_;
   BeamSearchDeviceHelper::UpdateGptFeedsFunc<float> update_gpt_feeds_func_;
   BeamSearchDeviceHelper::UpdateGptFeedsFunc<MLFloat16> update_gpt_feeds_fp16_func_;
 
@@ -111,9 +102,6 @@ class BeamSearch : public IControlFlowKernel {
   // Device specific functions for encoder-decoder model like T5
   //------------------------------------------------------------
   BeamSearchDeviceHelper::CreateEncoderInputsFunc create_encoder_inputs_func_;
-
-  BeamSearchDeviceHelper::InitDecoderFeedsFunc<float> init_decoder_feeds_func_;
-  BeamSearchDeviceHelper::InitDecoderFeedsFunc<MLFloat16> init_decoder_feeds_fp16_func_;
 
   BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<float> update_decoder_feeds_func_;
   BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<MLFloat16> update_decoder_feeds_fp16_func_;

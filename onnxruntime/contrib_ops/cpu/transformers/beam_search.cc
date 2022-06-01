@@ -138,12 +138,13 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
     if (!gpt_subgraph_->IsOutputFloat16()) {
       BeamSearchGpt<float> impl{
           *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-          create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
+          BeamSearchCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
           topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
           process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::ProcessLogits<float>,
           init_beam_state_func_ ? init_beam_state_func_ : BeamSearchCpuDeviceHelper::InitBeamState<float>,
           device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
+          device_copy_int32_func_ ? device_copy_int32_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<int32_t>,
           update_gpt_feeds_func_ ? update_gpt_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateGptFeeds<float>};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
@@ -151,12 +152,13 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
     } else {
       BeamSearchGpt<MLFloat16> impl{
           *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
-          create_gpt_inputs_func_ ? create_gpt_inputs_func_ : BeamSearchCpuDeviceHelper::CreateGptInputs,
+          BeamSearchCpuDeviceHelper::CreateGptInputs,
           add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
           topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
           process_logits_fp16_func_,
           init_beam_state_fp16_func_,
           device_copy_func_,
+          device_copy_int32_func_,
           update_gpt_feeds_fp16_func_};
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
@@ -178,8 +180,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::ProcessLogits<float>,
         init_beam_state_func_ ? init_beam_state_func_ : BeamSearchCpuDeviceHelper::InitBeamState<float>,
         device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
+        device_copy_int32_func_ ? device_copy_int32_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<int32_t>,
         create_encoder_inputs_func_ ? create_encoder_inputs_func_ : BeamSearchCpuDeviceHelper::CreateEncoderInputs,
-        init_decoder_feeds_func_ ? init_decoder_feeds_func_ : BeamSearchCpuDeviceHelper::InitDecoderFeeds<float>,
         update_decoder_feeds_func_ ? update_decoder_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateDecoderFeeds<float>};
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
@@ -193,8 +195,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         process_logits_fp16_func_,
         init_beam_state_fp16_func_,
         device_copy_func_,
+        device_copy_int32_func_,
         create_encoder_inputs_func_,
-        init_decoder_feeds_fp16_func_,
         update_decoder_feeds_fp16_func_};
 
     ORT_RETURN_IF_ERROR(impl.Initialize());

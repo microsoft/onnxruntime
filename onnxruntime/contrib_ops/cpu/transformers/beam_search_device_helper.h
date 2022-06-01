@@ -52,9 +52,7 @@ using CreateGptInputsFunc = std::function<Status(
 
 using AddToFeedsFunc = std::function<Status(
     const IExecutionProvider* provider,
-    OrtValue& input1,
-    OrtValue& input2,
-    OrtValue& input3,
+    std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer)>;
 
@@ -113,20 +111,6 @@ using CreateEncoderInputsFunc = std::function<Status(
     OrtValue& expanded_encoder_attention_mask,
     OrtValue& expanded_decoder_input_ids)>;
 
-// Set decoder inputs given encoder outputs (for encoder-decoder model like T5).
-template <typename T>
-using InitDecoderFeedsFunc = std::function<Status(
-    AllocatorPtr allocator,
-    void* stream,
-    const std::vector<OrtValue>& encoder_outputs,
-    std::vector<OrtValue>& decoder_inputs,
-    int current_length,
-    OrtValue& position_ids,
-    gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
-    int num_beams,
-    const transformers::IConsoleDumper* dumper)>;
-
 // Update decoder inputs given decoder outputs of last iteration (for encoder-decoder model like T5).
 template <typename T>
 using UpdateDecoderFeedsFunc = std::function<Status(
@@ -153,9 +137,7 @@ Status TopK(
 
 Status AddToFeeds(
     const IExecutionProvider* execution_provider,
-    OrtValue& input1,
-    OrtValue& input2,
-    OrtValue& input3,
+    std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
     IAllocatorUniquePtr<char>& buffer);
 
@@ -226,20 +208,6 @@ Status CreateEncoderInputs(
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,
     OrtValue& expanded_decoder_input_ids);
-
-// Set decoder inputs given encoder outputs
-template <typename T>
-Status InitDecoderFeeds(
-    AllocatorPtr allocator,
-    void* stream,
-    const std::vector<OrtValue>& encoder_outputs,
-    std::vector<OrtValue>& decoder_inputs,
-    int current_length,
-    OrtValue& position_ids,
-    gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
-    int num_beams,
-    const transformers::IConsoleDumper* dumper);
 
 // Update decoder inputs given decoder outputs of last iteration.
 template <typename T>
