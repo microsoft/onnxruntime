@@ -45,6 +45,15 @@ class WindowsTelemetry : public Telemetry {
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
 
+  void LogSpinningStart() const override;
+
+  void LogSpinningStop() const override;
+
+  void LogThreadBlock() const override;
+
+  void LogThreadWakeup() const override;
+
+
  private:
   static OrtMutex mutex_;
   static uint32_t global_register_count_;

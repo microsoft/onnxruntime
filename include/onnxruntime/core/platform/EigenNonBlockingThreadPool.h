@@ -1459,185 +1459,190 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // Threads block on this
   void Block() {
     if (busy_loop_state_.load(std::memory_order_acquire) == BusyLoopState::Idle) {
+      env_.GetTelemetryProvider().LogThreadBlock();
       if (::WaitForSingleObjectEx(busy_loop_event_, INFINITE, FALSE) != WAIT_OBJECT_0) {
         auto error_code = ::GetLastError();
         ORT_THROW("WaitForSingleObjectEx failed: ", std::system_category().message(error_code));
       }
+      env_.GetTelemetryProvider().LogThreadWakeup();
     }
   }
 
-    // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
-    // a clean exit, each thread will observe (1) done_ set, indicating that the
-    // destructor has been called, (2) all threads blocked, and (3) no
-    // items in the work queues.
-    void WakeAllWorkersForExit() {
-      StartBusyLoop();
-      //for (auto& td : worker_data_) {
-      //  td.EnsureAwake();
-      //}
+  // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
+  // a clean exit, each thread will observe (1) done_ set, indicating that the
+  // destructor has been called, (2) all threads blocked, and (3) no
+  // items in the work queues.
+  void WakeAllWorkersForExit() {
+    if (0 == ::SetEvent(busy_loop_event_)) {
+      auto error_code = ::GetLastError();
+      ORT_THROW("SetEvent failed: ", std::system_category().message(error_code));
     }
+    //for (auto& td : worker_data_) {
+    //  td.EnsureAwake();
+    //}
+  }
 
-    void threadSetMmCharacteristics(HANDLE& mm_handle) {
-      DWORD mmcssTaskIndex = 0;
-      mm_handle = ::AvSetMmThreadCharacteristicsA(mm_task_name, &mmcssTaskIndex);
-      if (!mm_handle) {
-        auto error_code = ::GetLastError();
-        ORT_THROW("AvSetMmThreadCharacteristicsA failed: ", std::system_category().message(error_code));
+  void threadSetMmCharacteristics(HANDLE& mm_handle) {
+    DWORD mmcssTaskIndex = 0;
+    mm_handle = ::AvSetMmThreadCharacteristicsA(mm_task_name, &mmcssTaskIndex);
+    if (!mm_handle) {
+      auto error_code = ::GetLastError();
+      ORT_THROW("AvSetMmThreadCharacteristicsA failed: ", std::system_category().message(error_code));
+    }
+  }
+
+  void threadSetMmPriority(HANDLE mm_handle, int priority) {
+    BOOL success = ::AvSetMmThreadPriority(mm_handle, static_cast<AVRT_PRIORITY>(priority));
+    if (!success) {
+      auto error_code = ::GetLastError();
+      ORT_THROW("AvSetMmThreadPriority failed: ", std::system_category().message(error_code));
+    }
+  }
+
+  void threadRevokeMmCharacteristics(HANDLE mm_handle) {
+    BOOL ok = ::AvRevertMmThreadCharacteristics(mm_handle);
+    if (!ok) {
+      auto error_code = ::GetLastError();
+      ORT_THROW("AvSetMmThreadPriority failed: ", std::system_category().message(error_code));
+    }
+  }
+
+  // Main worker thread loop.
+  void WorkerLoop(int thread_id) {
+    PerThread* pt = GetPerThread();
+    WorkerData& td = worker_data_[thread_id];
+    td.status = WorkerData::ThreadStatus::Active;
+    Queue& q = td.queue;
+    pt->pool = this;
+    pt->thread_id = thread_id;
+
+    // constexpr int log2_spin = 20;  // 1,048,576
+    //int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
+    // const int steal_count = (1ull << log2_spin) / 1000;
+    // const auto allow_spinning = allow_spinning_;
+
+    SetDenormalAsZero(set_denormal_as_zero_);
+    profiler_.LogThreadId(thread_id);
+
+    //HANDLE mm_handle = NULL;
+    //threadSetMmCharacteristics(mm_handle);
+    //threadSetMmPriority(mm_handle, AVRT_PRIORITY_NORMAL);
+
+    //auto cur_thread = ::GetCurrentThread();
+    //if (!::SetThreadPriority(cur_thread, THREAD_PRIORITY_HIGHEST)) {
+    //  auto error_code = ::GetLastError();
+    //  ORT_THROW("SetThreadPriority failed: ", std::system_category().message(error_code));
+    //}
+
+    while (true) {
+      // Spin waiting for work.
+      Task t = q.PopFront();
+      while (t) {
+        t();
+        profiler_.LogRun(thread_id);
+        t = q.PopFront();
+      }
+
+      if (done_.load(std::memory_order_relaxed)) {
+        break;
+      }
+      if (busy_loop_state_ == BusyLoopState::Idle) {
+        td.status = WorkerData::ThreadStatus::Blocked;
+        Block();
+        //td.SetBlocked(
+        //    [&]() {
+        //      // blocked_.fetch_sub(1, std::memory_order_acq_rel);
+        //    });
+        td.status = WorkerData::ThreadStatus::Active;
+      } else {  // End of block/exit check
+        onnxruntime::concurrency::SpinPause();
+      }
+    }  // end while(!should_exit)
+
+    assert(td.queue.Size() == 0);
+    // threadRevokeMmCharacteristics(mm_handle);
+
+    //if (!::SetThreadPriority(cur_thread, THREAD_PRIORITY_NORMAL)) {
+    //  auto error_code = ::GetLastError();
+    //  ORT_THROW("SetThreadPriority failed: ", std::system_category().message(error_code));
+    //}
+    // Whichever thread(s) observe the termination conditions are responsible for waking
+    // any other threads that have remained blocked.
+    // WakeAllWorkersForExit();
+  }
+
+  // Steal tries to steal work from other worker threads in a
+  // best-effort manner.  We steal only from threads that are running
+  // in user code (ThreadStatus::Active).  The intuition behind this
+  // is that the thread is busy with other work, and we will avoid
+  // "snatching" work from a thread which is just about to notice the
+  // work itself.
+
+  Task Steal(StealAttemptKind steal_kind) {
+    PerThread* pt = GetPerThread();
+    unsigned size = num_threads_;
+    unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
+    unsigned r = Rand(&pt->rand);
+    unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
+    unsigned victim = r % size;
+
+    for (unsigned i = 0; i < num_attempts; i++) {
+      assert(victim < size);
+      if (worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
+        Task t = worker_data_[victim].queue.PopBack();
+        if (t) {
+          return t;
+        }
+      }
+      victim += inc;
+      if (victim >= size) {
+        victim -= size;
       }
     }
 
-    void threadSetMmPriority(HANDLE mm_handle, int priority) {
-      BOOL success = ::AvSetMmThreadPriority(mm_handle, static_cast<AVRT_PRIORITY>(priority));
-      if (!success) {
-        auto error_code = ::GetLastError();
-        ORT_THROW("AvSetMmThreadPriority failed: ", std::system_category().message(error_code));
+    return Task();
+  }
+
+  int NonEmptyQueueIndex() {
+    PerThread* pt = GetPerThread();
+    const unsigned size = static_cast<unsigned>(worker_data_.size());
+    unsigned r = Rand(&pt->rand);
+    unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
+    unsigned victim = r % size;
+    for (unsigned i = 0; i < size; i++) {
+      if (!worker_data_[victim].queue.Empty()) {
+        return victim;
+      }
+      victim += inc;
+      if (victim >= size) {
+        victim -= size;
       }
     }
+    return -1;
+  }
 
-    void threadRevokeMmCharacteristics(HANDLE mm_handle) {
-      BOOL ok = ::AvRevertMmThreadCharacteristics(mm_handle);
-      if (!ok) {
-        auto error_code = ::GetLastError();
-        ORT_THROW("AvSetMmThreadPriority failed: ", std::system_category().message(error_code));
-      }
+  static EIGEN_STRONG_INLINE uint64_t GlobalThreadIdHash() {
+    return std::hash<std::thread::id>()(std::this_thread::get_id());
+  }
+
+  static EIGEN_STRONG_INLINE PerThread* GetPerThread() {
+    static thread_local PerThread per_thread_;
+    PerThread* pt = &per_thread_;
+    if (!pt->initialized) {
+      pt->rand = GlobalThreadIdHash();
+      pt->initialized = true;
     }
+    return pt;
+  }
 
-    // Main worker thread loop.
-    void WorkerLoop(int thread_id) {
-      PerThread* pt = GetPerThread();
-      WorkerData& td = worker_data_[thread_id];
-      td.status = WorkerData::ThreadStatus::Active;
-      Queue& q = td.queue;
-      pt->pool = this;
-      pt->thread_id = thread_id;
-
-      // constexpr int log2_spin = 20;  // 1,048,576
-      //int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
-      // const int steal_count = (1ull << log2_spin) / 1000;
-      // const auto allow_spinning = allow_spinning_;
-
-      SetDenormalAsZero(set_denormal_as_zero_);
-      profiler_.LogThreadId(thread_id);
-
-      HANDLE mm_handle = NULL;
-      threadSetMmCharacteristics(mm_handle);
-      threadSetMmPriority(mm_handle, AVRT_PRIORITY_NORMAL);
-
-      //auto cur_thread = ::GetCurrentThread();
-      //if (!::SetThreadPriority(cur_thread, THREAD_PRIORITY_HIGHEST)) {
-      //  auto error_code = ::GetLastError();
-      //  ORT_THROW("SetThreadPriority failed: ", std::system_category().message(error_code));
-      //}
-
-      while (true) {
-        // Spin waiting for work.
-        Task t = q.PopFront();
-        while (t) {
-          t();
-          profiler_.LogRun(thread_id);
-          t = q.PopFront();
-        }
-
-        if (done_.load(std::memory_order_relaxed)) {
-          break;
-        }
-        if (busy_loop_state_ == BusyLoopState::Idle) {
-          td.status = WorkerData::ThreadStatus::Blocked;
-          Block();
-          //td.SetBlocked(
-          //    [&]() {
-          //      // blocked_.fetch_sub(1, std::memory_order_acq_rel);
-          //    });
-          td.status = WorkerData::ThreadStatus::Active;
-        } else {  // End of block/exit check
-          onnxruntime::concurrency::SpinPause();
-        }
-      }  // end while(!should_exit)
-
-      assert(td.queue.Size() == 0);
-      threadRevokeMmCharacteristics(mm_handle);
-
-      //if (!::SetThreadPriority(cur_thread, THREAD_PRIORITY_NORMAL)) {
-      //  auto error_code = ::GetLastError();
-      //  ORT_THROW("SetThreadPriority failed: ", std::system_category().message(error_code));
-      //}
-      // Whichever thread(s) observe the termination conditions are responsible for waking
-      // any other threads that have remained blocked.
-      // WakeAllWorkersForExit();
-    }
-
-    // Steal tries to steal work from other worker threads in a
-    // best-effort manner.  We steal only from threads that are running
-    // in user code (ThreadStatus::Active).  The intuition behind this
-    // is that the thread is busy with other work, and we will avoid
-    // "snatching" work from a thread which is just about to notice the
-    // work itself.
-
-    Task Steal(StealAttemptKind steal_kind) {
-      PerThread* pt = GetPerThread();
-      unsigned size = num_threads_;
-      unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
-      unsigned r = Rand(&pt->rand);
-      unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
-      unsigned victim = r % size;
-
-      for (unsigned i = 0; i < num_attempts; i++) {
-        assert(victim < size);
-        if (worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
-          Task t = worker_data_[victim].queue.PopBack();
-          if (t) {
-            return t;
-          }
-        }
-        victim += inc;
-        if (victim >= size) {
-          victim -= size;
-        }
-      }
-
-      return Task();
-    }
-
-    int NonEmptyQueueIndex() {
-      PerThread* pt = GetPerThread();
-      const unsigned size = static_cast<unsigned>(worker_data_.size());
-      unsigned r = Rand(&pt->rand);
-      unsigned inc = all_coprimes_[size - 1][r % all_coprimes_[size - 1].size()];
-      unsigned victim = r % size;
-      for (unsigned i = 0; i < size; i++) {
-        if (!worker_data_[victim].queue.Empty()) {
-          return victim;
-        }
-        victim += inc;
-        if (victim >= size) {
-          victim -= size;
-        }
-      }
-      return -1;
-    }
-
-    static EIGEN_STRONG_INLINE uint64_t GlobalThreadIdHash() {
-      return std::hash<std::thread::id>()(std::this_thread::get_id());
-    }
-
-    static EIGEN_STRONG_INLINE PerThread* GetPerThread() {
-      static thread_local PerThread per_thread_;
-      PerThread* pt = &per_thread_;
-      if (!pt->initialized) {
-        pt->rand = GlobalThreadIdHash();
-        pt->initialized = true;
-      }
-      return pt;
-    }
-
-    static EIGEN_STRONG_INLINE unsigned Rand(uint64_t * state) {
-      uint64_t current = *state;
-      // Update the internal state
-      *state = current * 6364136223846793005ULL + 0xda3e39cb94b95bdbULL;
-      // Generate the random output (using the PCG-XSH-RS scheme)
-      return static_cast<unsigned>((current ^ (current >> 22)) >> (22 + (current >> 61)));
-    }
-  };
+  static EIGEN_STRONG_INLINE unsigned Rand(uint64_t* state) {
+    uint64_t current = *state;
+    // Update the internal state
+    *state = current * 6364136223846793005ULL + 0xda3e39cb94b95bdbULL;
+    // Generate the random output (using the PCG-XSH-RS scheme)
+    return static_cast<unsigned>((current ^ (current >> 22)) >> (22 + (current >> 61)));
+  }
+};
 
 }  // namespace concurrency
 

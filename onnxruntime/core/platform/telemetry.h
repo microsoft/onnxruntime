@@ -61,6 +61,14 @@ class Telemetry {
 
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
+  virtual void LogSpinningStart() const;
+
+  virtual void LogSpinningStop() const;
+
+  virtual void LogThreadBlock() const;
+
+  virtual void LogThreadWakeup() const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
 };

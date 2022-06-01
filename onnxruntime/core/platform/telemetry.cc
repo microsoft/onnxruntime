@@ -74,5 +74,17 @@ void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
   ORT_UNUSED_PARAMETER(adapterLuid);
 }
 
+void Telemetry::LogSpinningStart() const {
+}
+
+void Telemetry::LogSpinningStop() const {
+}
+
+void Telemetry::LogThreadBlock() const {
+}
+
+void Telemetry::LogThreadWakeup() const {
+}
+
 }  // namespace onnxruntime
 
