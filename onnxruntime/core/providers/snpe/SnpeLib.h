@@ -3,183 +3,13 @@
 
 #pragma once
 
-#include <memory>
-#include <string>
 #include <vector>
-#include <unordered_map>
-#include "core/common/logging/macros.h"
-#include "core/common/logging/logging.h"
-#include "SNPE/SNPE.hpp"
-#include "SNPE/SNPEBuilder.hpp"
-#include "SNPE/SNPEFactory.hpp"
-#include "DlSystem/ITensorFactory.hpp"
-#include "DlContainer/IDlContainer.hpp"
 #include "DlSystem/DlError.hpp"
+#include "core/providers/snpe/snpe_runtime_options.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace snpe {
-
-enum class BufferType : int {
-  UNKNOWN = -1,
-  ITENSOR,
-  TF8,
-  TF16,
-  UINT8,
-  FLOAT};
-
-class SnpeRuntime {
- public:
-  SnpeRuntime() {
-    runtime_ =
-#if defined(_M_X64)
-        zdl::DlSystem::Runtime_t::CPU;
-#else
-        zdl::DlSystem::Runtime_t::DSP_FIXED8_TF;
-#endif
-  }
-
-  explicit SnpeRuntime(const std::string& runtime) : SnpeRuntime() {
-    Set(runtime);
-  }
-
-  zdl::DlSystem::Runtime_t Get() const { return runtime_; }
-
-  void Set(const std::string& runtime) {
-    if (runtime.empty()) {
-      return;
-    }
-
-    if (runtime == "DSP" || runtime == "DSP_FIXED8_TF") {
-      runtime_ = zdl::DlSystem::Runtime_t::DSP;
-      return;
-    }
-
-    if (runtime == "CPU" || runtime == "CPU_FLOAT32") {
-      runtime_ = zdl::DlSystem::Runtime_t::CPU;
-      return;
-    }
-
-    if (runtime == "GPU" || runtime == "GPU_FLOAT32_16_HYBRID") {
-      runtime_ = zdl::DlSystem::Runtime_t::GPU;
-      return;
-    }
-
-    if (runtime == "GPU_FLOAT16") {
-      runtime_ = zdl::DlSystem::Runtime_t::GPU_FLOAT16;
-      return;
-    }
-
-    if (runtime == "AIP_FIXED_TF" || runtime == "AIP_FIXED8_TF") {
-      runtime_ = zdl::DlSystem::Runtime_t::AIP_FIXED_TF;
-      return;
-    }
-  }
-
-  void Set(zdl::DlSystem::Runtime_t runtime) { runtime_ = runtime; }
-
-  bool IsAvailable() const {
-    zdl::DlSystem::RuntimeCheckOption_t runtime_check_option = zdl::DlSystem::RuntimeCheckOption_t::DEFAULT;
-    // check availability, explicitly requiring unsignedpd support
-    if (runtime_ == zdl::DlSystem::Runtime_t::DSP) {
-      runtime_check_option = zdl::DlSystem::RuntimeCheckOption_t::UNSIGNEDPD_CHECK;
-    }
-    return zdl::SNPE::SNPEFactory::isRuntimeAvailable(runtime_, runtime_check_option);
-  }
-
-  std::string ToString() const {
-    return std::string(zdl::DlSystem::RuntimeList::runtimeToString(runtime_));
-  }
-
-  ~SnpeRuntime() = default;
-
- private:
-  zdl::DlSystem::Runtime_t runtime_;
-};
-
-class SnpeRuntimeOptions {
- public:
-  SnpeRuntimeOptions()
-      : runtime_target_()
-      , execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL)
-      , runtime_options_()
-      , buffer_type_(BufferType::ITENSOR) {
-  }
-
-  explicit SnpeRuntimeOptions(const std::unordered_map<std::string, std::string>& options)
-      : runtime_target_()
-      , execution_priority_(zdl::DlSystem::ExecutionPriorityHint_t::NORMAL)
-      , runtime_options_(options)
-      , buffer_type_(BufferType::ITENSOR) {
-      ParseOptions();
-  }
-
-  const SnpeRuntime& GetRuntimeTarget() const {
-    return runtime_target_;
-  }
-
-  zdl::DlSystem::ExecutionPriorityHint_t GetExecutionPriority() const {
-    return execution_priority_;
-  }
-
-  BufferType GetBufferType() const {
-    return buffer_type_;
-  }
-
- private:
-  void ParseOptions() {
-    static const std::string OPT_RUNTIME = "runtime";
-    static const std::string OPT_PRIORITY = "priority";
-    static const std::string BUFFER_TYPE = "buffer_type";
-
-    // Option - Runtime
-    if (runtime_options_.find(OPT_RUNTIME) != runtime_options_.end()) {
-      runtime_target_ = SnpeRuntime(runtime_options_[OPT_RUNTIME]);
-      LOGS_DEFAULT(INFO) << "Located user specified runtime target: " << runtime_options_[OPT_RUNTIME];
-    }
-    LOGS_DEFAULT(INFO) << "Runtime target: " << runtime_target_.ToString();
-
-    // Option Priority
-    if (runtime_options_.find(OPT_PRIORITY) != runtime_options_.end()) {
-      if (runtime_options_[OPT_PRIORITY] == "low") {
-        execution_priority_ = zdl::DlSystem::ExecutionPriorityHint_t::LOW;
-      } else if (runtime_options_[OPT_PRIORITY] == "normal") {
-        execution_priority_ = zdl::DlSystem::ExecutionPriorityHint_t::NORMAL;
-      } else {
-        LOGS_DEFAULT(INFO) << "Invalid execution priority, defaulting to LOW";
-        execution_priority_ = zdl::DlSystem::ExecutionPriorityHint_t::LOW;
-      }
-
-      LOGS_DEFAULT(INFO) << "Located user specified execution priority " << runtime_options_[OPT_PRIORITY];
-    }
-
-    // buffer type
-    if (runtime_options_.find(BUFFER_TYPE) != runtime_options_.end()) {
-      if (runtime_options_[BUFFER_TYPE] == "TF8") {
-        buffer_type_ = BufferType::TF8;
-      } else if (runtime_options_[BUFFER_TYPE] == "TF16") {
-        buffer_type_ = BufferType::TF16;
-      } else if (runtime_options_[BUFFER_TYPE] == "ITENSOR") {
-        buffer_type_ = BufferType::ITENSOR;
-      } else if (runtime_options_[BUFFER_TYPE] == "UINT8") {
-        buffer_type_ = BufferType::UINT8;
-      } else if (runtime_options_[BUFFER_TYPE] == "FLOAT") {
-        buffer_type_ = BufferType::FLOAT;
-      } else {
-        LOGS_DEFAULT(ERROR) << "Invalid buffer type: " << runtime_options_[BUFFER_TYPE];
-        buffer_type_ = BufferType::UNKNOWN;
-      }
-    }
-  }
-
- private:
-  SnpeRuntime runtime_target_;
-  zdl::DlSystem::ExecutionPriorityHint_t execution_priority_;
-  std::unordered_map<std::string, std::string> runtime_options_;
-  std::string udo_folder_;
-  std::vector<std::string> udo_names_;
-  BufferType buffer_type_;
-};
 
 struct UserBufferAttribute {
  public:
@@ -253,20 +83,7 @@ class SnpeLib {
     return zdl::DlSystem::getLastErrorString();
   }
 
-  int RegisterUDOs(const std::string udo_dir, const std::vector<std::string>& udo_file_names) {
-    int udos_registered = 0;
-
-    for (const auto& udo_file : udo_file_names) {
-      std::string full_path = udo_dir + "/" + udo_file;
-      bool result = zdl::SNPE::SNPEFactory::addOpPackage(full_path);
-      if (result) {
-        ++udos_registered;
-      } else {
-        LOGS_DEFAULT(ERROR) << "Failed to register SNPE UDO library: " << full_path << " :" << GetSnpeErrorString();
-      }
-    }
-    return udos_registered;
-  }
+  int RegisterUDOs(const std::string udo_dir, const std::vector<std::string>& udo_file_names);
 
   std::unique_ptr<zdl::SNPE::SNPE> snpe_;
   std::vector<std::unique_ptr<zdl::DlSystem::ITensor>> input_tensors_;

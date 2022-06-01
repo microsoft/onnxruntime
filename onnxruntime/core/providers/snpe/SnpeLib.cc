@@ -3,9 +3,12 @@
 
 #include "core/providers/snpe/SnpeLib.h"
 #include <iostream>
-#include <unordered_map>
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
+#include "DlContainer/IDlContainer.hpp"
+#include "DlSystem/ITensorFactory.hpp"
 #include "DlSystem/IUserBufferFactory.hpp"
+#include "SNPE/SNPEBuilder.hpp"
 
 namespace onnxruntime {
 namespace contrib {
@@ -419,6 +422,21 @@ bool SnpeLib::SnpeProcessWithUserBuffer(const std::vector<std::string>& input_na
   }
 
   return true;
+}
+
+int SnpeLib::RegisterUDOs(const std::string udo_dir, const std::vector<std::string>& udo_file_names) {
+  int udos_registered = 0;
+
+  for (const auto& udo_file : udo_file_names) {
+    std::string full_path = udo_dir + "/" + udo_file;
+    bool result = zdl::SNPE::SNPEFactory::addOpPackage(full_path);
+    if (result) {
+      ++udos_registered;
+    } else {
+      LOGS_DEFAULT(ERROR) << "Failed to register SNPE UDO library: " << full_path << " :" << GetSnpeErrorString();
+    }
+  }
+  return udos_registered;
 }
 
 std::unique_ptr<SnpeLib> SnpeLibFactory(const unsigned char* dlc_data,
