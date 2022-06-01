@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "SnpeLib.h"
 #include <vector>
 #include <memory>
 #include <string>

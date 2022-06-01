@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/snpe/SnpeLib.h"
+#include "core/providers/snpe/snpe_lib.h"
 #include <iostream>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"

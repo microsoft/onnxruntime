@@ -12,7 +12,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
-#include "core/providers/snpe/SnpeLib.h"
+#include "core/providers/snpe/snpe_lib.h"
 #include "core/providers/snpe/snpe_execution_provider.h"
 
 namespace onnxruntime {
