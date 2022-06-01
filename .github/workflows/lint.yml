@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: reviewdog/action-black@v3
+      - name: black
+        uses: reviewdog/action-black@v3
         with:
           github_token: ${{ secrets.github_token }}
           # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
@@ -22,7 +23,8 @@ jobs:
           # GitHub Status Check won't become failure with a warning.
           level: error
           filter_mode: file
-      - uses: reviewdog/action-flake8@v3
+      - name: flake8
+        uses: reviewdog/action-flake8@v3
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
@@ -34,7 +36,6 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-          filter_mode: file
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
@@ -50,14 +51,22 @@ jobs:
           reporter: github-pr-check
           level: info
           filter_mode: file
-      - name: markdownlint
-        uses: reviewdog/action-markdownlint@v0.7
+      - name: pyright
+        uses: jordemort/action-pyright@v1
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
-          level: info
-          filter_mode: file
-          markdownlint_flags: ". --disable MD013 MD041 MD033 MD034"
+          level: warning
+          filter_mode: diff_context
+          lib: true
+      - name: pylint
+        uses: dciborow/action-pylint@0.0.7
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          filter_mode: diff_context
+          glob_pattern: "**/*.py"
 
   lint-python-format:
     # Separated black/isort from other Python linters because we want this job to
@@ -85,6 +94,7 @@ jobs:
           reporter: github-pr-check
           level: warning
           flags: --linelength=120
+          filter: "-runtime/references"
 
   lint-js:
     name: Lint JavaScript

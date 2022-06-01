@@ -5,9 +5,9 @@ import {InferenceHandler} from '../../backend';
 import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
+
 import {createPackProgramInfoLoader} from './ops/pack';
 import {createPackedReshape3DProgramInfoLoader, isReshapeCheap, processDims3D} from './ops/reshape-packed';
-
 import {encodeAsUint8} from './ops/uint8-encode';
 import {createUnpackProgramInfoLoader} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
@@ -260,9 +260,9 @@ export class WebGLInferenceHandler implements InferenceHandler {
   }
 
   private getTextureData(tensorId: Tensor.Id, isPacked = false): TextureData|undefined {
-    return this.session.isInitializer(tensorId) ?
-        this.session.getTextureData(tensorId, isPacked) :
-        isPacked ? this.packedTextureDataCache.get(tensorId) : this.unpackedTextureDataCache.get(tensorId);
+    return this.session.isInitializer(tensorId) ? this.session.getTextureData(tensorId, isPacked) :
+        isPacked                                ? this.packedTextureDataCache.get(tensorId) :
+                                                  this.unpackedTextureDataCache.get(tensorId);
   }
   setTextureData(tensorId: Tensor.Id, td: TextureData, isPacked = false): void {
     if (this.session.isInitializer(tensorId)) {

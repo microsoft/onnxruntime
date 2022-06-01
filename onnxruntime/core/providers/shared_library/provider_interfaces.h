@@ -109,14 +109,16 @@ struct Node__EdgeIterator {
   virtual int GetDstArgIndex() const = 0;
 };
 
-// There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)
-// The function pointers are nicer in that they directly call the target function, but they cannot be used in cases where we're calling
-// a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
-// calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
-// function pointer implementation in this case.
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
-//Please do not new or delete this type(and subtypes).
+// There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to
+// member function).
+// The function pointers are nicer in that they directly call the target function, but they cannot be used in cases
+// where we're calling a specific implementation of a virtual class member. Trying to get a pointer to member of a
+// virtual function will return a thunk that calls the virtual function (which will lead to infinite recursion in the
+// bridge). There is no known way to get the non virtual member function pointer implementation in this case.
+// The suppressed warning is:
+//  "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
+// Please do not new or delete this type(and subtypes).
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -218,8 +220,9 @@ struct ProviderHost {
   virtual void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                             const std::vector<const KernelRegistry*>& kernel_registries) = 0;
+  //!!! This API will be deprecated soon
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
-  virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::string& dll_path) = 0;
+
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) = 0;
@@ -286,6 +289,8 @@ struct ProviderHost {
 #endif
 
   // TypeProto
+  virtual std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() = 0;
+  virtual void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) = 0;
   virtual const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_Tensor* TypeProto__mutable_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
 
@@ -368,6 +373,7 @@ struct ProviderHost {
   virtual bool TensorProto__has_raw_data(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) = 0;
   virtual int32_t TensorProto__data_type(const ONNX_NAMESPACE::TensorProto* p) = 0;
+  virtual void TensorProto__CopyFrom(ONNX_NAMESPACE::TensorProto* p, const ONNX_NAMESPACE::TensorProto* other) = 0;
 
   virtual bool TensorProto_DataType_IsValid(int value) = 0;
 
@@ -669,6 +675,8 @@ struct ProviderHost {
 
   virtual const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) = 0;
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept = 0;
+
+  virtual void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) noexcept = 0;
 
   // Path
   virtual PathString Path__ToPathString(const Path* p) noexcept = 0;

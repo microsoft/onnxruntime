@@ -3,11 +3,13 @@
 
 #include <fstream>
 #include <map>
+#include <utility>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "core/graph/graph_proto_serializer.h"
 #include "core/platform/env.h"
 #include "core/graph/model.h"
 
@@ -28,7 +30,7 @@ struct TVMFuncState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  std::shared_ptr<tvm::TVMCompiler> compiler = nullptr;
+  std::shared_ptr<TVMCompilerBase> compiler = nullptr;
 };
 
 TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
@@ -44,7 +46,7 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
   // Get environment variables
   const Env& env_instance = Env::Default();
 
-  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(tvm::env_vars::kDumpSubgraphs);
+  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
     dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
   }
@@ -54,7 +56,7 @@ TvmExecutionProvider::~TvmExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                     const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -101,35 +103,33 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   return result;
 }
 
-common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
+common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
   printOptions();
-  for (auto* fused_node : nodes) {
-    auto func_body = fused_node->GetFunctionBody();
-    if (!func_body)
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-    const std::string func_name = fused_node->Name();
-    const Graph& node_graph = func_body->Body();
-    Model model(node_graph.Name(), true, ModelMetaData(), PathString(),
-                             IOnnxRuntimeOpSchemaRegistryList(), node_graph.DomainToVersionMap(),
+  for (auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+    const std::string func_name = fused_node.Name();
+    Model model(graph_body_viewer.Name(), true, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-
-    *(model_proto.mutable_graph()) = node_graph.ToGraphProto();
+    // TVM EP is using static lib approach, so invoke serializer directly.
+    GraphViewerToProto(graph_body_viewer, *model_proto.mutable_graph(), true, true);
     auto opset = model_proto.add_opset_import();
     opset->set_domain(kOnnxDomain);
-    opset->set_version(node_graph.DomainToVersionMap().at(kOnnxDomain));
+    opset->set_version(graph_body_viewer.DomainToVersionMap().at(kOnnxDomain));
 
     std::string onnx_model_str;
     model_proto.SerializeToString(&onnx_model_str);
-    compilers_[func_name] = std::make_shared<Compiler>(std::move(onnx_model_str),
-                              fused_node->ModelPath().ToPathString(),
+    compilers_[func_name] = std::make_shared<TVMCompiler>(std::move(onnx_model_str),
+                              fused_node.ModelPath().ToPathString(),
                               int(opset->version()));
     InputsInfoMap all_input_shapes;
-    auto mod = compileModel(func_name, node_graph, all_input_shapes);
+    auto mod = compileModel(func_name, graph_body_viewer, all_input_shapes);
 
     std::vector<DLTensor> output_tensors;
-    prepareOutputTensors(mod, output_tensors, node_graph.GetOutputs().size());
+    prepareOutputTensors(mod, output_tensors, graph_body_viewer.GetOutputs().size());
 
     runners_[func_name] = std::make_shared<Runner>(options_, mod, all_input_shapes, output_tensors);
 
@@ -168,15 +168,15 @@ void TvmExecutionProvider::printOptions() {
 }
 
 std::shared_ptr<TvmModule> TvmExecutionProvider::compileModel(const std::string& func_name,
-                                                              const Graph& graph,
+                                                              const GraphViewer& graph_viewer,
                                                               InputsInfoMap& all_input_shapes) {
   all_input_shapes.clear();
 
   TVMTensorShapes input_shapes;
   if (options_.freeze_weights) {
-    setInputShapesForFreezedNN(graph, input_shapes, all_input_shapes);
+    setInputShapesForFreezedNN(graph_viewer, input_shapes, all_input_shapes);
   } else {
-    setInputShapesForUnfreezedNN(graph, input_shapes, all_input_shapes);
+    setInputShapesForUnfreezedNN(graph_viewer, input_shapes, all_input_shapes);
   }
 
   std::shared_ptr<TvmModule> mod = compilers_[func_name]->operator()(options_, input_shapes);
@@ -184,14 +184,14 @@ std::shared_ptr<TvmModule> TvmExecutionProvider::compileModel(const std::string&
   return mod;
 }
 
-void TvmExecutionProvider::setInputShapesForFreezedNN(const Graph& graph,
+void TvmExecutionProvider::setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
                                                       TVMTensorShapes& input_shapes,
                                                       InputsInfoMap& all_input_shapes) {
-  const std::vector<const NodeArg*>& all_nodes = graph.GetInputsIncludingInitializers();
+  const std::vector<const NodeArg*>& all_nodes = graph_viewer.GetInputsIncludingInitializers();
 
   size_t indx = 0;
   for (const auto* node : all_nodes) {
-    if(!graph.IsInitializedTensor(node->Name())) {
+    if (!graph_viewer.IsInitializedTensor(node->Name())) {
       TensorShapeVector shape = getInputShape(node);
       all_input_shapes[indx++] = shape;
       input_shapes.emplace_back(shape);
@@ -199,16 +199,16 @@ void TvmExecutionProvider::setInputShapesForFreezedNN(const Graph& graph,
   }
 }
 
-void TvmExecutionProvider::setInputShapesForUnfreezedNN(const Graph& graph,
+void TvmExecutionProvider::setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
                                                         TVMTensorShapes& input_shapes,
                                                         InputsInfoMap& all_input_shapes) {
-  const std::vector<const NodeArg*>& all_nodes = graph.GetInputsIncludingInitializers();
+  const std::vector<const NodeArg*>& all_nodes = graph_viewer.GetInputsIncludingInitializers();
 
   size_t indx = 0;
   for (const auto* node : all_nodes) {
     TensorShapeVector shape = getInputShape(node);
     all_input_shapes[indx++] = shape;
-    if(!graph.IsInitializedTensor(node->Name())) {
+    if (!graph_viewer.IsInitializedTensor(node->Name())) {
       input_shapes.emplace_back(shape);
     }
   }
@@ -242,7 +242,7 @@ TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProt
   return shape;
 }
 
-void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod,
+void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
                                                 std::vector<DLTensor>& output_tensors,
                                                 size_t num) {
   ORT_ENFORCE(mod != nullptr, "TVM module is not compiled");
@@ -251,7 +251,7 @@ void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::TvmMo
   options_.output_shapes.resize(num);
 
   if (options_.executor != "vm") {
-    tvm::TVMGetOutputShapes(*mod, options_.output_shapes);
+    TVMGetOutputShapes(*mod, options_.output_shapes);
   }
 
   for (auto& output_shape : options_.output_shapes) {

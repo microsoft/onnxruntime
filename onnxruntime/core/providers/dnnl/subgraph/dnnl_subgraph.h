@@ -55,8 +55,12 @@ class DnnlTensor {
   void RemoveConsumer(const DnnlNodeArg& arg);
 
  private:
+
+  const ONNX_NAMESPACE::TensorShapeProto* GetShape() const;
+
   std::string tensor_name_;
-  const NodeArg* arg_;
+  ONNX_NAMESPACE::DataType arg_type_;
+  std::unique_ptr<ONNX_NAMESPACE::TypeProto> arg_type_proto_;
   //a tensor can have no producer (input.initializer) or no consumer (output for subgraph)
   DnnlNodeArg producer_;
   std::vector<DnnlNodeArg> consumers_;
@@ -77,9 +81,11 @@ class DnnlNode {
   std::vector<DnnlTensor*>& Inputs();
   std::vector<DnnlTensor*>& Outputs();
   int SinceVersion();
+  void AppendPostOp(std::string op);
+  const std::vector<std::string>& GetPostOps();
 
  private:
-  const Node* onnx_node_ = nullptr;
+  int since_version_;
   std::vector<DnnlTensor*> inputs_;
   std::vector<DnnlTensor*> outputs_;
   static DnnlTensor empty_tensor_;
@@ -87,6 +93,7 @@ class DnnlNode {
   std::string op_type_;
   size_t index_ = std::numeric_limits<size_t>::max();
   std::unique_ptr<NodeAttributes> attr_ = NodeAttributes::Create();
+  std::vector<std::string> postops_;
 };
 
 class DnnlSubgraph {
@@ -101,7 +108,7 @@ class DnnlSubgraph {
   std::vector<DnnlTensor*> GetDnnlOutputs();
   std::vector<DnnlTensor*> GetDnnlInitializers();
   // build the subgraph IR
-  void Build();
+  void Build(const GraphViewer& graph_viewer);
   //check whether the subgraph is dynamic
   void TopoSort();
   bool IsDynamic();
@@ -109,9 +116,6 @@ class DnnlSubgraph {
   void RemoveNode(size_t node_index);
   void AddTensor(std::unique_ptr<DnnlTensor> new_tensor);
   void RemoveTensor(const std::string& tensor_name);
-
-  bool GetInitializedTensor(const std::string& arg_name, const ONNX_NAMESPACE::TensorProto*& value);
-  bool IsConstantInitializer(const std::string& arg_name, bool check_outer_scope);
 
  private:
   //graph owns all nodes
@@ -122,7 +126,6 @@ class DnnlSubgraph {
   std::vector<DnnlTensor*> inputs_;
   std::vector<DnnlTensor*> outputs_; //output should never get deleted from graph transformation
   std::vector<DnnlTensor*> initializers_;
-  const GraphViewer& graph_viewer_;
   bool is_dynamic_;
 };
 }  // namespace ort_dnnl

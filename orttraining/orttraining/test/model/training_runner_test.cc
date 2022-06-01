@@ -3,7 +3,7 @@
 
 // ReduceAllL2 op only have the CUDA implementation
 #ifdef USE_CUDA
-#include "test/test_environment.h"
+
 #include "orttraining/models/runner/training_runner.h"
 
 #include "gtest/gtest.h"
@@ -40,9 +40,10 @@ TEST(TrainingRunnerTest, Basic) {
   params.fetch_names = {"predictions"};
   params.loss_func_info = LossFunctionInfo(OpDef("MeanSquaredError"), "loss", {"predictions", "labels"});
 
-  const Environment& env = onnxruntime::test::GetEnvironment();
+  std::unique_ptr<Environment> env;
+  ASSERT_TRUE(Environment::Create(nullptr, env).IsOK());
 
-  TrainingRunner runner{params, env};
+  TrainingRunner runner{params, *env};
 
   ASSERT_TRUE(runner.GetSession().RegisterExecutionProvider(onnxruntime::test::DefaultCudaExecutionProvider()).IsOK());
 
@@ -92,8 +93,9 @@ TEST(TrainingRunnerTest, DISABLED_PipelineRun) {
   params.pipeline_partition_cut_list.emplace_back(cut0);
   params.pipeline_partition_cut_list.emplace_back(cut1);
 
-  const Environment& env = onnxruntime::test::GetEnvironment();
-  TrainingRunner runner{params, env};
+  std::unique_ptr<Environment> env;
+  ASSERT_TRUE(Environment::Create(nullptr, env).IsOK());
+  TrainingRunner runner{params, *env};
 
   auto status = runner.Initialize();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();

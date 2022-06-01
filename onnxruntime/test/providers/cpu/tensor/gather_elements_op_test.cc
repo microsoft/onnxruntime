@@ -172,7 +172,7 @@ void RunTestWrapper<std::string>() {
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
   test4.Run(OpTester::ExpectResult::kExpectFailure,
-            "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is -3",
+            "GatherElements op: Out of range value in index tensor",
             {kNupharExecutionProvider, kOpenVINOExecutionProvider});
 
   // 3D input - axis 1

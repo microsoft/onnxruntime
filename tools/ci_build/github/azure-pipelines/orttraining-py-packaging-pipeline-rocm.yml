@@ -22,10 +22,10 @@ stages:
             --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
-          Repository: onnxruntimetrainingrocmbuild-torch1.10.0-rocm4.3.1
+          Repository: onnxruntimetrainingrocmbuild-rocm4.3.1
       - template: templates/ get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm5_0_1
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm5_1_1
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg TORCH_VERSION=1.11.0
@@ -35,7 +35,7 @@ stages:
             --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
-          Repository: onnxruntimetrainingrocmbuild-torch1.10.0-rocm5.0.1
+          Repository: onnxruntimetrainingrocmbuild-rocm5.1.1
 
     - job: ROCM_training_wheels
       timeoutInMinutes: 180
@@ -47,30 +47,30 @@ stages:
       - ROCm_build_environment
       strategy:
         matrix:
-          Python37 Torch1100 Rocm431:
+          Python37 Torch1110 Rocm431:
             PythonVersion: '3.7'
-            TorchVersion: '1.10.0'
+            TorchVersion: '1.11.0'
             RocmVersion: '4.3.1'
-          Python38 Torch1100 Rocm431:
+          Python38 Torch1110 Rocm431:
             PythonVersion: '3.8'
-            TorchVersion: '1.10.0'
+            TorchVersion: '1.11.0'
             RocmVersion: '4.3.1'
-          Python39 Torch1100 Rocm431:
+          Python39 Torch1110 Rocm431:
             PythonVersion: '3.9'
-            TorchVersion: '1.10.0'
+            TorchVersion: '1.11.0'
             RocmVersion: '4.3.1'
-          Python37 Torch1100 Rocm501:
+          Python37 Torch1110 Rocm511:
             PythonVersion: '3.7'
-            TorchVersion: '1.10.0'
-            RocmVersion: '5.0.1'
-          Python38 Torch1100 Rocm501:
+            TorchVersion: '1.11.0'
+            RocmVersion: '5.1.1'
+          Python38 Torch1110 Rocm511:
             PythonVersion: '3.8'
-            TorchVersion: '1.10.0'
-            RocmVersion: '5.0.1'
-          Python39 Torch1100 Rocm501:
+            TorchVersion: '1.11.0'
+            RocmVersion: '5.1.1'
+          Python39 Torch1110 Rocm511:
             PythonVersion: '3.9'
-            TorchVersion: '1.10.0'
-            RocmVersion: '5.0.1'
+            TorchVersion: '1.11.0'
+            RocmVersion: '5.1.1'
       steps:
 
       - checkout: self
@@ -96,7 +96,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               --user onnxruntimedev \
-              onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+              onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
                 /onnxruntime_src/tools/ci_build/build.py \
                   --config Release \
                   --use_rocm \
@@ -151,7 +151,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
                /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
         displayName: 'Run onnxruntime unit tests (in container)'
 
@@ -174,7 +174,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
               orttraining/tools/ci_test/run_batch_size_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -201,7 +201,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
               orttraining/tools/ci_test/run_bert_perf_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -229,7 +229,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+            onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
               orttraining/tools/ci_test/run_convergence_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -268,7 +268,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               -e PythonManylinuxDir=$(PythonManylinuxdir) \
-              onnxruntimetrainingrocmbuild-torch$(TorchVersion)-rocm$(RocmVersion) \
+              onnxruntimetrainingrocmbuild-rocm$(RocmVersion) \
                 /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
           workingDirectory: $(Build.SourcesDirectory)
 
