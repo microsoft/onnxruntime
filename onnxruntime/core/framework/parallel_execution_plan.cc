@@ -33,13 +33,6 @@ struct Barrier {
 
 using NotificationIndex = size_t;
 
-void RegisterStreamCommandHanler(const SessionState& session_state) {
-  auto& eps = session_state.GetExecutionProviders();
-  for (auto& ep : eps) {
-    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
-  }
-}
-
 struct ExecutionContext;
 using CommandFn = std::function<void(ExecutionContext&)>;
 
@@ -80,7 +73,7 @@ struct ExecutionContext {
                                                          logger(&sess_logger) {
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
-      auto create_stream_fn = GetStreamHandleRegistryInstance().GetCreateStreamFn(logic_stream->ep_->Type());
+      auto create_stream_fn = sess_state.GetStreamHandleRegistryInstance().GetCreateStreamFn(logic_stream->ep_->Type());
       // TODO: if EP doesn't provide stream support, fallback to CPU stream (sync on the host thread)
       ORT_ENFORCE(create_stream_fn);
       device_streams.emplace_back(create_stream_fn(logic_stream->ep_));
@@ -140,8 +133,6 @@ struct ParallelExecutionPlanImpl {
   std::vector<std::vector<std::string>> streams_log_;   // save up nodes per stream for logging
 };
 
-std::once_flag populate_command_handle_flag;
-
 //todo: remove dependency on session_state
 
 ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session_state,
@@ -153,9 +144,6 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
   const auto& execution_providers = session_state_.GetExecutionProviders();
   const auto& kernel_create_info_map = session_state_.GetKernelCreateInfoMap();
 
-  // register handle once
-  std::call_once(
-      populate_command_handle_flag, [](const SessionState& sess_state) { RegisterStreamCommandHanler(sess_state); }, session_state);
   // instantiate logic streams
 
   class StreamRange { //iterate between [from,to)
@@ -275,7 +263,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           auto notfication_it = node_to_notification.find(it->Index());
           ORT_ENFORCE(notfication_it != node_to_notification.end());
           // push a wait command
-          auto wait_handle = GetStreamHandleRegistryInstance().GetWaitHandle(
+          auto wait_handle = session_state.GetStreamHandleRegistryInstance().GetWaitHandle(
               logic_streams_[notification_owners_[notfication_it->second]]->ep_->Type(),
               node->GetExecutionProviderType());
           NotificationIndex notification_index = notfication_it->second;

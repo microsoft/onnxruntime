@@ -25,6 +25,66 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
+static inline std::string GetWaitKey(const std::string& notificaiton_ep_type, const std::string& executor_ep_type) {
+  return std::string(notificaiton_ep_type) + ":" + executor_ep_type;
+}
+
+class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
+ public:
+  // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
+  // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
+  WaitNotificationFn GetWaitHandle(const std::string& notification_owner_ep_type, const std::string& executor_ep_type) override {
+    auto it = notification_wait_map_.find(GetWaitKey(notification_owner_ep_type, executor_ep_type));
+    return it == notification_wait_map_.end() ? nullptr : it->second;
+  }
+
+  CreateStreamFn GetCreateStreamFn(const std::string& execution_provider_type) override {
+    auto it = create_stream_map_.find(execution_provider_type);
+    return it == create_stream_map_.end() ? nullptr : it->second;
+  }
+
+  void RegisterWaitFn(const std::string& notification_ep_type, const std::string& ep_type, WaitNotificationFn fn) override {
+    notification_wait_map_.insert({GetWaitKey(notification_ep_type, ep_type), fn});
+  }
+
+  void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f) override {
+    create_stream_map_.insert({ep_type, f});
+  }
+
+  StreamCommandHandleRegistryImpl() = default;
+
+ private:
+
+  std::unordered_map<std::string, WaitNotificationFn> notification_wait_map_;
+  std::unordered_map<std::string, CreateStreamFn> create_stream_map_;
+};
+
+SessionState::SessionState(Graph& graph,
+             const ExecutionProviders& execution_providers,
+             bool enable_mem_pattern,
+             concurrency::ThreadPool* thread_pool,
+             concurrency::ThreadPool* inter_op_thread_pool,
+             const DataTransferManager& data_transfer_mgr,
+             const logging::Logger& logger,
+             profiling::Profiler& profiler,
+             bool use_deterministic_compute,
+             bool enable_mem_reuse,
+             PrepackedWeightsContainer* prepacked_weights_container)
+    : graph_(graph),
+      execution_providers_(execution_providers),
+      logger_(logger),
+      profiler_(profiler),
+      enable_mem_pattern_(enable_mem_pattern),
+      thread_pool_(thread_pool),
+      inter_op_thread_pool_(inter_op_thread_pool),
+      data_transfer_mgr_(data_transfer_mgr),
+      use_deterministic_compute_(use_deterministic_compute),
+      enable_mem_reuse_(enable_mem_reuse),
+      prepacked_weights_container_(prepacked_weights_container),
+      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
+  SetupAllocators();
+}
+
 void SessionState::SetupAllocators() {
   for (const auto& provider : execution_providers_) {
     for (const auto& allocator : provider->GetAllocators()) {
@@ -1400,6 +1460,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                       valid_outer_scope_node_args.push_back(node_arg);
                     };
                   });
+  }
+
+  // register stream handles from EP instances
+  auto& eps = GetExecutionProviders();
+  for (auto& ep : eps) {
+    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
   }
 
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;

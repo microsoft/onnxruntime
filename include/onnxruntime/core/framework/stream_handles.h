@@ -61,6 +61,4 @@ class IStreamCommandHandleRegistry {
   virtual void RegisterCreateStreamFn(const std::string& ep_type, CreateStreamFn f) = 0;
 };
 
-IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance();
-
 }

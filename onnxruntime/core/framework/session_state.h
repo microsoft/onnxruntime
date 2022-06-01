@@ -38,6 +38,7 @@
 #endif
 
 #include "core/framework/parallel_execution_plan.h"
+#include "core/framework/stream_handles.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -96,20 +97,7 @@ class SessionState {
                profiling::Profiler& profiler,
                bool use_deterministic_compute = false,
                bool enable_mem_reuse = true,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
-      : graph_(graph),
-        execution_providers_(execution_providers),
-        logger_(logger),
-        profiler_(profiler),
-        enable_mem_pattern_(enable_mem_pattern),
-        thread_pool_(thread_pool),
-        inter_op_thread_pool_(inter_op_thread_pool),
-        data_transfer_mgr_(data_transfer_mgr),
-        use_deterministic_compute_(use_deterministic_compute),
-        enable_mem_reuse_(enable_mem_reuse),
-        prepacked_weights_container_(prepacked_weights_container) {
-    SetupAllocators();
-  }
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -343,6 +331,10 @@ class SessionState {
   }
 #endif
 
+  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
+    return *stream_handles_registry_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -540,6 +532,7 @@ class SessionState {
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
 #endif
+  std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
 };
 
 }  // namespace onnxruntime

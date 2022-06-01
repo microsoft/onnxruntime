@@ -1,0 +1,2 @@
+model_filename,datetime,transformers,torch,EmbedLayerNormalization,Attention,Gelu,FastGelu,BiasGelu,LayerNormalization,SkipLayerNormalization
+./onnx_models\bert_large_uncased_1_fp16_gpu.onnx,2022-01-19 08:55:27.914192,4.15.0,1.10.0+cpu,1,24,0,24,0,0,48
