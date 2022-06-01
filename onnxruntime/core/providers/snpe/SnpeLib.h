@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include <memory>
@@ -17,7 +20,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace snpe {
 
-enum BufferType {
+enum class BufferType : int {
   UNKNOWN = -1,
   ITENSOR,
   TF8,
@@ -86,7 +89,7 @@ class SnpeLibRuntimeTarget {
     return std::string(zdl::DlSystem::RuntimeList::runtimeToString(runtime_));
   }
 
-  ~SnpeLibRuntimeTarget() {}
+  ~SnpeLibRuntimeTarget() = default;
 
  private:
   zdl::DlSystem::Runtime_t runtime_;
@@ -117,7 +120,7 @@ class SnpeRuntimeOptions {
     return execution_priority_;
   }
 
-  int GetBufferType() const {
+  BufferType GetBufferType() const {
     return buffer_type_;
   }
 
@@ -172,7 +175,7 @@ class SnpeRuntimeOptions {
   std::unordered_map<std::string, std::string> runtime_options_;
   std::string udo_folder_;
   std::vector<std::string> udo_names_;
-  int buffer_type_;
+  BufferType buffer_type_;
 };
 
 struct UserBufferAttribute {
@@ -206,13 +209,13 @@ class SnpeLib {
                                  unsigned char* outputs[],
                                  size_t output_sizes[],
                                  const std::unordered_map<std::string, size_t>& output_names_index);
-  bool SnpeProcessMultipleInputsMultipleOutputs(const unsigned char** inputs,
-                                                const size_t* input_sizes,
-                                                size_t input_number,
-                                                unsigned char** outputs,
-                                                const size_t* output_sizes,
-                                                size_t output_number,
-                                                const std::unordered_map<std::string, size_t>& output_names_index);
+  bool SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
+                                          const size_t* input_sizes,
+                                          size_t input_number,
+                                          unsigned char** outputs,
+                                          const size_t* output_sizes,
+                                          size_t output_number,
+                                          const std::unordered_map<std::string, size_t>& output_names_index);
   bool SnpeProcessWithUserBuffer(const std::vector<std::string>& input_names,
                                  const unsigned char** inputs,
                                  size_t input_number,
@@ -266,7 +269,7 @@ class SnpeLib {
   std::vector<std::unique_ptr<zdl::DlSystem::ITensor>> input_tensors_;
   zdl::DlSystem::TensorMap input_tensor_map_;
 
-  int buffer_type_;
+  BufferType buffer_type_;
   std::vector<std::unique_ptr<zdl::DlSystem::IUserBuffer>> snpe_user_input_buffers_;
   std::vector<std::unique_ptr<zdl::DlSystem::IUserBuffer>> snpe_user_output_buffers_;
   std::vector<std::unique_ptr<zdl::DlSystem::UserBufferEncoding>> user_buffer_encoding_;
@@ -279,7 +282,7 @@ std::unique_ptr<SnpeLib> SnpeLibFactory(const unsigned char* dlc_data,
                                         const std::vector<std::string>& output_layer_names,
                                         const std::vector<std::string>& input_layer_names,
                                         const std::vector<int64_t>& input_sizes,
-                                        int& buffer_type);
+                                        BufferType& buffer_type);
 
 }  // namespace snpe
 }  // namespace contrib

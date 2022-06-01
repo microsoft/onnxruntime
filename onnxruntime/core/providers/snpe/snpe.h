@@ -107,13 +107,13 @@ class Snpe : public OpKernel {
                                           output_size_array.data(),
                                           output_names_index_);
     } else if (input_cout_ > 1 && output_cout_ >= 1) {
-      snpe_rt_->SnpeProcessMultipleInputsMultipleOutputs(input_data_array.data(),
-                                                         input_size_array.data(),
-                                                         input_cout_,
-                                                         output_data_array.data(),
-                                                         output_size_array.data(),
-                                                         output_cout_,
-                                                         output_names_index_);
+      snpe_rt_->SnpeProcessMultiInputsMultiOutputs(input_data_array.data(),
+                                                   input_size_array.data(),
+                                                   input_cout_,
+                                                   output_data_array.data(),
+                                                   output_size_array.data(),
+                                                   output_cout_,
+                                                   output_names_index_);
     }
 
     return Status::OK();
@@ -126,7 +126,7 @@ class Snpe : public OpKernel {
   uint32_t output_cout_;
   std::unordered_map<std::string, size_t> output_names_index_;
   std::vector<std::string> input_names_;
-  int buffer_type_;
+  BufferType buffer_type_;
 };
 }  // namespace snpe
 }  // namespace contrib

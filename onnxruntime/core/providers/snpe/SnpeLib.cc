@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/snpe/SnpeLib.h"
 #include <iostream>
 #include <unordered_map>
@@ -27,7 +30,7 @@ bool SnpeLib::SetupUserBufferAttribute(const std::string& name) {
   zdl::DlSystem::UserBufferEncoding* user_buffer_encoding = nullptr;
   size_t buffer_element_size = 0;
   if (BufferType::TF8 == buffer_type_ || BufferType::TF16 == buffer_type_) {
-    int bit_width = buffer_type_ == TF16 ? 16 : 8;
+    int bit_width = buffer_type_ == BufferType::TF16 ? 16 : 8;
     buffer_element_size = bit_width / 8;
     auto encoding = (*buffer_attributes)->getEncoding();
     if (!encoding) {
@@ -312,13 +315,13 @@ bool SnpeLib::SnpeProcess(const unsigned char* input, size_t input_size, unsigne
                                    output_sizes_array, output_names_index);
 }
 
-bool SnpeLib::SnpeProcessMultipleInputsMultipleOutputs(const unsigned char** inputs,
-                                                       const size_t* input_sizes,
-                                                       size_t input_number,
-                                                       unsigned char** outputs,
-                                                       const size_t* output_sizes,
-                                                       size_t output_number,
-                                                       const std::unordered_map<std::string, size_t>& output_names_index) {
+bool SnpeLib::SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
+                                                 const size_t* input_sizes,
+                                                 size_t input_number,
+                                                 unsigned char** outputs,
+                                                 const size_t* output_sizes,
+                                                 size_t output_number,
+                                                 const std::unordered_map<std::string, size_t>& output_names_index) {
   try {
     if (input_number != input_tensors_.size()) {
       LOGS_DEFAULT(ERROR) << "Snpe number of inputs doesn't match: expected "
@@ -424,7 +427,7 @@ std::unique_ptr<SnpeLib> SnpeLibFactory(const unsigned char* dlc_data,
                                         const std::vector<std::string>& output_layer_names,
                                         const std::vector<std::string>& input_layer_names,
                                         const std::vector<int64_t>& input_sizes,
-                                        int& buffer_type) {
+                                        BufferType& buffer_type) {
   std::unique_ptr<SnpeLib> object(new SnpeLib());
 
   if (!object) {
