@@ -5,7 +5,7 @@
 
 #include <vector>
 
-#include "core/framework/data_types.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -87,7 +87,7 @@ struct FunctionTestCase {
 
   template <typename T>
   void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<T> data, std::vector<std::string> symshape = {}) {
-    auto arg_type = (symshape.size() > 0) ? TensorType(data_types_internal::ToTensorDataType<T>(), symshape) : TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    auto arg_type = (symshape.size() > 0) ? TensorType(utils::ToTensorProtoElementType<T>(), symshape) : TensorType(utils::ToTensorProtoElementType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
 
     OrtValue ort_value;
@@ -95,14 +95,14 @@ struct FunctionTestCase {
     input_values.push_back(std::make_pair(input_name, ort_value));
     input_value_map.insert(std::make_pair(input_name, ort_value));
   }
-  
+
   void AddOpset(const char* opset_domain, int version) {
     opsets[opset_domain] = version;
   }
 
   template <typename T, bool GenData = true>
   void AddInput(std::string input_name, std::vector<int64_t> shape) {
-    auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    auto arg_type = TensorType(utils::ToTensorProtoElementType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
 
     if (GenData) {
@@ -116,7 +116,7 @@ struct FunctionTestCase {
 
   template <typename T>
   void AddBoundedInput(const char* input_name, const std::vector<int64_t>& shape, T bound) {
-    auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    auto arg_type = TensorType(utils::ToTensorProtoElementType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
     std::vector<T> data = random<T>(shape);
     for (size_t i = 0; i < data.size(); i++)

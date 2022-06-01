@@ -207,3 +207,42 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
  private:
   const char* provider_;
 };
+
+struct InstantCustomKernel {
+  InstantCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*);
+
+  ~InstantCustomKernel();
+  void Compute(OrtKernelContext* context);
+
+ private:
+  void InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* info);
+  void InvokeTopK(OrtKernelContext* context);
+
+  void InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* info);
+  void InvokeGru(OrtKernelContext* context);
+
+  Ort::CustomOpApi ort_;
+  OrtOp* op_add{};
+  OrtOp* op_topk{};
+  OrtOp* op_gru{};
+};
+
+struct InstantCustomOp : Ort::CustomOpBase<InstantCustomOp, InstantCustomKernel> {
+  explicit InstantCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new InstantCustomKernel(api, info, compute_stream_); };
+  const char* GetName() const { return "Foo"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+ private:
+  const char* provider_;
+  void* compute_stream_;
+};

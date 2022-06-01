@@ -1,12 +1,13 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
-from typing import Dict, Optional
+# --------------------------------------------------------------------------
 from logging import getLogger
+from typing import Dict, Optional
+
+from fusion_base import Fusion
 from onnx import helper
 from onnx_model import OnnxModel
-from fusion_base import Fusion
 
 logger = getLogger(__name__)
 
@@ -45,7 +46,7 @@ class FusionGelu(Fusion):
         if erf_node.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[erf_node.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Add':
+        if len(children) != 1 or children[0].op_type != "Add":
             return
         add_after_erf = children[0]
 
@@ -55,11 +56,11 @@ class FusionGelu(Fusion):
         if add_after_erf.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[add_after_erf.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_after_erf = children[0]
 
-        div = self.model.match_parent(erf_node, 'Div', 0, output_name_to_node)
+        div = self.model.match_parent(erf_node, "Div", 0, output_name_to_node)
         if div is None:
             return
 
@@ -71,14 +72,14 @@ class FusionGelu(Fusion):
         another = 1 if mul_after_erf.input[0] == add_after_erf.output[0] else 0
         if subgraph_input == mul_after_erf.input[another]:  # pattern 2
             children = input_name_to_nodes[mul_after_erf.output[0]]
-            if len(children) != 1 or children[0].op_type != 'Mul':
+            if len(children) != 1 or children[0].op_type != "Mul":
                 return
             mul_half = children[0]
             if not self.model.has_constant_input(mul_half, 0.5):
                 return
             subgraph_output = mul_half.output[0]
         else:  # pattern 1
-            mul_half = self.model.match_parent(mul_after_erf, 'Mul', another, output_name_to_node)
+            mul_half = self.model.match_parent(mul_after_erf, "Mul", another, output_name_to_node)
             if mul_half is None:
                 return
 
@@ -91,12 +92,13 @@ class FusionGelu(Fusion):
             subgraph_output = mul_after_erf.output[0]
 
         subgraph_nodes = [div, erf_node, add_after_erf, mul_after_erf, mul_half]
-        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, [subgraph_output], input_name_to_nodes,
-                                                output_name_to_node):
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes, [subgraph_output], input_name_to_nodes, output_name_to_node
+        ):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node('Gelu', inputs=[subgraph_input], outputs=[subgraph_output])
+        fused_node = helper.make_node("Gelu", inputs=[subgraph_input], outputs=[subgraph_output])
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
@@ -117,7 +119,7 @@ class FusionGelu(Fusion):
         if erf_node.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[erf_node.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Add':
+        if len(children) != 1 or children[0].op_type != "Add":
             return
         add_after_erf = children[0]
 
@@ -127,7 +129,7 @@ class FusionGelu(Fusion):
         if add_after_erf.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[add_after_erf.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_after_erf = children[0]
 
@@ -137,17 +139,17 @@ class FusionGelu(Fusion):
         if mul_after_erf.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[mul_after_erf.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul = children[0]
 
-        div = self.model.match_parent(erf_node, 'Div', 0, output_name_to_node)
+        div = self.model.match_parent(erf_node, "Div", 0, output_name_to_node)
         if div is None:
             return
 
         sqrt_node = None
         if self.model.find_constant_input(div, 1.4142, delta=0.001) != 1:
-            sqrt_node = self.model.match_parent(div, 'Sqrt', 1, output_name_to_node)
+            sqrt_node = self.model.match_parent(div, "Sqrt", 1, output_name_to_node)
             if sqrt_node is None:
                 return
             if not self.model.has_constant_input(sqrt_node, 2.0):
@@ -164,12 +166,13 @@ class FusionGelu(Fusion):
         if sqrt_node:
             subgraph_nodes.append(sqrt_node)
 
-        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, [mul.output[0]], input_name_to_nodes,
-                                                output_name_to_node):
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes, [mul.output[0]], input_name_to_nodes, output_name_to_node
+        ):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node('Gelu', inputs=[root_node.output[0]], outputs=[mul.output[0]])
+        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[mul.output[0]])
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
@@ -191,7 +194,7 @@ class FusionGelu(Fusion):
         if erf_node.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[erf_node.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Add':
+        if len(children) != 1 or children[0].op_type != "Add":
             return
         add_after_erf = children[0]
 
@@ -201,14 +204,14 @@ class FusionGelu(Fusion):
         if add_after_erf.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[add_after_erf.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_half = children[0]
 
         if not self.model.has_constant_input(mul_half, 0.5):
             return
 
-        first_mul = self.model.match_parent(erf_node, 'Mul', 0, output_name_to_node)
+        first_mul = self.model.match_parent(erf_node, "Mul", 0, output_name_to_node)
         if first_mul is None:
             return
 
@@ -223,7 +226,7 @@ class FusionGelu(Fusion):
         if mul_half.output[0] not in input_name_to_nodes:
             return
         children = input_name_to_nodes[mul_half.output[0]]
-        if len(children) != 1 or children[0].op_type != 'Mul':
+        if len(children) != 1 or children[0].op_type != "Mul":
             return
         last_mul = children[0]
 
@@ -231,12 +234,16 @@ class FusionGelu(Fusion):
             return
 
         subgraph_nodes = [first_mul, erf_node, add_after_erf, mul_half, last_mul]
-        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, [last_mul.output[0]], input_name_to_nodes,
-                                                output_name_to_node):
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes,
+            [last_mul.output[0]],
+            input_name_to_nodes,
+            output_name_to_node,
+        ):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        fused_node = helper.make_node('Gelu', inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
+        fused_node = helper.make_node("Gelu", inputs=[root_node.output[0]], outputs=[last_mul.output[0]])
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name

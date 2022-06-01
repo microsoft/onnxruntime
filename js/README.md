@@ -435,13 +435,11 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
 1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
 
-2. Run `yarn prepack-rel` to change `onnxruntime-common` to point to a published npm package
+2. Run `npm pack` and verify NPM package contents
 
-3. Run `npm pack` and verify NPM package contents
+3. Run `npm publish <tgz> --dry-run` to see how it's going to be published
 
-4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
-
-5. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
+4. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
 
 ### Distribution
 
