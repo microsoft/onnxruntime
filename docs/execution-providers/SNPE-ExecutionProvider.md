@@ -59,9 +59,9 @@ snpe_option_keys.push_back("runtime");
 snpe_option_values.push_back("DSP");
 snpe_option_keys.push_back("buffer_type");
 snpe_option_values.push_back("FLOAT");
-Ort::SessionOptions so;
-SessionOptionsAppendExecutionProvider_SNPE(snpe_option_keys.data(), snpe_option_values.data(), snpe_option_keys.size());
-Ort::Session session(env, model_path, so);
+Ort::SessionOptions session_options;
+session_options.AppendExecutionProvider_SNPE(snpe_option_keys.data(), snpe_option_values.data(), snpe_option_keys.size());
+Ort::Session session(env, model_path, session_options);
 ```
 
 The C API details are [here](../get-started/with-c.md).
