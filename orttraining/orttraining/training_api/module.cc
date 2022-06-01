@@ -113,7 +113,7 @@ Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& name
     if (param_share_ptr->RequiresGrad()) {
       // Create gradient accumulation buffer.
       auto it = param_name_to_grad_input_index_map.find(param_name);
-      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ", param_name);
+      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not provided for param: ", param_name);
 
       auto& param_grad_buffer_name = grad_input_names[param_name_to_grad_input_index_map[param_name]];
       // TODO: don't pre-allocate the gradient buffer.
