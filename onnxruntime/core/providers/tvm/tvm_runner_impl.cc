@@ -107,7 +107,9 @@ void GERunnerImpl::connect_output_tensors2ort(Ort::KernelContext& context) {
   add_device_type_data2output_tensors(context);
 }
 
-void GERunnerImpl::set_output_zero_copy() {}
+void GERunnerImpl::set_output_zero_copy() {
+  tvm::TVMSetOutputsZeroCopy(*mod_, output_tensors_);
+}
 
 void GERunnerImpl::run() {
   tvm::TVMRun(*mod_);
