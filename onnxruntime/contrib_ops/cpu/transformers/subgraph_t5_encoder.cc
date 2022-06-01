@@ -7,8 +7,8 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "./subgraph_t5_encoder.h"
-#include "./dump_tensor.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -41,7 +41,7 @@ namespace transformers {
 
 Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
-  // TODO: subgraph with 2 inputs is not supported in BeamSearchT5 yet
+  // TODO(tianleiwu): subgraph with 2 inputs is not supported in BeamSearchT5 yet
   ORT_RETURN_IF(num_subgraph_inputs != 2 && num_subgraph_inputs != 3,
                 "expect 2 or 3 inputs, got:", num_subgraph_inputs);
 
@@ -126,7 +126,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   // Allocate subgraph inputs to be same device as encoder_input_ids
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(encoder_input_ids.Location());
 
-  // TODO: expand the outputs instead of inputs to save computation.
+  // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
   OrtValue expanded_encoder_input_ids;
   OrtValue expanded_encoder_attention_mask;
   OrtValue expanded_decoder_input_ids;  // filled with start token ID

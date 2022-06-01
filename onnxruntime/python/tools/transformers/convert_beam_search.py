@@ -248,7 +248,7 @@ def gpt2_to_onnx(args):
 
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 or mixed precision model cannot run in CPU. Please add --use_gpu"
-        # TODO: Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
+        # TODO(tianleiwu): Use auto mixed precision for fp16 conversion: arguments.append('--auto_mixed_precision')
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
         arguments.extend(["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
@@ -264,7 +264,7 @@ def shape_inference(decoder_onnx_path):
 
     out = SymbolicShapeInference.infer_shapes(onnx.load(decoder_onnx_path), auto_merge=True, guess_output_rank=False)
     if out:
-        # TODO: Use external format if input has extra data.
+        # TODO(tianleiwu): Use external format if input has extra data.
         onnx.save(out, decoder_onnx_path)
     else:
         print("Failed to run symbolic shape inference on the model.")
@@ -328,7 +328,7 @@ def verify_gpt2_subgraph(graph, precision):
             )
     print("Verifying GPT-2 graph outputs: name and data type are good.")
 
-    # TODO: verify shapes of inputs and outputs.
+    # TODO(tianleiwu): verify shapes of inputs and outputs.
     return
 
 
@@ -456,7 +456,7 @@ def convert_model(args):
         assert args.model_type == "gpt2", "please have onnx model ready for model type that is not gpt2"
         gpt2_to_onnx(args)
 
-    # TODO: fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
+    # TODO(tianleiwu): fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
     enable_shape_inference = args.model_type == "gpt2"
 
     if enable_shape_inference:
@@ -664,7 +664,7 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: Optional[List[
     assert args.model_type == "gpt2"
 
     if args.temperature != 1.0:
-        # TODO: implement temperature in BeamSearch operator.
+        # TODO(tianleiwu): implement temperature in BeamSearch operator.
         print("Skipping parity test as temperature is not implemented in BeamSearch operator")
         return True
 
@@ -841,7 +841,7 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
     assert args.model_type == "t5"
 
     if args.temperature != 1.0:
-        # TODO: implement temperature in BeamSearch operator.
+        # TODO(tianleiwu): implement temperature in BeamSearch operator.
         print("Skipping parity test as temperature is not implemented in BeamSearch operator")
         return True
 
@@ -864,7 +864,7 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
         sentences = [
             "translate English to French: The product is released",
             "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
-            "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
+            + "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
         ]
 
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)

@@ -3,10 +3,10 @@
 
 #pragma once
 
-#include "./beam_search_shared.h"  // for DEBUG_BEAM_SEARCH
-#include "./beam_search_impl_base.h"
-#include "./subgraph_t5_encoder.h"
-#include "./subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"  // for DEBUG_BEAM_SEARCH
+#include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -146,7 +146,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // ------------------------------------
 
   // Output sequence shall start with decoder_start_token_id
-  // TODO: support encoder with 2 input. The following assumes encoder has 3 inputs.
+  // TODO(tianleiwu): support encoder with 2 input. The following assumes encoder has 3 inputs.
   this->parameters_->sequence_length = 1;
   cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int32_t>(),
                         static_cast<size_t>(parameters->BatchBeamSize()),
@@ -211,7 +211,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              this->cuda_stream_));
   }
 
-  // TODO: allocate fetches. use ping-pong buffers for past state.
+  // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.
   std::vector<OrtValue> decoder_fetches;
   while (current_length < parameters->max_length) {
     iteration_counter++;

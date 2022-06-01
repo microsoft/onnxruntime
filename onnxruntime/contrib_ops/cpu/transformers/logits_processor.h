@@ -4,9 +4,9 @@
 #pragma once
 
 #include "core/common/inlined_containers.h"
-#include "./sequences.h"
-#include "./beam_search_parameters.h"
-#include "./beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {

@@ -109,7 +109,6 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     }
   }
 
-
  private:
   BufferUniquePtr final_beam_scores_buffer_;
   BufferUniquePtr sequence_lengths_buffer_;

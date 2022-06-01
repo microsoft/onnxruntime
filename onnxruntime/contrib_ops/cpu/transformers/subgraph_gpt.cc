@@ -7,8 +7,8 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "./subgraph_gpt.h"
-#include "./dump_tensor.h"
+#include "contrib_ops/cpu/transformers/subgraph_gpt.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {

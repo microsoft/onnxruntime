@@ -4,7 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "cub/util_type.cuh"
-#include "./beam_search_impl.h"
+#include "contrib_ops/cuda/transformers/beam_search_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -158,18 +158,18 @@ void LaunchLogitsProcessKernel(
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
   LogitsProcessKernel<T><<<gridSize, blockSize, 0, stream>>>(
-    next_token_scores,
-    vocab_mask,
-    prefix_vocab_mask,
-    num_beams,
-    vocab_size,
-    total_elements,
-    demote_token_id,
-    sequences,
-    max_sequence_length,
-    current_sequence_length,
-    repetition_penalty,
-    no_repeat_ngram_size);
+      next_token_scores,
+      vocab_mask,
+      prefix_vocab_mask,
+      num_beams,
+      vocab_size,
+      total_elements,
+      demote_token_id,
+      sequences,
+      max_sequence_length,
+      current_sequence_length,
+      repetition_penalty,
+      no_repeat_ngram_size);
 }
 
 // Instantiation
@@ -266,7 +266,7 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
   UpdateGptInputsKernel<int32_t><<<gridSize, blockSize, 0, stream>>>(
-    old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
+      old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
 }
 
 }  // namespace cuda

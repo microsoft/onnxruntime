@@ -8,8 +8,8 @@
 #include "core/framework/ort_value.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include <cuda_runtime.h>
-#include "./beam_search_impl.h"
-#include "./dump_cuda_tensor.h"
+#include "contrib_ops/cuda/transformers/beam_search_impl.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 #ifdef DEBUG_BEAM_SEARCH
 using namespace onnxruntime::contrib::cuda::transformers;
@@ -147,7 +147,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
 
-  // TODO: allocate a buffer for subgraph inputs so that we can reuse the buffer in each subgraph call.
+  // TODO(tianleiwu): allocate a buffer for subgraph inputs so that we can reuse the buffer in each subgraph call.
   const OrtMemoryInfo& location = provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
@@ -166,7 +166,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    int batch_size,
                    int num_beams,
                    void* stream) {
-  // TODO: we can use another stream to avoid blocking subgraph execution.
+  // TODO(tianleiwu): we can use another stream to avoid blocking subgraph execution.
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
   cudaMemsetAsync(beam_state->next_token_logits.data(), 0, beam_state->next_token_logits.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes(), cuda_stream);
@@ -226,7 +226,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
   if (input_length > 1) {
-    // TODO: use one kernel to replace a loop of memory copy.
+    // TODO(tianleiwu): use one kernel to replace a loop of memory copy.
     const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
@@ -407,7 +407,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
 
     // Create a tensor with same shape.
-    // TODO: allocate one buffer for all layers, and use a CUDA kernel to copy key/value cache data.
+    // TODO(tianleiwu): allocate one buffer for all layers, and use a CUDA kernel to copy key/value cache data.
     OrtValue past;
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
@@ -450,7 +450,7 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
 
     // Create a tensor with same shape.
-    // TODO: allocate one buffer for all layers, and use a CUDA kernel to copy key/value cache data.
+    // TODO(tianleiwu): allocate one buffer for all layers, and use a CUDA kernel to copy key/value cache data.
     OrtValue past;
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), past_shape, allocator, past);
 

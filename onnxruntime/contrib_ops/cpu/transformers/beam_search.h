@@ -7,11 +7,11 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/controlflow/utils.h"
-#include "./beam_search_parameters.h"
-#include "./subgraph_gpt.h"
-#include "./subgraph_t5_encoder.h"
-#include "./subgraph_t5_decoder.h"
-#include "./beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
+#include "contrib_ops/cpu/transformers/subgraph_gpt.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
 namespace onnxruntime {
 class FeedsFetchesManager;

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "./beam_search_impl_base.h"
+#include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 
 namespace onnxruntime {
 namespace contrib {

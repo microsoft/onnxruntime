@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "./subgraph_base.h"
+#include "contrib_ops/cpu/transformers/subgraph_base.h"
 
 namespace onnxruntime {
 namespace contrib {

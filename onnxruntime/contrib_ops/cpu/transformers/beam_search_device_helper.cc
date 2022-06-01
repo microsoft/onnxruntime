@@ -7,9 +7,9 @@
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/common/safeint.h"
 #include "gsl/gsl"
-#include "./sequences.h"
-#include "./beam_search_scorer.h"
-#include "./beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/beam_search_scorer.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -343,7 +343,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
 
     // Create a tensor with same shape.
-    // TODO: allocate one buffer for all layers
+    // TODO(tianleiwu): allocate one buffer for all layers
     OrtValue past;
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
@@ -393,7 +393,7 @@ Status UpdateGptFeeds(
   TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
-  // TODO: Reuse buffer for input_ids to reduce memory allocation.
+  // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   for (int i = 0; i < batch_beam_size; i++) {
@@ -531,7 +531,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
 
     // Create a tensor with same shape.
-    // TODO: allocate one buffer for all layers
+    // TODO(tianleiwu): allocate one buffer for all layers
     OrtValue past;
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), past_shape, allocator, past);
 

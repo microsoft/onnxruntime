@@ -8,7 +8,7 @@
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
-#include "./beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
 
 namespace onnxruntime {
 class SessionState;
