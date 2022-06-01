@@ -50,7 +50,7 @@ The SNPE Execution Provider supports a number of options to set the SNPE Runtime
 |FLOAT|User defined buffer with float value|
 
 ## Usage
-### C/C++
+### C++
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 std::vector<const char*> snpe_option_keys;
