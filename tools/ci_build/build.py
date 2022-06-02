@@ -671,7 +671,9 @@ def get_config_build_dir(build_dir, config):
     return os.path.join(build_dir, config)
 
 
-def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None, cuda_home=None):
+def run_subprocess(
+    args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None, cuda_home=None
+):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -1222,9 +1224,10 @@ def generate_build_tree(
                     and not args.disable_memleak_checker
                     else "OFF"
                 ),
-                "-DCMAKE_BUILD_TYPE={}".format(config)
+                "-DCMAKE_BUILD_TYPE={}".format(config),
             ],
-            cwd=config_build_dir, cuda_home=cuda_home
+            cwd=config_build_dir,
+            cuda_home=cuda_home,
         )
 
 
