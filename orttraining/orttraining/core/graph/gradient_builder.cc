@@ -6,6 +6,7 @@
 #include <cmath>
 #include <numeric>
 #include <list>
+#include <vector>
 
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
