@@ -72,6 +72,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   const BeamSearchParameters* parameters = this->parameters_;
   ORT_ENFORCE(parameters->sequence_length == 0);
 
+  // Output sequence shall start with decoder_start_token_id, update sequence length to be 1 as the initial state.
+  this->parameters_->sequence_length = 1;
+
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
@@ -135,8 +138,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     dumper->Print("", encoder_feeds[i]);
   }
 
-  for (size_t i = 0; i < encoder_fetches.size(); i++) {
-    dumper->Print("encoder_fetches", static_cast<int>(i), true);
+  for (int i = 0; i <= T5EncoderSubgraph::kFirstPresentOutputIndex; i++) {
+    dumper->Print("encoder_fetches", i, true);
     dumper->Print("", encoder_fetches[i]);
   }
 #endif
@@ -145,9 +148,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Initialize resources
   // ------------------------------------
 
-  // Output sequence shall start with decoder_start_token_id
+  // Copy the third input of encoder graph to sequence. That input contains decoder_start_token_id for each beam.
   // TODO(tianleiwu): support encoder with 2 input. The following assumes encoder has 3 inputs.
-  this->parameters_->sequence_length = 1;
   cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int32_t>(),
                         static_cast<size_t>(parameters->BatchBeamSize()),
                         parameters->max_length,
@@ -219,8 +221,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
 
-    for (size_t i = 0; i < decoder_feeds.size(); i++) {
-      dumper->Print("decoder_feeds", static_cast<int>(i), true);
+    for (int i = 0; i <= T5DecoderSubgraph::kFirstPastInputIndex; i++) {
+      dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
 #endif
@@ -235,8 +237,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                     this->context_.Logger());
 
 #ifdef DEBUG_BEAM_SEARCH
-    for (size_t i = 0; i < decoder_fetches.size(); i++) {
-      dumper->Print("decoder_fetches", static_cast<int>(i), true);
+    for (int i = 0; i <= T5DecoderSubgraph::kFirstPresentOutputIndex; i++) {
+      dumper->Print("decoder_fetches", i, true);
       dumper->Print("", decoder_fetches[i]);
     }
 #endif
