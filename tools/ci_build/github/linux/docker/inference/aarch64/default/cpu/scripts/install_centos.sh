@@ -7,7 +7,7 @@ PACKAGES_TO_INSTALL="which gdb redhat-lsb-core expat-devel tar unzip zlib-devel 
 if ! rpm -q --quiet epel-release ; then
 	if [[ "$CPU_ARCH" = "x86_64" ]]; then
 	  yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-$os_major_version.noarch.rpm https://repo.ius.io/ius-release-el$os_major_version.rpm
-	  PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL git224"
+	  PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL git236"
 	else
 	  yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-$os_major_version.noarch.rpm
 	  PACKAGES_TO_INSTALL="$PACKAGES_TO_INSTALL git"
