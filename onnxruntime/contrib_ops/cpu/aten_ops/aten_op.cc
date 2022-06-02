@@ -20,7 +20,7 @@ Status ATen::Compute(OpKernelContext* p_ctx) const {
   std::unique_ptr<DLManagedTensor*[]> dlpack_inputs = std::make_unique<DLManagedTensor*[]>(input_size);
   std::unique_ptr<DLManagedTensor*[]> dlpack_outputs = std::make_unique<DLManagedTensor*[]>(output_size);
   for (size_t i = 0; i < input_size; ++i) {
-    const OrtValue* p_ort_value = p_ctx_internal->GetInputMLValue(i);
+    const OrtValue* p_ort_value = p_ctx_internal->GetInputMLValue(static_cast<int>(i));
     if (!p_ort_value) {
       dlpack_inputs[i] = nullptr;
     } else {
