@@ -1258,7 +1258,8 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
 #endif
       })
       .def_readwrite("grouped_ops", &PySessionOptions::grouped_ops, R"pbdoc(group ops in separate streams, e.g. for "op1,op2,op3;op4,op5", [op1,op2,op3], [op4,op5] will occupy two separate streams exclusively)pbdoc")
-      .def_readwrite("streams_per_ep", &PySessionOptions::streams_per_ep, R"pbdoc(specify logic streams per ep, default 1, e.g. CPUExecutionProvider:1;CUDAExecutionProvider:2)pbdoc");
+      .def_readwrite("streams_per_ep", &PySessionOptions::streams_per_ep, R"pbdoc(specify logic streams per ep, default 1, e.g. CPUExecutionProvider:1;CUDAExecutionProvider:2)pbdoc")
+      .def_readwrite("max_streams_per_ep", &PySessionOptions::max_streams_per_ep, R"pbdoc(specify max physical streams per ep, default 1, e.g. CPUExecutionProvider:1;CUDAExecutionProvider:2)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())

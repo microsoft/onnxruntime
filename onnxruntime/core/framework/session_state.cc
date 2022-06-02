@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/framework/session_state.h"
@@ -20,6 +20,7 @@
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/parallel_execution_plan.h"
+#include "core/framework/stream_pool.h"
 
 using namespace ::onnxruntime::common;
 
@@ -81,7 +82,8 @@ SessionState::SessionState(Graph& graph,
       use_deterministic_compute_(use_deterministic_compute),
       enable_mem_reuse_(enable_mem_reuse),
       prepacked_weights_container_(prepacked_weights_container),
-      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
+      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()),
+      stream_pool_(std::make_unique<StreamPool>()){
   SetupAllocators();
 }
 
@@ -1462,22 +1464,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
+  // TODO: we avoid instantiate it in subgraph session state
+
   // register stream handles from EP instances
   auto& eps = GetExecutionProviders();
   for (auto& ep : eps) {
     ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
   }
-
-  SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
-  AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
-
-  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
-  p_seq_exec_plan_ = std::make_unique<SequentialExecutionPlan>();
-  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-                                                    execution_providers_, kernel_create_info_map_,
-                                                    subgraphs_kernel_create_info_maps,
-                                                    outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_));
 
   // read stream configuration from session option
   auto split = [](const std::string& s, char splitor) {
@@ -1489,6 +1482,37 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     }
     return ret;
   };
+
+  std::unordered_map<std::string, size_t> ep_max_stream_map;
+
+  if (!session_options.streams_per_ep.empty()) {
+    for (const auto& streams_per_ep : split(session_options.streams_per_ep, ';')) {
+      std::vector<std::string> stream_per_ep = split(streams_per_ep, ':');
+      ep_max_stream_map[stream_per_ep[0]] = atoi(stream_per_ep[1].c_str());
+    }
+  }
+
+  for (auto& ep : eps) {
+    auto it = ep_max_stream_map.find(ep->Type());
+    if (it == ep_max_stream_map.end()) {
+      // if not set, set max stream number to 1
+      ep_max_stream_map.insert({ep->Type(), 1});
+    }
+  }
+
+  // init stream pool
+  ORT_RETURN_IF_ERROR(stream_pool_->Init(*this, ep_max_stream_map));
+
+  SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
+  AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
+
+  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
+  p_seq_exec_plan_ = std::make_unique<SequentialExecutionPlan>();
+  ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
+                                                    execution_providers_, kernel_create_info_map_,
+                                                    subgraphs_kernel_create_info_maps,
+                                                    outer_scope_node_arg_to_location_map,
+                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_));
 
   ProviderStreamMap provider_stream_map;
 

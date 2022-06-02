@@ -39,6 +39,7 @@
 
 #include "core/framework/parallel_execution_plan.h"
 #include "core/framework/stream_handles.h"
+#include "core/framework/stream_pool.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -58,6 +59,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class StreamPool;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
 #endif
@@ -335,6 +337,10 @@ class SessionState {
     return *stream_handles_registry_;
   }
 
+  StreamPool& GetStreamPool() const {
+    return *stream_pool_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -533,6 +539,7 @@ class SessionState {
   size_t graph_executions_counter_ = 0;
 #endif
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
+  std::unique_ptr<StreamPool> stream_pool_;
 };
 
 }  // namespace onnxruntime

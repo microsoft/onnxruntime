@@ -144,6 +144,13 @@ struct SessionOptions {
   // operators that must be grouped in one separate stream, default empty
   // for "op1,op2,op3;op4,op5", [op1,op2,op3], [op4,op5] will occupy separate streams exclusively 
   std::string grouped_ops{};
+
+  // the max number of streams a EP can create. 
+  // this is used to control the number of streams created by current session.
+  // and it is shared accross request.
+  // for example, if current session planned two logical stream on EP1, and maximal EP is set to 2.
+  // if two request coming in parallel, the total 4 logical streams will be serialzied on two physical streams.
+  std::string max_streams_per_ep{};
 };
 
 }  // namespace onnxruntime

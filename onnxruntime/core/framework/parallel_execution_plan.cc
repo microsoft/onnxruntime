@@ -10,6 +10,7 @@
 #include "core/graph/constants.h"
 #include "core/common/logging/macros.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/stream_pool.h"
 
 #ifdef USE_CUDA
 #include <nvtx3/nvToolsExtCuda.h>
@@ -62,7 +63,7 @@ struct ExecutionContext {
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
-  std::vector<std::unique_ptr<Stream>> device_streams;
+  std::vector<Stream*> device_streams;
 
   ExecutionContext(const SessionState& sess_state,
                    ExecutionFrame* execution_frame,
@@ -73,10 +74,10 @@ struct ExecutionContext {
                                                          logger(&sess_logger) {
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
-      auto create_stream_fn = sess_state.GetStreamHandleRegistryInstance().GetCreateStreamFn(logic_stream->ep_->Type());
+      auto* stream = sess_state.GetStreamPool().GetStream(logic_stream->ep_);
       // TODO: if EP doesn't provide stream support, fallback to CPU stream (sync on the host thread)
-      ORT_ENFORCE(create_stream_fn);
-      device_streams.emplace_back(create_stream_fn(logic_stream->ep_));
+      ORT_ENFORCE(stream);
+      device_streams.push_back(stream);
     }
 
     for (auto i = 0; i < notification_owners.size(); ++i) {
@@ -89,6 +90,9 @@ struct ExecutionContext {
   }
 
   ~ExecutionContext() {
+    for (auto* stream : device_streams) {
+      session_state->GetStreamPool().ReleaseStream(stream);
+    }
   }
 
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
@@ -279,7 +283,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         // TODO: set terminate flag from run_option
-        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, false, ctx.device_streams[cur_stream_idx].get());
+        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, false, ctx.device_streams[cur_stream_idx]);
         if (p_kernel->IsAsync()) {
           ExecutionContext* ctx_ptr = &ctx;
           ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, [node_index, i, ctx_ptr]() {
