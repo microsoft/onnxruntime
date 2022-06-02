@@ -37,6 +37,9 @@ struct AllocatorCreationInfo {
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
 // Used for sharing allocators across EPs. e.g. CUDA with TensorRT, CPU with XNNPACK
+// NOTE: This isn't managing the lifetime of the allocators (they're all in shared_ptr instances anyway).
+// It really just provides a way to collect and pass around allocators between the calls to
+// IExecutionProvider::RegisterAllocator for each registered EP. Once those calls complete it is no longer needed.
 class AllocatorManager {
   //
  public:

@@ -16,8 +16,8 @@
 #include "core/common/parse_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
-#include "core/framework/bfc_arena.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -1288,11 +1288,14 @@ common::Status InferenceSession::Initialize() {
     // allocator between CPU and XNNPACK, or CUDA and TensorRT. The memory config options for the CPU and CUDA EPs are
     // more comprehensive so we prefer those, and need to call RegisterAllocator for those EPs first so their
     // allocators are the ones that get shared.
-    std::for_each(std::make_reverse_iterator(execution_providers_.end()),
-                  std::make_reverse_iterator(execution_providers_.begin()),
-                  [this](auto& iter) {
-                    iter->RegisterAllocator(allocator_manager_);
-                  });
+    {
+      AllocatorManager allocator_manager;
+      std::for_each(std::make_reverse_iterator(execution_providers_.end()),
+                    std::make_reverse_iterator(execution_providers_.begin()),
+                    [&allocator_manager](auto& iter) {
+                      iter->RegisterAllocator(allocator_manager);
+                    });
+    }
 
     // At this time we know all the providers that will be part of this session.
     // Read shared allocators from the environment and update them in the respective providers.
