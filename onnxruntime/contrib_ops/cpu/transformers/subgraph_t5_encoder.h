@@ -32,6 +32,8 @@ class T5EncoderSubgraph : public Subgraph {
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
+
+  constexpr static int kFirstPresentOutputIndex = 2;
 };
 
 }  // namespace transformers

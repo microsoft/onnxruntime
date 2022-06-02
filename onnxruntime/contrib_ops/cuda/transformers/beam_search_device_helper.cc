@@ -10,10 +10,8 @@
 #include <cuda_runtime.h>
 #include "contrib_ops/cuda/transformers/beam_search_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
-
-#ifdef DEBUG_BEAM_SEARCH
-using namespace onnxruntime::contrib::cuda::transformers;
-#endif
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -402,18 +400,20 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                         gsl::span<const int32_t>& beam_indices,
                         AllocatorPtr allocator,
                         void* stream) {
-  for (size_t i = 1; i < last_outputs.size(); ++i) {
-    const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
+  int num_present_tensors = last_outputs.size() - transformers::GptSubgraph::kFirstPresentOutputIndex;
+  for (int i = 0; i < num_present_tensors; ++i) {
+    const OrtValue& present = last_outputs[transformers::GptSubgraph::kFirstPresentOutputIndex + i];
+
+    // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
+    auto block_size_per_beam = past_shape[2] * past_shape[3] * past_shape[4];
+    auto past_key_size = past_shape[1] * past_shape[2] * past_shape[3] * past_shape[4];
 
     // Create a tensor with same shape.
     // TODO(tianleiwu): allocate one buffer for all layers, and use a CUDA kernel to copy key/value cache data.
     OrtValue past;
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
-
-    auto block_size_per_beam = past_shape[2] * past_shape[3] * past_shape[4];
-    auto past_key_size = past_shape[1] * past_shape[2] * past_shape[3] * past_shape[4];
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
@@ -431,7 +431,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                                            cudaMemcpyDeviceToDevice, reinterpret_cast<cudaStream_t>(stream)));
     }
 
-    next_inputs[i + 2] = past;
+    next_inputs[transformers::GptSubgraph::kFirstPastInputIndex + i] = past;
   }
 
   return Status::OK();
@@ -445,16 +445,17 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
                        gsl::span<const int32_t>& beam_indices,
                        AllocatorPtr allocator,
                        void* stream) {
-  for (int i = 1; i < 1 + num_present_tensors; ++i) {
-    const OrtValue& present = last_outputs[i];  // shape is like (batch_beam_size, 12, past_seq_len, 64)
+  for (int i = 0; i < num_present_tensors; ++i) {
+    const OrtValue& present = last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
+
+    // shape is like (batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
+    auto block_size_per_beam = past_shape[1] * past_shape[2] * past_shape[3];
 
     // Create a tensor with same shape.
     // TODO(tianleiwu): allocate one buffer for all layers, and use a CUDA kernel to copy key/value cache data.
     OrtValue past;
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), past_shape, allocator, past);
-
-    auto block_size_per_beam = past_shape[1] * past_shape[2] * past_shape[3];
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
@@ -466,7 +467,7 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
                                            cudaMemcpyDeviceToDevice, reinterpret_cast<cudaStream_t>(stream)));
     }
 
-    next_inputs[i + 2] = past;
+    next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] = past;
   }
 
   return Status::OK();
@@ -526,9 +527,10 @@ Status UpdateGptFeeds(
 
   // Update past state
   if (num_beams == 1) {
+    const int k = transformers::GptSubgraph::kFirstPastInputIndex - transformers::GptSubgraph::kFirstPresentOutputIndex;
     // feed present_* output to past_* inputs one by one
-    for (size_t i = 1; i < last_outputs.size(); ++i) {
-      next_inputs[i + 2] = last_outputs[i];
+    for (size_t i = transformers::GptSubgraph::kFirstPresentOutputIndex; i < last_outputs.size(); ++i) {
+      next_inputs[i + k] = last_outputs[i];
     }
   } else {
     ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream));
@@ -581,8 +583,9 @@ Status UpdateDecoderFeeds(
   // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
-    for (int i = 1; i < 1 + num_present_tensors; ++i) {
-      next_inputs[i + 2] = last_outputs[i];
+    for (int i = 0; i < num_present_tensors; ++i) {
+      next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] =
+          last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
       return Status::OK();
     }
   }

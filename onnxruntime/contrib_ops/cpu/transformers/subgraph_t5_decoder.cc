@@ -44,10 +44,10 @@ namespace transformers {
 
 Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_inputs < 7 || (num_subgraph_inputs - 3) % 4 != 0,
+  ORT_RETURN_IF(num_subgraph_inputs < 7 || (num_subgraph_inputs - kFirstPastInputIndex) % 4 != 0,
                 "number of outputs expected to be 3 + 4 * layers, got:", num_subgraph_inputs);
-  ORT_RETURN_IF(num_subgraph_outputs < 5 || (num_subgraph_outputs - 1) % 4 != 0,
-                "number of outputs expected to be 1 + 4 * layers, got:", num_subgraph_outputs);
+  ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - kFirstPresentOutputIndex) % 2 != 0,
+                "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "decoder subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
@@ -61,11 +61,11 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
                 "decoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
 
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
-  const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[2]->Shape();
+  const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[kFirstPresentOutputIndex]->Shape();
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
-  num_layers = (static_cast<int>(subgraph_outputs.size()) - 1) / 2;
+  num_layers = (static_cast<int>(subgraph_outputs.size()) - kFirstPresentOutputIndex) / 2;
 
   constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
@@ -80,7 +80,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
                 "decoder subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
 
-  for (int i = 3; i < num_subgraph_inputs; i++) {
+  for (int i = kFirstPastInputIndex; i < num_subgraph_inputs; i++) {
     ORT_RETURN_IF(subgraph_inputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
                   "decoder subgraph past inputs shall have same data type as that of encoder_hidden_states");
   }

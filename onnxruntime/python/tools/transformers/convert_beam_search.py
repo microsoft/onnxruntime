@@ -614,6 +614,8 @@ def convert_model(args):
         producer_name="onnxruntime.transformers",
         opset_imports=model.opset_import,
     )
+
+    # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
     onnx.save(new_model, args.output)
 
 
@@ -872,7 +874,7 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
     attention_mask = inputs["attention_mask"]
 
     bad_words = "walk in park"
-    bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
+    bad_words_ids = tokenizer.encode(bad_words)[:-1]  # exclude the last token (EOS)
     bad_words_ids = [[word_id] for word_id in bad_words_ids]  # Convert to list of list
     if use_vocab_mask:
         print("bad_words_ids", bad_words_ids)
