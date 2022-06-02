@@ -5,6 +5,7 @@
 
 #include <unordered_map>
 
+#include "core/common/inlined_containers.h"
 #include "core/graph/graph.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/data_transfer_manager.h"
@@ -31,11 +32,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const Path& model_path,
          const IExecutionProvider& execution_provider,
          const std::function<bool(const std::string&)>& is_sparse_initializer_func);
-    ~Info() {
-      for (auto& kvp : deleter_for_initialized_tensors_) {
-        kvp.second.f(kvp.second.param);
-      }
-    }
+    ~Info() = default;
 
     AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
       return execution_provider_.GetAllocator(info.id, info.mem_type);
@@ -80,10 +77,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     OrtValueNameIdxMap ort_value_name_idx_map_;
     std::unordered_map<int, const NodeArg*> ort_value_idx_nodearg_map_;
     std::unordered_map<int, OrtValue> initializers_;
-    std::unordered_map<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
-    // This data structure is for uninitializing string tensors and
-    // munmap memory region and close file descriptor
-    std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
+    InlinedHashMap<int, std::unique_ptr<char[]>> buffer_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
     const IExecutionProvider& execution_provider_;
     const std::function<bool(const std::string&)>& is_sparse_initializer_func_;
