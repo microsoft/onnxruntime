@@ -119,3 +119,25 @@ static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dyn
 // "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
+
+// SessionOption 'fixed_point_requant_on_arm64' controls the requantization method on ARM devices.
+// Requantization is computed with formula:
+//     v = round(clamp(S * (I - Z), min, max))
+// where v is the target value with type TOutput, which is either int8_t or uint8_t
+//       I is the input value with type int32_t
+//       S is the scale with type float
+//       Z is the zero point with type same as TOutput.
+//       min is the minimum value of type TOutput.
+//       max is the maximum value of type TOutput.
+// For considerations of power consumption and some ARM devices don't even have FPUs, it is import to to be able to run
+// quantization with integer instructions only.FixedPoint Requantization is introduced to support this feature.
+// Its general idea is to convert scale S to fixed point. Ruy and XNNPack's method are referred for the implementation.
+// https://github.com/google/ruy/blob/a09683b8da7164b9c5704f88aef2dc65aa583e5d/ruy/apply_multiplier.cc#L48
+// https://github.com/google/XNNPACK/blob/1e37b200d3f4ba19151eb30c1c329873d541326c/src/params-init.c#L211
+// "0": disable. ORT uses float point based requantization on ARM devices.
+// "1": enable. ORT uses fixed point based requantization on ARM devices.
+// Its default value is "0"
+// **NOTE** that fixed point requantization rounds half to up, whereas ONNX spec rounds half to even, so for identical
+// model and input the inference results may not be exactly same with this option on and off. The impact should be
+// small in practice (NNApi EP uses same rounding).
+static const char* const kOrtSessionOptionsConfigFixedPointRequantOnARM64 = "session.fixed_point_requant_on_arm64";

@@ -521,6 +521,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     }
   }
 
+  if (performance_test_config.run_config.use_fixed_point_requant) {
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigFixedPointRequantOnARM64, "1");
+  }
+
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
 
   size_t output_count = session_.GetOutputCount();
