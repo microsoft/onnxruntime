@@ -176,8 +176,10 @@ Status SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
   if (BufferType::ITENSOR == buffer_type_) {
     ORT_RETURN_IF_NOT(SetupInputTensors(input_tensor_names), "Failed to setup input tensors! ", GetSnpeErrorString());
   } else {
-    ORT_RETURN_IF_NOT(SetupUserBufferAttributes(input_tensor_names) || SetupUserBufferAttributes(output_tensor_names),
-                      "Failed to setup user buffer! ", GetSnpeErrorString());
+    ORT_RETURN_IF_NOT(SetupUserBufferAttributes(input_tensor_names),
+                      "Failed to setup user buffer for inputs! ", GetSnpeErrorString());
+    ORT_RETURN_IF_NOT(SetupUserBufferAttributes(output_tensor_names),
+                      "Failed to setup user buffer for outputs! ", GetSnpeErrorString());
   }
 
   return Status::OK();
