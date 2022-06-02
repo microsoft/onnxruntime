@@ -1853,7 +1853,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // scope of owned_run_logger is just the call to Execute.
       // If Execute ever becomes async we need a different approach
       std::unique_ptr<logging::Logger> owned_run_logger;
-      auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+      const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use
