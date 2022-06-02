@@ -82,9 +82,9 @@ unzip /tmp/src/gradle-6.3-bin.zip
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
-  GetFile https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz /tmp/src/v3.18.1.tar.gz
-  tar -xf /tmp/src/v3.18.1.tar.gz -C /tmp/src
-  cd /tmp/src/protobuf-3.18.1
+  GetFile https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz /tmp/src/v3.19.4.tar.gz
+  tar -xf /tmp/src/v3.19.4.tar.gz -C /tmp/src
+  cd /tmp/src/protobuf-3.19.4
   cmake ./cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo -DCMAKE_INSTALL_LIBDIR=lib64
   make -j$(getconf _NPROCESSORS_ONLN)
   make install

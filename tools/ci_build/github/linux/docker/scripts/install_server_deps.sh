@@ -42,7 +42,7 @@ rm -rf /tmp/googletest
 echo "Installing protobuf from source"
 git clone https://github.com/protocolbuffers/protobuf.git
 cd protobuf
-git checkout v3.18.1
+git checkout v3.19.4
 mkdir b
 cd b
 cmake ../cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Debug
@@ -77,4 +77,4 @@ make install
 cd /tmp
 rm -rf /tmp/grpc
 
-python3 -m pip install grpcio==1.27.2 requests protobuf==3.18.1
+python3 -m pip install grpcio==1.27.2 requests protobuf==3.19.4

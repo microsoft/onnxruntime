@@ -19,7 +19,7 @@
       {
         "component": {
           "Type": "maven",
-          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.18.1" },
+          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.19.4" },
           "DevelopmentDependency": true
         }
       },
@@ -441,7 +441,7 @@
                "commitHash": "aaa5eab410c2e3fe41ebf7a2316be9c51572dbd2",
                "repositoryUrl": "https://gitlab.kitware.com/cmake/cmake"
             },
-            "comments": "CMake 3.18.1. For building our CI build docker image"
+            "comments": "CMake 3.18.2. For building our CI build docker image"
          }
       },
       {
