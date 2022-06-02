@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <unordered_map>
+
 #include "core/graph/function_utils.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
@@ -312,9 +314,10 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
       [onnx_func_proto, func_domain_to_version, &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
         ONNX_NAMESPACE::ShapeInferenceOptions options{true, 1, false};
-        std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> copy(model_local_functions.begin(), model_local_functions.end());
+        std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
+                                                                                       model_local_functions.end());
         ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
-          schema_registry, ctx, options, copy);
+                                                                   schema_registry, ctx, options, map_copy);
       });
 
   op_schema->Finalize();
