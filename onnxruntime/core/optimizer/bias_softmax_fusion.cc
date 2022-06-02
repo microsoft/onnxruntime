@@ -60,16 +60,17 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
   }
 
   // BiasSoftmax supports only float/float16/double - see ./onnxruntime/core/graph/contrib_ops/contrib_defs.cc
-  auto data_type1 = input1->TypeAsProto()->tensor_type().elem_type();
-  if (data_type1 != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE &&
-      data_type1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      data_type1 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    return false;
-  }
-  auto data_type2 = input2->TypeAsProto()->tensor_type().elem_type();
-  if (data_type2 != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE &&
-      data_type2 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
-      data_type2 != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  auto type_allowed = [](NodeArg* input) {
+    auto data_type = input->TypeAsProto()->tensor_type().elem_type();
+    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE &&
+        data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+        data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      return false;
+    }
+    return true;
+  };
+
+  if (!type_allowed(input1) || !type_allowed(input2)) {
     return false;
   }
 
