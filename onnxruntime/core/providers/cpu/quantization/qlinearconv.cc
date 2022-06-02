@@ -3,6 +3,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/common/cpuid_info.h"
 #include "core/common/safeint.h"
 #include "core/providers/common.h"
@@ -10,6 +11,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/quantization/quantization.h"
 
 #if defined(_M_ARM64) || defined(__aarch64__)
 
@@ -36,6 +38,8 @@ class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
+    const CPUExecutionProvider* ep = static_cast<const CPUExecutionProvider*>(info.GetExecutionProvider());
+    use_fixed_point_requant_ = ep->UseFixedPointRequantOnARM64();
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -283,6 +287,7 @@ class QLinearConv : public OpKernel {
   bool is_symmetric_gemm_{false};
   bool channels_last_{false};
   std::vector<int32_t> column_sums_;
+  bool use_fixed_point_requant_{false};
 };
 
 // uint8_t kernel supports weight being either uint8_t or int8_t
@@ -511,6 +516,26 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   uint8_t W_zero_point_value;
   ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value, W_zero_point_value);
   std::vector<float> output_scales = ComputeOutputScale(context, M);
+  MLAS_REQUANT_PARAM RequantParam(output_scales.data(), output_scales.size(), Y_zero_point_value);
+#if defined(_M_ARM64) || defined(__aarch64__)
+  std::vector<int32_t> pre_shifts;
+  std::vector<int32_t> multipliers;
+  std::vector<int32_t> post_shifts;
+  if (use_fixed_point_requant_) {
+    pre_shifts.resize(output_scales.size());
+    multipliers.resize(output_scales.size());
+    post_shifts.resize(output_scales.size());
+    MlasFloatToFixedPoint(output_scales.data(),
+                          multipliers.data(),
+                          pre_shifts.data(),
+                          post_shifts.data(),
+                          output_scales.size());
+    RequantParam.RequantRoundKind = MLAS_ROUND_KIND::MlasRoundHalfUp;
+    RequantParam.PreShift = pre_shifts.data();
+    RequantParam.Multiplier = multipliers.data();
+    RequantParam.PostShift = post_shifts.data();
+  }
+#endif
 
   const Tensor* B = context->Input<Tensor>(InputTensors::IN_BIAS);
 
@@ -656,7 +681,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 #if defined(_M_ARM64) || defined(__aarch64__)
-  int32_t task_count = (output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M;
+  int32_t task_count = static_cast<int32_t>((output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M);
 #else
   int32_t task_count = ComputeTaskCount(output_image_size, group_output_channels, kernel_dim);
   task_count = std::min(task_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
@@ -735,6 +760,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         } else {
           conv_params.InputDirect = input_data + output_start * C;
         }
+
         conv_params.Filter = packed_W_buffer_.get();
         conv_params.Output = worker_output;
         conv_params.InputChannels = static_cast<size_t>(C);
@@ -742,9 +768,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         conv_params.OutputCount = static_cast<size_t>(output_count);
         conv_params.KernelSize = static_cast<size_t>(kernel_size);
         conv_params.Bias = column_sums_.data();
-        conv_params.Scale = output_scales.data();
-        conv_params.PerChannelScale = output_scales.size() > 1;
-        conv_params.OutputZeroPoint = Y_zero_point_value;
+        conv_params.RequantParam = &RequantParam;
         conv_params.InputIsSigned = std::is_signed<ActType>::value;
 
         if (is_depthwise_conv) {
@@ -871,9 +895,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           worker_output,
           static_cast<size_t>(M),
           Bdata,
-          output_scales.data(),
-          output_scales.size() > 1,
-          Y_zero_point_value,
+          &RequantParam,
           0,
           0,
           static_cast<size_t>(output_count),

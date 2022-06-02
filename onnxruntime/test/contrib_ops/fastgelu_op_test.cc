@@ -254,7 +254,7 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
