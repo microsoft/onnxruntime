@@ -5,6 +5,7 @@
 #include "default_providers.h"
 #include "providers.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
@@ -13,8 +14,8 @@
 namespace onnxruntime {
 namespace test {
 
-std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  return CreateExecutionProviderFactory_CPU(enable_arena)->CreateProvider();
+std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(const CPUExecutionProviderInfo& info ) {
+  return CreateExecutionProviderFactory_CPU(info)->CreateProvider();
 }
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {

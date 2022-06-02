@@ -1274,7 +1274,9 @@ common::Status InferenceSession::Initialize() {
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
-      CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
+      const bool use_fixed_point_requant_on_arm64 =
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigFixedPointRequantOnARM64, "0") == "1";
+      CPUExecutionProviderInfo epi(session_options_.enable_cpu_mem_arena, use_fixed_point_requant_on_arm64);
       auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
