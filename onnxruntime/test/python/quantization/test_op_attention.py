@@ -70,7 +70,11 @@ class TestOpAttention(unittest.TestCase):
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, -1, 10])
         graph_name = "attention_test"
         graph = helper.make_graph(
-            [attention_node, matmul_node], graph_name, [input_tensor], [output_tensor], initializer=initializers,
+            [attention_node, matmul_node],
+            graph_name,
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
         )
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         model.ir_version = onnx.IR_VERSION
@@ -79,12 +83,18 @@ class TestOpAttention(unittest.TestCase):
 
     def dynamic_attention_quant_test(self, model_fp32_path, model_int8_path, per_channel, reduce_range):
         quantize_dynamic(
-            model_fp32_path, model_int8_path, per_channel=per_channel, reduce_range=reduce_range,
+            model_fp32_path,
+            model_int8_path,
+            per_channel=per_channel,
+            reduce_range=reduce_range,
         )
         quant_nodes = {"QAttention": 1, "MatMulInteger": 1}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         check_model_correctness(
-            self, model_fp32_path, model_int8_path, {"input": np.random.rand(1, 5, 10).astype(np.float32)},
+            self,
+            model_fp32_path,
+            model_int8_path,
+            {"input": np.random.rand(1, 5, 10).astype(np.float32)},
         )
 
     def test_quantize_attention(self):

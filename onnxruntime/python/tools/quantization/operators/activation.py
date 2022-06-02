@@ -41,10 +41,19 @@ class QLinearActivation(QuantOperatorBase):
 
         # No assert on op_type as it is controlled by registry
         # only try to quantize when given quantization parameters for it
-        (data_found, output_scale_name, output_zp_name, _, _,) = self.quantizer._get_quantization_params(
-            node.output[0], use_scale, use_zeropoint
-        )
-        (quantized_input_names, zero_point_names, scale_names, nodes,) = self.quantizer.quantize_inputs(node, [0])
+        (
+            data_found,
+            output_scale_name,
+            output_zp_name,
+            _,
+            _,
+        ) = self.quantizer._get_quantization_params(node.output[0], use_scale, use_zeropoint)
+        (
+            quantized_input_names,
+            zero_point_names,
+            scale_names,
+            nodes,
+        ) = self.quantizer.quantize_inputs(node, [0])
         if not data_found or quantized_input_names is None:
             return super().quantize()
 
@@ -75,7 +84,11 @@ class QLinearActivation(QuantOperatorBase):
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(
-            node.output[0], qlinear_activation_output, output_scale_name, output_zp_name, QuantizedValueType.Input,
+            node.output[0],
+            qlinear_activation_output,
+            output_scale_name,
+            output_zp_name,
+            QuantizedValueType.Input,
         )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 

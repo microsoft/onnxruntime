@@ -49,26 +49,49 @@ class TestOpRelu(unittest.TestCase):
             initializers.append(onnx.numpy_helper.from_array(bias_data, name=bias_name))
 
             return onnx.helper.make_node(
-                "Gemm", [input_name, weight_name, bias_name], [output_name], alpha=1.0, beta=1.0, transB=1,
+                "Gemm",
+                [input_name, weight_name, bias_name],
+                [output_name],
+                alpha=1.0,
+                beta=1.0,
+                transB=1,
             )
 
         # make gemm1 node
         gemm1_output_name = "gemm1_output"
-        gemm1_node = make_gemm(input_name, [100, 10], "linear1.weight", [100], "linear1.bias", gemm1_output_name,)
+        gemm1_node = make_gemm(
+            input_name,
+            [100, 10],
+            "linear1.weight",
+            [100],
+            "linear1.bias",
+            gemm1_output_name,
+        )
 
         # make Relu
         relu_output = "relu_output"
         relu_node = onnx.helper.make_node("Relu", [gemm1_output_name], [relu_output])
 
         # make gemm2 node
-        gemm2_node = make_gemm(relu_output, [10, 100], "linear2.weight", [10], "linear2.bias", output_name,)
+        gemm2_node = make_gemm(
+            relu_output,
+            [10, 100],
+            "linear2.weight",
+            [10],
+            "linear2.bias",
+            output_name,
+        )
 
         # make graph
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [-1, 10])
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [-1, 10])
         graph_name = "relu_test"
         graph = helper.make_graph(
-            [gemm1_node, relu_node, gemm2_node], graph_name, [input_tensor], [output_tensor], initializer=initializers,
+            [gemm1_node, relu_node, gemm2_node],
+            graph_name,
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
         )
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         model.ir_version = onnx.IR_VERSION
@@ -76,7 +99,12 @@ class TestOpRelu(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     def static_quant_test(
-        self, model_fp32_path, data_reader, activation_type, weight_type, extra_options={},
+        self,
+        model_fp32_path,
+        data_reader,
+        activation_type,
+        weight_type,
+        extra_options={},
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
@@ -98,14 +126,24 @@ class TestOpRelu(unittest.TestCase):
         relu_count = 0 if activation_type == QuantType.QUInt8 else 1
         quant_nodes = {"QGemm": 2, "QuantizeLinear": qdq_count, "DequantizeLinear": qdq_count, "Relu": relu_count}
         check_op_type_count(self, model_int8_path, **quant_nodes)
-        qnode_io_qtypes = {"QuantizeLinear": [["i", 2, activation_proto_qtype], ["o", 0, activation_proto_qtype],]}
+        qnode_io_qtypes = {
+            "QuantizeLinear": [
+                ["i", 2, activation_proto_qtype],
+                ["o", 0, activation_proto_qtype],
+            ]
+        }
         qnode_io_qtypes.update({"DequantizeLinear": [["i", 2, activation_proto_qtype]]})
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
     def static_quant_test_qdq(
-        self, model_fp32_path, data_reader, activation_type, weight_type, extra_options={},
+        self,
+        model_fp32_path,
+        data_reader,
+        activation_type,
+        weight_type,
+        extra_options={},
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
@@ -128,7 +166,12 @@ class TestOpRelu(unittest.TestCase):
         dq_count = 7 if activation_type == QuantType.QUInt8 else 8
         quant_nodes = {"Gemm": 2, "QuantizeLinear": q_count, "DequantizeLinear": dq_count, "Relu": relu_count}
         check_op_type_count(self, model_int8_path, **quant_nodes)
-        qnode_io_qtypes = {"QuantizeLinear": [["i", 2, activation_proto_qtype], ["o", 0, activation_proto_qtype],]}
+        qnode_io_qtypes = {
+            "QuantizeLinear": [
+                ["i", 2, activation_proto_qtype],
+                ["o", 0, activation_proto_qtype],
+            ]
+        }
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
@@ -140,10 +183,16 @@ class TestOpRelu(unittest.TestCase):
         data_reader = self.input_feeds(1, {"input": [5, 10]})
 
         self.static_quant_test(
-            model_fp32_path, data_reader, activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8,
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
         )
         self.static_quant_test_qdq(
-            model_fp32_path, data_reader, activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8,
+            model_fp32_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QUInt8,
         )
 
     def test_quantize_relu_s8s8(self):
