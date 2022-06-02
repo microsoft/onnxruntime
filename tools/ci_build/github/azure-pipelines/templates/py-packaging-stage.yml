@@ -104,36 +104,36 @@ stages:
                   ${{ parameters.build_py_parameters }}
           workingDirectory: $(Build.SourcesDirectory)
 
-      - task: CmdLine@2
-        displayName: 'Running tests'
-        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
-        inputs:
-          script: |
-            set -e -x
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-            sudo rm -f /build /onnxruntime_src
-            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-            # Test ORT with the latest ONNX release.
-            export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
-            sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-            cd $(Build.BinariesDirectory)/Release
-            ls $(Build.BinariesDirectory)/models
-            rmdir $(Build.BinariesDirectory)/models
-            ln -sf /data/models $(Build.BinariesDirectory)
-            python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
-                  --config Release --test \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }} \
-                  --ctest_path ''
+      # - task: CmdLine@2
+      #   displayName: 'Running tests'
+      #   condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
+      #   inputs:
+      #     script: |
+      #       set -e -x
+      #       rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+      #       sudo rm -f /build /onnxruntime_src
+      #       sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+      #       python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+      #       cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+      #       # Test ORT with the latest ONNX release.
+      #       export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
+      #       sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
+      #       python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+      #       python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+      #       cd $(Build.BinariesDirectory)/Release
+      #       ls $(Build.BinariesDirectory)/models
+      #       rmdir $(Build.BinariesDirectory)/models
+      #       ln -sf /data/models $(Build.BinariesDirectory)
+      #       python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+      #             --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+      #             --config Release --test \
+      #             --skip_submodule_sync \
+      #             --parallel \
+      #             --enable_lto \
+      #             --build_wheel \
+      #             --enable_onnx_tests \
+      #             ${{ parameters.build_py_parameters }} \
+      #             --ctest_path ''
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -235,35 +235,35 @@ stages:
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
 
-      - task: CmdLine@2
-        displayName: 'Running tests'
-        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
-        inputs:
-          script: |
-            set -e -x
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-            sudo rm -f /build /onnxruntime_src
-            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-            # Test ORT with the latest ONNX release.
-            export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
-            sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-            cd $(Build.BinariesDirectory)/Release
-            ls $(Build.BinariesDirectory)/models
-            rmdir $(Build.BinariesDirectory)/models
-            ln -sf /data/models $(Build.BinariesDirectory)
-            python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
-                  --config Release --test \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --build_wheel \
-                  --enable_onnx_tests --use_tensorrt --cuda_version=11.4 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
-                  ${{ parameters.build_py_parameters }} --ctest_path '' \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+      # - task: CmdLine@2
+      #   displayName: 'Running tests'
+      #   condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
+      #   inputs:
+      #     script: |
+      #       set -e -x
+      #       rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+      #       sudo rm -f /build /onnxruntime_src
+      #       sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+      #       python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+      #       cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+      #       # Test ORT with the latest ONNX release.
+      #       export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
+      #       sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
+      #       python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+      #       python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+      #       cd $(Build.BinariesDirectory)/Release
+      #       ls $(Build.BinariesDirectory)/models
+      #       rmdir $(Build.BinariesDirectory)/models
+      #       ln -sf /data/models $(Build.BinariesDirectory)
+      #       python3 /onnxruntime_src/tools/ci_build/build.py \
+      #             --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+      #             --config Release --test \
+      #             --skip_submodule_sync \
+      #             --parallel \
+      #             --build_wheel \
+      #             --enable_onnx_tests --use_tensorrt --cuda_version=11.4 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
+      #             ${{ parameters.build_py_parameters }} --ctest_path '' \
+      #             --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -449,13 +449,13 @@ stages:
             **/*.pdb
             **/*.dll
 
-      - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
-         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-         Remove-Item -Recurse -Force onnxruntime
-         python onnx_backend_test_series.py
-        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-        displayName: 'Run Python Tests'
+      # - powershell: |
+      #    python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+      #    Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+      #    Remove-Item -Recurse -Force onnxruntime
+      #    python onnx_backend_test_series.py
+      #   workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+      #   displayName: 'Run Python Tests'
 
       #Skip it for 32 bits x86 build. Currently the scan tool has a bug: it doesn't allow me use 64 bits link.exe
       #in 32 bits Win32 build. I tried all the settings but they all don't work.
