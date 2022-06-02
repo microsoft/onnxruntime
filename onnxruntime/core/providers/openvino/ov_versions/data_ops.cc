@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include <unordered_set>
@@ -33,6 +33,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "Cast",
     "Concat",
     "ConstantOfShape",
+    "DequantizeLinear",
     "Dropout",
     "Expand",
     "EyeLike",
@@ -40,6 +41,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "GatherND",
     "Identity",
     "Loop",
+    "LSTM",
     "NonMaxSuppression",
     "NonZero",
     "Not",
@@ -50,40 +52,57 @@ std::set<std::string> ops_supported_only_in_model = {
     "Resize",
     "Round",
     "Shape",
+    "Slice",
     "Split",
     "Tile",
     "TopK",
     "QuantizeLinear"};
 
+//Ops which are supported as functions (as composite ops)
+std::set<std::string> ops_supported_as_function = {
+    "LessOrEqual",
+    "GreaterOrEqual",
+};
+
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
     {"Acos", V_2020_4, {"CPU"}},
+    {"Acos", V_2022_1, {"GPU"}},
     {"Acosh", V_2020_4, {"CPU"}},
+    {"Acosh", V_2022_1, {"GPU"}},
     {"Add", V_2020_4, {"All"}},
     {"And", V_2020_4, {"All"}},
     {"ArgMax", V_2020_4, {"CPU"}},
     {"ArgMax", V_2021_1, {"All"}},
     {"ArgMin", V_2020_4, {"CPU"}},
     {"ArgMin", V_2021_2, {"CPU", "MYRIAD"}},
+    {"ArgMin", V_2022_1, {"All"}},
     {"Asin", V_2020_4, {"CPU", "GPU"}},
     {"Asinh", V_2020_4, {"CPU", "GPU"}},
     {"Atan", V_2020_4, {"CPU", "GPU"}},
     {"Atanh", V_2020_4, {"CPU"}},
+    {"Atanh", V_2022_1, {"GPU"}},
     {"AveragePool", V_2020_4, {"All"}},
     {"BatchNormalization", V_2020_4, {"All"}},
+    {"BitShift", V_2022_1, {"CPU"}},
     {"Cast", V_2020_4, {"All"}},
     {"Ceil", V_2020_4, {"GPU"}},
     {"Ceil", V_2021_3, {"MYRIAD"}},
     {"Ceil", V_2021_2, {"GPU", "MYRIAD"}},
     {"Ceil", V_2021_4, {"All"}},
+    {"Celu", V_2022_1, {"All"}},
     {"Clip", V_2020_4, {"All"}},
     {"Concat", V_2020_4, {"All"}},
     {"Constant", V_2020_4, {"All"}},
     {"ConstantOfShape", V_2020_4, {"All"}},
     {"Conv", V_2020_4, {"All"}},
+    {"ConvInteger", V_2022_1, {"All"}},
     {"ConvTranspose", V_2020_4, {"All"}},
     {"Cos", V_2020_4, {"CPU"}},
+    {"Cos", V_2022_1, {"GPU"}},
     {"Cosh", V_2020_4, {"CPU"}},
+    {"Cosh", V_2022_1, {"GPU"}},
+    {"CumSum", V_2022_1, {"CPU", "GPU"}},
     {"DepthToSpace", V_2020_4, {"All"}},
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Div", V_2020_4, {"All"}},
@@ -93,6 +112,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Erf", V_2020_4, {"All"}},
     {"Exp", V_2020_4, {"All"}},
     {"Expand", V_2021_1, {"MYRIAD"}},
+    {"Expand", V_2022_1, {"CPU", "GPU"}},
+    {"EyeLike", V_2022_1, {"CPU"}},
     {"Flatten", V_2020_4, {"All"}},
     {"Floor", V_2020_4, {"All"}},
     {"Gather", V_2020_4, {"All"}},
@@ -102,22 +123,31 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Gemm", V_2020_4, {"All"}},
     {"GlobalAveragePool", V_2020_4, {"All"}},
     {"GlobalLpPool", V_2020_4, {"CPU", "GPU"}},
+    {"GlobalMaxPool", V_2022_1, {"CPU", "GPU"}},
     {"Greater", V_2020_4, {"All"}},
+    {"GreaterOrEqual", V_2022_1, {"All"}},
     {"Identity", V_2020_4, {"All"}},
+    {"ImageScaler", V_2022_1, {"All"}},
     {"InstanceNormalization", V_2020_4, {"All"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
+    {"HardMax", V_2022_1, {"CPU", "GPU"}},
     {"LeakyRelu", V_2020_4, {"All"}},
     {"Less", V_2020_4, {"All"}},
+    {"LessOrEqual", V_2022_1, {"All"}},
     {"Log", V_2020_4, {"All"}},
+    {"LogSoftMax", V_2022_1, {"All"}},
     {"Loop", V_2021_3, {"MYRIAD"}},
     {"Loop", V_2021_4, {"All"}},
     {"LRN", V_2020_4, {"All"}},
     {"LSTM", V_2020_4, {"All"}},
     {"MatMul", V_2020_4, {"All"}},
+    {"MatMulInteger", V_2022_1, {"CPU"}},
     {"Max", V_2020_4, {"All"}},
     {"MaxPool", V_2020_4, {"All"}},
     {"Mean", V_2020_4, {"All"}},
+    {"MeanVarianceNormalization", V_2022_1, {"All"}},
     {"Min", V_2020_4, {"All"}},
+    {"Mod", V_2022_1, {"CPU", "GPU"}},
     {"Mul", V_2020_4, {"All"}},
     {"Neg", V_2020_4, {"All"}},
     {"NonMaxSuppression", V_2021_1, {"All"}},
@@ -125,37 +155,55 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Not", V_2021_1, {"All"}},
     {"Not", V_2020_4, {"CPU", "GPU"}},
     {"OneHot", V_2020_4, {"All"}},
+    {"Or", V_2022_1, {"CPU", "GPU"}},
     {"Pad", V_2020_4, {"All"}},
     {"Pow", V_2020_4, {"All"}},
     {"PRelu", V_2020_4, {"All"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Range", V_2021_2, {"MYRIAD"}},
+    {"Range", V_2022_1, {"All"}},
     {"Reciprocal", V_2020_4, {"All"}},
+    {"ReduceL1", V_2022_1, {"CPU", "GPU"}},
+    {"ReduceL2", V_2022_1, {"CPU", "GPU"}},
     {"ReduceLogSum", V_2020_4, {"CPU", "MYRIAD"}},
+    {"ReduceLogSum", V_2022_1, {"All"}},
+    {"ReduceLogSumExp", V_2022_1, {"All"}},
     {"ReduceMax", V_2020_4, {"All"}},
     {"ReduceMean", V_2020_4, {"All"}},
     {"ReduceMin", V_2020_4, {"All"}},
     {"ReduceProd", V_2020_4, {"CPU"}},
+    {"ReduceProd", V_2022_1, {"GPU"}},
     {"ReduceSum", V_2020_4, {"All"}},
     {"ReduceSumSquare", V_2020_4, {"CPU", "MYRIAD"}},
+    {"ReduceSumSquare", V_2022_1, {"All"}},
     {"Relu", V_2020_4, {"All"}},
     {"Resize", V_2020_4, {"CPU"}},
     {"Resize", V_2021_3, {"MYRIAD"}},
+    {"Resize", V_2022_1, {"All"}},
     {"Reshape", V_2020_4, {"All"}},
+    {"ReverseSequence", V_2022_1, {"CPU","GPU"}},
     {"RoiAlign", V_2021_1, {"All"}},
     {"Round", V_2021_2, {"MYRIAD"}},
     {"Round", V_2021_4, {"All"}},
     {"Scatter", V_2021_1, {"MYRIAD"}},
+    {"Scatter", V_2022_1, {"All"}},
     {"ScatterElements", V_2021_2, {"MYRIAD"}},
+    {"ScatterElements", V_2022_1, {"All"}},
+    {"ScatterND", V_2022_1, {"CPU","GPU"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
     {"Shape", V_2020_4, {"All"}},
+    {"Shrink", V_2022_1, {"CPU", "GPU"}},
     {"Sigmoid", V_2020_4, {"All"}},
     {"Sign", V_2020_4, {"CPU"}},
-    {"Sign", V_2020_4, {"CPU"}},
+    {"Sign", V_2022_1, {"GPU"}},
+    {"Sin", V_2022_1, {"CPU", "GPU"}},
     {"Sinh", V_2020_4, {"CPU"}},
     {"SinFloat", V_2020_4, {"MYRIAD"}},
+    {"Size", V_2022_1, {"CPU", "GPU"}},
     {"Slice", V_2020_4, {"All"}},
     {"Softmax", V_2020_4, {"All"}},
+    {"Softplus", V_2022_1, {"All"}},
+    {"Softsign", V_2022_1, {"All"}},
     {"SpaceToDepth", V_2020_4, {"All"}},
     {"Split", V_2020_4, {"All"}},
     {"Sqrt", V_2020_4, {"All"}},
@@ -165,13 +213,16 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Sum", V_2020_4, {"All"}},
     {"Tan", V_2020_4, {"CPU", "GPU"}},
     {"Tanh", V_2020_4, {"All"}},
-    {"Tile", V_2021_3, {"MYRIAD"}},
+    {"ThresholdedRelu", V_2022_1, {"All"}},
     {"Tile", V_2021_3, {"All"}},
     {"Transpose", V_2020_4, {"All"}},
     {"TopK", V_2020_4, {"All"}},
     {"Unsqueeze", V_2020_4, {"All"}},
     {"Upsample", V_2021_1, {"CPU"}},
+    {"Upsample", V_2021_4, {"All"}},
     {"Where", V_2021_2, {"MYRIAD"}},
+    {"Where", V_2022_1, {"All"}},
+    {"Xor", V_2022_1, {"CPU", "GPU"}},
 };
 
 void DataOps::populate_types_supported() {
@@ -206,7 +257,7 @@ void DataOps::populate_types_supported() {
   supported_types_gpu_.insert(std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
   supported_types_gpu_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
   supported_types_gpu_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
-
+  supported_types_gpu_.insert(std::make_pair(V_2022_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
 }
 
 void DataOps::populate_op_mode_supported() {
@@ -224,12 +275,18 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"ArgMin", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Max", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Add", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Add", V_2022_1, {"All"}});
+  no_dimension_supported_.push_back({"And", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Less", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Greater", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Clip", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Clip", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Reshape", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Loop", V_2021_3, {"MYRIAD"}});
@@ -237,8 +294,10 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"ReduceMin", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU","GPU"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
   
 
   subgraph_supported_.push_back({"Mul", V_2020_4, {"All"}});
@@ -266,7 +325,22 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Abs", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               //Abs is not supproted with INT8 or INT32 as input data type on GPU
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                  if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
+                                    node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
+                                    return true;
+                                }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Abs", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //tensor type does not support select last index
                                auto& attributes = node->GetAttributes();
@@ -280,18 +354,6 @@ void DataOps::populate_op_mode_supported() {
                              }};
     op_list_.insert({"ArgMax", obj});
     op_list_.insert({"ArgMin", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               // ceil_mode attribute is not supported in nGraph
-                               const auto& attributes = node->GetAttributes();
-                               auto ceil_attr = attributes.find("ceil_mode");
-                               // default value of ceil_mode (0) is supported.
-                               if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) return true;
-                               return (!dimension_unsupported(node));
-                             }};
-    op_list_.insert({"AveragePool", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
@@ -317,6 +379,25 @@ void DataOps::populate_op_mode_supported() {
                                const bool data_is_float16 = node->InputDefs()[0]->Type()->find("float16") != std::string::npos;
                                const bool data_is_double = node->InputDefs()[0]->Type()->find("double") != std::string::npos;
                                return !(data_is_float || data_is_float16 || data_is_double);
+                             }};
+    op_list_.insert({"Clip", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                //int64 data type is not supported on GPU
+                                const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
+                                return data_is_int64;
+                               }
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                //int64,int8,uint8 data type is not supported on MYRIAD
+                                const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
+                                const bool data_is_int8 = node->InputDefs()[0]->Type()->find("int8") != std::string::npos;
+                                const bool data_is_uint8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+                                return (data_is_int64 || data_is_int8 || data_is_uint8);
+                               }
+                               return false;
                              }};
     op_list_.insert({"Clip", obj});
   }
@@ -364,6 +445,22 @@ void DataOps::populate_op_mode_supported() {
                                     return true;
                                   }
                                 }
+                                return false;
+                             }};
+    op_list_.insert({"Conv", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet& ) {
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                  const auto& attributes = node->GetAttributes();
+                                  auto conv_filter = attributes.find("kernel_shape");
+                                  auto& ints = conv_filter->second().ints();
+                                  //If the kernel size is not 2D, the op is rejected in case of MYRIAD
+                                  if(ints.size() !=2) {
+                                    return true;
+                                  }
+                               }
                                 return false;
                              }};
     op_list_.insert({"Conv", obj});
@@ -445,25 +542,33 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ConvTranspose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               auto& attributes = node->GetAttributes();
-                               if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
-                                 return true;
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet& initializers) {
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                 if (GetInputCount(node, initializers) > 1)
+                                  return true;
+                               }
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                // If the device is GPU, only 2D dilations with 1x1 pixel are supported
+                                const auto& attributes = node->GetAttributes();
+                                auto& dilation_attr = attributes.at("dilations");
+                                auto int_size = dilation_attr.ints_size();
+                                if(int_size == 2) {
+                                  if(dilation_attr.ints(0) != 1 || dilation_attr.ints(1) !=1) {
+                                    return true;
+                                  }
+                                }
                                }
                                return false;
                              }};
     op_list_.insert({"ConvTranspose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_2},
+    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 const auto& input_arg = node->InputDefs()[0];
-                                 auto shape = input_arg->Shape();
-                                 if ((shape != nullptr) && (shape->dim(0).value_case() != shape->dim(0).kDimValue)) {
-                                   return true;
-                                 }
+                               auto& attributes = node->GetAttributes();
+                               if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
+                                 return true;
                                }
                                return false;
                              }};
@@ -482,41 +587,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ConvInteger", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-                               auto supportedOps = std::set<std::vector<onnx_dtype>>{
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
-                                   {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8},
-                                   {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8},
-                                   {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8},
-                                   {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8}};
-
-                               if (node->OpType() == "Equal") {
-                                 supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32}),
-                                     supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT});
-                               }
-
-                               onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                               onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-                               onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                               const std::vector<onnx_dtype> typePair{output_data_type, input_0_data_type, input_1_data_type};
-                               const auto match = supportedOps.find(typePair);
-                               if (match == supportedOps.end())
-                                 return true;
-                               else
-                                 return false;
-                             }};
-    op_list_.insert({"Equal", obj});
-    op_list_.insert({"And", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3},
@@ -573,6 +643,25 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"GatherElements", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                const auto& indices_arg = node->InputDefs()[0];
+                                const auto& output_arg = node->OutputDefs()[0];
+                                if (indices_arg->TypeAsProto()->tensor_type().elem_type() != output_arg->TypeAsProto()->tensor_type().elem_type())
+                                  return true;
+                                if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
+                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
+                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) ||
+                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)) {
+                                  return false;
+                                }
+                               }
+                               return true;
+                             }};
+    op_list_.insert({"GatherElements", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input = node->InputDefs()[0];
@@ -595,6 +684,18 @@ void DataOps::populate_op_mode_supported() {
                                return (initializers.find(cond->Name()) == initializers.end());
                              }};
     op_list_.insert({"Loop", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               //If the Input size of LSTM is greater than 3, it is rejected.
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                 if (node->InputDefs().size() > 3)
+                                   return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"LSTM", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
@@ -620,6 +721,17 @@ void DataOps::populate_op_mode_supported() {
                                  if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
                                   return true;
                                }
+                               return (!this->dimension_unsupported(node));
+                             }};
+    op_list_.insert({"MaxPool", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               const auto& attributes = node->GetAttributes();
+                               // dilations attrs are not supported yet for Maxpool
+                               if (attributes.find("dilations") != attributes.end())
+                                 return true;
                                return (!this->dimension_unsupported(node));
                              }};
     op_list_.insert({"MaxPool", obj});
@@ -659,32 +771,6 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Min", obj});
     op_list_.insert({"Mean", obj});
     op_list_.insert({"Sum", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet& initializers) {
-                               if (GetInputCount(node, initializers) == 1)
-                                 return true;
-                               return false;
-                             }};
-    op_list_.insert({"Mean", obj});
-    op_list_.insert({"Sum", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet& initializers) {
-                               if (GetInputCount(node, initializers) == 1)
-                                 return true;
-                               for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                 auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
-                                 if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-                                     dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
-                                   return true;
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Max", obj});
-    op_list_.insert({"Min", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
@@ -729,6 +815,22 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Mod", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                 auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                 auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+                                 //currently both inputs with int32 are not supported and also both input datatypes should be same
+                                 const bool A_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
+                                 const bool B_is_int32 = node->InputDefs()[1]->Type()->find("int32") != std::string::npos;
+                                 if ((A_is_int32 && B_is_int32) || (x_data_type != y_data_type))
+                                  return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Mod", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
@@ -754,17 +856,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"NonMaxSuppression", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //Only supported if the data type of both inputs is same
-                               auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                               auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-                               return x_data_type != y_data_type;
-                             }};
-    op_list_.insert({"Pow", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -800,6 +892,25 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"PRelu", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet& initializers) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                auto slope = node->InputDefs()[1];
+                                //PRelu slope has to be an initializer or needs to come from a constant node
+                                if (initializers.count(slope->Name()))
+                                  return false;
+                                else {
+                                  for (auto input_node = node->InputNodesBegin(); input_node != node->InputNodesEnd(); ++input_node) {
+                                    if (GetInputCount(this->graph_viewer_.GetNode((*input_node).Index()), initializers) == 0)
+                                      return false;
+                                  }
+                                }
+                               }
+                                return true;
+                             }};
+    op_list_.insert({"PRelu", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                bool non_const_zero_point = false;
@@ -813,22 +924,30 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"QLinearMatMul", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
+    UnsupportedOpMode obj = {{V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               //Only FP32, INT32 and U8 data types are supported
-                               const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
-                               const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
-                               const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
-                               return !(data_is_float || data_is_int32 || data_is_u8);
-                             }};
-    op_list_.insert({"ReduceMin", obj});
+                                const auto& input_arg = node->InputDefs()[1];
+                                auto shape = input_arg->Shape();
+                                //Reshape op with empty dim is Rejected for Myriad
+                                if (shape != nullptr) {
+                                  for (const auto& dim : input_arg->Shape()->dim()) {
+                                    if (utils::HasDimValue(dim) && dim.dim_value() == 0)
+                                      return true;
+                                  }
+                                }
+                              return false;
+                            }};
+    op_list_.insert({"Reshape", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
+    UnsupportedOpMode obj = {{V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               //Resize opset 11 is not supported
-                               if (node->InputDefs().size() > 2)
-                                 return true;
+                                auto& attributes = node->GetAttributes();
+                                if (attributes.count("mode") ==1 && attributes.at("mode").s() == "linear") {
+                                  if (node->InputDefs().size() == 4) {
+                                    return true;
+                                  }
+                                }
                                return false;
                              }};
     op_list_.insert({"Resize", obj});
@@ -836,27 +955,9 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 const auto& input_arg = node->InputDefs()[1];
-                                 auto shape = input_arg->Shape();
-                                 //Reshape op with empty dim is Rejected for Myriad
-                                 if (shape != nullptr) {
-                                   for (const auto& dim : input_arg->Shape()->dim()) {
-                                     if (utils::HasDimValue(dim) && dim.dim_value() == 0)
-                                       return true;
-                                   }
-                                 }
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Reshape", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2021_4},
-                             [this](const Node* node, const InitializedTensorSet&) {
                                 if (device_id_.find("GPU") != std::string::npos) {
                                  auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                                 //If the output of Transpose op is INT8 or UINT8, it is rejected for GPU.
+                                 //If the output of ReduceMax op is INT8 or UINT8, it is rejected for GPU.
                                  if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 || 
                                    output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
                                    return true;
@@ -864,6 +965,20 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ReduceMax", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos || device_id_.find("MYRIAD") != std::string::npos) {
+                                 //INT32 dataype is not supported as input
+                                 for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                 if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
+                                   return true;
+                                 }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"ReduceLogSumExp", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
@@ -894,7 +1009,63 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ScatterElements", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                 const auto& attributes = node->GetAttributes();
+                                 auto axis_attr = attributes.find("axis");
+                                 //Negative axis is not supported
+                                 if (axis_attr->second().i() < 0)
+                                   return true;
+
+                                 const auto& input_arg = node->InputDefs()[2];
+                                 auto updates_shape = input_arg->Shape();
+                                 const auto& output_arg = node->OutputDefs()[0];
+                                 auto out_shape = output_arg->Shape();
+                                 //If updates attribute dim value greater than output_shape dim value, we reject
+                                 if(node->InputDefs()[2]->Name() == "updates")
+                                 {
+                                  size_t updates_size = updates_shape->dim_size();
+                                  if(updates_size == 2) {
+                                    if(updates_shape->dim(1).dim_value() > out_shape->dim(1).dim_value())
+                                      return true;
+                                  }
+                                  }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Scatter", obj});
+    op_list_.insert({"ScatterElements", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                //If the output of ScatterND op is BOOL, it is rejected for GPU.
+                                if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL)
+                                  return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"ScatterND", obj});
+    op_list_.insert({"ScatterElements", obj});
+    op_list_.insert({"Scatter", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               //If the Input of Shrink op is UINT8, it is rejected (Due to output mismatch)
+                               for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                 if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
+                                   return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Shrink", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                //start, end, axes need to be a initializer
                                bool cond_for_slice = false;
@@ -931,13 +1102,6 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Squeeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               return node->InputDefs().size() > 1;
-                             }};
-    op_list_.insert({"TopK", obj});
-  }
-  {
     UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
@@ -958,7 +1122,21 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                                //If the operator is unsqueeze
+                                //If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
+                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                  if(node->InputDefs()[i]->Name() == "axes") {
+                                    return true;
+                                  }
+                                }
+                                return (!this->dimension_unsupported(node));
+                             }};
+    op_list_.insert({"Unsqueeze", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -1155,17 +1333,27 @@ bool DataOps::dimension_unsupported(const Node* node) {
       if (input_dims != 4 && input_dims != 5)
         return false;
     }
-
+    /*
     if (node->OpType() == "Unsqueeze") {
       auto& attributes = node->GetAttributes();
       int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
-      if (input_dims + axes_size > 5 || axes_size == 0)
+      if (device_id_.find("GPU") != std::string::npos) {
+        if (axes_size == 0)
+          return true;
+      }
+      if (input_dims + axes_size > 5 || axes_size == 0) {
         return false;
+      }
     }
+    */
 
     if (node->OpType() == "ReduceSum") {
       auto& attributes = node->GetAttributes();
       int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
+      if (device_id_.find("GPU") != std::string::npos) {
+        if (axes_size == 0)
+          return true;
+      }
       if (axes_size == 0)
         return false;
     }
@@ -1245,6 +1433,10 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
           if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
             if ((device_id_.find("MYRIAD") != std::string::npos) && (optype == "Resize"))
               return;
+            if ((device_id_.find("GPU") != std::string::npos) && ((optype == "Expand") ||
+                (optype == "Slice") || (optype == "Concat") || (optype == "Shape"))) {
+                return;
+              }
             has_unsupported_dimension = true;
             return;
           }
@@ -1274,11 +1466,24 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
 
   //Check 3b
   const auto opset = op_map.find(domain);
-  if (opset == op_map.end() || opset->second.find(optype) == opset->second.end()) {
+  const auto op_fun = ops_supported_as_function.find(node->OpType());
+  if (opset == op_map.end()) {
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "Failed in Unsupported onnx model domain" << std::endl;
+    }
+#endif
     return false;
-  } else {
-    return true;
   }
+  if (opset->second.find(optype) == opset->second.end() && op_fun == ops_supported_as_function.end()) {
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "The operator is not available in OpenVINO ngraph operators list nor the operator is a special ONNX function" << std::endl;
+    }
+#endif
+    return false;
+  }
+    return true;
 }
 
 std::vector<NodeIndex> DataOps::GetUnsupportedNodeIndices(std::unordered_set<std::string>& ng_required_initializers) {

@@ -56,7 +56,10 @@ However, benchmark.py creates only one process to run all the model inferences o
 - **--fp16**: (*default: True*) Enable TensorRT/CUDA FP16 and include the performance of this floating point optimization.
 - **--trtexec**: Path of standalone TensorRT executable, for example: trtexec.
 - **--track_memory**: Track memory usage of CUDA and TensorRT execution providers.
-- **--ep_list**: Optional argument. List of eps to run against, surround with quotes and separate with spaces. 
+- **--ep_list**: Optional argument. List of eps to run against, surround with quotes and separate with spaces.
+- **--trt_ep_options**: Optional argument. Comma-separated key/value pairs denoting TensorRT EP options. Ex: `--trt_ep_options trt_engine_cache_enable=True,trt_max_workspace_size=4294967296`. Refer to [TensorRT Execution Provider Options](https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#execution-provider-options) for a complete list of options.
+- **--cuda_ep_options**: Optional argument. Comma-separated key/value pairs denoting CUDA EP options. Ex: `--cuda_ep_options device_id=0,arena_extend_strategy=kNextPowerOfTwo`. Refer to [CUDA Execution Provider Options](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options) for a complete list of options.
+
 
 ### Validation Configuration 
 - **--percent_mismatch**: The allowed percentage of values to be incorrect when comparing given outputs to ORT outputs. 

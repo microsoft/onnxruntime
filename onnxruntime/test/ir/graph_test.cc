@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
@@ -391,7 +393,7 @@ TEST_F(GraphTest, UnusedValueInfoSerializes) {
 TEST_F(GraphTest, WrongOpset) {
   ModelProto m;
   m.set_ir_version(3);
-  //No Op registered for Unique with domain_version of 1
+  // No Op registered for Unique with domain_version of 1
   ImportOpset(m, "", 1);
   GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
@@ -413,7 +415,7 @@ TEST_F(GraphTest, WrongOpset) {
 TEST_F(GraphTest, ExtraInput) {
   ModelProto m;
   m.set_ir_version(3);
-  //Node () has input size 2 not in range [min=1, max=1].
+  // Node () has input size 2 not in range [min=1, max=1].
   ImportOpset(m, "", 11);
   GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
@@ -470,7 +472,6 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   const auto& graph = model->MainGraph();
   for (const auto& node : graph.Nodes()) {
-    const auto schema = schema_registry->GetSchema(node.OpType(), node.SinceVersion(), node.Domain());
     auto func_ptr = node.GetFunctionBody();
     if (func_ptr == nullptr) {
       // If Op Schema has function body then func_ptr cannot be nullptr
@@ -478,11 +479,12 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
       // However in future if we move the function initialization in the graph partitioning
       // phase .i.e. Init function body only if none of EPs have a kernel matching the function op
       // then this check will not hold true and should be removed.
-      ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());
+
+      // We delay the funciton instantiate untill partition the graph
+      // this check is no longer valid anymore.
+      /*ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());*/
       continue;
     }
-    const auto& function_op_schema = func_ptr->OpSchema();
-    ASSERT_TRUE(function_op_schema.domain() == node.Domain());
 
     const auto& domain_version_map = func_ptr->Body().DomainToVersionMap();
     // validate schema for each node in the function body can be found
@@ -503,7 +505,7 @@ TEST_F(GraphTest, LocalCustomRegistryWrongOpsetImportVersion) {
   ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
   ModelProto m;
   m.set_ir_version(3);
-  //Should be 1, but we put 11 herer so the model loading will fail
+  // Should be 1, but we put 11 herer so the model loading will fail
   ImportOpset(m, "FakeTestDomain", 11);
   GraphProto& g = *m.mutable_graph();
   NodeProto* node = g.add_node();
@@ -538,7 +540,7 @@ TEST_F(GraphTest, ReverseDFS) {
    *                 node_4 (Add)  -------------------  <-- request stop
    *                     |
    *                  SinkNode
-  */
+   */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -769,7 +771,7 @@ TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
   EXPECT_TRUE(equal_proto_1_and_2);
 
   // Load the model again to ensure that it's still the right thing.
-  //EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
+  // EXPECT_EQ(Model::Load(model_proto2, &model2), Status::OK());
   model2.reset(new Model(model_proto2, nullptr, *logger_));
   Graph& graph2 = model2->MainGraph();
   for (auto& node : graph2.Nodes()) {
@@ -1236,7 +1238,7 @@ TEST_F(GraphTest, GraphConstruction_CheckGraphInputOutputOrderMaintained) {
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
   std::string s1;
-  //std::stringstream s1;
+  // std::stringstream s1;
   model.ToProto().SerializeToString(&s1);
 
   ModelProto model_proto;
@@ -1305,7 +1307,7 @@ TEST_F(GraphTest, UnusedInitializerAndNodeArgsAreIgnored) {
   // serialize and reload so we check the loaded from proto path in SetGraphInputsOutputs
   auto proto = model.ToProto();
   std::string s1;
-  //std::stringstream s1;
+  // std::stringstream s1;
   model.ToProto().SerializeToString(&s1);
 
   ModelProto model_proto;
@@ -1424,7 +1426,7 @@ TEST_F(GraphTest, GraphConstruction_TypeInference) {
    *                        node_4 (Max)
    *                             |
    *                          SinkNode
-  */
+   */
   std::vector<NodeArg*> inputs;
   std::vector<NodeArg*> outputs;
 
@@ -1697,7 +1699,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     ONNX_NAMESPACE::TensorProto bad_name = original;
     bad_name.set_name("invalid");
 
-    status = graph.ReplaceInitializedTensor(bad_name);
+    status = graph.ReplaceInitializedTensor(std::move(bad_name));
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1705,7 +1707,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     ONNX_NAMESPACE::TensorProto bad_type = original;
     bad_type.set_data_type(TensorProto_DataType_FLOAT16);
 
-    status = graph.ReplaceInitializedTensor(bad_type);
+    status = graph.ReplaceInitializedTensor(std::move(bad_type));
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1715,7 +1717,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     bad_dims.add_dims(2);
     bad_dims.add_dims(1);
 
-    status = graph.ReplaceInitializedTensor(bad_dims);
+    status = graph.ReplaceInitializedTensor(std::move(bad_dims));
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1747,6 +1749,87 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     ASSERT_TRUE(tensor_data_matches(graph_proto.initializer(0), valid_replacement));
   }
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+
+namespace {
+void SetTensorProtoExternalData(const std::string& key, const std::string& value,
+                                ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  auto* external_data = tensor_proto.mutable_external_data();
+  auto kvp_it = std::find_if(
+      external_data->begin(), external_data->end(),
+      [&key](const ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == key; });
+  auto* kvp = kvp_it != external_data->end() ? &(*kvp_it) : external_data->Add();
+  kvp->set_key(key);
+  kvp->set_value(value);
+}
+}  // namespace
+
+TEST_F(GraphTest, InjectExternalInitializedTensors) {
+  const std::string initializer_name = "test_external_initializer";
+
+  std::vector<int32_t> tensor_data = []() {
+    std::vector<int32_t> tensor_data(100);
+    std::iota(tensor_data.begin(), tensor_data.end(), 0);
+    return tensor_data;
+  }();
+
+  // Create OrtValue for replacement
+  TensorShape data_shape{static_cast<int64_t>(tensor_data.size())};
+  OrtValue ort_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), data_shape, tensor_data.data(),
+                       OrtMemoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator), ort_value);
+  const InlinedHashMap<std::string, OrtValue> injection_initializers = {
+      {initializer_name, ort_value}};
+
+  // We do not need actual files there since we are not going to load it.
+  const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
+  const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("external_data.bin"));
+
+  const auto tensor_proto =
+      [&]() {
+        ONNX_NAMESPACE::TensorProto tensor_proto;
+        tensor_proto.set_name(initializer_name);
+        tensor_proto.add_dims(tensor_data.size());
+        tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+        tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()), tensor_proto);
+        SetTensorProtoExternalData("offset", "0", tensor_proto);
+        SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
+        return tensor_proto;
+      }();
+
+  Model m{"test_model", false, *logger_};
+  Graph& graph = m.MainGraph();
+  graph.AddInitializedTensor(tensor_proto);
+
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1U);
+
+  const TensorProto* external_data = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, external_data));
+  ASSERT_TRUE(utils::HasExternalData(*external_data));
+
+  // Replace things.
+  ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors(injection_initializers));
+
+  ASSERT_EQ(graph.GetAllInitializedTensors().size(), 1U);
+
+  const TensorProto* with_data = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, with_data));
+  // No longer has external data
+  ASSERT_FALSE(utils::HasExternalData(*with_data));
+
+  const auto& original_tensor = ort_value.Get<Tensor>();
+
+  Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
+  ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data, replaced_tensor));
+
+  ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
+  const auto original_span = original_tensor.DataAsSpan<int32_t>();
+  const auto replaced_span = replaced_tensor.DataAsSpan<int32_t>();
+  ASSERT_EQ(original_span, replaced_span);
+}
+#endif
 
 TEST_F(GraphTest, AddRemoveInitializerHandling) {
   Model m{"test_model", false, *logger_};
@@ -1862,7 +1945,7 @@ TEST_F(GraphTest, SparseInitializerHandling) {
     ValidateSparseTensorProto(model_proto_get.graph().sparse_initializer().at(0));
   }
 }
-#endif  //!defined(DISABLE_SPARSE_TENSORS)
+#endif  //! defined(DISABLE_SPARSE_TENSORS)
 
 TEST_F(GraphTest, SetInputsAndSetOutputs_NewInputAndOutput) {
   std::shared_ptr<Model> model;
@@ -2023,5 +2106,14 @@ TEST_F(GraphTest, ConstantsBecomeInitializersAndInputs) {
   Status st = Model::Load(std::move(m), model, nullptr, *logger_);
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }
+
+TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
+  std::shared_ptr<Model> model;
+  common::Status st = Model::Load(ORT_TSTR("./testdata/ort_github_issue_11536.onnx"), model, nullptr, *logger_);
+  ASSERT_FALSE(st.IsOK());
+  EXPECT_THAT(st.ErrorMessage(),
+              ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

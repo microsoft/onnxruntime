@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
@@ -26,7 +26,9 @@ void BackendManager::ReleaseGlobalContext() {
   g_global_context.reset();
 }
 
-BackendManager::BackendManager(const Node* fused_node, const logging::Logger& logger) {
+BackendManager::BackendManager(const onnxruntime::Node& fused_node, 
+    const onnxruntime::GraphViewer& subgraph, 
+    const logging::Logger& logger) {
   auto prec_str = GetGlobalContext().precision_str;
   if (prec_str == "FP32") {
     subgraph_context_.precision = InferenceEngine::Precision::FP32;
@@ -38,14 +40,14 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
 
   // Save the indexes of graph inputs among fused_node's inputDefs
   // (which also contains initializers).
-  auto node_input_defs = fused_node->InputDefs();
+  auto node_input_defs = fused_node.InputDefs();
   int i = 0;
   for (auto idef : node_input_defs) {
     subgraph_context_.input_names.insert({idef->Name(), i});
     i++;
   }
 
-  auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
+  auto graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
     if (GetGlobalContext().device_type.find("MYRIAD") != std::string::npos) {
       auto shape = input->Shape();
@@ -63,14 +65,14 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
     subgraph_context_.input_indexes.push_back(index);
   }
 
-  auto graph_outputs_defs = fused_node->OutputDefs();
+  auto graph_outputs_defs = fused_node.OutputDefs();
   i = 0;
   for (auto output_def : graph_outputs_defs) {
     subgraph_context_.output_names.insert({output_def->Name(), i});
     i++;
   }
-  subgraph_context_.subgraph_name = fused_node->Name();
-  model_proto_ = GetModelProtoFromFusedNode(fused_node, logger);
+  subgraph_context_.subgraph_name = fused_node.Name();
+  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
 
   if (ModelHasBatchedInputs(*model_proto_) &&
       GetGlobalContext().is_wholly_supported_graph &&
@@ -81,7 +83,7 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
     concrete_backend_ = BackendFactory::MakeBackend(*model_copy, GetGlobalContext(), subgraph_context_);
     subgraph_context_.has_dynamic_input_shape = false;
 
-  } else if (ModelHasSymbolicInputDims(fused_node)) {
+  } else if (ModelHasSymbolicInputDims(subgraph)) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
     subgraph_context_.has_dynamic_input_shape = true;
   } else {
@@ -123,9 +125,9 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
   return has_batched_inputs;
 }
 
-bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const {
+bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
   bool has_sym_dims = false;
-  auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
+  auto graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
     if (input->Shape() == nullptr) {
       has_sym_dims = true;
@@ -145,25 +147,23 @@ bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_no
 }
 
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
-BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
+BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node, 
+                                           const onnxruntime::GraphViewer& subgraph, 
                                            const logging::Logger& logger) const {
-  const auto* node_function = fused_node->GetFunctionBody();
-  const std::string& name = fused_node->Name();
-  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ", name);
-
-  const onnxruntime::Graph& node_subgraph = node_function->Body();
-  auto model = node_subgraph.CreateGraphViewer()->CreateModel(logger);
+  auto model = subgraph.CreateModel(logger);
 
   auto model_proto = model->ToProto();
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  *model_proto->mutable_graph() = *node_subgraph.ToGraphProto();
+  subgraph.ToProto(*model_proto->mutable_graph(), true, true);
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    const std::string& name = fused_node.Name();
     std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }
+#else
+  ORT_UNUSED_PARAMETER(fused_node);
 #endif
 
   return model_proto;

@@ -66,13 +66,7 @@ jobs:
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
 
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+  - template: templates/clean-agent-build-directory-step.yml
 
 - job: Linux_Test
   timeoutInMinutes: 60
@@ -96,7 +90,7 @@ jobs:
          # We assume the machine doesn't have gcc and python development header files
          sudo rm -f /build /onnxruntime_src
          sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          # Test ORT with the latest ONNX release.
          export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
@@ -120,6 +114,4 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
               --enable_pybind --build_java --ctest_path ''
 
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
+  - template: templates/clean-agent-build-directory-step.yml

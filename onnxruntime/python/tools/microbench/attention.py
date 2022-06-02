@@ -1,10 +1,11 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import argparse
 from dataclasses import dataclass
+
 import numpy as np
 from benchmark import BenchmarkOp, add_arguments
 
@@ -24,12 +25,21 @@ class BenchmarkAttention(BenchmarkOp):
 
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
-        input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(op_param.data_type)
+        input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
+            op_param.data_type
+        )
         weight = np.random.rand(op_param.hidden_size, op_param.length).astype(op_param.data_type)
         bias = np.random.rand(op_param.length).astype(op_param.data_type)
         mask_index = np.random.rand(op_param.batch_size, op_param.seq_len).astype(np.int32)
-        output_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(op_param.data_type)
-        inputs = {"INPUT": input_data, "WEIGHT": weight, "BIAS": bias, "MASK_INDEX": mask_index}
+        output_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
+            op_param.data_type
+        )
+        inputs = {
+            "INPUT": input_data,
+            "WEIGHT": weight,
+            "BIAS": bias,
+            "MASK_INDEX": mask_index,
+        }
         outputs = {"return_val": output_data}
         return inputs, outputs
 

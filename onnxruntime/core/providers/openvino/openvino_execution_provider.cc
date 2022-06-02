@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
@@ -19,23 +19,62 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().use_compiled_network = info.use_compiled_network_;
   openvino_ep::BackendManager::GetGlobalContext().blob_dump_path = info.blob_dump_path_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
+  openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
+
 
   if ((int)info.num_of_threads_ <= 0) {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = 8;
   } else {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   }
-  if (info.device_id_ != "") {
-    bool device_found = false;
-    auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
+  //to check if target device is available
+  //using ie_core capability GetAvailableDevices to fetch list of devices plugged in
+  bool device_found = false;
+  bool device_id_found = false;
+  auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
+  //Checking for device_type configuration
+  if (info.device_type_ != "") {
+    if(info.device_type_== "CPU" || info.device_type_== "GPU" || info.device_type_== "MYRIAD") {
+      for (auto device : available_devices){
+        if (device.rfind(info.device_type_, 0) == 0){
+          if(info.device_type_== "GPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+              device_found = true;
+              break;
+          }
+          if(info.device_type_== "CPU" && info.precision_ == "FP32") {
+            device_found = true;
+            break;
+          }
+          if(info.device_type_== "MYRIAD" && info.precision_ == "FP16") {
+            device_found = true;
+            break;
+          }
+        }
+      }
+    } else {
+      device_found = true;
+    }
+  }
+  if (!device_found) {
+    std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + "\nChoose the right precision with one of:\n";
     for (auto device : available_devices) {
-      if (device == info.device_id_) {
-        device_found = true;
-        break;
+      err_msg = err_msg + device + "\n";
+    }
+    ORT_THROW(err_msg);
+  }
+  //Checking for device_id configuration
+  if (info.device_id_ != "") {
+    for (auto device : available_devices) {
+      if (device.rfind(info.device_id_, 0) == 0){
+        if(info.device_id_== "MYRIAD" || info.device_id_== "CPU" || info.device_id_== "GPU"){
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"<< "Switching to Device ID: " << info.device_id_;
+          device_id_found = true;
+          break;
+        }
       }
     }
-    if (!device_found) {
-      std::string err_msg = std::string("Device not found : ") + info.device_id_ + "\nChoose one of:\n";
+    if (!device_id_found) {
+      std::string err_msg = std::string("Device ID not found : ") + info.device_id_ + "\nChoose one of:\n";
       for (auto device : available_devices) {
         err_msg = err_msg + device + "\n";
       }
@@ -82,17 +121,31 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_4");
   result = obj.Execute();
+#elif defined (OPENVINO_2022_1)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
+  result = obj.Execute();
 #endif
 
   return result;
 }
 
 common::Status OpenVINOExecutionProvider::Compile(
-    const std::vector<onnxruntime::Node*>& fused_nodes,
+    const std::vector<FusedNodeAndGraph>& fused_nodes,
     std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node : fused_nodes) {
+  for (const auto& fused_node_graph : fused_nodes) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+
     NodeComputeInfo compute_info;
-    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger());
+
+#if defined(OV_API_20)
+    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
+#else
+    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
+#endif 
+
+    std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
     compute_info.create_state_func =
         [backend_manager](ComputeContext* context, FunctionState* state) {

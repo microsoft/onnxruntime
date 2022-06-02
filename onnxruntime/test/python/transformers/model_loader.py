@@ -4,11 +4,12 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import unittest
 import os
-from onnx import ModelProto, TensorProto, numpy_helper, external_data_helper, load_model
+import unittest
 
+from onnx import ModelProto, TensorProto, external_data_helper, load_model, numpy_helper
 from parity_utilities import find_transformers_source
+
 if find_transformers_source():
     from fusion_utils import NumpyHelper
 else:
@@ -56,14 +57,14 @@ def load_model_with_dummy_external_data(path: str) -> ModelProto:
 
 
 def get_test_data_path(sub_dir: str, file: str):
-    relative_path = os.path.join(os.path.dirname(__file__), 'test_data', sub_dir, file)
-    if (os.path.exists(relative_path)):
+    relative_path = os.path.join(os.path.dirname(__file__), "test_data", sub_dir, file)
+    if os.path.exists(relative_path):
         return relative_path
-    return os.path.join('.', 'transformers', 'test_data', sub_dir, file)
+    return os.path.join(".", "transformers", "test_data", sub_dir, file)
 
 
 def get_fusion_test_model(file: str):
-    relative_path = os.path.join(os.path.dirname(__file__), '..', '..', 'testdata', 'transform', 'fusion', file)
-    if (os.path.exists(relative_path)):
+    relative_path = os.path.join(os.path.dirname(__file__), "..", "..", "testdata", "transform", "fusion", file)
+    if os.path.exists(relative_path):
         return relative_path
-    return os.path.join('.', 'testdata', 'transform', 'fusion', file)
+    return os.path.join(".", "testdata", "transform", "fusion", file)

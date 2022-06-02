@@ -12,6 +12,22 @@
 
 namespace onnxruntime {
 
+#ifdef ENABLE_TRAINING
+namespace {
+int64_t GetSizeFromStrides(const TensorShape& shape, gsl::span<const int64_t> strides) {
+  SafeInt<int64_t> size = 1;
+  for (size_t dim = 0; dim < shape.NumDimensions(); ++dim) {
+    if (shape[dim] == 0) {
+      size = 0;
+      break;
+    }
+    size += strides[dim] * (shape[dim] - 1);
+  }
+  return size;
+}
+}  // namespace
+#endif
+
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
                ptrdiff_t offset, gsl::span<const int64_t> strides)
     : alloc_info_(alloc) {
@@ -19,12 +35,23 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
   Init(p_type, shape, p_data, nullptr, offset, strides);
 }
 
-Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator)
+Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
+               gsl::span<const int64_t> strides)
     : alloc_info_(allocator->Info()) {
   ORT_ENFORCE(p_type != nullptr);
-  int64_t shape_size = shape.Size();  // value returned is checked for overflow by TensorShape::Size()
-  if (shape_size < 0)
-    ORT_THROW("shape.Size() must >=0");
+#ifdef ENABLE_TRAINING
+  int64_t shape_size = 1;
+  if (shape.NumDimensions() > 0 && !strides.empty()) {
+    ORT_ENFORCE(shape.NumDimensions() == strides.size(), "Length of strides doesn't match with tensor dimension size.");
+    shape_size = GetSizeFromStrides(shape, strides);
+  } else {
+    shape_size = shape.Size();
+  }
+#else
+  ORT_ENFORCE(strides.empty(), "Strided tensor is supported for training only for now.");
+  int64_t shape_size = shape.Size();
+#endif
+  if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
 
   void* p_data = nullptr;
   if (shape_size > 0) {
@@ -35,7 +62,7 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
     p_data = allocator->Alloc(len);
   }
 
-  Init(p_type, shape, p_data, allocator);
+  Init(p_type, shape, p_data, allocator, 0L, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
@@ -45,9 +72,9 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::s
   Init(p_type, shape, p_data, deleter, offset, strides);
 }
 
-void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape,
-                          std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
-  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
+                          OrtValue& ort_value, gsl::span<const int64_t> strides) {
+  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator), strides);
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
@@ -60,8 +87,13 @@ void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_d
 }
 
 size_t Tensor::SizeInBytes() const {
+#ifdef ENABLE_TRAINING
+  int64_t size = IsContiguous() ? shape_.Size() : GetSizeFromStrides(shape_, strides_);
+#else
+  int64_t size = shape_.Size();
+#endif
   size_t ret;
-  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
+  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(size), dtype_->Size(), &ret)) {
     ORT_THROW("tensor size overflow");
   }
   return ret;
@@ -180,7 +212,7 @@ gsl::span<const int64_t> Tensor::Strides() const {
     }
   }
 
-  return gsl::make_span(strides_.cbegin(), strides_.cend());
+  return gsl::make_span(strides_);
 }
 
 void Tensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {

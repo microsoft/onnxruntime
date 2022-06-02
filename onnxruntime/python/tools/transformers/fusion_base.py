@@ -1,21 +1,24 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 from logging import getLogger
-from onnx_model import OnnxModel
-from typing import Union, List
+from typing import List, Union
+
 from onnx import GraphProto
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
 
 class Fusion:
-    def __init__(self,
-                 model: OnnxModel,
-                 fused_op_type: str,
-                 search_op_types: Union[str, List[str]],
-                 description: str = None):
+    def __init__(
+        self,
+        model: OnnxModel,
+        fused_op_type: str,
+        search_op_types: Union[str, List[str]],
+        description: str = None,
+    ):
         self.search_op_types: List[str] = [search_op_types] if isinstance(search_op_types, str) else search_op_types
         self.fused_op_type: str = fused_op_type
         self.description: str = f"{fused_op_type}({description})" if description else fused_op_type

@@ -5,6 +5,7 @@
 #include "default_providers.h"
 #include "providers.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
@@ -13,8 +14,8 @@
 namespace onnxruntime {
 namespace test {
 
-std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  return CreateExecutionProviderFactory_CPU(enable_arena)->CreateProvider();
+std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(const CPUExecutionProviderInfo& info ) {
+  return CreateExecutionProviderFactory_CPU(info)->CreateProvider();
 }
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
@@ -133,8 +134,8 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
 // }
 
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
-// For any non - Android system, NNAPI will only be used for ort model converter
-// Make it unavailable here, you can still manually append NNAPI EP to session for model conversion
+// The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
+// Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.
 #if defined(USE_NNAPI) && defined(__ANDROID__)
   return CreateExecutionProviderFactory_Nnapi(0, {})->CreateProvider();
 #else

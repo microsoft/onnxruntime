@@ -14,6 +14,8 @@ IOrtSessionBuilder : IUnknown {
 
   virtual HRESULT STDMETHODCALLTYPE CreateSession(
       OrtSessionOptions * options,
+      OrtThreadPool* inter_op_thread_pool,
+      OrtThreadPool* intra_op_thread_pool,
       OrtSession * *session) = 0;
 
   virtual HRESULT STDMETHODCALLTYPE Initialize(

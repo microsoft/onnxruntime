@@ -1044,7 +1044,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
         result.push_back(axes_values_node);
         result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), axes_values_node.output_args[0]}, {grad}));
       }
-    } 
+    }
   }
 
   result.push_back(NodeDef("Size", {I(0)}, {IA("Sized_X")}));
@@ -1597,55 +1597,52 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
-  const auto num_src_node_inputs = GetSrcNodeInputSize();
-  if (num_src_node_inputs == 1) {
-    if (IsGradientRequiredForSrcNodeInput(0)) {
-      return std::vector<NodeDef>{NodeDef("Identity", {GO(0)}, {GI(0)})};
+  const size_t num_src_node_inputs = static_cast<size_t>(GetSrcNodeInputSize());
+  bool has_gradient_required = false;
+  for (size_t i = 0; i < num_src_node_inputs; ++i) {
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      has_gradient_required = true;
+      break;
     }
+  }
 
+  if (!has_gradient_required) {
     return std::vector<NodeDef>{};
   }
 
-  if (num_src_node_inputs > 2) {
-    ORT_THROW("Min/Max gradient currently does not support over 2 inputs.");
-  }
-
-  if (!IsGradientRequiredForSrcNodeInput(0) && !IsGradientRequiredForSrcNodeInput(1)) {
-    return std::vector<NodeDef>{};
+  if (num_src_node_inputs == 1) {
+    return std::vector<NodeDef>{NodeDef("Identity", {GO(0)}, {GI(0)})};
   }
 
   std::vector<NodeDef> result;
-  std::vector<Dimension> y_shape;
   const ArgDef y = O(0);
-  bool get_y_shape_ok = GetShape(y, y_shape).IsOK();
-  result.push_back(NodeDef("Equal", {I(1), y}, {IA("Mask_1")}));
-  if (IsGradientRequiredForSrcNodeInput(0)) {
-    result.push_back(NodeDef("Not", {IA("Mask_1")}, {IA("Mask_0")}));
+  std::vector<ArgDef> sum_inputs;
+  for (size_t i = 0; i < num_src_node_inputs; ++i) {
+    const ArgDef mask = IA("Mask_" + std::to_string(i));
+    const ArgDef mask_cast = IA("Mask_Cast_" + std::to_string(i));
+    result.emplace_back(NodeDef("Equal", {I(i), y}, {mask}));
+    result.emplace_back(NodeDef("Cast", {mask}, {mask_cast}, {MakeAttribute("to", int64_t(IElemType(0)))}));
+    sum_inputs.emplace_back(mask_cast);
   }
-  const ArgDef a = I(0), b = I(1);
-  for (int i = 0; i < num_src_node_inputs; i++) {
+
+  const ArgDef dy_scaled = IA("dY_Scaled");
+  result.emplace_back(NodeDef("Sum", sum_inputs, {IA("Scale")}));
+  result.emplace_back(NodeDef("Div", {GO(0), IA("Scale")}, {dy_scaled}));
+  std::vector<Dimension> y_shape;
+  bool has_y_shape = GetShape(y, y_shape).IsOK();
+  for (size_t i = 0; i < num_src_node_inputs; ++i) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
       const ArgDef x = I(i);
-      const ArgDef mask_cast_i_def = IA("Mask_Cast_" + std::to_string(i));
       const ArgDef pre_reduce_grad_i_def = IA("PreReduceGrad_" + std::to_string(i), OType(0));
-      result.push_back(NodeDef("Cast",
-                               {IA("Mask_" + std::to_string(i))},
-                               {mask_cast_i_def},
-                               {MakeAttribute("to", int64_t(IElemType(0)))}));
-      result.push_back(NodeDef("Mul", {mask_cast_i_def, GO(0)}, {pre_reduce_grad_i_def}));
-      if (a.name.compare(b.name) == 0) {
-        result.push_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
-        continue;
-      }
-
+      result.emplace_back(NodeDef("Mul", {dy_scaled, IA("Mask_Cast_" + std::to_string(i))}, {pre_reduce_grad_i_def}));
       std::vector<Dimension> x_shape;
-      if (get_y_shape_ok && GetShape(x, x_shape).IsOK()) {
+      if (has_y_shape && GetShape(x, x_shape).IsOK()) {
         std::vector<int64_t> x_axes;
         ComputeBroadcastBackwardAxes(x_shape, y_shape, &x_axes, nullptr, NodeName());
-        if (x_axes.size() > 0) {
+        if (!x_axes.empty()) {
           HandleBroadcasting(pre_reduce_grad_i_def, x, GI(i), x_axes, result);
         } else {
-          result.push_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
+          result.emplace_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
         }
       } else {
         ArgDef x_axes_def = IA("ReduceAxes_" + x.name);
