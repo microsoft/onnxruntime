@@ -17,6 +17,13 @@ struct LRSchedulerBase {
   LRSchedulerBase(Optimizer& optimizer) : optim_(optimizer) {}
   virtual ~LRSchedulerBase() = default;
 
+  /**
+   * @brief Compute learning rate taking step and initial learning rate as inputs, then update
+   * the adapted learning rate into optimizer.
+   *
+   * This should be called every time optimizer update states related to learning rate calculations,
+   * for example, initial learning and step.
+   */
   Status Step() {
     return optim_.SetLearningRate(ComputeLearningRateInternal());
   }
@@ -27,7 +34,7 @@ struct LRSchedulerBase {
   }
 
   float GetInitialLRInternal() {
-    return optim_.optimizer_state_.learning_rate;
+    return optim_.optimizer_state_.initial_lr;
   }
 
  private:
@@ -68,15 +75,16 @@ struct LinearLRScheduler : public MultiplicativeLRSchedulerBase {
  public:
   explicit LinearLRScheduler(Optimizer& optimizer, int64_t warmup_step_count, int64_t total_step_count)
       : MultiplicativeLRSchedulerBase(optimizer),
-        warmup_step_count_flt_(static_cast<float>(warmup_step_count)),
-        total_step_count_flt_(static_cast<float>(total_step_count)) {
+        warmup_step_count_(warmup_step_count),
+        total_step_count_(total_step_count) {
+    ORT_THROW_IF_ERROR(Step());
   }
 
  private:
   float ComputeLRMultiplicativeFactorInternal(int64_t step) override;
 
-  float warmup_step_count_flt_;
-  float total_step_count_flt_;
+  int64_t warmup_step_count_;
+  int64_t total_step_count_;
 };
 
 }  // namespace api

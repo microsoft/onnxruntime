@@ -64,6 +64,8 @@ struct Optimizer {
 
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
+  Status LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
+
   int64_t GetStep() const {
     return optimizer_state_.step;
   }
@@ -88,6 +90,9 @@ struct Optimizer {
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> inputs_;
+
+  // Currently all parameters are in a single group, so we hardcode group0 here.
+  const std::string group_zero_name_ = "group0";
 };
 
 }  // namespace api
