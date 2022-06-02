@@ -81,6 +81,7 @@ DECLARE_GRADIENT_BUILDER(GetScatterElementsGradient)
 DECLARE_GRADIENT_BUILDER(GetTriluGradient)
 
 DECLARE_GRADIENT_BUILDER(GetExternalGradient)
+DECLARE_GRADIENT_BUILDER(GetIfGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

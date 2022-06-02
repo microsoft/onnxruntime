@@ -73,7 +73,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Multinomial", {0}},
         {"RandomNormalLike", {0}},
         {"RandomUniformLike", {0}},
-        {"EyeLike", {0}}};
+        {"EyeLike", {0}},
+        {"If", {0}}};
 
 static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization",
                                                       "Relu"};

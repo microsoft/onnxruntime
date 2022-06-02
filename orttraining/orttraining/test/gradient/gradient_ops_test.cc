@@ -2835,6 +2835,10 @@ TEST(GradientCheckerTest, TriluGrad) {
   }
 }
 
+TEST(GradientCheckerTest, IfGrad) {
+  // do some tests...
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

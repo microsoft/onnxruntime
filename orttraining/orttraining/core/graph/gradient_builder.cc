@@ -1862,5 +1862,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetIfGradient) {
+  std::vector<NodeDef> result;
+  // do something...
+  return result
+}
+
 }  // namespace training
 }  // namespace onnxruntime
