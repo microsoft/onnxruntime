@@ -85,36 +85,32 @@ class SnpeKernel : public OpKernel {
 
     if (buffer_type_ != BufferType::ITENSOR && buffer_type_ != BufferType::UNKNOWN) {
       // process with user buffer
-      ORT_RETURN_IF_NOT(snpe_rt_->SnpeProcessWithUserBuffer(input_names_,
-                                                            input_data_array.data(),
-                                                            input_cout_,
-                                                            output_data_array.data(),
-                                                            output_names_index_),
-                        "SnpeProcessWithUserBuffer failed!");
+      ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcessWithUserBuffer(input_names_,
+                                                              input_data_array.data(),
+                                                              input_cout_,
+                                                              output_data_array.data(),
+                                                              output_names_index_));
     } else if (input_cout_ == 1 && output_cout_ == 1) {
-      ORT_RETURN_IF_NOT(snpe_rt_->SnpeProcess(input_data_array.at(0),
-                                              input_size_array.at(0),
-                                              output_data_array.at(0),
-                                              output_size_array.at(0),
-                                              output_names_index_),
-                        "SnpeProcess failed!");
+      ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcess(input_data_array.at(0),
+                                                input_size_array.at(0),
+                                                output_data_array.at(0),
+                                                output_size_array.at(0),
+                                                output_names_index_));
     } else if (input_cout_ == 1 && output_cout_ > 1) {
-      ORT_RETURN_IF_NOT(snpe_rt_->SnpeProcessMultipleOutput(input_data_array.at(0),
-                                                            input_size_array.at(0),
-                                                            output_cout_,
-                                                            output_data_array.data(),
-                                                            output_size_array.data(),
-                                                            output_names_index_),
-                        "SnpeProcessMultipleOutput failed!");
+      ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcessMultipleOutput(input_data_array.at(0),
+                                                              input_size_array.at(0),
+                                                              output_cout_,
+                                                              output_data_array.data(),
+                                                              output_size_array.data(),
+                                                              output_names_index_));
     } else if (input_cout_ > 1 && output_cout_ >= 1) {
-      ORT_RETURN_IF_NOT(snpe_rt_->SnpeProcessMultiInputsMultiOutputs(input_data_array.data(),
-                                                                     input_size_array.data(),
-                                                                     input_cout_,
-                                                                     output_data_array.data(),
-                                                                     output_size_array.data(),
-                                                                     output_cout_,
-                                                                     output_names_index_),
-                        "SnpeProcessMultiInputsMultiOutputs failed!");
+      ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcessMultiInputsMultiOutputs(input_data_array.data(),
+                                                                       input_size_array.data(),
+                                                                       input_cout_,
+                                                                       output_data_array.data(),
+                                                                       output_size_array.data(),
+                                                                       output_cout_,
+                                                                       output_names_index_));
     }
 
     return Status::OK();

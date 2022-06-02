@@ -788,7 +788,6 @@ add_custom_command(
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if (onnxruntime_USE_SNPE)
-    list(APPEND onnx_test_libs SNPE_SO_FILES)
     add_custom_command(
       TARGET ${test_data_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>

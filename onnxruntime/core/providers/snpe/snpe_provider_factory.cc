@@ -4,6 +4,7 @@
 #include "core/providers/snpe/snpe_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+#include "core/framework/error_code_helper.h"
 
 namespace onnxruntime {
 struct SNPEProviderFactory : IExecutionProviderFactory {
@@ -32,6 +33,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_SNPE, _In_ Or
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     _In_ size_t num_keys) {
+  API_IMPL_BEGIN
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
@@ -41,7 +43,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_SNPE, _In_ Or
 
     provider_options_map[provider_options_keys[i]] = provider_options_values[i];
   }
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_SNPE(
-      reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map)));
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_SNPE(provider_options_map));
   return nullptr;
+  API_IMPL_END
 }

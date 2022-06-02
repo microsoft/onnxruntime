@@ -2452,8 +2452,8 @@ void RegisterContribSchemas() {
           OpSchema::NonDifferentiable)
       .TypeConstraint(
           "T",
-          {"tensor(uint8)", "tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
+          {"tensor(uint8)", "tensor(uint16)", "tensor(float)"},
+          "Constrain input and output types to unint8, uint16, float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);

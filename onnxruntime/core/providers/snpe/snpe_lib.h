@@ -34,32 +34,32 @@ class SnpeLib {
   SnpeLib() : buffer_type_(BufferType::ITENSOR) {}
   ~SnpeLib() {}
 
-  bool SnpeProcess(const unsigned char* input,
-                   size_t input_size,
-                   unsigned char* output,
-                   size_t output_size,
-                   const std::unordered_map<std::string, size_t>& output_names_index);
-  bool SnpeProcessMultipleOutput(const unsigned char* input,
-                                 size_t input_size,
-                                 size_t output_number,
-                                 unsigned char* outputs[],
-                                 size_t output_sizes[],
-                                 const std::unordered_map<std::string, size_t>& output_names_index);
-  bool SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
-                                          const size_t* input_sizes,
-                                          size_t input_number,
-                                          unsigned char** outputs,
-                                          const size_t* output_sizes,
-                                          size_t output_number,
-                                          const std::unordered_map<std::string, size_t>& output_names_index);
-  bool SnpeProcessWithUserBuffer(const std::vector<std::string>& input_names,
-                                 const unsigned char** inputs,
-                                 size_t input_number,
-                                 unsigned char** outputs,
-                                 const std::unordered_map<std::string, size_t>& output_names_index);
+  Status SnpeProcess(const unsigned char* input,
+                     size_t input_size,
+                     unsigned char* output,
+                     size_t output_size,
+                     const std::unordered_map<std::string, size_t>& output_names_index);
+  Status SnpeProcessMultipleOutput(const unsigned char* input,
+                                   size_t input_size,
+                                   size_t output_number,
+                                   unsigned char* outputs[],
+                                   size_t output_sizes[],
+                                   const std::unordered_map<std::string, size_t>& output_names_index);
+  Status SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
+                                            const size_t* input_sizes,
+                                            size_t input_number,
+                                            unsigned char** outputs,
+                                            const size_t* output_sizes,
+                                            size_t output_number,
+                                            const std::unordered_map<std::string, size_t>& output_names_index);
+  Status SnpeProcessWithUserBuffer(const std::vector<std::string>& input_names,
+                                   const unsigned char** inputs,
+                                   size_t input_number,
+                                   unsigned char** outputs,
+                                   const std::unordered_map<std::string, size_t>& output_names_index);
 
-  bool CheckInputsSize(const std::vector<std::string>& input_tensor_names,
-                       const std::vector<int64_t>& input_sizes);
+  Status CheckInputsSize(const std::vector<std::string>& input_tensor_names,
+                         const std::vector<int64_t>& input_sizes);
 
   Status InitializeSnpe(zdl::DlContainer::IDlContainer* container,
                         const std::vector<std::string>& output_tensor_names,
@@ -79,9 +79,9 @@ class SnpeLib {
                     const std::vector<int64_t>& input_sizes,
                     const SnpeRuntimeOptions& settings = SnpeRuntimeOptions());
 
-  bool SetupUserBufferAttribute(const std::string& name);
-  bool SetupUserBufferAttributes(const std::vector<std::string>& tensor_names);
-  bool SetupInputTensors(const std::vector<std::string>& input_tensor_names);
+  Status SetupUserBufferAttribute(const std::string& name);
+  Status SetupUserBufferAttributes(const std::vector<std::string>& tensor_names);
+  Status SetupInputTensors(const std::vector<std::string>& input_tensor_names);
 
  private:
   const char* GetSnpeErrorString() {

@@ -3,6 +3,8 @@
 
 #include "core/providers/snpe/snpe_lib.h"
 #include <iostream>
+#include <unordered_map>
+#include <memory>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
@@ -17,7 +19,7 @@ namespace snpe {
 
 size_t CalcSizeFromDims(const zdl::DlSystem::Dimension* dims, size_t rank, size_t elementSize) {
   if (rank == 0) return 0;
-  size_t size = elementSize;
+  SafeInt<size_t> size = elementSize;
   while (rank--) {
     size = SafeInt<size_t>(size * (*dims));
     dims++;
@@ -25,22 +27,16 @@ size_t CalcSizeFromDims(const zdl::DlSystem::Dimension* dims, size_t rank, size_
   return size;
 }
 
-bool SnpeLib::SetupUserBufferAttribute(const std::string& name) {
+Status SnpeLib::SetupUserBufferAttribute(const std::string& name) {
   auto buffer_attributes = snpe_->getInputOutputBufferAttributes(name.c_str());
-  if (!buffer_attributes) {
-    LOGS_DEFAULT(ERROR) << "Error obtaining attributes for input/output tensor" << name;
-    return false;
-  }
+  ORT_ENFORCE(buffer_attributes, "Error obtaining attributes for input/output tensor", name);
   zdl::DlSystem::UserBufferEncoding* user_buffer_encoding = nullptr;
   size_t buffer_element_size = 0;
   if (BufferType::TF8 == buffer_type_ || BufferType::TF16 == buffer_type_) {
     int bit_width = buffer_type_ == BufferType::TF16 ? 16 : 8;
     buffer_element_size = bit_width / 8;
     auto encoding = (*buffer_attributes)->getEncoding();
-    if (!encoding) {
-      LOGS_DEFAULT(ERROR) << "Failed to get buffer encoding for: " << name;
-      return false;
-    }
+    ORT_ENFORCE(encoding, "Failed to get buffer encoding for: ", name);
     user_buffer_encoding_.push_back(std::make_unique<zdl::DlSystem::UserBufferEncodingTfN>(*encoding));
     user_buffer_encoding = user_buffer_encoding_.back().get();
   } else if (BufferType::FLOAT == buffer_type_) {
@@ -66,64 +62,53 @@ bool SnpeLib::SetupUserBufferAttribute(const std::string& name) {
 
   user_buffer_attr_table_.emplace(name, UserBufferAttribute(bufSize, strides, user_buffer_encoding));
 
-  return true;
+  return Status::OK();
 }
 
-bool SnpeLib::SetupUserBufferAttributes(const std::vector<std::string>& tensor_names) {
+Status SnpeLib::SetupUserBufferAttributes(const std::vector<std::string>& tensor_names) {
   for (size_t i = 0; i < tensor_names.size(); ++i) {
-    bool rt = SetupUserBufferAttribute(tensor_names[i]);
-    if (!rt) {
-      LOGS_DEFAULT(ERROR) << "Failed to set user buffer attribute for: " << tensor_names[i];
-      return false;
-    }
+    ORT_RETURN_IF_ERROR(SetupUserBufferAttribute(tensor_names[i]));
   }
 
-  return true;
+  return Status::OK();
 }
 
-bool SnpeLib::CheckInputsSize(const std::vector<std::string>& input_tensor_names,
+Status SnpeLib::CheckInputsSize(const std::vector<std::string>& input_tensor_names,
                               const std::vector<int64_t>& input_sizes) {
   size_t elementSize = 1;
   for (size_t i = 0; i < input_tensor_names.size(); ++i) {
     auto input_shape = snpe_->getInputDimensions(input_tensor_names[i].c_str());
-    if (!input_shape) {
-      LOGS_DEFAULT(ERROR) << "Snpe cannot get input shape for input name: " << input_tensor_names[i];
-      return false;
-    }
+    ORT_ENFORCE(input_shape, "Snpe cannot get input shape for input name: ", input_tensor_names[i]);
     int64_t input_size = CalcSizeFromDims((*input_shape).getDimensions(), (*input_shape).rank(), elementSize);
-    if (input_sizes.at(i) != input_size) {
-      LOGS_DEFAULT(ERROR) << "Input size mismatch for : " << input_tensor_names[i]
-                          << " size on dlc: " << input_size
-                          << " size on onnx: " << input_sizes.at(i);
-      return false;
-    }
+    ORT_RETURN_IF(input_sizes.at(i) != input_size,
+                  "Input size mismatch for : ", input_tensor_names[i],
+                  " size on dlc: ", input_size,
+                  " size on onnx: ", input_sizes.at(i));
   }
-  return true;
+  return Status::OK();
 }
 
-bool SnpeLib::SetupInputTensors(const std::vector<std::string>& input_tensor_names) {
+Status SnpeLib::SetupInputTensors(const std::vector<std::string>& input_tensor_names) {
   input_tensor_map_.clear();
   input_tensors_.clear();
   input_tensors_.resize(input_tensor_names.size());
   for (size_t i = 0; i < input_tensor_names.size(); ++i) {
     auto input_shape = snpe_->getInputDimensions(input_tensor_names[i].c_str());
     if (!input_shape) {
-      LOGS_DEFAULT(ERROR) << "Snpe cannot get input shape for input name: " << input_tensor_names[i];
       input_tensor_map_.clear();
       input_tensors_.clear();
-      return false;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get input shape from Snpe for: ", input_tensor_names[i]);
     }
     input_tensors_[i] = zdl::SNPE::SNPEFactory::getTensorFactory().createTensor(*input_shape);
     zdl::DlSystem::ITensor* input_tensor = input_tensors_[i].get();
     if (!input_tensor) {
-      LOGS_DEFAULT(ERROR) << "Snpe cannot create ITensor!";
       input_tensor_map_.clear();
       input_tensors_.clear();
-      return false;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Snpe cannot create ITensor for inputs!");
     }
     input_tensor_map_.add(input_tensor_names[i].c_str(), input_tensor);
   }
-  return true;
+  return Status::OK();
 }
 
 Status SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
@@ -169,17 +154,15 @@ Status SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
   ORT_ENFORCE(snpe_, "Failed to create snpe instance! ", GetSnpeErrorString());
 
   // Make sure shape of snpe inputs are same with onnx model inputs
-  ORT_RETURN_IF_NOT(CheckInputsSize(input_tensor_names, input_sizes), "Check input size failed!");
+  ORT_RETURN_IF_ERROR(CheckInputsSize(input_tensor_names, input_sizes));
 
   ORT_ENFORCE(BufferType::UNKNOWN != buffer_type_, "Buffer type unknown!");
 
   if (BufferType::ITENSOR == buffer_type_) {
-    ORT_RETURN_IF_NOT(SetupInputTensors(input_tensor_names), "Failed to setup input tensors! ", GetSnpeErrorString());
+    ORT_RETURN_IF_ERROR(SetupInputTensors(input_tensor_names));
   } else {
-    ORT_RETURN_IF_NOT(SetupUserBufferAttributes(input_tensor_names),
-                      "Failed to setup user buffer for inputs! ", GetSnpeErrorString());
-    ORT_RETURN_IF_NOT(SetupUserBufferAttributes(output_tensor_names),
-                      "Failed to setup user buffer for outputs! ", GetSnpeErrorString());
+    ORT_RETURN_IF_ERROR(SetupUserBufferAttributes(input_tensor_names));
+    ORT_RETURN_IF_ERROR(SetupUserBufferAttributes(output_tensor_names));
   }
 
   return Status::OK();
@@ -193,7 +176,11 @@ Status SnpeLib::Initialize(const char* dlcPath,
   auto container = zdl::DlContainer::IDlContainer::open(zdl::DlSystem::String(dlcPath));
   ORT_ENFORCE(container, "Failed open " , dlcPath, " container file");
 
-  ORT_RETURN_IF_ERROR(InitializeSnpe(container.get(), output_layer_names, input_layer_names, input_sizes, snpe_settings));
+  ORT_RETURN_IF_ERROR(InitializeSnpe(container.get(),
+                                     output_layer_names,
+                                     input_layer_names,
+                                     input_sizes,
+                                     snpe_settings));
 
   return Status::OK();
 }
@@ -215,42 +202,30 @@ Status SnpeLib::Initialize(const unsigned char* dlcData, size_t size,
   return Status::OK();
 }
 
-bool SnpeLib::SnpeProcessMultipleOutput(const unsigned char* input,
-                                        size_t input_size,
-                                        size_t output_number,
-                                        unsigned char* outputs[],
-                                        size_t output_sizes[],
-                                        const std::unordered_map<std::string, size_t>& output_names_index) {
+Status SnpeLib::SnpeProcessMultipleOutput(const unsigned char* input,
+                                          size_t input_size,
+                                          size_t output_number,
+                                          unsigned char* outputs[],
+                                          size_t output_sizes[],
+                                          const std::unordered_map<std::string, size_t>& output_names_index) {
   try {
     zdl::DlSystem::Optional<zdl::DlSystem::TensorShape> input_shape = snpe_->getInputDimensions();
-    if (!input_shape) {
-      LOGS_DEFAULT(ERROR) << "Snpe cannot get input shape";
-      return false;
-    }
+    ORT_ENFORCE(input_shape, "Snpe cannot get input shape");
 
-    if (input_tensors_.size() < 1) {
-      LOGS_DEFAULT(ERROR) << "Failed to create Snpe ITensor at initialization time.";
-      return false;
-    }
+    ORT_RETURN_IF(input_tensors_.size() < 1, "Failed to create Snpe ITensor at initialization time.");
+
     zdl::DlSystem::ITensor* input_tensor = input_tensors_[0].get();
     // ensure size of the input buffer matches input shape buffer size
     size_t input_data_size = input_tensor->getSize() * sizeof(float);
-    if (input_data_size != input_size) {
-      LOGS_DEFAULT(ERROR) << "Snpe input size incorrect: expected bytes "
-                          << input_data_size << " given bytes " << input_size;
-      return false;
-    }
+    ORT_RETURN_IF(input_data_size != input_size, "Snpe input size incorrect: expected bytes ",
+                  input_data_size, " given bytes ", input_size);
     memcpy(input_tensor->begin().dataPointer(), input, input_size);
 
     zdl::DlSystem::TensorMap output_tensor_map;
-    bool result = snpe_->execute(input_tensor, output_tensor_map);
-    if (!result) {
-      LOGS_DEFAULT(ERROR) << "Snpe Error while executing the network: " << GetSnpeErrorString();
-      return false;
-    }
-    if (output_tensor_map.size() == 0) {
-      return false;
-    }
+    ORT_RETURN_IF_NOT(snpe_->execute(input_tensor, output_tensor_map),
+                      "Snpe Error while executing the network: ",
+                      GetSnpeErrorString());
+    ORT_RETURN_IF(output_tensor_map.size() == 0, "Failed to get output tensor map, ", GetSnpeErrorString());
 
     zdl::DlSystem::StringList tensor_names = output_tensor_map.getTensorNames();
 
@@ -258,32 +233,26 @@ bool SnpeLib::SnpeProcessMultipleOutput(const unsigned char* input,
       zdl::DlSystem::ITensor* tensor = output_tensor_map.getTensor(tensor_names.at(i));
 
       auto pos = output_names_index.find(tensor_names.at(i));
-      size_t output_name_index = 0;
-      if (pos == output_names_index.end()) {
-        LOGS_DEFAULT(ERROR) << "Something wrong with output name: " << tensor_names.at(i);
-        return false;
-      }
-      output_name_index = pos->second;
+      ORT_RETURN_IF(pos == output_names_index.end(), "Something wrong with output name: ", tensor_names.at(i));
+      size_t output_name_index = pos->second;
 
       // ensure size of the output buffer matches output shape buffer size
       size_t output_data_size = tensor->getSize() * sizeof(float);
-      if (output_data_size > output_sizes[output_name_index]) {
-        LOGS_DEFAULT(ERROR) << "Snpe output size incorrect: output_layer: " << tensor_names.at(i)
-                            << " expected bytes " << output_data_size
-                            << " given bytes " << output_sizes[output_name_index];
-        return false;
-      }
+      ORT_RETURN_IF(output_data_size > output_sizes[output_name_index],
+                    "Snpe output size incorrect: output_layer: ", tensor_names.at(i),
+                    " expected bytes ", output_data_size,
+                    " given bytes ", output_sizes[output_name_index]);
       memcpy(outputs[output_name_index], tensor->cbegin().dataPointer(), output_data_size);
     }
 
-    return true;
+    return Status::OK();
   } catch (...) {
-    LOGS_DEFAULT(ERROR) << "Snpe threw exception";
-    return false;
+    LOGS_DEFAULT(ERROR) << "Snpe threw exception " << GetSnpeErrorString();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Snpe threw exception ", GetSnpeErrorString());
   }
 }
 
-bool SnpeLib::SnpeProcess(const unsigned char* input, size_t input_size, unsigned char* output, size_t output_size,
+Status SnpeLib::SnpeProcess(const unsigned char* input, size_t input_size, unsigned char* output, size_t output_size,
                           const std::unordered_map<std::string, size_t>& output_names_index) {
   // Use SnpeProcessMultipleOutput with 1 output layer
   const int output_layer = 1;
@@ -291,11 +260,12 @@ bool SnpeLib::SnpeProcess(const unsigned char* input, size_t input_size, unsigne
   size_t output_sizes_array[output_layer];
   outputs_array[0] = output;
   output_sizes_array[0] = output_size;
-  return SnpeProcessMultipleOutput(input, input_size, output_layer, outputs_array,
-                                   output_sizes_array, output_names_index);
+  ORT_RETURN_IF_ERROR(SnpeProcessMultipleOutput(input, input_size, output_layer, outputs_array,
+                                                output_sizes_array, output_names_index));
+  return Status::OK();
 }
 
-bool SnpeLib::SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
+Status SnpeLib::SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
                                                  const size_t* input_sizes,
                                                  size_t input_number,
                                                  unsigned char** outputs,
@@ -303,31 +273,23 @@ bool SnpeLib::SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
                                                  size_t output_number,
                                                  const std::unordered_map<std::string, size_t>& output_names_index) {
   try {
-    if (input_number != input_tensors_.size()) {
-      LOGS_DEFAULT(ERROR) << "Snpe number of inputs doesn't match: expected "
-                          << input_number << " given " << input_tensors_.size();
-      return false;
-    }
+    ORT_RETURN_IF(input_number != input_tensors_.size(),
+                  "Snpe number of inputs doesn't match: expected ", input_number,
+                  " given ", input_tensors_.size());
     for (size_t i = 0; i < input_number; ++i) {
       zdl::DlSystem::ITensor* input_tensor = input_tensors_[i].get();
       // ensure size of the input buffer matches input shape buffer size
       size_t input_data_size = input_tensor->getSize() * sizeof(float);
-      if (input_data_size != input_sizes[i]) {
-        LOGS_DEFAULT(ERROR) << "Snpe input size incorrect: expected bytes " << input_data_size
-                            << ", given bytes "  << input_sizes[i];
-        return false;
-      }
+      ORT_RETURN_IF(input_data_size != input_sizes[i],
+                    "Snpe input size incorrect: expected bytes ", input_data_size,
+                    ", given bytes ", input_sizes[i]);
       memcpy(input_tensor->begin().dataPointer(), inputs[i], input_sizes[i]);
     }
     zdl::DlSystem::TensorMap output_tensor_map;
-    bool result = snpe_->execute(input_tensor_map_, output_tensor_map);
-    if (!result) {
-      LOGS_DEFAULT(ERROR) << "Snpe Error while executing the network: " << GetSnpeErrorString();
-      return false;
-    }
-    if (output_tensor_map.size() == 0) {
-      return false;
-    }
+    ORT_RETURN_IF_NOT(snpe_->execute(input_tensor_map_, output_tensor_map),
+                      "Snpe Error while executing the network: ",
+                      GetSnpeErrorString());
+    ORT_RETURN_IF(output_tensor_map.size() == 0, "Failed to get output tensor map, ", GetSnpeErrorString());
 
     zdl::DlSystem::StringList tensor_names = output_tensor_map.getTensorNames();
 
@@ -335,32 +297,26 @@ bool SnpeLib::SnpeProcessMultiInputsMultiOutputs(const unsigned char** inputs,
       zdl::DlSystem::ITensor* tensor = output_tensor_map.getTensor(tensor_names.at(i));
 
       auto pos = output_names_index.find(tensor_names.at(i));
-      size_t output_name_index = 0;
-      if (pos == output_names_index.end()) {
-        LOGS_DEFAULT(ERROR) << "Something wrong with output name: " << tensor_names.at(i);
-        return false;
-      }
-      output_name_index = pos->second;
+      ORT_RETURN_IF(pos == output_names_index.end(), "Something wrong with output name: ", tensor_names.at(i));
+      size_t output_name_index = pos->second;
 
       // ensure size of the output buffer matches output shape buffer size
       size_t output_data_size = tensor->getSize() * sizeof(float);
-      if (output_data_size > output_sizes[output_name_index]) {
-        LOGS_DEFAULT(ERROR) << "Snpe output size incorrect: output_layer" << tensor_names.at(i)
-                            << " expected bytes " << output_data_size
-                            << " given bytes " << output_sizes[output_name_index];
-        return false;
-      }
+      ORT_RETURN_IF(output_data_size > output_sizes[output_name_index],
+                    "Snpe output size incorrect: output_layer: ", tensor_names.at(i),
+                    " expected bytes ", output_data_size,
+                    " given bytes ", output_sizes[output_name_index]);
       memcpy(outputs[output_name_index], tensor->cbegin().dataPointer(), output_data_size);
     }
 
-    return true;
+    return Status::OK();
   } catch (...) {
-    LOGS_DEFAULT(ERROR) << "Snpe threw exception";
-    return false;
+    LOGS_DEFAULT(ERROR) << "Snpe threw exception " << GetSnpeErrorString();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Snpe threw exception ", GetSnpeErrorString());
   }
 }
 
-bool SnpeLib::SnpeProcessWithUserBuffer(const std::vector<std::string>& input_names,
+Status SnpeLib::SnpeProcessWithUserBuffer(const std::vector<std::string>& input_names,
                                         const unsigned char** inputs,
                                         size_t input_number,
                                         unsigned char** outputs,
@@ -392,13 +348,11 @@ bool SnpeLib::SnpeProcessWithUserBuffer(const std::vector<std::string>& input_na
   }
 
   // Execute the input buffer map on the model with SNPE
-  bool result = snpe_->execute(input_buffer_map, output_buffer_map);
-  if (!result) {
-    LOGS_DEFAULT(ERROR) << "Snpe Error while executing the network: " << GetSnpeErrorString();
-    return false;
-  }
+  ORT_RETURN_IF_NOT(snpe_->execute(input_buffer_map, output_buffer_map),
+                    "Snpe Error while executing the network: ",
+                    GetSnpeErrorString());
 
-  return true;
+  return Status::OK();
 }
 
 int SnpeLib::RegisterUDOs(const std::string udo_dir, const std::vector<std::string>& udo_file_names) {
@@ -423,14 +377,19 @@ std::unique_ptr<SnpeLib> SnpeLibFactory(const unsigned char* dlc_data,
                                         const std::vector<std::string>& input_layer_names,
                                         const std::vector<int64_t>& input_sizes,
                                         BufferType& buffer_type) {
-  std::unique_ptr<SnpeLib> object(new SnpeLib());
+  auto object = std::make_unique<SnpeLib>();
 
   if (!object) {
     ORT_THROW("failed to make snpe library");
   }
 
   SnpeRuntimeOptions runtime_options(options);
-  ORT_THROW_IF_ERROR(object->Initialize(dlc_data, size, output_layer_names, input_layer_names, input_sizes, runtime_options));
+  ORT_THROW_IF_ERROR(object->Initialize(dlc_data,
+                                        size,
+                                        output_layer_names,
+                                        input_layer_names,
+                                        input_sizes,
+                                        runtime_options));
 
   buffer_type = runtime_options.GetBufferType();
 
