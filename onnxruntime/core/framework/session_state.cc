@@ -1485,10 +1485,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   std::unordered_map<std::string, size_t> ep_max_stream_map;
 
-  if (!session_options.streams_per_ep.empty()) {
-    for (const auto& streams_per_ep : split(session_options.streams_per_ep, ';')) {
-      std::vector<std::string> stream_per_ep = split(streams_per_ep, ':');
-      ep_max_stream_map[stream_per_ep[0]] = atoi(stream_per_ep[1].c_str());
+  if (!session_options.max_streams_per_ep.empty()) {
+    for (const auto& max_stream_per_ep : split(session_options.max_streams_per_ep, ';')) {
+      std::vector<std::string> max_stream_setting = split(max_stream_per_ep, ':');
+      ep_max_stream_map[max_stream_setting[0]] = atoi(max_stream_setting[1].c_str());
     }
   }
 

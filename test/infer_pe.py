@@ -5,9 +5,8 @@ import numpy as np
 input_ = np.random.rand(10, 36, 36, 528)
 onnx_path = "bug.onnx"
 
-#import pdb
-#pdb.set_trace()
-_ = input(os.getpid())
+import pdb
+pdb.set_trace()
 sess_opt = ort.SessionOptions()
 #sess_opt.inter_op_num_threads = 2
 sess_opt.execution_mode = ort.ExecutionMode.ORT_PARALLEL
@@ -17,7 +16,7 @@ sess_opt.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 sess_opt.grouped_ops = 'MemcpyToHost,MemcpyFromHost'
 # grouped_ops has priority over streams_per_ep, which will only be applied to ops not refered in grouped_ops
 sess_opt.streams_per_ep = 'CPUExecutionProvider:1;CUDAExecutionProvider:2' 
-sess_opt.max_streams_per_ep = 'CPUExecutionProvider:1;CUDAExecutionProvider:2' 
+sess_opt.max_streams_per_ep = 'CPUExecutionProvider:1;CUDAExecutionProvider:4' 
 #sess_opt.log_severity_level = 0
 #sess_opt.log_verbosity_level = 255
 model = ort.InferenceSession(onnx_path, sess_opt, providers=['CUDAExecutionProvider'])
