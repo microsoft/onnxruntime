@@ -8,6 +8,7 @@
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
 
+#include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -34,14 +35,9 @@ namespace test {
 TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_clip_relu.onnx";
 
+  RandomValueGenerator generator;
   TensorShape input_shape_x{1, 16, 16, 192};
-  auto num_elements = input_shape_x.Size();
-  std::vector<float> input_x;
-  input_x.reserve(num_elements);
-  std::uniform_real_distribution<float> uniform_dist(-128, 128);
-  std::random_device r;
-  std::default_random_engine rd{r()};
-  std::generate_n(std::back_inserter(input_x), input_shape_x.Size(), [&]() -> float { return uniform_dist(rd); });
+  std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(), -128, 128);
 
   OrtValue ml_value_x;
   OrtValue ml_value_w;

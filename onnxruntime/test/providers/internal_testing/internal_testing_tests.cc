@@ -202,7 +202,7 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
   // so.optimized_model_filepath = ORT_MODEL_FOLDER "squeezenet/model.test_output.onnx";
   InferenceSessionWrapper session(so, GetEnvironment());
 
-  const std::unordered_set<std::string> supported_ops{"Conv" /*, "Clip"*/};
+  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
   auto ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
                                                                std::unordered_set<std::string>{},
                                                                DataLayout::NHWC);
