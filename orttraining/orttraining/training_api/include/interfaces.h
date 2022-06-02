@@ -5,6 +5,7 @@
 
 #include "orttraining/training_api/include/module.h"
 #include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/lr_scheduler.h"
 #include "orttraining/training_api/include/checkpoint_property.h"
 #include "orttraining/training_api/include/checkpoint.h"
 
