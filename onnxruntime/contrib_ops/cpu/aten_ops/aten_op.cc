@@ -15,20 +15,25 @@ ONNX_OPERATOR_KERNEL_EX(ATen, kPytorchAtenDomain, 1, kCpuExecutionProvider,
 
 Status ATen::Compute(OpKernelContext* p_ctx) const {
   auto* p_ctx_internal = static_cast<OpKernelContextInternal*>(p_ctx);
-  std::vector<DLManagedTensor*> dlpacks;
-  for (int i = 0; i < p_ctx_internal->InputCount(); i++) {
+  size_t input_size = static_cast<size_t>(p_ctx_internal->InputCount());
+  size_t output_size = static_cast<size_t>(p_ctx_internal->OutputCount());
+  std::unique_ptr<DLManagedTensor*[]> dlpack_inputs = std::make_unique<DLManagedTensor*[]>(input_size);
+  std::unique_ptr<DLManagedTensor*[]> dlpack_outputs = std::make_unique<DLManagedTensor*[]>(output_size);
+  for (size_t i = 0; i < input_size; ++i) {
     const OrtValue* p_ort_value = p_ctx_internal->GetInputMLValue(i);
     if (!p_ort_value) {
-      dlpacks.emplace_back(nullptr);
+      dlpack_inputs[i] = nullptr;
     } else {
       OrtValue ort_value = *p_ort_value;
-      dlpacks.emplace_back(dlpack::OrtValueToDlpack(ort_value));
+      dlpack_inputs[i] = dlpack::OrtValueToDlpack(ort_value);
     }
   }
 
-  auto result = aten_ops::ATenOperatorExecutor::Instance()(op_name_, overload_name_, dlpacks);
-  for (size_t i = 0; i < result.size(); i++) {
-    ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(static_cast<int>(i), dlpack::DlpackToOrtValue(result[i])));
+  aten_ops::ATenOperatorExecutor::Instance()(op_name_, overload_name_, input_size, dlpack_inputs.get(), output_size,
+                                             dlpack_outputs.get());
+  for (size_t i = 0; i < output_size; ++i) {
+    ORT_RETURN_IF_ERROR(
+        p_ctx_internal->SetOutputMLValue(static_cast<int>(i), dlpack::DlpackToOrtValue(dlpack_outputs[i])));
   }
 
   return Status::OK();
@@ -39,10 +44,11 @@ bool IsATenOperatorExecutorInitialized() { return aten_ops::ATenOperatorExecutor
 
 Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
   ORT_ENFORCE(aten_ops::ATenOperatorExecutor::Instance().IsInitialized() && !axes.empty());
-  std::vector<DLManagedTensor*> dlpacks;
+  size_t input_size = 4;
+  std::unique_ptr<DLManagedTensor*[]> dlpack_inputs = std::make_unique<DLManagedTensor*[]>(input_size);
   auto* p_ctx_internal = static_cast<OpKernelContextInternal*>(p_ctx);
   OrtValue ort_value = *p_ctx_internal->GetInputMLValue(0);
-  dlpacks.emplace_back(dlpack::OrtValueToDlpack(ort_value));
+  dlpack_inputs[0] = dlpack::OrtValueToDlpack(ort_value);
   OrtValue axes_tensor;
   OrtValue keepdims_tensor;
   TensorShapeVector axes_tensor_shape(1, static_cast<int64_t>(axes.size()));
@@ -55,11 +61,13 @@ Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_
   auto keepdims_tensor_obj = std::make_unique<Tensor>(DataTypeImpl::GetType<bool>(), keepdims_tensor_shape,
                                                       reinterpret_cast<void*>(&keepdims), info);
   keepdims_tensor.Init(keepdims_tensor_obj.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-  dlpacks.emplace_back(dlpack::OrtValueToDlpack(axes_tensor));
-  dlpacks.emplace_back(dlpack::OrtValueToDlpack(keepdims_tensor));
-  dlpacks.emplace_back(nullptr);
-  auto result = aten_ops::ATenOperatorExecutor::Instance()("sum", "dim_IntList", dlpacks);
-  ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::DlpackToOrtValue(result[0])));
+  dlpack_inputs[1] = dlpack::OrtValueToDlpack(axes_tensor);
+  dlpack_inputs[2] = dlpack::OrtValueToDlpack(keepdims_tensor);
+  dlpack_inputs[3] = nullptr;
+  DLManagedTensor* dlpack_output = nullptr;
+  aten_ops::ATenOperatorExecutor::Instance()("sum", "dim_IntList", input_size, dlpack_inputs.get(), 1, &dlpack_output);
+  ORT_ENFORCE(dlpack_output);
+  ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::DlpackToOrtValue(dlpack_output)));
   return Status::OK();
 }
 #endif

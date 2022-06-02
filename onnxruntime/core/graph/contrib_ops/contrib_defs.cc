@@ -2379,7 +2379,7 @@ void RegisterContribSchemas() {
 
       });
 
-#ifndef ORT_MINIMAL_BUILD
+#ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
       .SetDomain(kPytorchAtenDomain)
       .SinceVersion(1)

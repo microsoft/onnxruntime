@@ -31,7 +31,7 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
-#ifndef ORT_MINIMAL_BUILD
+#ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
 #endif
@@ -548,7 +548,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamS
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 }  // namespace transformers
 
-#ifndef ORT_MINIMAL_BUILD
+#ifdef ENABLE_ATEN
 Status ATen::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATen__Compute(this, p_ctx); }
 #endif
 }  // namespace contrib

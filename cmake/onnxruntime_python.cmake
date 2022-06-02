@@ -98,7 +98,7 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
-if (NOT onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_ENABLE_ATEN)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
 endif()
 

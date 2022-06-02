@@ -170,13 +170,13 @@ bool IsTensorArgument(const char* op_name, const char* overload_name, size_t ind
   return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
 }
 
-std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const char* overload_name,
-                                                  const std::vector<DLManagedTensor*>& dlpacks) {
+void ExecuteATenOperator(const char* op_name, const char* overload_name, size_t input_size,
+                         DLManagedTensor** dlpack_inputs, size_t output_size, DLManagedTensor** dlpack_outputs) {
   const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
-  TORCH_INTERNAL_ASSERT(dlpacks.size() == aten_op.argument_size);
+  TORCH_INTERNAL_ASSERT(input_size == aten_op.argument_size);
   std::vector<c10::IValue> arguments;
-  for (size_t i = 0; i < dlpacks.size(); i++) {
-    arguments.emplace_back(aten_op.ToIValueArgument(dlpacks[i], i));
+  for (size_t i = 0; i < input_size; ++i) {
+    arguments.emplace_back(aten_op.ToIValueArgument(dlpack_inputs[i], i));
   }
 
   torch::jit::Stack stack;
@@ -186,8 +186,7 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const cha
 
 #ifndef TORCH_VERSION_PREEQ
 #define TORCH_VERSION_PREEQ(x, y) \
-  ((TORCH_VERSION_MAJOR == (x) && TORCH_VERSION_MINOR >= (y)) || \
-     (TORCH_VERSION_MAJOR > (x)))
+  ((TORCH_VERSION_MAJOR == (x) && TORCH_VERSION_MINOR >= (y)) || (TORCH_VERSION_MAJOR > (x)))
 #endif
 
 // pull request https://github.com/pytorch/pytorch/pull/63414 introduced
@@ -202,13 +201,12 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const cha
   aten_op.op->getOperation()(&stack);
 #endif
 
-  std::vector<DLManagedTensor*> result;
-  for (const auto& ret : torch::jit::pop(stack, aten_op.return_size)) {
+  TORCH_INTERNAL_ASSERT(output_size == aten_op.return_size);
+  size_t output_index = 0;
+  for (const auto& ret : torch::jit::pop(stack, output_size)) {
     const auto& tensor = ret.toTensor();
-    result.emplace_back(at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous()));
+    dlpack_outputs[output_index++] = at::toDLPack(tensor.is_contiguous() ? tensor : tensor.contiguous());
   }
-
-  return result;
 }
 
 size_t is_tensor_argument_address() { return reinterpret_cast<size_t>(&IsTensorArgument); }

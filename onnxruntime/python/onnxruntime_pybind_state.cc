@@ -30,7 +30,7 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
@@ -1015,7 +1015,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
   });
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#ifdef ENABLE_ATEN
   m.def("register_aten_op_executor",
         [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
           size_t is_tensor_argument_address_int, aten_op_executor_address_int;
