@@ -5,6 +5,7 @@
 #include <iostream>
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "DlContainer/IDlContainer.hpp"
 #include "DlSystem/ITensorFactory.hpp"
 #include "DlSystem/IUserBufferFactory.hpp"
@@ -18,7 +19,7 @@ size_t CalcSizeFromDims(const zdl::DlSystem::Dimension* dims, size_t rank, size_
   if (rank == 0) return 0;
   size_t size = elementSize;
   while (rank--) {
-    size *= *dims;
+    size = SafeInt<size_t>(size * (*dims));
     dims++;
   }
   return size;
@@ -70,9 +71,9 @@ bool SnpeLib::SetupUserBufferAttribute(const std::string& name) {
 
 bool SnpeLib::SetupUserBufferAttributes(const std::vector<std::string>& tensor_names) {
   for (size_t i = 0; i < tensor_names.size(); ++i) {
-    bool rt = SetupUserBufferAttribute(tensor_names.at(i));
+    bool rt = SetupUserBufferAttribute(tensor_names[i]);
     if (!rt) {
-      LOGS_DEFAULT(ERROR) << "Failed to set user buffer attribute for: " << tensor_names.at(i);
+      LOGS_DEFAULT(ERROR) << "Failed to set user buffer attribute for: " << tensor_names[i];
       return false;
     }
   }
@@ -84,14 +85,14 @@ bool SnpeLib::CheckInputsSize(const std::vector<std::string>& input_tensor_names
                               const std::vector<int64_t>& input_sizes) {
   size_t elementSize = 1;
   for (size_t i = 0; i < input_tensor_names.size(); ++i) {
-    auto input_shape = snpe_->getInputDimensions(input_tensor_names.at(i).c_str());
+    auto input_shape = snpe_->getInputDimensions(input_tensor_names[i].c_str());
     if (!input_shape) {
-      LOGS_DEFAULT(ERROR) << "Snpe cannot get input shape for input name: " << input_tensor_names.at(i);
+      LOGS_DEFAULT(ERROR) << "Snpe cannot get input shape for input name: " << input_tensor_names[i];
       return false;
     }
     int64_t input_size = CalcSizeFromDims((*input_shape).getDimensions(), (*input_shape).rank(), elementSize);
     if (input_sizes.at(i) != input_size) {
-      LOGS_DEFAULT(ERROR) << "Input size mismatch for : " << input_tensor_names.at(i)
+      LOGS_DEFAULT(ERROR) << "Input size mismatch for : " << input_tensor_names[i]
                           << " size on dlc: " << input_size
                           << " size on onnx: " << input_sizes.at(i);
       return false;
@@ -105,9 +106,9 @@ bool SnpeLib::SetupInputTensors(const std::vector<std::string>& input_tensor_nam
   input_tensors_.clear();
   input_tensors_.resize(input_tensor_names.size());
   for (size_t i = 0; i < input_tensor_names.size(); ++i) {
-    auto input_shape = snpe_->getInputDimensions(input_tensor_names.at(i).c_str());
+    auto input_shape = snpe_->getInputDimensions(input_tensor_names[i].c_str());
     if (!input_shape) {
-      LOGS_DEFAULT(ERROR) << "Snpe cannot get input shape for input name: " << input_tensor_names.at(i);
+      LOGS_DEFAULT(ERROR) << "Snpe cannot get input shape for input name: " << input_tensor_names[i];
       input_tensor_map_.clear();
       input_tensors_.clear();
       return false;
@@ -120,25 +121,22 @@ bool SnpeLib::SetupInputTensors(const std::vector<std::string>& input_tensor_nam
       input_tensors_.clear();
       return false;
     }
-    input_tensor_map_.add(input_tensor_names.at(i).c_str(), input_tensor);
+    input_tensor_map_.add(input_tensor_names[i].c_str(), input_tensor);
   }
   return true;
 }
 
-bool SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
-                             const std::vector<std::string>& output_tensor_names,
-                             const std::vector<std::string>& input_tensor_names,
-                             const std::vector<int64_t>& input_sizes,
-                             const SnpeRuntimeOptions& snpe_settings) {
-  if (!snpe_settings.GetRuntimeTarget().IsAvailable()) {
-    LOGS_DEFAULT(INFO) << "Provided runtime target is not available" << snpe_settings.GetRuntimeTarget().ToString();
-    return false;
-  }
+Status SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
+                               const std::vector<std::string>& output_tensor_names,
+                               const std::vector<std::string>& input_tensor_names,
+                               const std::vector<int64_t>& input_sizes,
+                               const SnpeRuntimeOptions& snpe_settings) {
+  ORT_RETURN_IF_NOT(snpe_settings.GetRuntimeTarget().IsAvailable(),
+                    "Provided runtime target is not available: ",
+                    snpe_settings.GetRuntimeTarget().ToString());
 
-  if (0 == output_tensor_names.size() || 0 == input_tensor_names.size()) {
-    LOGS_DEFAULT(ERROR) << "input names or output names are empty!";
-    return false;
-  }
+  ORT_RETURN_IF(0 == output_tensor_names.size() || 0 == input_tensor_names.size(),
+                "Input names or output names are empty!");
 
   zdl::SNPE::SNPEBuilder snpe_builder(container);
   zdl::DlSystem::StringList dl_output_tensor_names = zdl::DlSystem::StringList();
@@ -161,81 +159,58 @@ bool SnpeLib::InitializeSnpe(zdl::DlContainer::IDlContainer* container,
 #ifdef _WIN32
   if (snpe_settings.GetRuntimeTarget().Get() == zdl::DlSystem::Runtime_t::DSP) {
     zdl::DlSystem::PlatformConfig platformConfig;
-    if (!platformConfig.setPlatformOptionValue("unsignedPD", "ON")) {
-      LOGS_DEFAULT(ERROR) << "unsignedPD is not available";
-      return false;
-    }
-    LOGS_DEFAULT(INFO) << "set platform config to unsignedPD";
+    ORT_RETURN_IF_NOT(platformConfig.setPlatformOptionValue("unsignedPD", "ON"),
+                      "unsignedPD is not available! ", GetSnpeErrorString());
     snpe_builder.setPlatformConfig(platformConfig);
   }
 #endif
 
   snpe_ = snpe_builder.build();
-  if (nullptr == snpe_) {
-    LOGS_DEFAULT(ERROR) << "Failed to create snpe instance!";
-    return false;
-  }
+  ORT_ENFORCE(snpe_, "Failed to create snpe instance! ", GetSnpeErrorString());
 
   // Make sure shape of snpe inputs are same with onnx model inputs
-  bool status = CheckInputsSize(input_tensor_names, input_sizes);
-  if (!status) {
-    return false;
-  }
+  ORT_RETURN_IF_NOT(CheckInputsSize(input_tensor_names, input_sizes), "Check input size failed!");
 
-  if (BufferType::UNKNOWN == buffer_type_) {
-    LOGS_DEFAULT(ERROR) << "Buffer type unknown!";
-    return false;
-  } else if (BufferType::ITENSOR == buffer_type_) {
-    return SetupInputTensors(input_tensor_names);
+  ORT_ENFORCE(BufferType::UNKNOWN != buffer_type_, "Buffer type unknown!");
+
+  if (BufferType::ITENSOR == buffer_type_) {
+    ORT_RETURN_IF_NOT(SetupInputTensors(input_tensor_names), "Failed to setup input tensors! ", GetSnpeErrorString());
   } else {
-    bool rt = SetupUserBufferAttributes(input_tensor_names);
-    rt |= SetupUserBufferAttributes(output_tensor_names);
-    if (!rt) {
-      return false;
-    }
+    ORT_RETURN_IF_NOT(SetupUserBufferAttributes(input_tensor_names) || SetupUserBufferAttributes(output_tensor_names),
+                      "Failed to setup user buffer! ", GetSnpeErrorString());
   }
 
-  return true;
+  return Status::OK();
 }
 
-bool SnpeLib::Initialize(const char* dlcPath,
-                         const std::vector<std::string>& output_layer_names,
-                         const std::vector<std::string>& input_layer_names,
-                         const std::vector<int64_t>& input_sizes,
-                         const SnpeRuntimeOptions& snpe_settings) {
+Status SnpeLib::Initialize(const char* dlcPath,
+                           const std::vector<std::string>& output_layer_names,
+                           const std::vector<std::string>& input_layer_names,
+                           const std::vector<int64_t>& input_sizes,
+                           const SnpeRuntimeOptions& snpe_settings) {
   auto container = zdl::DlContainer::IDlContainer::open(zdl::DlSystem::String(dlcPath));
-  if (!container) {
-    LOGS_DEFAULT(ERROR) << "failed open " << dlcPath << " container file";
-    return false;
-  }
+  ORT_ENFORCE(container, "Failed open " , dlcPath, " container file");
 
-  bool rt = InitializeSnpe(container.get(), output_layer_names, input_layer_names, input_sizes, snpe_settings);
-  if (!rt) {
-    LOGS_DEFAULT(ERROR) << "failed to build snpe " << GetSnpeErrorString();
-    return false;
-  }
+  ORT_RETURN_IF_ERROR(InitializeSnpe(container.get(), output_layer_names, input_layer_names, input_sizes, snpe_settings));
 
-  return true;
+  return Status::OK();
 }
 
-bool SnpeLib::Initialize(const unsigned char* dlcData, size_t size,
-                         const std::vector<std::string>& output_layer_names,
-                         const std::vector<std::string>& input_layer_names,
-                         const std::vector<int64_t>& input_sizes,
-                         const SnpeRuntimeOptions& snpe_settings) {
+Status SnpeLib::Initialize(const unsigned char* dlcData, size_t size,
+                           const std::vector<std::string>& output_layer_names,
+                           const std::vector<std::string>& input_layer_names,
+                           const std::vector<int64_t>& input_sizes,
+                           const SnpeRuntimeOptions& snpe_settings) {
   auto container = zdl::DlContainer::IDlContainer::open(dlcData, size);
-  if (container == nullptr) {
-    LOGS_DEFAULT(ERROR) << "failed open container buffer";
-    return false;
-  }
+  ORT_ENFORCE(container, "failed open container buffer!");
 
-  bool rt = InitializeSnpe(container.get(), output_layer_names, input_layer_names, input_sizes, snpe_settings);
-  if (!rt) {
-    LOGS_DEFAULT(ERROR) << "failed to build snpe " << GetSnpeErrorString();
-    return false;
-  }
+  ORT_RETURN_IF_ERROR(InitializeSnpe(container.get(),
+                                     output_layer_names,
+                                     input_layer_names,
+                                     input_sizes,
+                                     snpe_settings));
 
-  return true;
+  return Status::OK();
 }
 
 bool SnpeLib::SnpeProcessMultipleOutput(const unsigned char* input,
@@ -453,9 +428,7 @@ std::unique_ptr<SnpeLib> SnpeLibFactory(const unsigned char* dlc_data,
   }
 
   SnpeRuntimeOptions runtime_options(options);
-  if (!object->Initialize(dlc_data, size, output_layer_names, input_layer_names, input_sizes, runtime_options)) {
-    ORT_THROW("failed to initialize dlc from buffer");
-  }
+  ORT_THROW_IF_ERROR(object->Initialize(dlc_data, size, output_layer_names, input_layer_names, input_sizes, runtime_options));
 
   buffer_type = runtime_options.GetBufferType();
 

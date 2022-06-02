@@ -14,40 +14,40 @@ void SnpeRuntimeOptions::ParseOptions() {
   static const std::string BUFFER_TYPE = "buffer_type";
 
   // Option - Runtime
-  if (runtime_options_.find(OPT_RUNTIME) != runtime_options_.end()) {
-    runtime_target_ = SnpeRuntimeWrapper(runtime_options_[OPT_RUNTIME]);
-    LOGS_DEFAULT(INFO) << "Located user specified runtime target: " << runtime_options_[OPT_RUNTIME];
+  if (const auto runtime_opt_it = runtime_options_.find(OPT_RUNTIME); runtime_opt_it != runtime_options_.end()) {
+    runtime_target_ = SnpeRuntimeWrapper(runtime_opt_it->second);
+    LOGS_DEFAULT(INFO) << "Located user specified runtime target: " << runtime_opt_it->second;
   }
   LOGS_DEFAULT(INFO) << "Runtime target: " << runtime_target_.ToString();
 
   // Option Priority
-  if (runtime_options_.find(OPT_PRIORITY) != runtime_options_.end()) {
-    if (runtime_options_[OPT_PRIORITY] == "low") {
+  if (const auto priority_opt_it = runtime_options_.find(OPT_PRIORITY); priority_opt_it != runtime_options_.end()) {
+    if (priority_opt_it->second == "low") {
       execution_priority_ = zdl::DlSystem::ExecutionPriorityHint_t::LOW;
-    } else if (runtime_options_[OPT_PRIORITY] == "normal") {
+    } else if (priority_opt_it->second == "normal") {
       execution_priority_ = zdl::DlSystem::ExecutionPriorityHint_t::NORMAL;
     } else {
       LOGS_DEFAULT(INFO) << "Invalid execution priority, defaulting to LOW";
       execution_priority_ = zdl::DlSystem::ExecutionPriorityHint_t::LOW;
     }
 
-    LOGS_DEFAULT(INFO) << "Located user specified execution priority " << runtime_options_[OPT_PRIORITY];
+    LOGS_DEFAULT(INFO) << "Located user specified execution priority " << priority_opt_it->second;
   }
 
   // buffer type
-  if (runtime_options_.find(BUFFER_TYPE) != runtime_options_.end()) {
-    if (runtime_options_[BUFFER_TYPE] == "TF8") {
+  if (const auto buffer_type_it = runtime_options_.find(BUFFER_TYPE); buffer_type_it != runtime_options_.end()) {
+    if (buffer_type_it->second == "TF8") {
       buffer_type_ = BufferType::TF8;
-    } else if (runtime_options_[BUFFER_TYPE] == "TF16") {
+    } else if (buffer_type_it->second == "TF16") {
       buffer_type_ = BufferType::TF16;
-    } else if (runtime_options_[BUFFER_TYPE] == "ITENSOR") {
+    } else if (buffer_type_it->second == "ITENSOR") {
       buffer_type_ = BufferType::ITENSOR;
-    } else if (runtime_options_[BUFFER_TYPE] == "UINT8") {
+    } else if (buffer_type_it->second == "UINT8") {
       buffer_type_ = BufferType::UINT8;
-    } else if (runtime_options_[BUFFER_TYPE] == "FLOAT") {
+    } else if (buffer_type_it->second == "FLOAT") {
       buffer_type_ = BufferType::FLOAT;
     } else {
-      LOGS_DEFAULT(ERROR) << "Invalid buffer type: " << runtime_options_[BUFFER_TYPE];
+      LOGS_DEFAULT(ERROR) << "Invalid buffer type: " << buffer_type_it->second;
       buffer_type_ = BufferType::UNKNOWN;
     }
   }

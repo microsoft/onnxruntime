@@ -4,8 +4,10 @@
 #pragma once
 
 #include <vector>
+#include <string>
 #include "DlSystem/DlError.hpp"
 #include "core/providers/snpe/snpe_runtime_options.h"
+#include "core/common/status.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,6 +28,7 @@ struct UserBufferAttribute {
   zdl::DlSystem::UserBufferEncoding* user_buffer_encoding;
 };
 
+using namespace onnxruntime::common;
 class SnpeLib {
  public:
   SnpeLib() : buffer_type_(BufferType::ITENSOR) {}
@@ -57,22 +60,24 @@ class SnpeLib {
 
   bool CheckInputsSize(const std::vector<std::string>& input_tensor_names,
                        const std::vector<int64_t>& input_sizes);
-  bool InitializeSnpe(zdl::DlContainer::IDlContainer* container,
-                      const std::vector<std::string>& output_tensor_names,
-                      const std::vector<std::string>& input_tensor_names,
-                      const std::vector<int64_t>& input_sizes,
-                      const SnpeRuntimeOptions& settings = SnpeRuntimeOptions());
-  bool Initialize(const char* dlcPath,
-                  const std::vector<std::string>& output_layer_names,
-                  const std::vector<std::string>& input_layer_names,
-                  const std::vector<int64_t>& input_sizes,
-                  const SnpeRuntimeOptions& settings = SnpeRuntimeOptions());
-  bool Initialize(const unsigned char* dlcData,
-                  size_t size,
-                  const std::vector<std::string>& output_layer_names,
-                  const std::vector<std::string>& input_layer_names,
-                  const std::vector<int64_t>& input_sizes,
-                  const SnpeRuntimeOptions& settings = SnpeRuntimeOptions());
+
+  Status InitializeSnpe(zdl::DlContainer::IDlContainer* container,
+                        const std::vector<std::string>& output_tensor_names,
+                        const std::vector<std::string>& input_tensor_names,
+                        const std::vector<int64_t>& input_sizes,
+                        const SnpeRuntimeOptions& settings = SnpeRuntimeOptions());
+
+  Status Initialize(const char* dlcPath,
+                    const std::vector<std::string>& output_layer_names,
+                    const std::vector<std::string>& input_layer_names,
+                    const std::vector<int64_t>& input_sizes,
+                    const SnpeRuntimeOptions& settings = SnpeRuntimeOptions());
+  Status Initialize(const unsigned char* dlcData,
+                    size_t size,
+                    const std::vector<std::string>& output_layer_names,
+                    const std::vector<std::string>& input_layer_names,
+                    const std::vector<int64_t>& input_sizes,
+                    const SnpeRuntimeOptions& settings = SnpeRuntimeOptions());
 
   bool SetupUserBufferAttribute(const std::string& name);
   bool SetupUserBufferAttributes(const std::vector<std::string>& tensor_names);
