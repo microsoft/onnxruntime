@@ -185,13 +185,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
-      auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
-      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
       }
 
+      // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
+      // shouldn't affect the end result - just easier to debug any issue if it's last.
+      auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+      transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
     } break;
 
     case TransformerLevel::Level2: {
