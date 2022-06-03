@@ -407,6 +407,35 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 
 ---
 
+## SNPE
+See more information on the SNPE execution provider [here](../execution-providers/SNPE-ExecutionProvider.md).
+
+### Prerequisites
+{: .no_toc }
+* Qualcomm Neural Processing SDK [Linux/Android](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk)
+* Qualcomm Neural Processing SDK [Windows](https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon)
+
+### Build Instructions
+{: .no_toc }
+
+#### Windows
+```
+build.bat --use_snpe --snpe_root=[location-of-SNPE_SDK] --build_shared_lib --cmake_generator "Visual Studio 16 2019" --skip_submodule_sync --config Release --build_dir \build\Windows
+```
+#### Android (Cross-Compile):
+
+Please reference [Build OnnxRuntime For Android](android.md)
+```
+# on Windows
+build.bat --build_shared_lib --skip_submodule_sync --android --config Release --use_snpe --snpe_root [location-of-SNPE_SDK] --android_sdk_path [location-of-android_SDK] --android_ndk_path [location-of-android_NDK] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build\Android
+
+# on Linux
+build.sh --build_shared_lib --skip_submodule_sync --android --config Release --use_snpe --snpe_root [location-of-SNPE_SDK] --android_sdk_path [location-of-android_SDK] --android_ndk_path [location-of-android_NDK] --android_abi arm64-v8a --android_api [api-version] --cmake_generator Ninja --build_dir build/Android
+
+```
+
+---
+
 ## DirectML
 See more information on the DirectML execution provider [here](../execution-providers/DirectML-ExecutionProvider.md).
 ### Windows
