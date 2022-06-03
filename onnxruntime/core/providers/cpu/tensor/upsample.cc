@@ -405,10 +405,10 @@ static Status UpsampleLinear(const T* input,
 // is usually of shapes:
 // - [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
 // - [N, H, W, C] and the scales are [1.0, height_scale, width_scale, 1.0]
-BilinearParams SetupUpsampleBilinear(const int64_t input_height,
-                                     const int64_t input_width,
-                                     const int64_t output_height,
-                                     const int64_t output_width,
+BilinearParams SetupUpsampleBilinear(const int32_t input_height,
+                                     const int32_t input_width,
+                                     const int32_t output_height,
+                                     const int32_t output_width,
                                      const float height_scale,
                                      const float width_scale,
                                      const std::vector<float>& roi,
@@ -423,7 +423,7 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
   // For each index in the output height and output width, cache its corresponding indices in the input
   // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
   // each time we come across the output width/ output height value while iterating the output image tensor
-  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) * (output_height + output_width);
+  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int32_t) * (output_height + output_width);
 
   // For each index in the output height and output width, cache its corresponding "weights/scales" for its
   // corresponding indices in the input which proportionately indicates how much they will influence the final
@@ -437,7 +437,7 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
   p.idx_scale_data_buffer_holder = BufferUniquePtr(inx_scale_data_buffer, BufferDeleter(alloc));
 
   // Get pointers to appropriate memory locations in the scratch buffer
-  auto* idx_data = static_cast<int64_t*>(p.idx_scale_data_buffer_holder.get());
+  auto* idx_data = static_cast<int32_t*>(p.idx_scale_data_buffer_holder.get());
 
   // input_width is the stride for the height dimension
   p.input_width_mul_y1 = idx_data;
@@ -459,7 +459,7 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
   const size_t height_rindex = is_nchw ? 1 : 2;
   auto roi_y_start = roi.size() / 2 - (height_rindex + 1);
   auto roi_y_end = roi.size() - (height_rindex + 1);
-  for (int64_t y = 0; y < output_height; ++y) {
+  for (int32_t y = 0; y < output_height; ++y) {
     float in_y = height_scale == 1 ? static_cast<float>(y)
                                    : get_original_coordinate(static_cast<float>(y), height_scale,
                                                              static_cast<float>(output_height),
@@ -468,8 +468,8 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
     p.y_original.emplace_back(in_y);
     in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
 
-    const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
-    const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
+    const int32_t in_y1 = std::min(static_cast<int32_t>(in_y), input_height - 1);
+    const int32_t in_y2 = std::min(in_y1 + 1, input_height - 1);
     p.dy1[y] = std::fabs(in_y - in_y1);
     p.dy2[y] = std::fabs(in_y - in_y2);
 
@@ -485,7 +485,7 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
   const size_t width_rindex = is_nchw ? 0 : 1;
   auto roi_x_start = roi.size() / 2 - (width_rindex + 1);
   auto roi_x_end = roi.size() - (width_rindex + 1);
-  for (int64_t x = 0; x < output_width; ++x) {
+  for (int32_t x = 0; x < output_width; ++x) {
     float in_x = width_scale == 1 ? static_cast<float>(x)
                                   : get_original_coordinate(static_cast<float>(x),
                                                             width_scale,
@@ -495,7 +495,7 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
     p.x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
-    p.in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    p.in_x1[x] = std::min(static_cast<int32_t>(in_x), input_width - 1);
     p.in_x2[x] = std::min(p.in_x1[x] + 1, input_width - 1);
 
     p.dx1[x] = std::fabs(in_x - p.in_x1[x]);
@@ -1065,11 +1065,18 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                            Y->MutableData<T>(), alloc, get_original_coordinate_,
                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
-          NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                               height_scale, width_scale, roi,
-                               use_extrapolation_, extrapolation_value_, X->Data<T>(),
-                               Y->MutableData<T>(), alloc, get_original_coordinate_,
-                               output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          if (use_extrapolation_) {
+            NhwcUpsampleBilinear<T, true>(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                          height_scale, width_scale, roi,
+                                          extrapolation_value_, X->Data<T>(),
+                                          Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                          output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          } else {
+            NhwcUpsampleBilinear<T, false>(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                           height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(),
+                                           Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                           output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+          }
         }
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
@@ -1209,4 +1216,60 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
   return BaseCompute(context, *roi_ptr, scales_array, output_dims);
 }
+
+template <>
+void NhwcUpsampleBilinear<int8_t, false>(const int32_t batch_size,
+                                         const int32_t num_channels,
+                                         const int32_t input_height,
+                                         const int32_t input_width,
+                                         const int32_t output_height,
+                                         const int32_t output_width,
+                                         const float height_scale,
+                                         const float width_scale,
+                                         const std::vector<float>& roi,
+                                         const float extrapolation_value,
+                                         const int8_t* const XdataBase,
+                                         int8_t* const YdataBase,
+                                         AllocatorPtr& alloc,
+                                         const GetOriginalCoordinateFunc& get_original_coordinate,
+                                         concurrency::ThreadPool* tp) {
+  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width,
+                                           height_scale, width_scale, roi,
+                                           alloc, get_original_coordinate, false);
+  for (int64_t n = 0; n < batch_size; ++n) {
+    const int8_t* Xdata = XdataBase + n * (input_height * input_width) * num_channels;
+    int8_t* Ydata = YdataBase + n * (output_height * output_width) * num_channels;
+    concurrency::ThreadPool::TryParallelFor(
+        tp, output_height * output_width,
+        static_cast<double>(num_channels * 2),
+        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+          for (std::ptrdiff_t i = first; i < last; ++i) {
+            const int32_t x = i % output_width;
+            const int32_t y = i / output_width;
+
+            int32_t output_offset = (output_width * y + x) * num_channels;
+            int32_t X11_offset = (p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels;
+            int32_t X21_offset = (p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels;
+            int32_t X12_offset = (p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels;
+            int32_t X22_offset = (p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels;
+            float X11_coef = p.dx2[x] * p.dy2[y];
+            float X21_coef = p.dx1[x] * p.dy2[y];
+            float X12_coef = p.dx2[x] * p.dy1[y];
+            float X22_coef = p.dx1[x] * p.dy1[y];
+            for (int32_t c = 0; c < num_channels; ++c) {
+              int8_t X11 = Xdata[X11_offset + c];
+              int8_t X21 = Xdata[X21_offset + c];
+              int8_t X12 = Xdata[X12_offset + c];
+              int8_t X22 = Xdata[X22_offset + c];
+
+              Ydata[output_offset + c] = static_cast<int8_t>(X11_coef * X11 +
+                                                             X21_coef * X21 +
+                                                             X12_coef * X12 +
+                                                             X22_coef * X22);
+            }
+          }
+        });
+  }
+}
+
 }  // namespace onnxruntime

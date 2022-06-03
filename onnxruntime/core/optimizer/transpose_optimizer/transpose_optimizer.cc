@@ -1773,7 +1773,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
 
   // Transpose and MaxPool should be optimized any time there is a transpose as input and a handler is available.
   // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
-  if (!ctx.skip_cost_check && !node.IsOp("Transpose") && !node.IsOp("MaxPool")) {
+  if (!ctx.skip_cost_check && !node.IsOp("Transpose") && !node.IsOp("MaxPool") && !node.IsOp("Resize")) {
     // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
     // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
     // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
