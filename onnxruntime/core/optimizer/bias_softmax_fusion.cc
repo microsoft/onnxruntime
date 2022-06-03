@@ -69,7 +69,6 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
     }
     return true;
   };
-
   if (!type_allowed(input1) || !type_allowed(input2)) {
     return false;
   }
