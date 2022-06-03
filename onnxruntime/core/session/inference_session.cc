@@ -65,6 +65,8 @@
 #endif
 
 /// Shalva debug
+#define PEAK_MEM_PRINT
+#ifdef PEAK_MEM_PRINT
 #include "test/perftest/utils.h"
 #include <iostream>
 
@@ -74,9 +76,8 @@ void printPeak2(std::string s) {
   std::cout << s << " Peak working set size: " << set_size << " bytes"
             << std::endl;
 }
-
-#define PEAK_MEM_PRINT
-    ////
+#endif
+////
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

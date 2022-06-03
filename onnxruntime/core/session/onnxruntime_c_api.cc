@@ -38,6 +38,8 @@
 #include "core/platform/ort_mutex.h"
 
 /// Shalva debug
+#define PEAK_MEM_PRINT
+#ifdef PEAK_MEM_PRINT
 #include "..\..\test\perftest\utils.h"
 #include <iostream>
 #include <string>
@@ -48,8 +50,7 @@ void printPeak(std::string s){
     std::cout << s << " Peak working set size: " << set_size << " bytes"
               << std::endl;
 }
-
-#define PEAK_MEM_PRINT
+#endif
 ////
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
