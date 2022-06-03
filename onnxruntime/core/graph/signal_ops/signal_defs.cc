@@ -14,6 +14,8 @@
 
 #include <cmath>
 
+// NOTE: These were added to the standard op set. We register them under the MS domain
+// for backwards compatibility, but new users should use the standard ops instead.
 namespace onnxruntime {
 namespace signal {
 
@@ -284,6 +286,25 @@ void RegisterSignalSchemas() {
         updateOutputShape(ctx, 0, result_shape_proto);
       });
 
+  ONNX_NAMESPACE::NodeProto idft_function_body_node;
+  idft_function_body_node.set_op_type("DFT");
+
+  auto* idft_function_body_inverse = idft_function_body_node.add_attribute();
+  idft_function_body_inverse->set_name("inverse");
+  idft_function_body_inverse->set_i(1);
+
+  auto* idft_function_body_axis = idft_function_body_node.add_attribute();
+  idft_function_body_axis->set_name("axis");
+  idft_function_body_axis->set_ref_attr_name("axis");
+
+  idft_function_body_node.add_input("input");
+  idft_function_body_node.add_input("dft_length");
+  idft_function_body_node.add_output("output");
+
+  ONNX_NAMESPACE::OperatorSetIdProto idft_function_body_op_set;
+  idft_function_body_op_set.set_domain(kOnnxDomain);
+  idft_function_body_op_set.set_version(17);
+
   MS_SIGNAL_OPERATOR_SCHEMA(IDFT)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
@@ -335,8 +356,6 @@ void RegisterSignalSchemas() {
           "Constrain scalar length types to int64_t.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        const int64_t batch_ndim = 1;
-
         auto& input_shape = getInputShape(ctx, 0);
         ONNX_NAMESPACE::TensorShapeProto result_shape = input_shape;
         auto dim_size = static_cast<int64_t>(input_shape.dim_size());
@@ -349,7 +368,8 @@ void RegisterSignalSchemas() {
         }
 
         updateOutputShape(ctx, 0, result_shape);
-      });
+      })
+      .FunctionBody({idft_function_body_node}, {idft_function_body_op_set});
 
   MS_SIGNAL_OPERATOR_SCHEMA(STFT)
       .SetDomain(kMSExperimentalDomain)
@@ -471,7 +491,7 @@ void RegisterSignalSchemas() {
 
         const ONNX_NAMESPACE::TensorShapeProto* window_shape = nullptr;
         if (ctx.getNumInputs() >= 3) {
-          window_shape = getOptionalInputShape(ctx, 2);
+          window_shape = ONNX_NAMESPACE::getOptionalInputShape(ctx, 2);
         } else {
           window_shape = nullptr;
         }
@@ -644,11 +664,10 @@ void RegisterSignalSchemas() {
         }
         )ONNX");
 
-  static const char* MelWeightMatrix_ver17_doc = R"DOC(
+  static const char* MelWeightMatrix_doc = R"DOC(
 Generate a MelWeightMatrix that can be used to re-weight a Tensor containing a linearly sampled frequency spectra
-(from DFT or STFT) into num_mel_bins frequency information based on the [lower_edge_hertz, upper_edge_hertz] range
-on the mel scale.
-This function defines the mel scale in terms of a frequency in hertz according to the following formula:
+(from DFT or STFT) into num_mel_bins frequency information based on the [lower_edge_hertz, upper_edge_hertz] range on
+the mel scale. This function defines the mel scale in terms of a frequency in hertz according to the following formula:
 
     mel(f) = 2595 * log10(1 + f/700)
 
@@ -661,7 +680,7 @@ linear scale spectrum values (e.g. STFT magnitudes) to generate a "mel spectrogr
   MS_SIGNAL_OPERATOR_SCHEMA(MelWeightMatrix)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
-      .SetDoc(MelWeightMatrix_ver17_doc)
+      .SetDoc(MelWeightMatrix_doc)
       .Attr("output_datatype",
             "The data type of the output tensor. "
             "Strictly must be one of the types from DataType enum in TensorProto.",
