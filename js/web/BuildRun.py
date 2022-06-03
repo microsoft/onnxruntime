@@ -2,14 +2,12 @@ import os
 import shutil
 import argparse
 
-HR_Model_Path_ONNX = ".\\test\\data\\f\\"
-HR_Model_Path_ORT = ".\\test\\data\\f1\\"
-MobileNet_Model_Path_4inference = ".\\test\\data\\Med-MobileNet\\"
-MobileNet_Model_Path_1inference = ".\\test\\data\\Med-MobileNet1\\"
-MSRA_Model_Path_1inference = ".\\test\\data\\msra_190729_new1\\"
-MSRA_Model_Path_4inference = ".\\test\\data\\msra_190729_new\\"
 
-models = [HR_Model_Path_ONNX,HR_Model_Path_ORT,MobileNet_Model_Path_1inference,MobileNet_Model_Path_4inference,MSRA_Model_Path_1inference,MSRA_Model_Path_4inference]
+HR_Model_Path_ONNX = ".\\test\\data\\ONNX\\"
+HR_Model_Path_ORT = ".\\test\\data\\ORT\\"
+
+models = {"HR_ONNX":HR_Model_Path_ONNX,"HR_ORT":HR_Model_Path_ORT}
+
 
 Build_Path = "..\\..\\build\\Windows\\Release\\"
 Dist_Path = ".\\dist\\"
@@ -27,7 +25,7 @@ Binding_Path = ".\\lib\\wasm\\binding\\"
 parser = argparse.ArgumentParser()
 parser.add_argument("-b", "--build", choices=["Release","Debug"], help='build WASM - {Release,Debug}')
 parser.add_argument("-p", "--partial", help='build WASM - {full,partial}', action="store_true")
-parser.add_argument("-r", "--run", choices=["HR","MNSSD","MSRA"],help='build WASM - {HR,MNSSD,MSRA}')
+parser.add_argument("-r", "--run", choices=["HR_ONNX","HR_ORT"],help='run test app')
 
 args = parser.parse_args()
 
@@ -72,9 +70,10 @@ if(args.build):
 
 if(args.run):
     model_name = args.run
+    model_path = models[model_name]
     #print(model_name)
     ## Running the tests
-    command = "npm test -- model "+HR_Model_Path_ORT+" -b=wasm --wasm-enable-simd=false --wasm-number-threads=1"
+    command = "npm test -- model "+model_path+" -b=wasm --wasm-enable-simd=true --wasm-number-threads=1"
     os.system(command)
 
 exit()

@@ -159,6 +159,8 @@ struct TensorProto final {
 
   static bool DataType_IsValid(int value) { return g_host->TensorProto_DataType_IsValid(value); }
 
+  void copy_from(const TensorProto* other) { return g_host->TensorProto__CopyFrom(this, other); }
+
   TensorProto() = delete;
   TensorProto(const TensorProto&) = delete;
 };
@@ -240,6 +242,8 @@ struct TypeProto_Sequence final {
 };
 
 struct TypeProto final {
+  static std::unique_ptr<TypeProto> Create() { return g_host->TypeProto__construct(); }
+
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
 
@@ -268,7 +272,10 @@ struct TypeProto final {
 
   ValueCase value_case() const { return ValueCase(g_host->TypeProto__value_case(this)); }
 
-  PROVIDER_DISALLOW_ALL(TypeProto)
+  void copy_from(const TypeProto* other) { return g_host->TypeProto__CopyFrom(this, other); }
+
+  TypeProto() = delete;
+  TypeProto(const TypeProto&) = delete;
 };
 
 struct ValueInfoProto final {
@@ -705,6 +712,8 @@ struct GraphViewer final {
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->GraphViewer__GetInputsIncludingInitializers(this); }
 
+  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) const { g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args); }
+
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;
   void operator=(const GraphViewer&) = delete;
@@ -1017,7 +1026,7 @@ struct SparseTensor final {
 };
 #endif
 
-//TensorSeq
+// TensorSeq
 struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }

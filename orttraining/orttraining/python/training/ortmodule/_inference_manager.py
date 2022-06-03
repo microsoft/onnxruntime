@@ -3,14 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import (_utils,
-               _io,
-               _logger,
-               _are_deterministic_algorithms_enabled,
-               _use_deterministic_algorithms)
-from ._graph_execution_manager import (GraphExecutionManager,
-                                       _RunStateInfo,
-                                       _SkipCheck)
+from . import _utils, _io, _logger, _are_deterministic_algorithms_enabled, _use_deterministic_algorithms
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
 from ._execution_agent import InferenceAgent
 from .debug_options import DebugOptions
 from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
@@ -47,23 +41,25 @@ class InferenceManager(GraphExecutionManager):
         # Run and return module outputs.
         ort_output = execution_session.run_forward(io_binding, run_options)
         forward_outputs, run_id = ort_output.ortvalues, ort_output.run_id
-        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(
-            forward_output._ortvalue, device) for forward_output in forward_outputs)
+
+        # forward outputs is a list (std::vector<OrtValue>) but _ortvalues_to_torch_tensor
+        # is expected a OrtValueVector (also std::vector<OrtValue> but defined in onnxruntime-training).
+        # _ortvalues_to_torch_tensor_list needs to be used.
+        user_outputs = _utils._ortvalues_to_torch_tensor_list(forward_outputs, device)
         state = None
 
-        output_info = [(output.shape, output.device, output.dtype)
-                       for output in user_outputs]
+        output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)
         # Return user outputs and forward run information
         return user_outputs, run_info
 
     def forward(self, *inputs, **kwargs):
-        '''Forward pass of the inference model
+        """Forward pass of the inference model
 
         ONNX model is exported the first time this method is executed.
         Next, we build an optimized inference graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession through the InferenceAgent.
-        '''
+        """
 
         # Fallback to PyTorch due to failures *external* to forward(),
         #  typically from initialization
@@ -72,19 +68,27 @@ class InferenceManager(GraphExecutionManager):
 
         try:
             # Issue at most one warning message about fast path
-            if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False \
-                    and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
+            if (
+                self._first_skip_check_warning is True
+                and self._skip_check.is_disabled() is False
+                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
+            ):
                 self._first_skip_check_warning = False
-                warnings.warn(f"Fast path enabled - skipping checks."
-                              f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                              f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                              f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
+                warnings.warn(
+                    f"Fast path enabled - skipping checks."
+                    f"rebuild gradient graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
+                    f"execution agent recreation: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
+                    f"device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}",
+                    UserWarning,
+                )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_graph = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
-                not self._onnx_models.exported_model:
+            if (
+                self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
+                or not self._onnx_models.exported_model
+            ):
                 # Exporting module to ONNX for the first time
                 build_graph = self._export_model(*inputs, **kwargs)
                 if build_graph:
@@ -98,14 +102,14 @@ class InferenceManager(GraphExecutionManager):
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or \
-                    not self._execution_agent:
-                module_device = _utils.get_device_from_module(
-                    self._original_module)
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or not self._execution_agent:
+                module_device = _utils.get_device_from_module(self._original_module)
 
-                create_execution_session = (build_graph or self._device != module_device or
-                                            torch.are_deterministic_algorithms_enabled() is not
-                                            _are_deterministic_algorithms_enabled())
+                create_execution_session = (
+                    build_graph
+                    or self._device != module_device
+                    or torch.are_deterministic_algorithms_enabled() is not _are_deterministic_algorithms_enabled()
+                )
                 _use_deterministic_algorithms(torch.are_deterministic_algorithms_enabled())
 
                 if self._device != module_device:
@@ -119,29 +123,32 @@ class InferenceManager(GraphExecutionManager):
                 # Assert that the input and model device match
                 _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
-            user_outputs, _ = InferenceManager.execution_session_run_forward(self._execution_agent,
-                                                                             self._onnx_models.optimized_model,
-                                                                             self._device,
-                                                                             *_io._combine_input_buffers_initializers(
-                                                                                 self._graph_initializers,
-                                                                                 self._graph_info.user_input_names,
-                                                                                 self._input_info,
-                                                                                 self._flattened_module.named_buffers(),
-                                                                                 inputs,
-                                                                                 kwargs,
-                                                                                 self._device))
+            user_outputs, _ = InferenceManager.execution_session_run_forward(
+                self._execution_agent,
+                self._onnx_models.optimized_model,
+                self._device,
+                *_io._combine_input_buffers_initializers(
+                    self._graph_initializers,
+                    self._graph_info.user_input_names,
+                    self._input_info,
+                    self._flattened_module.named_buffers(),
+                    inputs,
+                    kwargs,
+                    self._device,
+                ),
+            )
 
-            return _io.unflatten_user_output(self._module_output_schema,
-                                             user_outputs)
+            return _io.unflatten_user_output(self._module_output_schema, user_outputs)
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
-            self._fallback_manager.handle_exception(exception=e,
-                                                    log_level=self._debug_options.logging.log_level)
+            self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)
         except Exception as e:
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
-            self._fallback_manager.handle_exception(exception=e,
-                                                    log_level=self._debug_options.logging.log_level,
-                                                    override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
+            self._fallback_manager.handle_exception(
+                exception=e,
+                log_level=self._debug_options.logging.log_level,
+                override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD,
+            )
         # Fallback to PyTorch due to failures *during* forward(),
         #  (e.g. export, model/input post-processing, forward, output processing, etc)
         if self._fallback_manager.is_pending():
@@ -152,13 +159,16 @@ class InferenceManager(GraphExecutionManager):
 
         super()._build_graph()
         if self._debug_options.save_onnx_models.save:
-            self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.path,
-                                                   self._debug_options.save_onnx_models.name_prefix,
-                                                   self._export_mode)
+            self._onnx_models.save_optimized_model(
+                self._debug_options.save_onnx_models.path,
+                self._debug_options.save_onnx_models.name_prefix,
+                self._export_mode,
+            )
 
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
 
         session_options, providers, provider_options = self._get_session_config()
-        self._execution_agent = InferenceAgent(self._onnx_models.optimized_model.SerializeToString(),
-                                               session_options, providers, provider_options)
+        self._execution_agent = InferenceAgent(
+            self._onnx_models.optimized_model.SerializeToString(), session_options, providers, provider_options
+        )

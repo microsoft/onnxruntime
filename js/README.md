@@ -23,7 +23,7 @@ Please follow the steps described below to setup development environment.
 
 ### Prerequisites
 
-- Node.js (14.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
+- Node.js (16.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
 - Python (2.7 or 3.6+): https://www.python.org/downloads/
 
@@ -435,13 +435,11 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
 1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
 
-2. Run `yarn prepack-rel` to change `onnxruntime-common` to point to a published npm package
+2. Run `npm pack` and verify NPM package contents
 
-3. Run `npm pack` and verify NPM package contents
+3. Run `npm publish <tgz> --dry-run` to see how it's going to be published
 
-4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
-
-5. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
+4. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
 
 ### Distribution
 

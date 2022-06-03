@@ -3,6 +3,8 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
@@ -16,22 +18,14 @@
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/test_utils.h"
 
-#if defined(__ANDROID__)
-#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
-#endif
-
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
 #include "test/providers/provider_test_utils.h"
+#include "test/optimizer/qdq_test_utils.h"
 #endif
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
-
-#if !defined(ORT_MINIMAL_BUILD)
-#include "test/optimizer/qdq_test_utils.h"
-#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -41,6 +35,17 @@ namespace onnxruntime {
 namespace test {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+namespace {
+void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(const Graph&)>& check_graph) {
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  check_graph(session_object.GetGraph());
+}
+}  // namespace
 
 // Since NNAPI EP handles Reshape and Flatten differently,
 // Please see ReshapeOpBuilder::CanSkipReshape in
@@ -69,13 +74,9 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
                             feeds);
 #else
   // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "Some nodes should have been taken by the NNAPI EP";
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "Some nodes should have been taken by the NNAPI EP"; });
 #endif
 }
 
@@ -100,14 +101,9 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1)
-      << "Exactly one node (Add) should have been taken by the NNAPI EP";
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 1)
+                                             << "Exactly one node (Add) should have been taken by the NNAPI EP"; });
 #endif
 }
 
@@ -133,14 +129,9 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "Some nodes should have been taken by the NNAPI EP";
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "Some nodes should have been taken by the NNAPI EP"; });
 #endif
 }
 
@@ -217,14 +208,9 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "Some nodes should have been taken by the NNAPI EP";
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "Some nodes should have been taken by the NNAPI EP"; });
 #endif
 }
 
@@ -267,11 +253,9 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
   // verify the entire graph will not be assigned to NNAPI EP
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "No node should be taken by the NNAPI EP";
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "No nodes should have been taken by the NNAPI EP"; });
 }
 
 static void RunQDQModelTest(
@@ -449,6 +433,44 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
 }
 #endif
 
+TEST(NnapiExecutionProviderTest, TestQDQGemm) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      true /* has_bias */,
+                      1 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_1",
+                  {ExpectedEPNodeAssignment::All});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoTransB) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      true /* has_bias */,
+                      0 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_2",
+                  {ExpectedEPNodeAssignment::All});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQGemm_NoBias) {
+  RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      false /* has_bias */,
+                      1 /* transB */),
+                  "nnapi_qdq_test_graph_gemm_3",
+                  {ExpectedEPNodeAssignment::All});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQMatMul) {
+  RunQDQModelTest(BuildQDQMatMulTestCase(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */),
+                  "nnapi_qdq_test_graph_matmul",
+                  {ExpectedEPNodeAssignment::All});
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
@@ -482,14 +504,27 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
                             feeds);
 #else
   // test load only
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "Some nodes should have been taken by the NNAPI EP"; });
+
+#endif
+}
+
+// test that NNAPI EP can process an activation node that is outside of its partition
+TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
+  // model starts with Conv -> Relu
+  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
+  const auto nnapi_partitioning_stop_ops = "Relu";
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(
+      std::make_unique<NnapiExecutionProvider>(0, nnapi_partitioning_stop_ops)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "Some nodes should have been taken by the NNAPI EP";
-#endif
+  // expect one NNAPI partition
+  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1);
 }
 
 }  // namespace test

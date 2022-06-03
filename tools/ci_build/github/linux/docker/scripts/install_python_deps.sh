@@ -6,6 +6,7 @@ INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 TARGET_ROCM=false
 CU_VER="11.1"
+ROCM_VER="5.1.1"
 TORCH_VERSION='1.10.0'
 USE_CONDA=false
 
@@ -16,6 +17,7 @@ p) PYTHON_VER=${OPTARG};;
 h) TORCH_VERSION=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
 v) CU_VER=${OPTARG};;
+o) ROCM_VER=${OPTARG};;
 t) INSTALL_DEPS_TRAINING=true;;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 u) ORTMODULE_BUILD=true;;
@@ -57,20 +59,11 @@ if [ $DEVICE_TYPE = "gpu" ]; then
       ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/requirements.txt}
     else
       if [[ $TARGET_ROCM = false ]]; then
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_cu${CU_VER}.txt}
-        # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through ortmodule/stage2/requirements.txt
+        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_cu${CU_VER}\/requirements.txt}
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
       else
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements-torch${TORCH_VERSION}_rocm.txt}
+        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_rocm${ROCM_VER}\/requirements.txt}
         ${PYTHON_EXE} -m pip install fairscale
-	# remove DeepSpeed until it's required for testing purposes
-	# remove triton requirement from getting triggered in requirements-sparse_attn.txt
-        # git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed
-        # cd DeepSpeed &&\
-        #   rm requirements/requirements-sparse_attn.txt &&\
-        #   ${PYTHON_EXE} setup.py bdist_wheel &&\
-        #   ${PYTHON_EXE} -m pip install dist/deepspeed*.whl &&\
- 	#   cd .. && rm -fr DeepSpeed
       fi
     fi
   fi

@@ -3,19 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import (_utils,
-               _io,
-               _logger,
-               _are_deterministic_algorithms_enabled,
-               _use_deterministic_algorithms)
-from ._graph_execution_manager import (GraphExecutionManager,
-                                       _RunStateInfo,
-                                       _SkipCheck)
+from . import _utils, _io, _logger, _are_deterministic_algorithms_enabled, _use_deterministic_algorithms
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
 from ._execution_agent import TrainingAgent
 from .debug_options import DebugOptions
-from ._fallback import (ORTModuleFallbackException,
-                        _FallbackPolicy,
-                        _FallbackManager)
+from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
@@ -50,7 +42,7 @@ class TrainingManager(GraphExecutionManager):
             # TODO: Non-contiguous tensor input in execution_session_run_forward, need tensor copy.
             if not input.is_contiguous():
                 input = input.contiguous()
-            if input.device.type == 'ort':
+            if input.device.type == "ort":
                 forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
             else:
                 valid_ort_tensor = _utils._torch_tensor_to_dlpack(input)
@@ -68,21 +60,20 @@ class TrainingManager(GraphExecutionManager):
         return user_outputs, run_info
 
     def _create_autofunction_class(self):
-
         class _ORTModuleFunction(torch.autograd.Function):
-            '''Use a custom torch.autograd.Function to associate self.backward_graph as the
-            gradient implementation for self.forward_graph.'''
+            """Use a custom torch.autograd.Function to associate self.backward_graph as the
+            gradient implementation for self.forward_graph."""
 
             @staticmethod
             def forward(ctx, *inputs):
-                '''Performs forward pass based on user input and PyTorch initializer
+                """Performs forward pass based on user input and PyTorch initializer
 
                 Autograd Function's apply() doesn't support keyword arguments,
                 so `*inputs` has all the arguments - keyword arguments converted
                 to positional/keywords during `TrainingManager.forward`.
 
                 Module outputs are returned to the user
-                '''
+                """
 
                 if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                     # Assert that the input and model device match
@@ -93,7 +84,8 @@ class TrainingManager(GraphExecutionManager):
                     self._onnx_models.optimized_model,
                     self._device,
                     self._gradient_accumulation_manager,
-                    *inputs)
+                    *inputs,
+                )
 
                 # Disable materializing grads then None object will not be
                 # converted to a tensor filled with zeros prior to calling backward.
@@ -120,9 +112,9 @@ class TrainingManager(GraphExecutionManager):
 
             @staticmethod
             def backward(ctx, *grad_outputs):
-                '''Performs backward pass based on grad wrt module output'''
+                """Performs backward pass based on grad wrt module output"""
 
-                assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
+                assert ctx.run_info is not None, "forward() or __call__() methods must be called before backward()"
                 if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) is False:
                     _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
@@ -136,11 +128,12 @@ class TrainingManager(GraphExecutionManager):
                 backward_inputs.reserve(len(grad_outputs))
                 for idx, grad_output in enumerate(grad_outputs):
                     if idx in self._graph_info.output_grad_indices_non_differentiable:
-                        assert grad_output is None, "ORT found the {}-th module output '{}' is " \
-                                                    "non-differentiable according to the onnx graph. " \
-                                                    "However, the gradient value is still provided by " \
-                                                    "PyTorch's autograd engine." \
-                                                    .format(idx, self._graph_info.user_output_names[idx])
+                        assert grad_output is None, (
+                            "ORT found the {}-th module output '{}' is "
+                            "non-differentiable according to the onnx graph. "
+                            "However, the gradient value is still provided by "
+                            "PyTorch's autograd engine.".format(idx, self._graph_info.user_output_names[idx])
+                        )
                         continue
 
                     if grad_output is None:
@@ -148,14 +141,15 @@ class TrainingManager(GraphExecutionManager):
                         if idx in self._graph_info.output_grad_indices_require_full_shape:
                             grad_output = torch.zeros(shape, device=device, dtype=dtype)
                         else:
-                            grad_output = torch.tensor(0., device=device, dtype=dtype)
+                            grad_output = torch.tensor(0.0, device=device, dtype=dtype)
                     elif not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
-                    if grad_output.device.type == 'ort':
+                    if grad_output.device.type == "ort":
                         backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
                     else:
-                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output),
-                                              grad_output.dtype is torch.bool)
+                        backward_inputs.push_back(
+                            _utils._torch_tensor_to_dlpack(grad_output), grad_output.dtype is torch.bool
+                        )
                 backward_inputs.shrink_to_fit()
 
                 # Run and get results
@@ -164,44 +158,21 @@ class TrainingManager(GraphExecutionManager):
                 # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
                 # affect peak memory usage in a subsequent graph run.
                 del ctx.run_info.state
-                # Return input and initializer gradients
-                num_user_input_grads = len(self._input_info.require_grad_names)
-                results = []
-                require_grad_names_set = set(self._input_info.require_grad_names)
-                require_grad_names_index = 0
-                for input_name in self._graph_info.user_input_names:
-                    # Append to the results the backward output for each input that required grad
-                    if input_name in require_grad_names_set:
-                        results.append(_utils._ortvalue_to_torch_tensor(
-                            backward_outputs[require_grad_names_index], self._device))
-                        require_grad_names_index += 1
-                    else:
-                        # input_name is not found in the self._input_info.require_grad_names list
-                        # Append None to results for each input that did not require grad
-                        results.append(None)
 
-                # Append gradients of initializer to results
-                # Go over each initializer, check if it required grad and append to results accordingly
-                initializer_index = num_user_input_grads
-                for initializer_name in self._graph_info.initializer_names:
-                    if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._ortvalue_to_torch_tensor(
-                            backward_outputs[initializer_index], self._device))
-                        initializer_index += 1
-                    else:
-                        results.append(None)
-
-                return tuple(results)
+                # Fast version: all backward_outputs are converted first.
+                # This version only works if backward_outputs is an OrtValueVector.
+                transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
+                return tuple(transfered_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
         return _ORTModuleFunction
 
     def forward(self, *inputs, **kwargs):
-        '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+        """Forward pass starts here and continues at `_ORTModuleFunction.forward`
 
         ONNX model is exported the first time this method is executed.
         Next, we build a full training graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession.
-        '''
+        """
 
         # Fallback to PyTorch due to failures *external* to forward(),
         #  typically from initialization
@@ -209,20 +180,28 @@ class TrainingManager(GraphExecutionManager):
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
-            if self._first_skip_check_warning is True and self._skip_check.is_disabled() is False \
-                    and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING:
+            if (
+                self._first_skip_check_warning is True
+                and self._skip_check.is_disabled() is False
+                and self._debug_options.logging.log_level <= _logger.LogLevel.WARNING
+            ):
                 # Only change this after the firs time a warning is issued.
                 self._first_skip_check_warning = False
-                warnings.warn(f"Fast path enabled - skipping checks."
-                              f" Rebuild graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
-                              f" Execution agent: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
-                              f" Device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}", UserWarning)
+                warnings.warn(
+                    f"Fast path enabled - skipping checks."
+                    f" Rebuild graph: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT)},"
+                    f" Execution agent: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT)},"
+                    f" Device check: {self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE)}",
+                    UserWarning,
+                )
 
             # If exporting module to ONNX for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             build_gradient_graph = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
-                    not self._onnx_models.exported_model:
+            if (
+                self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False
+                or not self._onnx_models.exported_model
+            ):
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
@@ -231,17 +210,14 @@ class TrainingManager(GraphExecutionManager):
                 # since the schema was just extracted while trying to export the model and it was either
                 # saved to self._input_info.schema or checked for equality with the self._input_info.schema
                 # it should not need to be updated again. Pass it inside parse_inputs_for_onnx_export.
-                input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
-                                                              self._onnx_models.exported_model,
-                                                              self._input_info.schema,
-                                                              inputs,
-                                                              kwargs)
+                input_info = _io.parse_inputs_for_onnx_export(
+                    self._module_parameters, self._onnx_models.exported_model, self._input_info.schema, inputs, kwargs
+                )
 
                 # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
                 # Order of or operation is important here because we always need to call
                 # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
-                build_gradient_graph = self._reinitialize_graph_builder(
-                    input_info) or build_gradient_graph
+                build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
 
                 # Build the gradient graph
                 if build_gradient_graph:
@@ -250,13 +226,15 @@ class TrainingManager(GraphExecutionManager):
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
             create_execution_session = False
-            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or \
-                    not self._execution_agent:
-                device = _utils.get_device_from_module(self._original_module) or \
-                    _utils.get_device_from_inputs(inputs, kwargs)
-                create_execution_session = (build_gradient_graph or self._device != device or
-                                            torch.are_deterministic_algorithms_enabled() is not
-                                            _are_deterministic_algorithms_enabled())
+            if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) is False or not self._execution_agent:
+                device = _utils.get_device_from_module(self._original_module) or _utils.get_device_from_inputs(
+                    inputs, kwargs
+                )
+                create_execution_session = (
+                    build_gradient_graph
+                    or self._device != device
+                    or torch.are_deterministic_algorithms_enabled() is not _are_deterministic_algorithms_enabled()
+                )
                 _use_deterministic_algorithms(torch.are_deterministic_algorithms_enabled())
                 if self._device != device:
                     self._device = device
@@ -265,31 +243,36 @@ class TrainingManager(GraphExecutionManager):
                 # Create execution session creates the training_session
                 self._create_execution_agent()
 
-                self._gradient_accumulation_manager.initialize(self._enable_grad_acc_optimization,
-                                                               self._flattened_module,
-                                                               self._graph_info)
+                self._gradient_accumulation_manager.initialize(
+                    self._enable_grad_acc_optimization, self._flattened_module, self._graph_info
+                )
 
             self._gradient_accumulation_manager.maybe_update_cache_before_run()
 
-            return _io.unflatten_user_output(self._module_output_schema,
-                                             self._forward_class.apply(
-                                                 *_io._combine_input_buffers_initializers(
-                                                     self._graph_initializers,
-                                                     self._graph_info.user_input_names,
-                                                     self._input_info,
-                                                     self._flattened_module.named_buffers(),
-                                                     inputs,
-                                                     kwargs,
-                                                     self._device)))
+            return _io.unflatten_user_output(
+                self._module_output_schema,
+                self._forward_class.apply(
+                    *_io._combine_input_buffers_initializers(
+                        self._graph_initializers,
+                        self._graph_info.user_input_names,
+                        self._input_info,
+                        self._flattened_module.named_buffers(),
+                        inputs,
+                        kwargs,
+                        self._device,
+                    )
+                ),
+            )
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
-            self._fallback_manager.handle_exception(exception=e,
-                                                    log_level=self._debug_options.logging.log_level)
+            self._fallback_manager.handle_exception(exception=e, log_level=self._debug_options.logging.log_level)
         except Exception as e:
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
-            self._fallback_manager.handle_exception(exception=e,
-                                                    log_level=self._debug_options.logging.log_level,
-                                                    override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
+            self._fallback_manager.handle_exception(
+                exception=e,
+                log_level=self._debug_options.logging.log_level,
+                override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD,
+            )
 
         # Fallback to PyTorch due to failures *during* forward(),
         #  (e.g. export, model/input post-processing, forward, output processing, etc)
@@ -302,9 +285,11 @@ class TrainingManager(GraphExecutionManager):
         super()._build_graph()
 
         if self._debug_options.save_onnx_models.save:
-            self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.path,
-                                                   self._debug_options.save_onnx_models.name_prefix,
-                                                   self._export_mode)
+            self._onnx_models.save_optimized_model(
+                self._debug_options.save_onnx_models.path,
+                self._debug_options.save_onnx_models.name_prefix,
+                self._export_mode,
+            )
 
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
@@ -312,36 +297,41 @@ class TrainingManager(GraphExecutionManager):
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
         device_type = self._device if type(self._device) is str else self._device.type.lower()
-        if device_type == 'ort':
-            fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (len(self._graph_info.user_output_names) +
-                                len(self._graph_info.frontier_node_arg_map))
+        if device_type == "ort":
+            fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (
+                len(self._graph_info.user_output_names) + len(self._graph_info.frontier_node_arg_map)
+            )
         else:
             fw_outputs_device_info = [
-                C.OrtDevice(get_ort_device_type(self._device),
-                            C.OrtDevice.default_memory(),
-                            _utils.get_device_index(self._device)
-                            )] * (len(self._graph_info.user_output_names) +
-                                len(self._graph_info.frontier_node_arg_map))
+                C.OrtDevice(
+                    get_ort_device_type(self._device.type, self._device.index),
+                    C.OrtDevice.default_memory(),
+                    _utils.get_device_index(self._device),
+                )
+            ] * (len(self._graph_info.user_output_names) + len(self._graph_info.frontier_node_arg_map))
 
         bw_fetches_names = [output.name for output in self._onnx_models.optimized_model.graph.output]
-        if device_type == 'ort':
-            bw_outputs_device_info = [
-                    C.get_ort_device(self._device.index)] * len(bw_fetches_names)
+        if device_type == "ort":
+            bw_outputs_device_info = [C.get_ort_device(self._device.index)] * len(bw_fetches_names)
         else:
             bw_outputs_device_info = [
-                C.OrtDevice(get_ort_device_type(self._device),
-                            C.OrtDevice.default_memory(),
-                            _utils.get_device_index(self._device)
-                            )] * len(bw_fetches_names)
+                C.OrtDevice(
+                    get_ort_device_type(self._device.type, self._device.index),
+                    C.OrtDevice.default_memory(),
+                    _utils.get_device_index(self._device),
+                )
+            ] * len(bw_fetches_names)
 
-        self._execution_agent = TrainingAgent(self._onnx_models.optimized_model.SerializeToString(),
-                                              fw_feed_names,
-                                              fw_outputs_device_info,
-                                              bw_fetches_names,
-                                              bw_outputs_device_info,
-                                              session_options,
-                                              providers,
-                                              provider_options)
+        self._execution_agent = TrainingAgent(
+            self._onnx_models.optimized_model.SerializeToString(),
+            fw_feed_names,
+            fw_outputs_device_info,
+            bw_fetches_names,
+            bw_outputs_device_info,
+            session_options,
+            providers,
+            provider_options,
+        )
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""
@@ -349,14 +339,18 @@ class TrainingManager(GraphExecutionManager):
         # Model may have unused params dropped after export and not part of self._graph_initializer_names_to_train
         # To see if any trainable initializers changed, compare self._graph_initializer_names_to_train
         # with initializers in module named_parameters that are known to the onnx graph.
-        initializer_names_to_train_set_user_model = {name for name, param in
-                                                     self._flattened_module.named_parameters()
-                                                     if param.requires_grad and name in self._graph_initializer_names}
+        initializer_names_to_train_set_user_model = {
+            name
+            for name, param in self._flattened_module.named_parameters()
+            if param.requires_grad and name in self._graph_initializer_names
+        }
 
         # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
-        if input_info.require_grad_names != self._input_info.require_grad_names or \
-                initializer_names_to_train_set_user_model != self._graph_initializer_names_to_train:
+        if (
+            input_info.require_grad_names != self._input_info.require_grad_names
+            or initializer_names_to_train_set_user_model != self._graph_initializer_names_to_train
+        ):
             self._input_info = input_info
             self._initialize_graph_builder(training=True)
             return True
@@ -368,7 +362,7 @@ class TrainingManager(GraphExecutionManager):
         # Only top level classes are pickleable. So, _ORTModuleFunction is
         # not pickleable. So, let's not pickle it, and redefine it when
         # loading the state.
-        del state['_forward_class']
+        del state["_forward_class"]
         return state
 
     def __setstate__(self, state):

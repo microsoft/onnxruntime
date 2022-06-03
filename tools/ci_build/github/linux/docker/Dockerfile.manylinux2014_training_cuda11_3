@@ -120,11 +120,6 @@ RUN export OPENSSL_ROOT=openssl-1.1.1l && \
 COPY build_scripts/build-cpython.sh /build_scripts/
 
 
-FROM build_cpython AS build_cpython36
-COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.6.15
-
-
 FROM build_cpython AS build_cpython37
 COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.7.12
@@ -150,7 +145,6 @@ COPY build_scripts/install-pypy.sh /build_scripts/install-pypy.sh
 COPY build_scripts/pypy.sha256 /build_scripts/pypy.sha256
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.7 7.3.7
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.7
-COPY --from=build_cpython36 /opt/_internal /opt/_internal/
 COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
@@ -166,7 +160,6 @@ COPY --from=all_python /opt/_internal /opt/_internal/
 COPY build_scripts/finalize.sh \
      build_scripts/update-system-packages.sh \
      build_scripts/python-tag-abi-tag.py \
-     build_scripts/requirements3.6.txt \
      build_scripts/requirements3.7.txt \
      build_scripts/requirements3.8.txt \
      build_scripts/requirements3.9.txt \
@@ -181,7 +174,7 @@ ENV SSL_CERT_FILE=/opt/_internal/certs.pem
 CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
-ARG PYTHON_VERSION=3.6
+ARG PYTHON_VERSION=3.9
 ARG TORCH_VERSION=1.11.0
 ARG OPSET_VERSION=14
 ARG INSTALL_DEPS_EXTRA_ARGS

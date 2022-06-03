@@ -19,15 +19,16 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
-#include "core/optimizer/bias_dropout_fusion.h"
-#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
+#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -39,8 +40,8 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_config.h"
@@ -48,6 +49,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -55,14 +57,13 @@
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/isinf_reducesum_fusion.h"
-#include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -75,10 +76,13 @@
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
-#include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -747,6 +751,70 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 1);  // Add remains, no transform applied to the graph
+}
+
+#endif
+
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// Conv->Add->Relu will be transformed to FusedConv
+TEST_F(GraphTransformationTests, FuseCpuConvAddRelu) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  ASSERT_TRUE(op_to_count["Relu"] == 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvAddActivationFusion>(), TransformerLevel::Level3));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);   // Add removed from graph
+  ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
+}
+
+// Conv->Add->Relu will be partly fused  to Conv_Add->Relu since there is Identity depend on Add
+TEST_F(GraphTransformationTests, FuseCpuConvAddReluIdentity) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_identity.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  ASSERT_TRUE(op_to_count["Relu"] == 1);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvAddActivationFusion>(), TransformerLevel::Level3));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);       // Add removed
+  ASSERT_TRUE(op_to_count["Relu"] == 1);      // Relu remains
+  ASSERT_TRUE(op_to_count["Identity"] == 1);  // Identity remains
+}
+
+// Conv->Add will be transformed to FusedConv
+TEST_F(GraphTransformationTests, FuseCpuConvAdd) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvAddActivationFusion>(), TransformerLevel::Level3));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 0);  // Add removed
 }
 
 #endif
@@ -2010,13 +2078,13 @@ TEST_F(GraphTransformationTests, ReluClip11Fusion) {
 
   // add initializer for min_input_1 so it's constant
   TensorProto const_min_1;
-  Initializer i1(TensorProto_DataType_FLOAT16, "min_input_1", {1});
+  Initializer i1(TensorProto_DataType_FLOAT16, "min_input_1", AsSpan<int64_t>({1}));
   i1.data<MLFloat16>()->val = math::floatToHalf(-1.f);
   i1.ToProto(const_min_1);
   graph.AddInitializedTensor(const_min_1);
 
   TensorProto const_min_2;
-  Initializer i2(TensorProto_DataType_FLOAT, "min_input_2", {1});
+  Initializer i2(TensorProto_DataType_FLOAT, "min_input_2", AsSpan<int64_t>({1}));
   *i2.data<float>() = 1.f;
   i2.ToProto(const_min_2);
   graph.AddInitializedTensor(const_min_2);
@@ -3565,6 +3633,50 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
 
+#ifdef ENABLE_TRAINING
+static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
+                                     const int add_count, const int dropout_count, const int bitmask_dropout_count,
+                                     const int bias_dropout_count, const int bitmask_bias_dropout_count,
+                                     const int dropout_grad_count, const int bitmask_dropout_grad_count) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  if (is_bias_dropout) {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2));
+  } else {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BitmaskDropoutReplacement>(), TransformerLevel::Level2));
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Add"], add_count);
+  ASSERT_EQ(op_to_count["Dropout"], dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropout"], bitmask_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskBiasDropout"], bitmask_bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.DropoutGrad"], dropout_grad_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropoutGrad"], bitmask_dropout_grad_count);
+}
+
+TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 1, 0, 0,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_multiple_mask_uses.onnx", false, *logger_,
+                           0, 1, 0, 0, 0, 1, 0);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 0,
+                           0, 1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_basic.onnx", true, *logger_, 0, 0, 0, 0, 1,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0,
+                           1, 0, 1);
+}
+#endif
+
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
   std::shared_ptr<Model> p_model;
@@ -3735,27 +3847,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
-TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeDisallowed) {
-  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 1);
-  ASSERT_TRUE(op_to_count["Pow"] == 1);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 1);
-  ASSERT_TRUE(op_to_count["Cast"] == 2);
-  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 0);
-}
-
-TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeAllowed) {
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -3763,7 +3855,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_Precisio
 
   InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, true), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -4660,6 +4752,18 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
         EXPECT_EQ(original_op_counts, transformed_op_counts);
       },
       {kCpuExecutionProvider});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_with_scale_input.onnx", *logger_,
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 1);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 1);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 0);
+      });
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
