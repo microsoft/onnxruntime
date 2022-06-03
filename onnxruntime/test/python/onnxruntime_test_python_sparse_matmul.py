@@ -2,7 +2,6 @@
 # Licensed under the MIT License.
 # pylint: disable=C0115,W0212,C0103,C0114
 
-import sys
 import threading
 
 # -*- coding: UTF-8 -*-
