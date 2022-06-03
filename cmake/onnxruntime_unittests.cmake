@@ -500,6 +500,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
+    ${PROVIDERS_XNNPACK}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -568,6 +569,14 @@ if(onnxruntime_USE_COREML)
     list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml)
   endif()
 endif()
+
+if(onnxruntime_USE_XNNPACK)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/xnnpack/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_xnnpack)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_xnnpack)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
+endif()
+
 
 if(WIN32)
   if (onnxruntime_USE_NUPHAR_TVM)
