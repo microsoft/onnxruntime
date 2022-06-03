@@ -312,7 +312,7 @@ void addOrtValueMethods(pybind11::module& m) {
 #ifdef ENABLE_TRAINING
       .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
         v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-      }, "Add a new OrtValue after being ownership was transfered from the DLPack structure.",
+      }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.",
       py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
 #endif
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
