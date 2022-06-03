@@ -28,7 +28,7 @@ struct UserBufferAttribute {
   zdl::DlSystem::UserBufferEncoding* user_buffer_encoding;
 };
 
-using namespace onnxruntime::common;
+using onnxruntime::common::Status;
 class SnpeLib {
  public:
   SnpeLib() : buffer_type_(BufferType::ITENSOR) {}

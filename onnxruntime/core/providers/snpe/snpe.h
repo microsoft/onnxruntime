@@ -22,12 +22,12 @@ namespace snpe {
 class SnpeKernel : public OpKernel {
  public:
   explicit SnpeKernel(const OpKernelInfo& info) : OpKernel(info) {
-    input_cout_ = info.GetInputCount();
-    output_cout_ = info.GetOutputCount();
-    std::vector<int64_t> input_sizes(input_cout_);
+    input_count_ = info.GetInputCount();
+    output_count_ = info.GetOutputCount();
+    std::vector<int64_t> input_sizes(input_count_);
     std::vector<std::string> output_names;
-    output_dims_.resize(output_cout_);
-    for (uint32_t output_i = 0; output_i < output_cout_; ++output_i) {
+    output_dims_.resize(output_count_);
+    for (uint32_t output_i = 0; output_i < output_count_; ++output_i) {
       auto output = info.node().OutputDefs().at(output_i);
       auto output_shape = output->Shape();
       for (int i = 0; i < output_shape->dim_size(); ++i) {
@@ -36,7 +36,7 @@ class SnpeKernel : public OpKernel {
       output_names.push_back(output->Name());
       output_names_index_.emplace(output->Name(), static_cast<size_t>(output_i));
     }
-    for (uint32_t input_i = 0; input_i < input_cout_; ++input_i) {
+    for (uint32_t input_i = 0; input_i < input_count_; ++input_i) {
       auto input = info.node().InputDefs().at(input_i);
       input_names_.push_back(input->Name());
       auto input_shape = input->Shape();
@@ -62,7 +62,7 @@ class SnpeKernel : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     std::vector<const unsigned char*> input_data_array;
     std::vector<size_t> input_size_array;
-    for (uint32_t input_i = 0; input_i < input_cout_; ++input_i) {
+    for (uint32_t input_i = 0; input_i < input_count_; ++input_i) {
       const Tensor* input_tensor = context->Input<Tensor>(input_i);
       const auto input_data = input_tensor->DataRaw();
       const size_t input_size = input_tensor->Shape().Size();
@@ -73,7 +73,7 @@ class SnpeKernel : public OpKernel {
 
     std::vector<unsigned char*> output_data_array;
     std::vector<size_t> output_size_array;
-    for (uint32_t output_i = 0; output_i < output_cout_; ++output_i) {
+    for (uint32_t output_i = 0; output_i < output_count_; ++output_i) {
       TensorShape output_shape = TensorShape(output_dims_.at(output_i));
       auto output_tensor = context->Output(output_i, output_shape);
       auto output_data = output_tensor->MutableDataRaw();
@@ -87,29 +87,29 @@ class SnpeKernel : public OpKernel {
       // process with user buffer
       ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcessWithUserBuffer(input_names_,
                                                               input_data_array.data(),
-                                                              input_cout_,
+                                                              input_count_,
                                                               output_data_array.data(),
                                                               output_names_index_));
-    } else if (input_cout_ == 1 && output_cout_ == 1) {
+    } else if (input_count_ == 1 && output_count_ == 1) {
       ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcess(input_data_array.at(0),
                                                 input_size_array.at(0),
                                                 output_data_array.at(0),
                                                 output_size_array.at(0),
                                                 output_names_index_));
-    } else if (input_cout_ == 1 && output_cout_ > 1) {
+    } else if (input_count_ == 1 && output_count_ > 1) {
       ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcessMultipleOutput(input_data_array.at(0),
                                                               input_size_array.at(0),
-                                                              output_cout_,
+                                                              output_count_,
                                                               output_data_array.data(),
                                                               output_size_array.data(),
                                                               output_names_index_));
-    } else if (input_cout_ > 1 && output_cout_ >= 1) {
+    } else if (input_count_ > 1 && output_count_ >= 1) {
       ORT_RETURN_IF_ERROR(snpe_rt_->SnpeProcessMultiInputsMultiOutputs(input_data_array.data(),
                                                                        input_size_array.data(),
-                                                                       input_cout_,
+                                                                       input_count_,
                                                                        output_data_array.data(),
                                                                        output_size_array.data(),
-                                                                       output_cout_,
+                                                                       output_count_,
                                                                        output_names_index_));
     }
 
@@ -119,8 +119,8 @@ class SnpeKernel : public OpKernel {
  private:
   std::vector<std::vector<int64_t>> output_dims_;
   std::unique_ptr<SnpeLib> snpe_rt_;
-  uint32_t input_cout_;
-  uint32_t output_cout_;
+  uint32_t input_count_;
+  uint32_t output_count_;
   std::unordered_map<std::string, size_t> output_names_index_;
   std::vector<std::string> input_names_;
   BufferType buffer_type_;

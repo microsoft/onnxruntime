@@ -21,7 +21,7 @@ size_t CalcSizeFromDims(const zdl::DlSystem::Dimension* dims, size_t rank, size_
   if (rank == 0) return 0;
   SafeInt<size_t> size = elementSize;
   while (rank--) {
-    size = SafeInt<size_t>(size * (*dims));
+    size = size * (*dims);
     dims++;
   }
   return size;
@@ -29,7 +29,7 @@ size_t CalcSizeFromDims(const zdl::DlSystem::Dimension* dims, size_t rank, size_
 
 Status SnpeLib::SetupUserBufferAttribute(const std::string& name) {
   auto buffer_attributes = snpe_->getInputOutputBufferAttributes(name.c_str());
-  ORT_ENFORCE(buffer_attributes, "Error obtaining attributes for input/output tensor", name);
+  ORT_ENFORCE(buffer_attributes, "Error obtaining attributes for input/output tensor: ", name);
   zdl::DlSystem::UserBufferEncoding* user_buffer_encoding = nullptr;
   size_t buffer_element_size = 0;
   if (BufferType::TF8 == buffer_type_ || BufferType::TF16 == buffer_type_) {
