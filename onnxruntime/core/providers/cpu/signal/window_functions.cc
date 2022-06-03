@@ -52,9 +52,9 @@ Status create_mel_weight_matrix(OpKernelContext* ctx, int64_t num_mel_bins, int6
   memset(Y_data, 0, num_spectrogram_bins * num_mel_bins * sizeof(T));
 
   // The mel filterbank is a triangular shaped peak with a height of 1 and a base equal to the size of the MEL range divided by
-  // the number of bins needed times 2. This triagle is then slid across the mel domain linearly, with a constant step size that
-  // is equal to half of the base of the triange. To accomodate N bins, N+2 data points will be needed to determine the
-  // start, center and end points of each mel triange filter.
+  // the number of bins needed times 2. This triangle is then slid across the mel domain linearly, with a constant step size that
+  // is equal to half of the base of the triangle. To accommodate N bins, N+2 data points will be needed to determine the
+  // start, center and end points of each mel triangle filter.
   //
   // low_frequency where the mel triangle filter banks begin, and they end on the high_frequency_mel
   // The range is divided evenly to create the needed points corresponding to the begin, center, end points of each triangle filterbank
