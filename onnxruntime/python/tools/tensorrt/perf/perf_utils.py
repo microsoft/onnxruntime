@@ -103,43 +103,50 @@ def pretty_print(pp, json_object):
     sys.stdout.flush()
 
 
-def parse_next_model_run(data, start_index):
+def parse_model_run_info(data):
+    model_run_info = []
+
+    for entry in data:
+        if entry["cat"] == "Session" and entry["name"] == "model_run":
+            model_run_info.append(entry)
+
+    return model_run_info
+
+
+def parse_model_run(data, model_run_info):
     """
-    Parses profile data to obtain operator usage information for the next 'model run'.
+    Parses profile data to obtain operator usage information for the given 'model run'.
 
     :param data: List of profile data entries.
-    :param start_index: Starting index of the first data entry to parse.
+    :param model_run_info: Time range information on the model run to parse.
 
-    :return: A tuple consisting of the parsed operator usage information and the index of the next model run.
+    :return: The parsed operator usage information.
     """
 
     provider_op_map = {}  # ep -> map of operator to duration
-    num_entries = len(data)
-    index = -1
-
-    # Parse until the beginning of a model run.
-    for idx, row in enumerate(data[start_index:]):
-        if row["cat"] == "Session" and row["name"] == "model_run":
-            index = idx + 1
-            break
-
-    # Exit if did not find a model run.
-    if index < 0:
-        return (provider_op_map, num_entries)
+    model_run_start = model_run_info["ts"]
+    model_run_end = model_run_start + model_run_info["dur"]
 
     prev_node = None
 
     # Parse nodes in the model run
-    while index < num_entries:
-        entry = data[index]
+    for entry in data:
+        entry_start = entry["ts"]
+        entry_end = entry_start + entry["dur"]
 
-        # Stop once we encounter the next model run.
-        if entry["cat"] == "Session" and entry["name"] == "model_run":
+        # Skip entries that end before the target model run.
+        if entry_end < model_run_start:
+            prev_node = None
+            continue
+
+        # Stop if we encounter entries that start after the target model run ends.
+        if entry_start > model_run_end:
             break
+
+        assert (entry_start >= model_run_start) and (entry_end <= model_run_end)
 
         if (not "cat" in entry) or (not "name" in entry) or (not "args" in entry) or (not "op_name" in entry["args"]):
             prev_node = None
-            index += 1
             continue
 
         # Parse a graph node that is assigned to some EP. The node's duration includes only CPU execution time.
@@ -171,10 +178,8 @@ def parse_next_model_run(data, start_index):
         else:
             prev_node = None
 
-        index += 1
-
     # Return the parsed model run info and the index to the end of the run.
-    return (provider_op_map, index)
+    return provider_op_map
 
 
 def parse_single_file(f):
@@ -191,15 +196,17 @@ def parse_single_file(f):
     except Exception:
         return None
 
-    # Parse first model run
-    (provider_op_map, index) = parse_next_model_run(data, 0)
+    # Get information on where each model run starts and ends.
+    model_run_info = parse_model_run_info(data)
 
-    # Parse and keep the second model run (if available).
-    if index < len(data):
-        (op_map, index) = parse_next_model_run(data, index)
+    if not model_run_info:
+        return None
 
-        if op_map:
-            provider_op_map = op_map
+    # Use the model run with the lowest total duration.
+    min_run = min(model_run_info, key=lambda entry: entry["dur"])
+
+    # Parse model run
+    provider_op_map = parse_model_run(data, min_run)
 
     return provider_op_map
 

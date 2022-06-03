@@ -1976,6 +1976,7 @@ def parse_arguments():
         default={
             "trt_engine_cache_enable": "True",
             "trt_max_workspace_size": "4294967296",
+            "trt_dump_subgraphs": "True", # TODO: Should only be set for validation?
         },
         action=ParseDictArgAction,
         metavar=dict_arg_metavar,
