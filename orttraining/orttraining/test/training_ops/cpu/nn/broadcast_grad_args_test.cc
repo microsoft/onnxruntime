@@ -40,9 +40,9 @@ void RunBroadcastGradientArgsTest(const char* op,
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   if (fail)
-    t.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+    t.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL);
   else
-    t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers, ExecutionMode::ORT_SEQUENTIAL);
 }
 
 }  // namespace

@@ -95,22 +95,6 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
     output_scales[i] = (a_scale_data * b_scale_data[i] / y_scale_data);
   }
 
-#if defined(_M_ARM64) || defined(__aarch64__)
-  std::vector<int32_t> pre_shifts;
-  std::vector<int32_t> multipliers;
-  std::vector<int32_t> post_shifts;
-  if (use_fixed_point_requant_) {
-    pre_shifts.resize(output_scales.size());
-    multipliers.resize(output_scales.size());
-    post_shifts.resize(output_scales.size());
-    MlasFloatToFixedPoint(output_scales.data(),
-                          multipliers.data(),
-                          pre_shifts.data(),
-                          post_shifts.data(),
-                          output_scales.size());
-  }
-#endif
-
   const size_t num_gemms = helper.OutputOffsets().size();
   MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(helper.M());
@@ -127,7 +111,6 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
   std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);
-  std::vector<MLAS_REQUANT_PARAM> requant_params(num_gemms);
   std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_procs;
   requant_procs.reserve(num_gemms);
 
@@ -150,26 +133,12 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
     gemm_params[i].PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
 
-    requant_params[i].Size = output_scales.size();
-    requant_params[i].ZeroPoint = output_offset;
-#if defined(_M_ARM64) || defined(__aarch64__)
-    if (use_fixed_point_requant_) {
-      requant_params[i].RequantRoundKind = MLAS_ROUND_KIND::MlasRoundHalfUp;
-      requant_params[i].PreShift = pre_shifts.data() + helper.RightScaleOffsets()[i];
-      requant_params[i].Multiplier = multipliers.data() + helper.RightScaleOffsets()[i];
-      requant_params[i].PostShift = post_shifts.data() + helper.RightScaleOffsets()[i];
-    } else {
-      requant_params[i].RequantRoundKind = MLAS_ROUND_KIND::MlasRoundHalfEven;
-      requant_params[i].Scale = output_scales.data() + helper.RightScaleOffsets()[i];
-    }
-#else
-    requant_params[i].RequantRoundKind = MLAS_ROUND_KIND::MlasRoundHalfEven;
-    requant_params[i].Scale = output_scales.data() + helper.RightScaleOffsets()[i];
-#endif
     requant_procs.emplace_back(static_cast<uint8_t*>(y->MutableDataRaw()) + helper.OutputOffsets()[i],
                                static_cast<size_t>(helper.N()),
                                nullptr,
-                               &requant_params[i],
+                               output_scales.data() + helper.RightScaleOffsets()[i],
+                               output_scales.size() > 1,
+                               output_offset,
                                is_output_signed);
     gemm_params[i].OutputProcessor = &(requant_procs[i]);
   }
