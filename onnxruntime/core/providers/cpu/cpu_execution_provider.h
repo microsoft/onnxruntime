@@ -12,9 +12,11 @@ namespace onnxruntime {
 // Information needed to construct CPU execution providers.
 struct CPUExecutionProviderInfo {
   bool create_arena{true};
+  bool use_fixed_point_requant_on_arm64{false};
 
-  explicit CPUExecutionProviderInfo(bool use_arena)
-      : create_arena(use_arena) {}
+  explicit CPUExecutionProviderInfo(bool use_arena, bool use_fixed_point_requant_on_arm64)
+      : create_arena(use_arena),
+        use_fixed_point_requant_on_arm64(use_fixed_point_requant_on_arm64) {}
 
   CPUExecutionProviderInfo() = default;
 };
@@ -41,6 +43,12 @@ class CPUExecutionProvider : public IExecutionProvider {
                                     DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
   InsertAllocator(CreateAllocator(device_info));
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+    use_fixed_point_requant_on_arm64_ = info.use_fixed_point_requant_on_arm64;
+#else
+    use_fixed_point_requant_on_arm64_ = false;
+#endif
   }
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
@@ -48,7 +56,12 @@ class CPUExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
+  bool UseFixedPointRequantOnARM64() const {
+    return use_fixed_point_requant_on_arm64_;
+  }
+
  private:
+  bool use_fixed_point_requant_on_arm64_;
   std::vector<FuseRuleFn> fuse_rules_;
 };
 
