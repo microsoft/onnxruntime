@@ -30,7 +30,7 @@ void CPUExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager
 
   if (!cpu_alloc) {
     // share our allocator
-    allocator_manager.InsertAllocator(GetAllocator(0, OrtMemTypeDefault));
+    allocator_manager.InsertAllocator(GetAllocator(cpu_device.Id(), OrtMemTypeDefault));
   }
 }
 
