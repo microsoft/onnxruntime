@@ -50,7 +50,8 @@ inline const ONNX_NAMESPACE::TensorShapeProto* getOptionalInputShape(ONNX_NAMESP
   }
 
   const auto value_case = input_type->value_case();
-  if (value_case != ONNX_NAMESPACE::TypeProto::kTensorType && value_case != ONNX_NAMESPACE::TypeProto::kSparseTensorType) {
+  if (value_case != ONNX_NAMESPACE::TypeProto::kTensorType &&
+      value_case != ONNX_NAMESPACE::TypeProto::kSparseTensorType) {
     fail_type_inference("Attribute expected to have tensor or sparse tensor type");
   }
   if (value_case == ONNX_NAMESPACE::TypeProto::kTensorType) {
@@ -78,8 +79,8 @@ Generates a {name} window as described in the paper https://ieeexplore.ieee.org/
                 static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT));
     schema.Attr("periodic",
                 "If 1, returns a window to be used as periodic function. If 0, return a symmetric window. "
-                "When 'periodic' is specified, hann computes a window of length size + 1 and returns the first size points. "
-                "The default value is 1. ",
+                "When 'periodic' is specified, hann computes a window of length size + 1 and returns the first size "
+                "points. The default value is 1. ",
                 AttributeProto::INT,
                 static_cast<int64_t>(1));
     schema.Input(0,
@@ -138,26 +139,28 @@ void RegisterSignalSchemas() {
       .SinceVersion(1)
       .SetDoc(R"DOC(DFT)DOC")
       .Attr("onesided",
-            "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier transform satisfies the conjugate symmetry."
-            "The output tensor will return the first floor(n_fft/2) + 1 values from the DFT."
-            "Values can be 0 or 1.",
+            "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier "
+            "transform satisfies the conjugate symmetry.The output tensor will return the first floor(n_fft/2) + 1 "
+            "values from the DFT. Values can be 0 or 1.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(0))
       .Attr("axis",
-            "The axis on which to perform the DFT. By default this value is set to 0, which corresponds to the first dimension after the batch index."
-            "This value must be less than signal_dimN, where signal_dimN is the number of dimensions in the signal.",
+            "The axis on which to perform the DFT. By default this value is set to 0, which corresponds to the first "
+            "dimension after the batch index. This value must be less than signal_dimN, where signal_dimN is the "
+            "number of dimensions in the signal.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(0))
       .Attr("inverse",
-            "Whether to perform the inverse discrete fourier transform. By default this value is set to 0, which corresponds to false.",
+            "Whether to perform the inverse discrete fourier transform. By default this value is set to 0, which "
+            "corresponds to false.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
       .Input(0,
              "input",
-             "For real input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][1]. "
-             "For complex input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]. "
-             "The first dimension is the batch dimension. "
-             "The following N dimentions correspond to the signal's dimensions. "
+             "For real input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]..."
+             "[signal_dimN][1].  For complex input, the following shape is expected: "
+             "[batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]. The first dimension is the batch dimension. "
+             "The following N dimensions correspond to the signal's dimensions. "
              "The final dimension represents the real and imaginary parts of the value in that order.",
              "T1",
              OpSchema::Single,
@@ -178,10 +181,14 @@ void RegisterSignalSchemas() {
       .Output(0,
               "output",
               "The Fourier Transform of the input vector."
-              "If onesided is 0, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]. "
-              "If axis=0 and onesided is 1, the following shape is expected: [batch_idx][floor(signal_dim1/2)+1][signal_dim2]...[signal_dimN][2]. "
-              "If axis=1 and onesided is 1, the following shape is expected: [batch_idx][signal_dim1][floor(signal_dim2/2)+1]...[signal_dimN][2]. "
-              "If axis=N-1 and onesided is 1, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[floor(signal_dimN/2)+1][2]. "
+              "If onesided is 0, the following shape is expected: "
+              "[batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]. "
+              "If axis=0 and onesided is 1, the following shape is expected: "
+              "[batch_idx][floor(signal_dim1/2)+1][signal_dim2]...[signal_dimN][2]. "
+              "If axis=1 and onesided is 1, the following shape is expected: "
+              "[batch_idx][signal_dim1][floor(signal_dim2/2)+1]...[signal_dimN][2]. "
+              "If axis=N-1 and onesided is 1, the following shape is expected: "
+              "[batch_idx][signal_dim1][signal_dim2]...[floor(signal_dimN/2)+1][2]. "
               "The signal_dim at the specified axis is equal to the dft_length.",
               "T1")
       .TypeConstraint(
@@ -282,14 +289,17 @@ void RegisterSignalSchemas() {
       .SinceVersion(1)
       .SetDoc(R"DOC(IDFT)DOC")
       .Attr("axis",
-            "The axis on which to perform the DFT. By default this value is set to 0, which corresponds to the first dimension after the batch index."
+            "The axis on which to perform the DFT. By default this value is set to 0, which corresponds to the first "
+            "dimension after the batch index."
             "This value must be less than signal_dimN, where signal_dimN is the number of dimensions in the signal.",
             AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(0))
       .Input(0,
              "input",
-             "For real multi-dimensional input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][1]."
-             "For complex multi-dimensional input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]."
+             "For real multi-dimensional input, the following shape is expected: "
+             "[batch_idx][signal_dim1][signal_dim2]...[signal_dimN][1]."
+             "For complex multi-dimensional input, the following shape is expected: "
+             "[batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]."
              "The first dimension is the batch dimension."
              "The final dimension represents the real and imaginary parts of the value.",
              "T1")
@@ -651,7 +661,7 @@ linear scale spectrum values (e.g. STFT magnitudes) to generate a "mel spectrogr
   MS_SIGNAL_OPERATOR_SCHEMA(MelWeightMatrix)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
-      .SetDoc(R"DOC(MelWeightMatrix)DOC")
+      .SetDoc(MelWeightMatrix_ver17_doc)
       .Attr("output_datatype",
             "The data type of the output tensor. "
             "Strictly must be one of the types from DataType enum in TensorProto.",
