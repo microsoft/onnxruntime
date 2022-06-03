@@ -420,7 +420,7 @@ by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. Th
 is difficult to parallelize as it goes through the GIL many times.
 It creates many tensors acquiring ownership of existing OrtValue.
 This method saves one object creation and an C++ allocation
-for every transfered tensor.
+for every transferred tensor.
 )pbdoc", py::arg("to_tensor"))
 #endif
 ;
