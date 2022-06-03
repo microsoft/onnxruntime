@@ -26,37 +26,22 @@ static void Check(const char* source,
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;
   auto parse_status = parser.Parse(model);
-<<<<<<< HEAD
-  EXPECT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
-  EXPECT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
-=======
   ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
   ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
->>>>>>> rama/iotypes
 
   // Serialize and then load model:
   std::string serialized_model;
   const bool serialization_status = model.SerializeToString(&serialized_model);
-<<<<<<< HEAD
-  EXPECT_TRUE(serialization_status) << "Failed to serialize proto to string";
-=======
   ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
->>>>>>> rama/iotypes
 
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
 
   std::stringstream sstr(serialized_model);
   auto status = session_object.Load(sstr);
-<<<<<<< HEAD
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-  status = session_object.Initialize();
-  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-=======
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
->>>>>>> rama/iotypes
 
   RunOptions run_options;
   run_options.run_tag = session_options.session_logid;
@@ -72,11 +57,7 @@ static void Check(const char* source,
   std::vector<OrtValue> fetches;
 
   status = session_object.Run(run_options, feeds, {output_name}, &fetches);
-<<<<<<< HEAD
-  EXPECT_TRUE(status.IsOK()) << "Session Run failed.";
-=======
   ASSERT_TRUE(status.IsOK()) << "Session Run failed.";
->>>>>>> rama/iotypes
 
   auto& tensor = fetches[0].Get<Tensor>();
   size_t size = static_cast<size_t>(tensor.Shape().Size());
