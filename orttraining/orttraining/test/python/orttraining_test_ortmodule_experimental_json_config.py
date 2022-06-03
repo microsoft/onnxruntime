@@ -1,4 +1,3 @@
-
 import os
 import torch
 from onnxruntime.training import ortmodule
@@ -20,16 +19,17 @@ class Net(torch.nn.Module):
         out = self.fc2(out)
         return out
 
+
 def test_load_config_from_json_1():
-    device = 'cuda'
+    device = "cuda"
     model = ortmodule.ORTModule(Net().to(device))
 
     # load from json once.
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_2.json")
     load_from_json(model, path_to_json)
 
     # load from json another time
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_1.json")
     load_from_json(model, path_to_json)
 
     for training_mode in [True, False]:
@@ -46,9 +46,6 @@ def test_load_config_from_json_1():
         # test enable custom autograd function
         assert ort_model_attributes._enable_custom_autograd_function == True
 
-        # test allow layer norm mod precision
-        assert ort_model_attributes._allow_layer_norm_mod_precision == True
-
         # test use static shape
         assert ort_model_attributes._use_static_shape == True
 
@@ -63,7 +60,7 @@ def test_load_config_from_json_1():
 
         # test debug options
         assert ort_model_attributes._debug_options.save_onnx_models.save == True
-        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_model'
+        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == "my_model"
         assert ort_model_attributes._debug_options.logging.log_level.name == "VERBOSE"
 
         # test use memory aware gradient builder.
@@ -75,16 +72,17 @@ def test_load_config_from_json_1():
         # assert onnx opset version
         assert ortmodule.ONNX_OPSET_VERSION == 13
 
+
 def test_load_config_from_json_2():
-    device = 'cuda'
+    device = "cuda"
     model = ortmodule.ORTModule(Net().to(device))
 
     # load from json once.
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_1.json")
     load_from_json(model, path_to_json)
 
     # load from json another time
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
+    path_to_json = os.path.join(os.getcwd(), "orttraining_test_ortmodule_experimental_json_config_2.json")
     load_from_json(model, path_to_json)
 
     for training_mode in [True, False]:
@@ -101,9 +99,6 @@ def test_load_config_from_json_2():
         # test enable custom autograd function
         assert ort_model_attributes._enable_custom_autograd_function == False
 
-        # test allow layer norm mod precision
-        assert ort_model_attributes._allow_layer_norm_mod_precision == False
-
         # test use static shape
         assert ort_model_attributes._use_static_shape == False
 
@@ -118,7 +113,7 @@ def test_load_config_from_json_2():
 
         # test debug options
         assert ort_model_attributes._debug_options.save_onnx_models.save == True
-        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_other_model'
+        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == "my_other_model"
         assert ort_model_attributes._debug_options.logging.log_level.name == "INFO"
 
         # test use memory aware gradient builder.

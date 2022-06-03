@@ -137,11 +137,6 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
   return Status::OK();
 }
 
-template <class AssociativeContainer, class Key>
-inline bool Contains(const AssociativeContainer& container, const Key& key) {
-  return container.find(key) != container.end();
-}
-
 // Note: This helper function will not have overflow protection
 template <template <typename...> class Container, typename T>
 T Product(const Container<T>& c) {

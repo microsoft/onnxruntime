@@ -19,12 +19,6 @@ struct NodeCompare {
   bool operator()(const Node* n1, const Node* n2) const;
 };
 
-enum class DataLayout {
-  NCHW,
-  NHWC,
-  NCHWC,
-};
-
 /**
 @class GraphViewer
 Class that provides a read-only view of the Graph.
@@ -87,7 +81,7 @@ class GraphViewer {
   const std::vector<const NodeArg*>& GetOutputs() const noexcept;
 
   /** Returns true if one or more of the Node outputs are Graph outputs.
-  */
+   */
   bool NodeProducesGraphOutput(const Node& node) const;
 
   /** Gets all ValueInfo NodeArg instances in the Graph.
@@ -149,12 +143,19 @@ class GraphViewer {
   /** Get the internal graph*/
   const Graph& GetGraph() const { return *graph_; }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept;
+#endif
+
   /**
   returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
   @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name'
                            if the name is not found in 'graph_'.
   */
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /** Check if a given name is an initializer tensor's name in this graph. */
+  bool IsInitializedTensor(const std::string& name) const;
 
   /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.

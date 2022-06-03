@@ -4,6 +4,8 @@
 #ifndef TVM_UTILS_H
 #define TVM_UTILS_H
 
+#include <string>
+
 #include "tvm_common.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -51,6 +53,8 @@ inline DLDevice GetDLDevice(const OrtDevice& device) {
   }
   return context;
 }
+
+std::string readFromFile(const std::string& file_path);
 
 }   // namespace tvm
 }   // namespace onnxruntime

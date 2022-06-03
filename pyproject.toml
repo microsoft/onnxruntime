@@ -1,0 +1,24 @@
+[tool.black]
+line-length = 120
+# extend-exclude needs to be a regular expression
+extend-exclude = "cmake|onnxruntime/core/flatbuffers/"
+target-version = ["py37", "py38", "py39", "py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+extend_skip_glob = [
+    "cmake/*",
+    "orttraining/*",
+    "onnxruntime/core/flatbuffers/*",
+]
+
+[tool.pydocstyle]
+convention = "google"
+
+[tool.pylint.'MESSAGES CONTROL']
+disable = ["format", "line-too-long", "import-error", "no-name-in-module"]
+
+[tool.pyright]
+exclude = ["onnxruntime/core/flatbuffers/*"]
+reportMissingImports = false

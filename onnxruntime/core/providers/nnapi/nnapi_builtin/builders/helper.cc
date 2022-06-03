@@ -86,6 +86,10 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQSoftmax;
     else if (op_type == "Concat")
       return QuantizedOpType::QDQConcat;
+    else if (op_type == "Gemm")
+      return QuantizedOpType::QDQGemm;
+    else if (op_type == "MatMul")
+      return QuantizedOpType::QDQMatMul;
   } else {
     // throw?
   }
@@ -124,12 +128,20 @@ bool IsQuantizedPool(QuantizedOpType quant_op_type) {
          (quant_op_type == QuantizedOpType::QDQAveragePool);
 }
 
+bool IsQuantizedGemm(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearMatMul) ||
+         (quant_op_type == QuantizedOpType::QDQGemm) ||
+         (quant_op_type == QuantizedOpType::QDQMatMul);
+}
+
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
   return quant_op_type == QuantizedOpType::QLinearMatMul ||
          quant_op_type == QuantizedOpType::QLinearAdd ||
          quant_op_type == QuantizedOpType::QLinearMul ||
          quant_op_type == QuantizedOpType::QDQAdd ||
          quant_op_type == QuantizedOpType::QDQMul ||
+         quant_op_type == QuantizedOpType::QDQGemm ||
+         quant_op_type == QuantizedOpType::QDQMatMul ||
          IsQuantizedConv(quant_op_type);
 }
 
@@ -147,17 +159,17 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
   if (!GetType(inputs[1].node_arg, b_input_type))
     return false;
 
-  // QlinearConv/MatMul supports u8u8 or u8s8
+  // QlinearConv/MatMul/QDQGemm/QDQMatMul supports u8u8 or u8s8
   // QLinearAdd/QLinearMul only support u8u8
-  bool is_quant_conv_or_matmul = IsQuantizedConv(quant_op_type) || (quant_op_type == QuantizedOpType::QLinearMatMul);
+  bool is_quant_conv_or_gemm = IsQuantizedConv(quant_op_type) || IsQuantizedGemm(quant_op_type);
 
   bool has_valid_qlinear_conv_weight =
       (b_input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
        b_input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
 
   if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-      (!is_quant_conv_or_matmul && a_input_type != b_input_type) ||
-      (is_quant_conv_or_matmul && !has_valid_qlinear_conv_weight)) {
+      (!is_quant_conv_or_gemm && a_input_type != b_input_type) ||
+      (is_quant_conv_or_gemm && !has_valid_qlinear_conv_weight)) {
     LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
                           << "] A Input type: [" << a_input_type
                           << "] B Input type: [" << b_input_type
@@ -213,8 +225,8 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, IOKind io_kind) {
-  const auto& io_defs = io_kind == IOKind::Input ? node_unit.Inputs() : node_unit.Outputs();
+    float& scale, int32_t& zero_point, ArgType arg_type) {
+  const auto& io_defs = arg_type == ArgType::kInput ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto& io_def : io_defs) {
     if (io_def.node_arg.Name() == name)
       return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(),
@@ -333,10 +345,12 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
 
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   const auto& op_support_checkers = GetOpSupportCheckers();
-  if (!Contains(op_support_checkers, node_unit.OpType()))
+  const auto op_support_checker_it = op_support_checkers.find(node_unit.OpType());
+  if (op_support_checker_it == op_support_checkers.end()) {
     return false;
+  }
 
-  const auto* op_support_checker = op_support_checkers.at(node_unit.OpType());
+  const auto* op_support_checker = op_support_checker_it->second;
   return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 

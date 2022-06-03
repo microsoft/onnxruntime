@@ -4,8 +4,8 @@ name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
 - job: AMD_CI
   pool: 'AMD-GPU'
-  timeoutInMinutes: 120
-  
+  timeoutInMinutes: 150
+
   # gid of video and render group on gcr-openpai-35 and -36
   variables:
     - name: video
@@ -14,21 +14,21 @@ jobs:
       value: 109
     - name: onnxruntimeBuildSucceeded
       value: false
-  
-  # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile 
-  container: 
-    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env
+
+  # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+  container:
+    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm5.1.1
     endpoint: onnxruntimecibuildenvironmentforamd
     options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
-  
+
   steps:
   - checkout: self
     clean: true
-  
+
   - script: |-
       echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
     displayName: 'Initialize environment'
-  
+
   #- script: |-
   #    sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
   #       orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
@@ -51,7 +51,7 @@ jobs:
         --enable_training \
         --mpi_home /opt/ompi \
         --use_rocm \
-        --rocm_version=4.3.1 \
+        --rocm_version=5.1.1 \
         --rocm_home /opt/rocm \
         --nccl_home /opt/rocm \
         --update \
@@ -61,18 +61,18 @@ jobs:
         --build_wheel \
         --skip_tests
     displayName: 'Build onnxruntime'
-    
+
   - bash: |-
       echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
     displayName: 'Set Onnxruntime Build Succeeded'
-  
+
   - task: CmdLine@2
     inputs:
       script: |-
         cd ./build/RelWithDebInfo &&\
         ../../tools/ci_build/github/pai/pai_test_launcher.sh
     displayName: 'Run onnxruntime unit tests'
-    
+
   - task: CmdLine@2
     inputs:
       script: |-
@@ -81,13 +81,13 @@ jobs:
         python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
     displayName: 'Compile torch extensions into build directory'
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-  
+
   - task: CmdLine@2
     inputs:
       script: |-
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=12
+        export ORTMODULE_ONNX_OPSET_VERSION=14
         python \
           /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
           --model_name_or_path bert-large-uncased \
@@ -105,17 +105,17 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm4.3.1.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm5.1.1.json
     displayName: 'Run Python Hugging-Face BERT-L test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-  
+
   - task: CmdLine@2
     inputs:
       script: |-
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=12
+        export ORTMODULE_ONNX_OPSET_VERSION=14
         python \
           /stage/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
           --model_name_or_path gpt2 \
@@ -134,11 +134,11 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm4.3.1.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm5.1.1.json
     displayName: 'Run Python Hugging-Face GPT2 test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-  
+
 #  - script: |-
 #      cd ./build/RelWithDebInfo
 #      export PYTHONPATH=$PWD
@@ -160,14 +160,14 @@ jobs:
 #        --max_steps 260 \
 #        --dataloader_num_workers 1 \
 #        --ort \
-#        --skip_memory_metrics 
+#        --skip_memory_metrics
 #      python ../../orttraining/tools/ci_test/compare_huggingface.py \
 #        ci-pipeline-actual.json \
-#        ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bart-large-rocm4.3.1.json
+#        ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bart-large-rocm5.1.1.json
 #    displayName: 'Run Python Hugging-Face BART-L test'
 #    condition: succeededOrFailed() # ensure all tests are run
-  
-  # todo: investigate RoBERTa high run variability on ROCm 4.3.1
+
+  # todo: investigate RoBERTa high run variability on ROCm 5.1.1
   #- script: |-
   #    cd ./build/RelWithDebInfo
   #    export PYTHONPATH=$PWD
@@ -190,16 +190,16 @@ jobs:
   #      --skip_memory_metrics
   #    python ../../orttraining/tools/ci_test/compare_huggingface.py \
   #      ci-pipeline-actual.json \
-  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.roberta-large-rocm4.3.1.json
+  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.roberta-large-rocm5.1.1.json
   #  displayName: 'Run Python Hugging-Face RoBERTa-L test'
   #  condition: succeededOrFailed() # ensure all tests are run
-  
+
   - task: CmdLine@2
     inputs:
       script: |-
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=12
+        export ORTMODULE_ONNX_OPSET_VERSION=14
         python \
           /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
           --model_name_or_path distilbert-base-uncased \
@@ -217,11 +217,11 @@ jobs:
           --skip_memory_metrics
         python ../../orttraining/tools/ci_test/compare_huggingface.py \
           ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm4.3.1.json
+          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm5.1.1.json
     displayName: 'Run Python Hugging-Face DistilBERT test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-  
+
   #- script: |-
   #    cd ./build/RelWithDebInfo
   #    export PYTHONPATH=$PWD
@@ -240,10 +240,10 @@ jobs:
   #      --fp16 \
   #      --dataloader_num_workers 1 \
   #      --ort \
-  #      --skip_memory_metrics 
+  #      --skip_memory_metrics
   #  displayName: 'Run Python Hugging-Face DeBERTa-XXL v2 test'
   #  condition: succeededOrFailed() # ensure all tests are run
-  
+
   #- script: |-
   #    cd ./build/RelWithDebInfo
   #    export PYTHONPATH=$PWD
@@ -270,10 +270,10 @@ jobs:
   #      --skip_memory_metrics
   #    python ../../orttraining/tools/ci_test/compare_huggingface.py \
   #      ci-pipeline-actual.json \
-  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.t5-large.json 
+  #      ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.t5-large.json
   #  displayName: 'Run Python Hugging-Face T5-L test'
   #  condition: succeededOrFailed() # ensure all tests are run
-  
+
   - task: CmdLine@2
     inputs:
       script: |-
@@ -283,7 +283,7 @@ jobs:
           --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
     displayName: 'Download onnxruntime_training_data.zip data'
-  
+
   - task: CmdLine@2
     inputs:
       script: |-
@@ -294,7 +294,7 @@ jobs:
     displayName: 'Run C++ BERT-L batch size test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-  
+
   - task: CmdLine@2
     inputs:
       script: |-
@@ -306,7 +306,7 @@ jobs:
     displayName: 'Run C++ BERT-L performance test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-  
+
   - task: CmdLine@2
     inputs:
       script: |-

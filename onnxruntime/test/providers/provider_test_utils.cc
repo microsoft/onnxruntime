@@ -5,9 +5,11 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/common/type_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
@@ -56,7 +58,7 @@ void sort_expected_and_actual_buffers(std::vector<T>& expected,
 
 // The default implementation compares for equality, specialized versions for
 // other types are below
-template <typename T>
+template <typename T, typename Enabled = void>
 struct TensorCheck {
   void operator()(const Tensor& expected_tensor, const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
@@ -86,8 +88,8 @@ struct TensorCheck {
   }
 };
 
-template <>
-struct TensorCheck<uint8_t> {
+template <typename T>
+struct TensorCheck<T, typename std::enable_if<utils::IsByteType<T>::value>::type> {
   void operator()(const Tensor& expected_tensor,
                   const Tensor& output_tensor,
                   const std::string& provider_type, const CheckParams& params) const {
@@ -95,8 +97,8 @@ struct TensorCheck<uint8_t> {
     const bool has_rel_err = params.relative_error_.has_value();
 
     Tensor expected_sorted, output_sorted;
-    const uint8_t* expected;
-    const uint8_t* output;
+    const T* expected;
+    const T* output;
     const auto size = output_tensor.Shape().Size();
     if (params.sort_output_) {
       // if order can be jumbled in the output of an operator, sort both the
@@ -105,15 +107,15 @@ struct TensorCheck<uint8_t> {
       // requirement for the few ops that do require this
       // support without investing in a more sophisticated infrastructure for the
       // same
-      sort_expected_and_actual_buffers<uint8_t>(expected_tensor, expected_sorted, output_tensor, output_sorted);
-      expected = expected_sorted.Data<uint8_t>();
-      output = output_sorted.Data<uint8_t>();
+      sort_expected_and_actual_buffers<T>(expected_tensor, expected_sorted, output_tensor, output_sorted);
+      expected = expected_sorted.Data<T>();
+      output = output_sorted.Data<T>();
     } else {
-      expected = expected_tensor.template Data<uint8_t>();
-      output = output_tensor.template Data<uint8_t>();
+      expected = expected_tensor.template Data<T>();
+      output = output_tensor.template Data<T>();
     }
 
-    // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
+    // For int8_t/uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
     // For any other EPs, we still expect an exact match for the results
     if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
@@ -330,7 +332,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
-    threshold = 0.05f; // expect at least 95% close
+    threshold = 0.05f;  // expect at least 95% close
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -653,7 +655,7 @@ void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
 
 void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
                                          const char* name,
-                                         gsl::span<const  int64_t> dims,
+                                         gsl::span<const int64_t> dims,
                                          gsl::span<const std::string> values,
                                          gsl::span<const int64_t> inner_indices,
                                          gsl::span<const int64_t> outer_indices,
@@ -709,7 +711,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
 
 std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
     const std::unordered_map<std::string, int>& extra_domain_to_version,
-    bool allow_released_onnx_opset_only) {
+    const ModelOptions& model_options) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
@@ -739,7 +741,8 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   auto p_model = std::make_unique<onnxruntime::Model>(
       "test", false, ModelMetaData(), PathString(), custom_schema_registries_,
       domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-      DefaultLoggingManager().DefaultLogger(), allow_released_onnx_opset_only);
+      DefaultLoggingManager().DefaultLogger(),
+      model_options);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
@@ -895,15 +898,9 @@ void OpTester::Run(
     const std::unordered_set<std::string>& excluded_provider_types,
     const RunOptions* run_options,
     std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
-    ExecutionMode execution_mode,
     const Graph::ResolveOptions& options) {
   SessionOptions so;
-  so.use_per_session_threads = false;
-  so.session_logid = op_;
-  so.session_log_verbosity_level = 1;
-  so.execution_mode = execution_mode;
-  so.use_deterministic_compute = use_determinism_;
-  so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
+  SetUpDefaultSessionOptions(so);
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
       run_options, execution_providers, options);
 }
@@ -952,7 +949,11 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    auto p_model = !cache_enabled ? BuildGraph({}, allow_released_onnx_opset_only) : cached_model_;
+    const bool strict_shape_type_inference = so.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "1") == "1";
+    const ModelOptions model_options(allow_released_onnx_opset_only,
+                                     strict_shape_type_inference);
+    auto p_model = !cache_enabled ? BuildGraph({}, model_options) : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
@@ -1013,6 +1014,7 @@ void OpTester::Run(
         kNnapiExecutionProvider,
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
+        kXnnpackExecutionProvider,
     };
 #endif
 
@@ -1082,30 +1084,37 @@ void OpTester::Run(
           ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         std::unique_ptr<IExecutionProvider> execution_provider;
-        if (provider_type == onnxruntime::kCpuExecutionProvider)
-          execution_provider = DefaultCpuExecutionProvider();
-        else if (provider_type == onnxruntime::kCudaExecutionProvider)
+        if (provider_type == onnxruntime::kCpuExecutionProvider) {
+          const bool use_fixed_point_requant_on_arm64 =
+              so.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigFixedPointRequantOnARM64, "0") == "1";
+          execution_provider = DefaultCpuExecutionProvider(
+              CPUExecutionProviderInfo(so.enable_cpu_mem_arena,
+                                       use_fixed_point_requant_on_arm64));
+        } else if (provider_type == onnxruntime::kCudaExecutionProvider) {
           execution_provider = DefaultCudaExecutionProvider();
-        else if (provider_type == onnxruntime::kDnnlExecutionProvider)
+        } else if (provider_type == onnxruntime::kDnnlExecutionProvider) {
           execution_provider = DefaultDnnlExecutionProvider();
-        else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
+        } else if (provider_type == onnxruntime::kOpenVINOExecutionProvider) {
           execution_provider = DefaultOpenVINOExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
+        } else if (provider_type == onnxruntime::kNupharExecutionProvider) {
           execution_provider = DefaultNupharExecutionProvider();
-        else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
+        } else if (provider_type == onnxruntime::kTensorrtExecutionProvider) {
           execution_provider = DefaultTensorrtExecutionProvider();
-        else if (provider_type == onnxruntime::kNnapiExecutionProvider)
+        } else if (provider_type == onnxruntime::kNnapiExecutionProvider) {
           execution_provider = DefaultNnapiExecutionProvider();
-        else if (provider_type == onnxruntime::kRknpuExecutionProvider)
+        } else if (provider_type == onnxruntime::kRknpuExecutionProvider) {
           execution_provider = DefaultRknpuExecutionProvider();
-        else if (provider_type == onnxruntime::kAclExecutionProvider)
+        } else if (provider_type == onnxruntime::kAclExecutionProvider) {
           execution_provider = DefaultAclExecutionProvider();
-        else if (provider_type == onnxruntime::kArmNNExecutionProvider)
+        } else if (provider_type == onnxruntime::kArmNNExecutionProvider) {
           execution_provider = DefaultArmNNExecutionProvider();
-        else if (provider_type == onnxruntime::kRocmExecutionProvider)
+        } else if (provider_type == onnxruntime::kRocmExecutionProvider) {
           execution_provider = DefaultRocmExecutionProvider();
-        else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
+        } else if (provider_type == onnxruntime::kCoreMLExecutionProvider) {
           execution_provider = DefaultCoreMLExecutionProvider();
+        } else if (provider_type == onnxruntime::kXnnpackExecutionProvider) {
+          execution_provider = DefaultXnnpackExecutionProvider();
+        }
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;

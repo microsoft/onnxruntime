@@ -40,10 +40,6 @@
 [submodule "cmake/external/json"]
 	path = cmake/external/json
 	url = https://github.com/nlohmann/json.git
-[submodule "server/external/spdlog"]
-	path = server/external/spdlog
-	url = https://github.com/gabime/spdlog.git
-	branch = master
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
@@ -72,3 +68,13 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+	branch = 8.2-GA
+[submodule "cmake/external/pthreadpool"]
+	path = cmake/external/pthreadpool
+	url = https://github.com/Maratyszcza/pthreadpool.git
+[submodule "cmake/external/FP16"]
+	path = cmake/external/FP16
+	url = https://github.com/Maratyszcza/FP16.git
+[submodule "cmake/external/XNNPACK"]
+	path = cmake/external/XNNPACK
+	url = https://github.com/google/XNNPACK.git

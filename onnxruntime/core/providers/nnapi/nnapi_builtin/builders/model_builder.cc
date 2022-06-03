@@ -6,6 +6,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
+#include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
@@ -26,7 +27,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
 
 int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
-  return nnapi_ ? nnapi_->nnapi_runtime_feature_level : 0;
+  return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -146,9 +147,9 @@ void ModelBuilder::PreprocessActivations() {
 }
 
 const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
-  // In theory, if node_unit_map_ is generated correctly, see PreprocessNodeUnits(), a NodeUnit can be
-  // found for any single node in the graph_viewer_, unless the given node is not from graph_viewer_
-  return *node_unit_map_.at(node);
+  const auto node_unit_it = node_unit_map_.find(node);
+  ORT_ENFORCE(node_unit_it != node_unit_map_.end(), "Node does not have corresponding NodeUnit.");
+  return *node_unit_it->second;
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
@@ -210,7 +211,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, IOKind::Input));
+          initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
@@ -530,8 +531,8 @@ Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_ind
 
   RETURN_STATUS_ON_ERROR_WITH_NOTE(
       nnapi_->ANeuralNetworksModel_addOperation(
-          nnapi_model_->model_, op, input_indices.size(), &input_indices[0],
-          output_indices.size(), &output_indices[0]),
+          nnapi_model_->model_, op, static_cast<uint32_t>(input_indices.size()), &input_indices[0],
+          static_cast<uint32_t>(output_indices.size()), &output_indices[0]),
       "op = " + std::to_string(op));
 
   num_nnapi_ops_++;
@@ -574,7 +575,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
-            nnapi_target_devices_.size(), supported_ops),
+            static_cast<uint32_t>(nnapi_target_devices_.size()), supported_ops),
         "on getSupportedOperationsForDevices");
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
@@ -598,7 +599,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksCompilation_createForDevices(
             nnapi_model_->model_, nnapi_target_devices_.data(),
-            nnapi_target_devices_.size(), &nnapi_model_->compilation_),
+            static_cast<uint32_t>(nnapi_target_devices_.size()), &nnapi_model_->compilation_),
         "on createForDevices");
   } else {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
@@ -620,13 +621,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 }
 
 int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
-  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   const auto& output_nodes = node_unit.GetOutputNodes();
   if (node_unit.GetOutputNodes().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
                           << "], with " << output_nodes.size() << " output nodes";
-    return fuse_code;
+    return ANEURALNETWORKS_FUSED_NONE;
   }
 
   const auto& outputs = node_unit.Outputs();
@@ -634,42 +634,53 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
                           << "], with " << outputs.size() << " outputs";
-    return fuse_code;
+    return ANEURALNETWORKS_FUSED_NONE;
   }
 
   const NodeArg& output = outputs[0].node_arg;
-  const auto& output_node = *output_nodes[0];
+
+  // if output is a graph output, will add activation separately
+  if (const auto& graph_outputs = graph_viewer_.GetOutputs();
+      std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+    return ANEURALNETWORKS_FUSED_NONE;
+  }
 
   // TODO, add support of activation fusion for quantized node group (qdq or qlinear)
   // We do not support activation fusion for quantized operators for now
   // (usually the activations are fused already in the quantization)
-  auto quant_op_type = GetQuantizedOpType(node_unit);
-  if (quant_op_type != QuantizedOpType::Unknown)
-    return fuse_code;
+  if (auto quant_op_type = GetQuantizedOpType(node_unit);
+      quant_op_type != QuantizedOpType::Unknown) {
+    return ANEURALNETWORKS_FUSED_NONE;
+  }
 
+  const auto& output_node = *output_nodes[0];
+  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  bool fuse_code_assigned_from_activation = false;
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    const auto& dst_node_unit = GetNodeUnit(&dst_node);
-    if (Contains(activation_node_units_, &dst_node_unit)) {
-      if (&output == dst_input) {
-        fuse_code = activation_node_units_.at(&dst_node_unit);
-      }
-    } else {
-      // if there is any other non-relu node using the output
-      // will add relu separately
-      if (&output == dst_input)
-        return ANEURALNETWORKS_FUSED_NONE;
-    }
-  }
 
-  // if output is a graph output, will add activation separately
-  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    const auto& graph_outputs = graph_viewer_.GetOutputs();
-    if (std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+    if (&output != dst_input) {
+      continue;
+    }
+
+    const auto& dst_node_unit = GetNodeUnit(&dst_node);
+    auto activation_it = activation_node_units_.find(&dst_node_unit);
+    if (activation_it == activation_node_units_.end()) {
+      // output node is not a fusable activation
       return ANEURALNETWORKS_FUSED_NONE;
     }
 
+    if (fuse_code_assigned_from_activation) {
+      // don't overwrite a previously assigned fuse code, just don't fuse
+      return ANEURALNETWORKS_FUSED_NONE;
+    }
+
+    fuse_code = activation_it->second;
+    fuse_code_assigned_from_activation = true;
+  }
+
+  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
     LOGS_DEFAULT(VERBOSE) << "Node [" << node_unit.Name() << "] type [" << node_unit.OpType()
                           << "], fused the output [" << output.Name() << "]";
 
