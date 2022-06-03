@@ -1,10 +1,10 @@
 ---
-title: Technical design
+title: Architecture
 parent: Reference
-nav_order: 6
+nav_order: 5
 ---
 
-# ONNX Runtime High Level Design
+# ONNX Runtime Architecture
 {: .no_toc }
 
 This document outlines the high level design of ONNX Runtime.
