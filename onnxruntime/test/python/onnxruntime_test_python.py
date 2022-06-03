@@ -965,8 +965,8 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
             res = sess.run(["Y"], {"X": ortvalue})
             self.assertTrue(np.array_equal(res[0], numpy_arr_output))
-            vect = sess._sess.run_with_ort_values(  # pylint: disable=W0212
-                {"X": ortvalue._get_c_value()}, ["Y"], RunOptions()  # pylint: disable=W0212
+            vect = sess._sess.run_with_ort_values(
+                {"X": ortvalue._get_c_value()}, ["Y"], RunOptions()
             )
             self.assertIsInstance(vect, OrtValueVector)
 
