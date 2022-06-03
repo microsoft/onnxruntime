@@ -2445,7 +2445,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     allocator_manager.InsertAllocator(cuda_alloc);
   }
 
-  TryInsertAllocator(std::move(cuda_alloc));
+  InsertAllocator(std::move(cuda_alloc));
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
@@ -2467,7 +2467,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     allocator_manager.InsertAllocator(cuda_pinned_alloc);
   }
 
-  TryInsertAllocator(std::move(cuda_pinned_alloc));
+  InsertAllocator(std::move(cuda_pinned_alloc));
 
   // OrtMemTypeCPUInput -- CUDA op place the input on CPU and will not be accessed by CUDA kernel, no sync issue
   auto cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
@@ -2488,7 +2488,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     allocator_manager.InsertAllocator(cuda_cpu_alloc);
   }
 
-  TryInsertAllocator(std::move(cuda_cpu_alloc));
+  InsertAllocator(std::move(cuda_cpu_alloc));
 }
 
 }  // namespace onnxruntime

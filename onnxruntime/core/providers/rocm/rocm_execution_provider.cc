@@ -2238,7 +2238,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     allocator_manager.InsertAllocator(rocm_alloc);
   }
 
-  TryInsertAllocator(std::move(rocm_alloc));
+  InsertAllocator(std::move(rocm_alloc));
 
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
@@ -2255,7 +2255,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     allocator_manager.InsertAllocator(rocm_pinned_alloc);
   }
 
-  TryInsertAllocator(std::move(rocm_pinned_alloc));
+  InsertAllocator(std::move(rocm_pinned_alloc));
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
   auto rocm_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
@@ -2276,7 +2276,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     allocator_manager.InsertAllocator(rocm_cpu_alloc);
   }
 
-  TryInsertAllocator(std::move(rocm_cpu_alloc));
+  InsertAllocator(std::move(rocm_cpu_alloc));
 }
 
 }  // namespace onnxruntime

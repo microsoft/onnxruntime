@@ -463,7 +463,7 @@ void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     allocator_manager.InsertAllocator(allocator_);
   }
 
-  TryInsertAllocator(allocator_);
+  InsertAllocator(allocator_);
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
@@ -480,7 +480,7 @@ void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     allocator_manager.InsertAllocator(cuda_pinned_alloc);
   }
 
-  TryInsertAllocator(cuda_pinned_alloc);
+  InsertAllocator(cuda_pinned_alloc);
 
   auto cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
   if (nullptr == cuda_cpu_alloc) {
@@ -500,7 +500,7 @@ void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     allocator_manager.InsertAllocator(cuda_cpu_alloc);
   }
 
-  TryInsertAllocator(cuda_cpu_alloc);
+  InsertAllocator(cuda_cpu_alloc);
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {

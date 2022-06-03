@@ -140,7 +140,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     allocator_manager.InsertAllocator(allocator_);
   }
 
-  TryInsertAllocator(allocator_);
+  InsertAllocator(allocator_);
 
   // OrtMemTypeCPUOutput -- allocated by hipMallocHost, used to copy HIP device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
@@ -156,7 +156,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     allocator_manager.InsertAllocator(hip_pinned_alloc);
   }
 
-  TryInsertAllocator(hip_pinned_alloc);
+  InsertAllocator(hip_pinned_alloc);
 
   auto hip_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
   if (nullptr == hip_cpu_alloc) {
@@ -175,7 +175,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     allocator_manager.InsertAllocator(hip_cpu_alloc);
   }
 
-  TryInsertAllocator(hip_cpu_alloc);
+  InsertAllocator(hip_cpu_alloc);
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
