@@ -886,7 +886,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       size_t max_pc = plan_.execution_plan.size();
       std::string node_arg_name;
-      ort_value_name_idx_map_.GetName(static_cast<int>(i), node_arg_name);
+      ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetName(static_cast<int>(i), node_arg_name));
       auto node_arg = graph_viewer_.GetNodeArg(node_arg_name);
       plan_.allocation_plan[i].value_type = utils::GetMLDataType(*node_arg);
       plan_.allocation_plan[i].life_interval = std::pair<size_t, size_t>(0, max_pc);
