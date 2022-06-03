@@ -192,6 +192,15 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
+#if defined(USE_SNPE)
+  ProviderOptions provider_options_map;
+  return CreateExecutionProviderFactory_SNPE(provider_options_map)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #ifdef USE_XNNPACK
   return CreateExecutionProviderFactory_Xnnpack()->CreateProvider();
