@@ -84,7 +84,6 @@ def testORTTrainerOptionsDefaultValues(test_input):
             "gelu_recompute": False,
             "transformer_layer_recompute": False,
             "number_recompute_layers": 0,
-            "allow_layer_norm_mod_precision": False,
             "propagate_cast_ops_config": {"strategy": PropagateCastOpsStrategy.FLOOD_FILL, "level": 1, "allow": []},
         },
         "utils": {

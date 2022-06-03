@@ -182,6 +182,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_ROCM}
   ${PROVIDERS_VITISAI}
+  ${PROVIDERS_XNNPACK}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}
   onnxruntime_optimizer

@@ -104,10 +104,30 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "0a92994d729ff76a58f692d3028ca1b64b145d91",
+          "repositoryUrl": "https://github.com/Maratyszcza/FP16.git"
+        },
+        "comments": "git submodule at cmake/external/FP16"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "ff15c6ada150a5018c5ef2172401cb4529eac9c0",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
         "comments": "git submodule at cmake/external/SafeInt/safeint"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "510b8e0f9af1891588c52bef64248cb72f04c30e",
+          "repositoryUrl": "https://github.com/google/XNNPACK.git"
+        },
+        "comments": "git submodule at cmake/external/XNNPACK"
       }
     },
     {
@@ -284,7 +304,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4f54a1950e1174dca490900eb7b07cc374f53d41",
+          "commitHash": "f42daeee49f2517a954c5601f0f76bef9ed94b62",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -358,6 +378,16 @@
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/protobuf/third_party/googletest"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
+        },
+        "comments": "git submodule at cmake/external/pthreadpool"
       }
     },
     {

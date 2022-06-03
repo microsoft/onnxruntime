@@ -1262,11 +1262,11 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
 }
 
 Graph::Graph(const Model& owning_model,
-    IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-    ONNX_NAMESPACE::GraphProto& subgraph_proto,
-    const std::unordered_map<std::string, int>& domain_version_map,
-    const logging::Logger& logger,
-    bool strict_shape_type_inference)
+             IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+             ONNX_NAMESPACE::GraphProto& subgraph_proto,
+             const std::unordered_map<std::string, int>& domain_version_map,
+             const logging::Logger& logger,
+             bool strict_shape_type_inference)
     : Graph(owning_model,
             &subgraph_proto,
             domain_version_map,
@@ -1331,10 +1331,17 @@ void Graph::InitializeStateFromModelFileGraphProto() {
         // Graph output is not found as any initializer.
         auto iter3 = graph_inputs.find(graph_output_name);
         if (graph_inputs.end() == iter3) {
-          // Graph output is not found as any graph input.
-          ORT_THROW(
-              "This is an invalid model. Graph output (", graph_output_name,
-              ") does not exist in the graph.");
+          if (parent_graph_ == nullptr ||
+              parent_graph_->GetNodeArgIncludingParentGraphs(graph_output_name) == nullptr) {
+            // Graph output is not found as any graph input.
+            ORT_THROW("This is an invalid model. Graph output (", graph_output_name, ") does not exist in the graph.");
+          } else {
+            // Special case of a subgraph directly returning an outer scope value. This is not explicitly allowed
+            // by the ONNX spec, and supporting it would potentially be complicated.
+            ORT_THROW("This is an invalid model. Subgraph output (", graph_output_name,
+                      ") is an outer scope value being returned directly. Please update the model to add an "
+                      "Identity node between the outer scope value and the subgraph output.");
+          }
         }
         graph_outputs_.push_back(iter3->second);
         continue;
@@ -2529,7 +2536,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       }
 
       if (!node.op_) {
-        return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Fatal error: ", (node.Domain() == kOnnxDomain ? kOnnxDomainAlias : node.Domain()), ":",
+                               node.OpType(), "(", node.SinceVersion(), ") is not a registered function/op");
       }
 
       // For ops without schema (like model local functions set the since version after constructing the schema.
@@ -2897,7 +2906,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
   }
   return Status::OK();
 }
-#endif // DISABLE_EXTERNAL_INITIALIZERS
+#endif  // DISABLE_EXTERNAL_INITIALIZERS
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -3830,12 +3839,17 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   fused_node.SetNodeType(Node::Type::Fused);
 #if !defined(ORT_MINIMAL_BUILD)
   // if this is a full build create the lightweight Function implementation that provides the schema so that
-  // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
-  // need to create the schema.
-  auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
-  fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
-  fused_node.op_ = fused_schemas_containers_.back().get();
-  fused_node.SetSinceVersion(fused_node.op_->SinceVersion());
+  // kernel lookup works as per usual, if not using an existing schema.
+  // in an extended minimal build we do the lookup via a hash so don't need a schema.
+  fused_node.SetSinceVersion(func_meta_def->since_version);
+  if (sub_graph.use_existing_schema) {
+    ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
+                "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
+  } else {
+    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
+    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+    fused_node.op_ = fused_schemas_containers_.back().get();
+  }
 #endif
   return fused_node;
 }

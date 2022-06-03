@@ -749,8 +749,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                                 .Input(3, "ratio",
                                        "The ratio of random dropout, with value in [0, 1). If this input was not set, "
                                        "or if it was set to 0, the output would be a simple copy of the input. "
-                                       "If it's non-zero, output will be a random dropout of input, which is typically "
-                                       "the case during training.",
+                                       "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+                                       "the case during training. It is an optional value, if not specified it will default to 0.5.",
                                        "T1",
                                        OpSchema::Optional)
                                 .Input(4, "training_mode",
@@ -784,6 +784,46 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                                     }
                                   }
                                 }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    BitmaskBiasDropout, 1,
+    OpSchema()
+        .SetDoc("output, dropout_bitmask = Dropout(data + bias, ratio) + residual, "
+                "Intended to specialize the dropout pattern commonly found in transformer models.")
+        .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .AllowUncheckedAttributes()
+        .Input(0, "data", "The input data as Tensor.", "T")
+        .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data OR same shape with data",
+               "T")
+        .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
+        .Input(3, "ratio",
+               "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+               "or if it was set to 0, the output would be a simple copy of the input. "
+               "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+               "the case during training. It is an optional value, if not specified it will default to 0.5.",
+               "T1", OpSchema::Optional)
+        .Input(4, "training_mode",
+               "If set to true then it indicates dropout is being used for "
+               "training. It is an optional value hence unless specified explicitly, it is false. "
+               "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
+               "will be dropped from the input data and if mask is requested as output it will contain "
+               "all ones.",
+               "T2", OpSchema::Optional)
+        .Output(0, "output", "The output.", "T")
+        .Output(1, "mask", "The output mask of dropout.", "T3", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                        "Constrain input 'ratio' types to float tensors.")
+        .TypeConstraint("T2", {"tensor(bool)"}, "Constrain input 'training_mode' types to boolean tensors.")
+        .TypeConstraint("T3", {"tensor(uint32)"}, "Constrain output 'mask' types to uint32 tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+          if (ctx.getNumOutputs() == 2) {
+            updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::UINT32);
+          }
+        }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(IsAllFinite, 1,
                             OpSchema()
@@ -2346,7 +2386,7 @@ void RegisterContribSchemas() {
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
       .SetDoc(DisentangledAttention_TRT_ver1_doc)
-      .Input(0, "c2c_attention", "content-to-content attention tensor, QcKc^T.", "T") 
+      .Input(0, "c2c_attention", "content-to-content attention tensor, QcKc^T.", "T")
       .Input(1, "c2p_attention", "content-to-position attention tensor, QcKr^T.", "T")
       .Input(2, "p2c_attention", "position-to-content attention tensor, KcQr^T.", "T")
       .Output(0, "disentangled_attention", "The disentangled attention output tensor.", "T")
@@ -2356,7 +2396,7 @@ void RegisterContribSchemas() {
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         using namespace ONNX_NAMESPACE;
-        propagateElemTypeFromInputToOutput(ctx, 0, 0); 
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
         // Shape Inference
         if (!hasInputShape(ctx, 0)) {
@@ -2375,8 +2415,59 @@ void RegisterContribSchemas() {
         //   *disentangled_attention_shape.add_dim() = dim;
         // }
         // updateOutputShape(ctx, 0, disentangled_attention_shape);
-        propagateShapeFromInputToOutput(ctx, 0, 0); 
+        propagateShapeFromInputToOutput(ctx, 0, 0);
 
+      });
+
+  static const char* BitmaskDropout_ver1_doc = R"DOC(
+BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
+It produces two tensor outputs: output (floating-point tensor) and mask (optional `Tensor<uint32>`). If `training_mode` is true then the output Y will be a random dropout.
+Note that this Dropout scales the masked input data by the following equation, so to convert the trained model into inference mode, the user can simply not pass `training_mode` input or set it to false.
+```
+output = scale * data * mask,
+```
+where
+```
+scale = 1. / (1. - ratio).
+```
+
+This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BitmaskDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(BitmaskDropout_ver1_doc)
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.",
+            AttributeProto::INT, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+             "the case during training. It is an optional value, if not specified it will default to 0.5.",
+             "T1", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Input(
+          2, "training_mode",
+          "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+          "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode "
+          "where "
+          "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+          "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "output", "The output.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(1, "mask", "The bit-packed output mask.", "T3", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint("T2", {"tensor(bool)"}, "Constrain 'training_mode' to boolean tensor.")
+      .TypeConstraint("T3", {"tensor(uint32)"}, "Constrain output 'mask' types to bit-packed uint32 tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        if (ctx.getNumOutputs() == 2) {
+          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::UINT32);
+        }
       });
 
 #ifndef _OPSCHEMA_LIB_
