@@ -14,7 +14,6 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-enum class DataLayout;
 class GraphViewer;
 class Node;
 struct ComputeCapability;
@@ -48,6 +47,12 @@ struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
   ComputeFunc compute_func;
   DestroyFunctionStateFunc release_state_func;
+};
+
+enum class DataLayout {
+  NCHW,
+  NHWC,
+  NCHWC,
 };
 
 class IExecutionProvider {
@@ -272,7 +277,7 @@ class IExecutionProvider {
 
   /**
      Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
-     If the EP implements this it should delay creating any allocators until this is called.
+     If the EP implements this it should generally delay creating any allocators until this is called.
   */
   virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
 
@@ -283,8 +288,12 @@ class IExecutionProvider {
   virtual DataLayout GetPreferredLayout() const {
     // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return static_cast<DataLayout>(0);
+    return DataLayout::NCHW;
   }
+
+  /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
+   */
+  virtual bool ConcurrentRunSupported() const { return true; }
 
  private:
   const std::string type_;

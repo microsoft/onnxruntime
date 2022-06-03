@@ -527,6 +527,11 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+  // if any EPs do not support concurrent calls to Run we add locking around graph execution
+  if (p_exec_provider->ConcurrentRunSupported() == false) {
+    is_concurrent_run_supported_ = false;
+  }
+
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
   if (p_data_xfr) {
@@ -1896,6 +1901,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // If Execute ever becomes async we need a different approach
       std::unique_ptr<logging::Logger> owned_run_logger;
       auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+      std::optional<std::lock_guard<OrtMutex>> sequential_run_lock;
+      if (is_concurrent_run_supported_ == false) {
+        sequential_run_lock.emplace(session_mutex_);
+      }
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use

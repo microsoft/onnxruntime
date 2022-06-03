@@ -105,6 +105,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_mlas
       onnxruntime_optimizer
       onnxruntime_providers
+      ${PROVIDERS_XNNPACK}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -168,6 +169,7 @@ else()
     onnxruntime_mlas
     onnxruntime_optimizer
     onnxruntime_providers
+    ${PROVIDERS_XNNPACK}
     onnxruntime_session
     onnxruntime_util
     re2::re2
