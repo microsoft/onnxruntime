@@ -231,8 +231,7 @@ class Session:
                 input_dict[n] = v._get_c_value()
             result = sess.run_with_ort_values(input_dict, output_names, run_options)
             if not isinstance(result, OrtValueVector):
-                raise TypeError(
-                    "run_with_ort_values() must return a instance of type 'OrtValueVector'.")
+                raise TypeError("run_with_ort_values() must return a instance of type 'OrtValueVector'.")
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
@@ -542,8 +541,7 @@ class IOBinding:
         returned_ortvalues = []
         outputs = self._iobinding.get_outputs()
         if not isinstance(outputs, OrtValueVector):
-            raise TypeError(
-                "get_outputs() must return an instance of type 'OrtValueVector'.")
+            raise TypeError("get_outputs() must return an instance of type 'OrtValueVector'.")
         return [OrtValue(ortvalue) for ortvalue in outputs]
 
     def copy_outputs_to_cpu(self):

@@ -77,8 +77,7 @@ class InferenceAgent:
         # but ExecutionAgentOutput only accepts OrtValueVector.
         ortvalues = iobinding._iobinding.get_outputs()  # pylint: disable=W0212
         if not isinstance(ortvalues, OrtValueVector):
-            raise TypeError(
-                "ortvalues must be an instance of type 'OrtValueVector'.")
+            raise TypeError("ortvalues must be an instance of type 'OrtValueVector'.")
         return ExecutionAgentOutput(ortvalues)
 
 
