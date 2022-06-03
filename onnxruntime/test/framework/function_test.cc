@@ -203,25 +203,5 @@ TEST(FunctionTest, TempInSubgraph) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
-TEST(Debug, Issue1) {
-  SessionOptions session_options;
-  InferenceSession session_object{session_options, GetEnvironment()};
-
-  auto status = session_object.Load("E:\\Temp\\bug\\dft_last_axis.error.ort.exec.onnx");
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-}
-
-TEST(Debug, Issue2) {
-  SessionOptions session_options;
-  InferenceSession session_object{session_options, GetEnvironment()};
-
-  auto status = session_object.Load("E:\\Temp\\bug\\dft_last_axis.onnxruntime1.output.onnx");
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-}
-
 }  // namespace test
 }  // namespace onnxruntime
