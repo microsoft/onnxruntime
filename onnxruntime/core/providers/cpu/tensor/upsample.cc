@@ -5,6 +5,10 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
 
+#if defined(__arm__) || defined(__aarch64__)
+#include <arm_neon.h>
+#endif
+
 using namespace onnxruntime::common;
 using namespace std;
 namespace onnxruntime {
@@ -1256,7 +1260,52 @@ void NhwcUpsampleBilinear<int8_t, false>(const int32_t batch_size,
             float X21_coef = p.dx1[x] * p.dy2[y];
             float X12_coef = p.dx2[x] * p.dy1[y];
             float X22_coef = p.dx1[x] * p.dy1[y];
-            for (int32_t c = 0; c < num_channels; ++c) {
+
+            int32_t c = 0;
+
+#if 0
+
+#if defined(__arm__) || defined(__aarch64__)
+            while (c + 8 <= num_channels) {
+              int16x8_t X11_int16x8 = vmovl_s8(vld1_s8(Xdata + X11_offset + c));
+              int16x8_t X21_int16x8 = vmovl_s8(vld1_s8(Xdata + X21_offset + c));
+              int16x8_t X12_int16x8 = vmovl_s8(vld1_s8(Xdata + X12_offset + c));
+              int16x8_t X22_int16x8 = vmovl_s8(vld1_s8(Xdata + X22_offset + c));
+
+              float32x4_t accumulator_low = vdupq_n_f32(0.0);
+              float32x4_t accumulator_high = vdupq_n_f32(0.0);
+
+              float32x4_t X11_float32x4_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(X11_int16x8)));
+              float32x4_t X11_float32x4_high = vcvtq_f32_s32(vmovl_s16(vget_high_s16(X11_int16x8)));
+              float32x4_t X21_float32x4_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(X21_int16x8)));
+              float32x4_t X21_float32x4_high = vcvtq_f32_s32(vmovl_s16(vget_high_s16(X21_int16x8)));
+              accumulator_low = vmlaq_n_f32(accumulator_low, X11_float32x4_low, X11_coef);
+              accumulator_high = vmlaq_n_f32(accumulator_high, X11_float32x4_high, X11_coef);
+
+              accumulator_low = vmlaq_n_f32(accumulator_low, X21_float32x4_low, X21_coef);
+              accumulator_high = vmlaq_n_f32(accumulator_high, X21_float32x4_high, X21_coef);
+
+              float32x4_t X12_float32x4_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(X12_int16x8)));
+              float32x4_t X12_float32x4_high = vcvtq_f32_s32(vmovl_s16(vget_high_s16(X12_int16x8)));
+              float32x4_t X22_float32x4_low = vcvtq_f32_s32(vmovl_s16(vget_low_s16(X22_int16x8)));
+              float32x4_t X22_float32x4_high = vcvtq_f32_s32(vmovl_s16(vget_high_s16(X22_int16x8)));
+              accumulator_low = vmlaq_n_f32(accumulator_low, X12_float32x4_low, X12_coef);
+              accumulator_high = vmlaq_n_f32(accumulator_high, X12_float32x4_high, X12_coef);
+
+              accumulator_low = vmlaq_n_f32(accumulator_low, X22_float32x4_low, X22_coef);
+              accumulator_high = vmlaq_n_f32(accumulator_high, X22_float32x4_high, X22_coef);
+
+              int8x8_t result = vmovn_s16(vcombine_s16(vmovn_s32(vcvtq_f32_s32(accumulator_low)),
+                                                       vmovn_s32(vcvtq_f32_s32(accumulator_high))));
+
+              vst1_s8(Ydata + output_offset + c, result);
+              c += 8;
+            }
+#endif
+
+#endif
+
+            for (c = 0; c < num_channels; ++c) {
               int8_t X11 = Xdata[X11_offset + c];
               int8_t X21 = Xdata[X21_offset + c];
               int8_t X12 = Xdata[X12_offset + c];
