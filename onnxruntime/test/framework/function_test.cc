@@ -159,7 +159,7 @@ TEST(FunctionTest, InputInSubgraph) {
         }
         )";
 
-  Check(code, input("x", {1.0, 2.0, 3.0}), "y", {6.0, 12.0, 18.0});
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
 // Check variable renaming in subgraphs.
@@ -200,7 +200,7 @@ TEST(FunctionTest, TempInSubgraph) {
         }
         )";
 
-  Check(code, input("x", {1.0, 2.0, 3.0}), "y", {6.0, 12.0, 18.0});
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
 TEST(Debug, Issue1) {
