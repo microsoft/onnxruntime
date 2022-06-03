@@ -24,50 +24,6 @@ The DirectML Execution Provider currently uses DirectML version [1.8.0](https://
 {:toc}
 
 
-## Windows OS integration
-
-ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support.
-
-The high level design looks like this:
-
-![ONNX + WinML layered architecture](../../images/layered-architecture.png)
-
-### API choice
-{: .no_toc }
-
-You can choose to use either the WinRT API or the C API.
-
-||WinRT|C API|
-|--|--|--|
-|Type system| Integration with Windows RT types| Platform neutral types|
-|Language support| Language support via WinRT Projections| Language support via per language projections|
-|Tensorization| Accepts VideoFrames and converts to tensors (support for CPU and GPU)| Accepts tensors|
-
-### Using the NuGet WinRT API with other C-API distributions
-{: .no_toc }
-
-The WinRT API NuGet package is distributed with a specific version of ONNX Runtime, but apps can include their own version of ONNX Runtime (either a [released version](../install/#cccwinml-installs) or [a custom build](../build/)). You may wish to do this to use non-default execution providers.
-To use your own version of ONNX Runtime, replace onnxruntime.dll with your desired version.
-
-<p><a href="#">Back to top</a></p>
-
-
-## Install
-Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](../install#cccwinml-installs).
-
-## Requirements
-
-The DirectML execution provider requires a DirectX 12 capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Here are some examples of compatible hardware:
-
-* NVIDIA Kepler (GTX 600 series) and above
-* AMD GCN 1st Gen (Radeon HD 7000 series) and above
-* Intel Haswell (4th-gen core) HD Integrated Graphics and above
-* Qualcomm Adreno 600 and above
-
-DirectML was introduced in Windows 10, version 1903, and in the corresponding version of the Windows SDK.
-
-<p><a href="#">Back to top</a></p>
-
 ## Build
 
 Requirements for building the DirectML execution provider:
