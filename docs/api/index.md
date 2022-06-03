@@ -1,8 +1,10 @@
 ---
 title: API Docs
 nav_order: 5
+redirect_from: /docs/reference/api
 ---
-# ORT API docs
+
+# ONNX Runtime API docs
 {: .no_toc }
 
 |:----------------------------------------------------------------------------------|

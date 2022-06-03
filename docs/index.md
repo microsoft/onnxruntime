@@ -1,9 +1,11 @@
 ---
 title: ONNX Runtime
-description: ONNX Runtime overview with instructions on installation, getting started, tutorials and reference documentation
+description: ONNX Runtime is a cross-platform machine-learning model accelerator
 has_children: false
 nav_order: 0
+redirect_from: /how-to
 ---
+
 # Welcome to ONNX Runtime
 {: .no_toc }
 

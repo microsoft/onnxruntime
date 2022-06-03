@@ -3,7 +3,7 @@ title: Build a web app with ONNX Runtime
 description: Considerations and options for building a web application with ONNX Runtime
 parent: Reference
 has_children: false
-nav_order: 5
+nav_order: 6
 ---
 
 # Build a web application with ONNX Runtime

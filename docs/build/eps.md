@@ -229,7 +229,7 @@ See more information on the OpenVINO Execution Provider [here](../execution-prov
 ### Prerequisites
 {: .no_toc }
 
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2022.1** for the appropriate OS and target hardware:
+1. Install the openvino offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2022.1** for the appropriate OS and target hardware:
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
@@ -243,7 +243,7 @@ See more information on the OpenVINO Execution Provider [here](../execution-prov
    * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
    * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvino.ai/2021.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
 
-3. Initialize the OpenVINO environment by running the setupvars script as shown below:
+3. Initialize the OpenVINO environment by running the setupvars script as shown below. This is a required step:
    * For Linux run till OpenVINO 2021.4 version:
    ```
       $ source <openvino_install_directory>/bin/setupvars.sh

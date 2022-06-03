@@ -1,13 +1,13 @@
 ---
-title: ORT format models
+title: ORT model format
 description: Define the ORT format and show how to convert an ONNX model to ORT format to run on mobile or web
 parent: Reference
 has_children: false
-nav_order: 4
+nav_order: 8
 redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution
 ---
 
-# ORT format models
+# ORT model format
 {: .no_toc}
 
 ## Contents
@@ -16,7 +16,7 @@ redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/m
 * TOC
 {:toc}
 
-## What is the ORT format?
+## What is the ORT model format?
 
 The ORT format is the format supported by reduced size ONNX Runtime builds. Reduced size builds may be more appropriate for use in size-constrained environments such as mobile and web applications.
 
