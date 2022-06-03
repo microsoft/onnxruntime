@@ -26,22 +26,37 @@ static void Check(const char* source,
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;
   auto parse_status = parser.Parse(model);
+<<<<<<< HEAD
   EXPECT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
   EXPECT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+=======
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+>>>>>>> rama/iotypes
 
   // Serialize and then load model:
   std::string serialized_model;
   const bool serialization_status = model.SerializeToString(&serialized_model);
+<<<<<<< HEAD
   EXPECT_TRUE(serialization_status) << "Failed to serialize proto to string";
+=======
+  ASSERT_TRUE(serialization_status) << "Failed to serialize proto to string";
+>>>>>>> rama/iotypes
 
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
 
   std::stringstream sstr(serialized_model);
   auto status = session_object.Load(sstr);
+<<<<<<< HEAD
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   status = session_object.Initialize();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+=======
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+>>>>>>> rama/iotypes
 
   RunOptions run_options;
   run_options.run_tag = session_options.session_logid;
@@ -57,7 +72,11 @@ static void Check(const char* source,
   std::vector<OrtValue> fetches;
 
   status = session_object.Run(run_options, feeds, {output_name}, &fetches);
+<<<<<<< HEAD
   EXPECT_TRUE(status.IsOK()) << "Session Run failed.";
+=======
+  ASSERT_TRUE(status.IsOK()) << "Session Run failed.";
+>>>>>>> rama/iotypes
 
   auto& tensor = fetches[0].Get<Tensor>();
   size_t size = static_cast<size_t>(tensor.Shape().Size());
@@ -122,9 +141,86 @@ TEST(FunctionTest, Renaming) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {4.0, 8.0, 12.0});
 }
 
+// Check variable renaming in subgraphs.
+// Scenario: input lx is used within subgraphs, but not in main graph.
+// Both must be renamed to match the actual parameter name.
+TEST(FunctionTest, InputInSubgraph) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            f = Constant <value = bool {0}> ()
+            t = Constant <value = bool {1}> ()
+            y1 = local.myfun (f, x)
+            y = local.myfun (t, y1)
+        }
 
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun (b, lx) => (ly) {
+            ly = If (b) <
+                then_branch = g1 () => (float[N] z_then)
+                {
+                    two = Constant <value = float[1] {2.0}> ()
+                    z_then =  Mul (lx, two)
+                },
+                else_branch = g2 () => (float[N] z_else)
+                {
+                    three = Constant <value = float[1] {3.0}> ()
+                    z_else =  Mul (lx, three)
+                }
+                >
+        }
+        )";
 
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
+}
 
+// Check variable renaming in subgraphs.
+// Scenario: intermediate temp is used within subgraphs, defined in main graph.
+// Both must be renamed with a unique temporary name.
+TEST(FunctionTest, TempInSubgraph) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            f = Constant <value = bool {0}> ()
+            t = Constant <value = bool {1}> ()
+            y1 = local.myfun (f, x)
+            y = local.myfun (t, y1)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun (b, lx) => (ly) {
+            temp = Identity (lx)
+            ly = If (b) <
+                then_branch = g1 () => (float[N] z_then)
+                {
+                    two = Constant <value = float[1] {2.0}> ()
+                    z_then =  Mul (temp, two)
+                },
+                else_branch = g2 () => (float[N] z_else)
+                {
+                    three = Constant <value = float[1] {3.0}> ()
+                    z_else =  Mul (temp, three)
+                }
+                >
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
+}
 
 }  // namespace test
 }  // namespace onnxruntime
