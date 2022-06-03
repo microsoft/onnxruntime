@@ -393,7 +393,7 @@ void addOrtValueMethods(pybind11::module& m) {
                 }
                 obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
                 if (obj == NULL)
-                  throw std::runtime_error("to_tensor returned a null pointer. This is usually caused by an error during the conversion.");
+                  throw std::runtime_error("to_tensor returned a null pointer. This may be caused by the data conversion.");
                 list_dlpacks.append(obj);
                 Py_DECREF(obj);
               }
