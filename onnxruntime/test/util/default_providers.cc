@@ -192,5 +192,13 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
+#ifdef USE_XNNPACK
+  return CreateExecutionProviderFactory_Xnnpack()->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 }  // namespace test
 }  // namespace onnxruntime
