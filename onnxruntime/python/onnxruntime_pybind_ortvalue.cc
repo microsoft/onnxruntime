@@ -421,8 +421,9 @@ is difficult to parallelize as it goes through the GIL many times.
 It creates many tensors acquiring ownership of existing OrtValue.
 This method saves one object creation and an C++ allocation
 for every transferred tensor.
-)pbdoc", py::arg("to_tensor"));
+)pbdoc", py::arg("to_tensor"))
 #endif
+  ;
 
 #ifdef ENABLE_TRAINING
   m.def("is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
