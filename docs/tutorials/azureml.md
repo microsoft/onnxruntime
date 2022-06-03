@@ -10,7 +10,7 @@ nav_order: 5
 
 This tutorial takes a BERT model from HuggingFace, converts it to ONNX, and deploys the ONNX model with ONNX Runtime through AzureML.
 
-In the following sections, we use the HuggingFace Bert model trained with Stanford Question Answering Dataset (SQuAD) dataset as an example. You can also train or fine-tune your own question answer model.
+In the following sections, we use the HuggingFace BERT model trained with Stanford Question Answering Dataset (SQuAD) dataset as an example. You can also train or fine-tune your own question answer model.
 
 The question answer scenario takes a question and a piece of text called a context, and produces answer, which is a string of text taken from the context. This scenario tokenizes and encodes the question and the context, feeds the inputs into the transformer model and generates the answer by producing the most likely start and end tokens in the context, which are then mapped back into words.
 
@@ -75,7 +75,7 @@ az extension remove azure-cli-ml
 
 In the code below, we obtain a BERT model fine-tuned for question answering with the SQUAD dataset from HuggingFace.
 
-If you'd like to pre-train a BERT model from scratch, follow the instructions in [Pre-train BERT model](https://github.com/microsoft/AzureML-BERT/blob/master/pretrain/PyTorch/notebooks/BERT_Pretrain.ipynb). And if you would like to fine-tune the model with your own dataset, refer to [AzureML Bert Eval Squad](https://github.com/microsoft/AzureML-BERT/blob/master/finetune/PyTorch/notebooks/BERT_Eval_SQUAD.ipynb) or [AzureML Bert Eval GLUE](https://github.com/microsoft/AzureML-BERT/blob/master/finetune/PyTorch/notebooks/BERT_Eval_GLUE.ipynb).
+If you'd like to pre-train a BERT model from scratch, follow the instructions in [Pre-train BERT model](https://github.com/microsoft/AzureML-BERT/blob/master/pretrain/PyTorch/notebooks/BERT_Pretrain.ipynb). And if you would like to fine-tune the model with your own dataset, refer to [AzureML BERT Eval Squad](https://github.com/microsoft/AzureML-BERT/blob/master/finetune/PyTorch/notebooks/BERT_Eval_SQUAD.ipynb) or [AzureML BERT Eval GLUE](https://github.com/microsoft/AzureML-BERT/blob/master/finetune/PyTorch/notebooks/BERT_Eval_GLUE.ipynb).
 
 ### Export the model
 
@@ -280,7 +280,7 @@ model = Model.register(model_path = model_path,                 # Name of the re
                        model_framework=Model.Framework.ONNX ,   # Framework used to create the model.
                        model_framework_version=torch_version,   # Version of ONNX used to create the model.
                        tags = {"onnx": "demo"},
-                       description = "HuggingFace Bert model fine-tuned with SQuAd and exported from PyTorch",
+                       description = "HuggingFace BERT model fine-tuned with SQuAd and exported from PyTorch",
                        workspace = ws)
 ```
 
