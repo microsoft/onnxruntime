@@ -22,7 +22,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
         std::vector<onnxruntime::KernelDef> result;
 
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
-            onnxruntime::CreateExecutionProviderFactory_CPU(0),
+            onnxruntime::CreateExecutionProviderFactory_CPU(onnxruntime::CPUExecutionProviderInfo(false, false)),
 #ifdef USE_CUDA
             []() {
               OrtCUDAProviderOptions provider_options{};

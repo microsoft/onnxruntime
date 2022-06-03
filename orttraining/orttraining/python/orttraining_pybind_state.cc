@@ -118,7 +118,6 @@ struct TrainingParameters {
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill;
-  bool allow_layer_norm_mod_precision = false;
 
   // graph dumping
   std::string model_after_graph_transforms_path;
@@ -294,7 +293,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
   config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
   config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
-  config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
     config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
@@ -548,8 +546,7 @@ for every transfered tensor.
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
       .def_readwrite("propagate_cast_ops_level", &TrainingParameters::propagate_cast_ops_level)
-      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingParameters::allow_layer_norm_mod_precision);
+      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -787,7 +784,6 @@ for every transfered tensor.
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(

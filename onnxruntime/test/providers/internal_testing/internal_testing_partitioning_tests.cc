@@ -24,8 +24,9 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
 namespace onnxruntime {
-
 namespace test {
+
+using namespace onnxruntime::internal_testing_ep;
 
 // tests use onnx format models currently so exclude them from a minimal build.
 // it would be possible to use ORT format models but the same partitioning code would run either way
@@ -195,8 +196,12 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
     ops.insert(op_type);
   }
 
-  ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-      std::make_unique<InternalTestingExecutionProvider>(ops, stop_ops, debug_output, DataLayout::NHWC)));
+  auto ep = std::make_unique<InternalTestingExecutionProvider>(ops, stop_ops, DataLayout::NHWC);
+  if (debug_output) {
+    ep->SetDebugOutput(true);
+  }
+
+  ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::move(ep)));
 
   ASSERT_STATUS_OK(session->Load(model_uri));
   const auto& graph = session->GetGraph();
