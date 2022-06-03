@@ -9,12 +9,6 @@
 #include "core/graph/function_impl.h"
 #include "core/graph/model_load_utils.h"
 
-<<<<<<< HEAD
-=======
-#include "onnx/defs/printerplus.h"
-#include <iostream>
-
->>>>>>> rama/iotypes
 namespace onnxruntime {
 namespace function_utils {
 
@@ -406,11 +400,7 @@ public:
 
 void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
                 const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
-  // std::cout << "Function before\n";
-  // ONNX_NAMESPACE::do_print(std::cout, called_function);
   Inliner::specialize(calling_node, called_function, attr_map, unique_prefix);
-  // std::cout << "Function after\n";
-  // ONNX_NAMESPACE::do_print(std::cout, called_function);
 }
 
 }  // namespace function_utils
