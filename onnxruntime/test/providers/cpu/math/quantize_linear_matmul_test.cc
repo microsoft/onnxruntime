@@ -6,12 +6,68 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
 
+class OpTesterRequant : public OpTester {
+ public:
+  explicit OpTesterRequant(
+    const char* op,
+    int opset_version = 7,
+    const char* domain = onnxruntime::kOnnxDomain,
+    bool verify_output = true) : OpTester(op, opset_version, domain, verify_output) {}
+
+  void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
+           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const RunOptions* run_options = nullptr,
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+           const Graph::ResolveOptions& resolve_options = {}) {
+    SessionOptions session_options;
+    SetUpDefaultSessionOptions(session_options);
+    for (auto use_fixed_point : {"0", "1"}) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigFixedPointRequantOnARM64,
+        use_fixed_point));
+      OpTester::Run(session_options,
+                    expect_result,
+                    expected_failure_string,
+                    excluded_provider_types,
+                    run_options,
+                    execution_providers,
+                    resolve_options);
+    }
+  }
+
+  void Run(SessionOptions session_options,
+           ExpectResult expect_result = ExpectResult::kExpectSuccess,
+           const std::string& expected_failure_string = "",
+           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const RunOptions* run_options = nullptr,
+           std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+           const Graph::ResolveOptions& resolve_options = {},
+           /*out*/ size_t* number_of_pre_packed_weights_counter = nullptr,
+           /*out*/ size_t* number_of_shared_pre_packed_weights_counter = nullptr) {
+    for (auto use_fixed_point : {"0", "1"}) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigFixedPointRequantOnARM64,
+        use_fixed_point));
+      OpTester::Run(session_options,
+                    expect_result,
+                    expected_failure_string,
+                    excluded_provider_types,
+                    run_options,
+                    execution_providers,
+                    resolve_options,
+                    number_of_pre_packed_weights_counter,
+                    number_of_shared_pre_packed_weights_counter);
+    }
+  }
+};
+
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8U8) {
-  OpTester test("QLinearMatMul", 10);
+  OpTesterRequant test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("T1", {2, 2, 4},
                          {208, 236, 0, 238,
                           3, 214, 255, 29,
@@ -49,7 +105,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8U8) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
-  OpTester test("QLinearMatMul", 10);
+  OpTesterRequant test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("T1", {2, 2, 4},
                          {208, 126, 0, 238,
                           3, 214, 255, 29,
@@ -87,7 +143,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_U8S8) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
-  OpTester test("QLinearMatMul", 10);
+  OpTesterRequant test("QLinearMatMul", 10);
   test.AddInput<int8_t>("T1", {2, 2, 4},
                         {80, -2, -128, 110,
                          -125, 86, 127, -99,
@@ -126,7 +182,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul3D_S8S8) {
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
   auto run_test = [](bool only_t1_not_initializer) {
-    OpTester test("QLinearMatMul", 10);
+    OpTesterRequant test("QLinearMatMul", 10);
     test.AddInput<uint8_t>("T1", {2, 4},
                            {208, 236, 0, 238,
                             3, 214, 255, 29});
@@ -161,7 +217,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8U8) {
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
   auto run_test = [](bool only_t1_not_initializer) {
-    OpTester test("QLinearMatMul", 10);
+    OpTesterRequant test("QLinearMatMul", 10);
     test.AddInput<uint8_t>("T1", {2, 4},
                            {208, 126, 0, 238,
                             3, 214, 255, 29});
@@ -196,7 +252,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_U8S8) {
 
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
   auto run_test = [](bool only_t1_not_initializer) {
-    OpTester test("QLinearMatMul", 10);
+    OpTesterRequant test("QLinearMatMul", 10);
     test.AddInput<int8_t>("T1", {2, 4},
                           {80, -2, -128, 110,
                            -125, 86, 127, -99});
@@ -231,7 +287,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMul2D_S8S8) {
 
 static void QLinearMatMul2DTest(bool only_t1_not_initializer) {
   // Test non-empty inputs
-  OpTester test_non_empty("QLinearMatMul", 10);
+  OpTesterRequant test_non_empty("QLinearMatMul", 10);
   test_non_empty.AddInput<uint8_t>("T1", {2, 4}, {208, 236, 0, 238, 3, 214, 255, 29});
   test_non_empty.AddInput<float>("a_scale", {1}, {0.0066f}, only_t1_not_initializer);
   test_non_empty.AddInput<uint8_t>("a_zero_point", {1}, {113}, only_t1_not_initializer);
@@ -244,7 +300,7 @@ static void QLinearMatMul2DTest(bool only_t1_not_initializer) {
   test_non_empty.Run();
 
   // Test with an empty input
-  OpTester test_empty("QLinearMatMul", 10);
+  OpTesterRequant test_empty("QLinearMatMul", 10);
   test_empty.AddInput<uint8_t>("T1", {0, 4}, {});
   test_empty.AddInput<float>("a_scale", {1}, {0.0066f}, only_t1_not_initializer);
   test_empty.AddInput<uint8_t>("a_zero_point", {1}, {113}, only_t1_not_initializer);
@@ -269,7 +325,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
-  OpTester test("QLinearMatMul", 10);
+  OpTesterRequant test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
                          {2, 4},
                          {125, 135, 133, 122,
@@ -299,7 +355,7 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
-  OpTester test("QLinearMatMul", 10);
+  OpTesterRequant test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
                         {2, 4},
                         {-3, 7, 5, -6,
@@ -329,7 +385,7 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D_S8S8) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
-  OpTester test("QLinearMatMul", 10);
+  OpTesterRequant test("QLinearMatMul", 10);
   test.AddInput<uint8_t>("a",
                          {2, 2, 4},
                          {125, 135, 133, 122,
@@ -372,7 +428,7 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
 }
 
 TEST(QuantizeLinearMatmulOpTest, PerColumn_ND_S8S8) {
-  OpTester test("QLinearMatMul", 10);
+  OpTesterRequant test("QLinearMatMul", 10);
   test.AddInput<int8_t>("a",
                         {2, 2, 4},
                         {-3, 7, 5, -6,
@@ -491,7 +547,7 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   auto kernel_def = PrePackTestOp::KernelDef();
   ASSERT_TRUE((status = registry->RegisterCustomKernel(kernel_def, kernel_create_fn)).IsOK()) << status;
 
-  OpTester test_non_empty(PrePackTestOp::OpName, 10, PrePackTestOp::OpDomain);
+  OpTesterRequant test_non_empty(PrePackTestOp::OpName, 10, PrePackTestOp::OpDomain);
   test_non_empty.AddCustomOpRegistry(registry);
 
   test_non_empty.AddInput<uint8_t>("T1", {2, 4}, {208, 236, 0, 238, 3, 214, 255, 29});

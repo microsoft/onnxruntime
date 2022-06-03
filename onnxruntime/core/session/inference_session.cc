@@ -268,8 +268,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
-      if (!external_intra_op_thread_pool_)
-      {
+      if (!external_intra_op_thread_pool_) {
         bool allow_intra_op_spinning =
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
         OrtThreadPoolParams to = session_options_.intra_op_param;
@@ -284,8 +283,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         // If the thread pool can use all the processors, then
         // we set affinity of each thread to each processor.
         to.auto_set_affinity = to.thread_pool_size == 0 &&
-                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                              to.affinity_vec_len == 0;
+                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+                               to.affinity_vec_len == 0;
         to.allow_spinning = allow_intra_op_spinning;
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
@@ -303,8 +302,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       }
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      if (!external_inter_op_thread_pool_)
-      {
+      if (!external_inter_op_thread_pool_) {
         bool allow_inter_op_spinning =
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
         OrtThreadPoolParams to = session_options_.inter_op_param;
@@ -381,8 +379,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
       logging_manager_(session_env.GetLoggingManager()),
       external_intra_op_thread_pool_(external_intra_op_thread_pool),
       external_inter_op_thread_pool_(external_inter_op_thread_pool),
-      environment_(session_env)
-{
+      environment_(session_env) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -531,6 +528,11 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     if (trt_ep) {
       ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
     }
+  }
+
+  // if any EPs do not support concurrent calls to Run we add locking around graph execution
+  if (p_exec_provider->ConcurrentRunSupported() == false) {
+    is_concurrent_run_supported_ = false;
   }
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
@@ -1272,7 +1274,9 @@ common::Status InferenceSession::Initialize() {
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
-      CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
+      const bool use_fixed_point_requant_on_arm64 =
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigFixedPointRequantOnARM64, "0") == "1";
+      CPUExecutionProviderInfo epi(session_options_.enable_cpu_mem_arena, use_fixed_point_requant_on_arm64);
       auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
@@ -1882,6 +1886,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // If Execute ever becomes async we need a different approach
       std::unique_ptr<logging::Logger> owned_run_logger;
       auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+      std::optional<std::lock_guard<OrtMutex>> sequential_run_lock;
+      if (is_concurrent_run_supported_ == false) {
+        sequential_run_lock.emplace(session_mutex_);
+      }
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use

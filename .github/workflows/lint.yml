@@ -36,7 +36,6 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-          filter_mode: file
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:

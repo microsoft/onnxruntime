@@ -15,7 +15,8 @@ endif()
 cmake_policy(SET CMP0104 OLD)
 
 # Project
-project(onnxruntime C CXX)
+project(onnxruntime C CXX ASM)
+
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
 
@@ -106,6 +107,7 @@ option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled 
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_USE_TVM "Build with TVM support" OFF)
 option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
+option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -901,10 +903,12 @@ if (onnxruntime_ENABLE_CPUINFO)
       message(FATAL_ERROR "universal binary is not supported for apple framework")
     endif()
   else()
-    if (onnxruntime_BUILD_WEBASSEMBLY)
-    set(CPUINFO_SUPPORTED FALSE)
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
+    # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
+    if (onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_USE_XNNPACK) 
+      set(CPUINFO_SUPPORTED FALSE)
     else()
-    set(CPUINFO_SUPPORTED TRUE)
+      set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
       # Exclude Windows ARM build and Windows Store
@@ -932,8 +936,12 @@ if (CPUINFO_SUPPORTED)
     set(IOS ON CACHE INTERNAL "")
     set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
   endif()
-
-  string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  
+  # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved) 
+  # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
+  if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+    string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  endif()
 
   if (onnxruntime_PREFER_SYSTEM_LIB)
     find_package(cpuinfo)
@@ -1186,6 +1194,12 @@ if (onnxruntime_USE_COREML)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_COREML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
+if (onnxruntime_USE_XNNPACK)
+  list(APPEND ORT_PROVIDER_FLAGS -DUSE_XNNPACK=1)
+  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_XNNPACK=1)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
+endif()
+
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
@@ -1486,6 +1500,70 @@ if (onnxruntime_USE_TVM)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+endif()
+
+# XNNPACK EP
+if (onnxruntime_USE_XNNPACK)
+  if (onnxruntime_DISABLE_CONTRIB_OPS)
+    message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available "
+                         "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
+  endif()
+
+  set(XNNPACK_DIR external/XNNPACK)
+  set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
+  set(XNNPACK_USE_SYSTEM_LIBS ON CACHE INTERNAL "")  
+  set(XNNPACK_BUILD_TESTS OFF CACHE INTERNAL "")
+  set(XNNPACK_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+  set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
+  set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+  set(CLOG_SOURCE_DIR "${PYTORCH_CPUINFO_DIR}/deps/clog")
+  set(CPUINFO_SOURCE_DIR ${PYTORCH_CPUINFO_DIR})
+
+  add_subdirectory(external/FP16)  
+  add_subdirectory(external/pthreadpool)
+  add_subdirectory(external/XNNPACK)
+
+  set_target_properties(fp16 PROPERTIES FOLDER "External/Xnnpack")
+  set_target_properties(pthreadpool PROPERTIES FOLDER "External/Xnnpack")
+  set_target_properties(XNNPACK PROPERTIES FOLDER "External/Xnnpack")
+  
+  set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK XNNPACK pthreadpool)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
+
+  # the XNNPACK CMake setup doesn't include the WASM kernels so we have to manually set those up
+  if (onnxruntime_BUILD_WEBASSEMBLY)
+    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+      target_compile_options(XNNPACK PRIVATE "-pthread")
+    endif()
+
+    message("Adding WebAssembly Source Files to XNNPACK")
+    set(wasm_src_patterns "${XNNPACK_DIR}/src/wasm-*.c"
+                          "${XNNPACK_DIR}/src/*-wasm-*.c"
+                          "${XNNPACK_DIR}/src/*-wasm.c")  
+    set(wasm32_asm_src_patterns "${XNNPACK_DIR}/src/wasm_shr_*.S")
+
+    file(GLOB_RECURSE XNNPACK_WASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm_src_patterns})
+    file(GLOB_RECURSE XNNPACK_WASM32_ASM_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasm32_asm_src_patterns})
+    
+    message(DEBUG "XNNPACK_WASM_MICROKERNEL_SRCS:${XNNPACK_WASM_MICROKERNEL_SRCS}")
+    message(DEBUG "XNNPACK_WASM32_ASM_MICROKERNEL_SRCS:${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS}")
+
+    target_sources(XNNPACK PRIVATE ${XNNPACK_WASM_MICROKERNEL_SRCS}
+                                    ${XNNPACK_WASM32_ASM_MICROKERNEL_SRCS})
+
+    if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)        
+      target_compile_options(XNNPACK PRIVATE "-msimd128")
+
+      set(wasmsimd_src_patterns "${XNNPACK_DIR}/src/wasmsimd-*.c"
+                                "${XNNPACK_DIR}/src/*-wasmsimd-*.c"
+                                "${XNNPACK_DIR}/src/*-wasmsimd.c")
+
+      file(GLOB_RECURSE XNNPACK_WASMSIMD_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasmsimd_src_patterns})
+      message(DEBUG "XNNPACK_WASMSIMD_MICROKERNEL_SRCS:${XNNPACK_WASMSIMD_MICROKERNEL_SRCS}")
+      
+      target_sources(XNNPACK PRIVATE ${XNNPACK_WASMSIMD_MICROKERNEL_SRCS})
+    endif()
+  endif()
 endif()
 
 # onnxruntime-extensions

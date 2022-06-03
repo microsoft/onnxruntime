@@ -152,7 +152,9 @@ endif()
 if (onnxruntime_USE_TVM)
   set(PROVIDERS_TVM onnxruntime_providers_tvm)
 endif()
-
+if (onnxruntime_USE_XNNPACK)
+  set(PROVIDERS_XNNPACK onnxruntime_providers_xnnpack)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -476,6 +478,10 @@ if (onnxruntime_USE_CUDA)
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
     )
 
+    # minimize the Windows includes. 
+    # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE "WIN32_LEAN_AND_MEAN")
+    
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
     if (onnxruntime_USE_NUPHAR_TVM)
@@ -1440,6 +1446,42 @@ if (onnxruntime_USE_TVM)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(TARGETS onnxruntime_providers_tvm
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+endif()
+
+if (onnxruntime_USE_XNNPACK)
+  add_compile_definitions(USE_XNNPACK=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_xnnpack_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"
+    # utils for handling QDQ models
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
+  )
+  
+  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool
+  )
+
+  add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
+
+  install(DIRECTORY ${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
+
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_xnnpack
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
