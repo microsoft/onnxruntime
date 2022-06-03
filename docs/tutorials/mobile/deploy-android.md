@@ -3,7 +3,7 @@ title: Mobile image recognition on Android
 description: Build an Android image recognition application with ONNX Runtime
 parent: Deploy on mobile
 grand_parent: Tutorials
-nav_order: 2
+nav_order: 3
 ---
 
 # Write a mobile image classification Android application
