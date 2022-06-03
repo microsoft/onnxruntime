@@ -355,21 +355,6 @@ Status SnpeLib::SnpeProcessWithUserBuffer(const std::vector<std::string>& input_
   return Status::OK();
 }
 
-int SnpeLib::RegisterUDOs(const std::string udo_dir, const std::vector<std::string>& udo_file_names) {
-  int udos_registered = 0;
-
-  for (const auto& udo_file : udo_file_names) {
-    std::string full_path = udo_dir + "/" + udo_file;
-    bool result = zdl::SNPE::SNPEFactory::addOpPackage(full_path);
-    if (result) {
-      ++udos_registered;
-    } else {
-      LOGS_DEFAULT(ERROR) << "Failed to register SNPE UDO library: " << full_path << " :" << GetSnpeErrorString();
-    }
-  }
-  return udos_registered;
-}
-
 std::unique_ptr<SnpeLib> SnpeLibFactory(const unsigned char* dlc_data,
                                         size_t size,
                                         const std::unordered_map<std::string, std::string>& options,

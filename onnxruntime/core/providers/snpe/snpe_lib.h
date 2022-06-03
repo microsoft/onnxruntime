@@ -88,8 +88,6 @@ class SnpeLib {
     return zdl::DlSystem::getLastErrorString();
   }
 
-  int RegisterUDOs(const std::string udo_dir, const std::vector<std::string>& udo_file_names);
-
   std::unique_ptr<zdl::SNPE::SNPE> snpe_;
   std::vector<std::unique_ptr<zdl::DlSystem::ITensor>> input_tensors_;
   zdl::DlSystem::TensorMap input_tensor_map_;

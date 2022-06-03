@@ -8,12 +8,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace snpe {
 
-void SnpeRuntimeOptions::ParseOptions() {
-  static const std::string OPT_RUNTIME = "runtime";
-  static const std::string OPT_PRIORITY = "priority";
-  static const std::string BUFFER_TYPE = "buffer_type";
+constexpr const char* OPT_RUNTIME = "runtime";
+constexpr const char* OPT_PRIORITY = "priority";
+constexpr const char* BUFFER_TYPE = "buffer_type";
 
-  // Option - Runtime
+void SnpeRuntimeOptions::ParseOptions() {
   if (const auto runtime_opt_it = runtime_options_.find(OPT_RUNTIME); runtime_opt_it != runtime_options_.end()) {
     runtime_target_ = SnpeRuntimeWrapper(runtime_opt_it->second);
     LOGS_DEFAULT(INFO) << "Located user specified runtime target: " << runtime_opt_it->second;
