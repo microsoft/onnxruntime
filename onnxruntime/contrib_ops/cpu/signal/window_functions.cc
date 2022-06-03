@@ -24,7 +24,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>()).TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+    KernelDefBuilder().MayInplace(0, 0)  //
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     HannWindow);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -32,7 +34,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>()).TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+    KernelDefBuilder().MayInplace(0, 0)  //
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     HammingWindow);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -40,7 +44,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>()).TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+    KernelDefBuilder().MayInplace(0, 0)  //
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     BlackmanWindow);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -48,7 +54,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>()).TypeConstraint("T2", BuildKernelDefConstraints<float>()).TypeConstraint("T3", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
+    KernelDefBuilder().MayInplace(0, 0)  //
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
+        .TypeConstraint("T2", BuildKernelDefConstraints<float>())
+        .TypeConstraint("T3", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     MelWeightMatrix);
 
 template <typename T>
