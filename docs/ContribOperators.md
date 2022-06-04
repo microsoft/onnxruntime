@@ -2508,7 +2508,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd>Output data tensor from pooling across the input tensor. The output tensor has the same rank as the input. with the N and C value keep it value, while the other dimensions are all 1.</dd>
+<dd>Output data tensor from pooling across the input tensor. The output tensor has the same rank as the input. with the N and C value keep it value, while the otherdimensions are all 1.</dd>
 </dl>
 
 #### Type Constraints
@@ -2735,7 +2735,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>y_scale</tt> : T1</dt>
 <dd>Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
 <dt><tt>y_zero_point</tt> : T2</dt>
-<dd>Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
+<dd>Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensoror per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.</dd>
 </dl>
 
 #### Outputs
@@ -3237,7 +3237,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>idx</tt> : tensor(int64)</dt>
 <dd>A 1-D INT64 tensor of the same size as 'x' containing the indices for each value in 'x' in the output 'uniques'</dd>
 <dt><tt>counts</tt> : tensor(int64)</dt>
-<dd>A 1-D INT64 tensor containing the count of each element of 'uniques' in the input 'x'</dd>
+<dd>A 1-D INT64 tensor containing the the count of each element of 'uniques' in the input 'x'</dd>
 </dl>
 
 #### Type Constraints
