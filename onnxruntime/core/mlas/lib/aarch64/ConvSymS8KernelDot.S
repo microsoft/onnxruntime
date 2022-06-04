@@ -19,43 +19,20 @@ Abstract:
 #include "AssembleDotProduct.h"
 
         .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
-        .equ    .LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE, 4
 
 //
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
+        .equ    .LConvSymFrame_SavedRegisters,       (6 * 8)
+        .equ    .LConvSymFrame_PostProcessParams,    0 + .LConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_KernelFlags,          8 + .LConvSymFrame_SavedRegisters
 
-        .equ    .LConvSymFrame_SavedRegisters_d8_d9,       0
-        .equ    .LConvSymFrame_SavedRegisters_d10_d11,     16
-        .equ    .LConvSymFrame_SavedRegisters_x19_x20,     32
-        .equ    .LConvSymFrame_SavedRegisters_x21_x22,     48
-        .equ    .LConvSymFrame_SavedRegisters,             64
-        .equ    .LConvSymFrame_SavedRegisters_Neg,         -64
-        .equ    .LConvSymFrame_PostProcessParams,          0 + .LConvSymFrame_SavedRegisters
-        .equ    .LConvSymFrame_KernelFlags,                8 + .LConvSymFrame_SavedRegisters
-
-/*
-struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
-    const int32_t* Bias{nullptr};
-    const float* Scale{nullptr};
-    float MinimumValue;
-    float MaximumValue;
-    int32_t OutputZeroPoint;
-    int32_t Padding;
-    const int32_t* Multiplier{nullptr};
-    const int32_t* PreShift{nullptr};
-    const int32_t* PostShift{nullptr};
-};
-*/
-        .equ    .LConvSymPostProcessParams_Bias,           0
-        .equ    .LConvSymPostProcessParams_Scale,          8
-        .equ    .LConvSymPostProcessParams_Min,            16
-        .equ    .LConvSymPostProcessParams_Max,            20
-        .equ    .LConvSymPostProcessParams_ZeroPoint,      24
-        .equ    .LConvSymPostProcessParams_Multiplier,     32
-        .equ    .LConvSymPostProcessParams_PreShift,       40
-        .equ    .LConvSymPostProcessParams_PostShift,      48
+        .equ    .LConvSymPostProcessParams_Bias,      0
+        .equ    .LConvSymPostProcessParams_Scale,     8
+        .equ    .LConvSymPostProcessParams_Min,       16
+        .equ    .LConvSymPostProcessParams_Max,       20
+        .equ    .LConvSymPostProcessParams_ZeroPoint, 24
 
         .text
 
@@ -101,13 +78,13 @@ Return Value:
 --*/
         FUNCTION_ENTRY MlasConvSymS8KernelDot
 
-        stp     d8,d9,[sp,#.LConvSymFrame_SavedRegisters_Neg]!
+        stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
+        str     d10,[sp,#16]
         cmp     x7,2                    // OutputCount < 2 ?
+        str     d11,[sp,#24]
         add     x16,x2,x5               // x16 -> C1
-        stp     d10,d11,[sp,#.LConvSymFrame_SavedRegisters_d10_d11]
-        stp     x19,x20,[sp,#.LConvSymFrame_SavedRegisters_x19_x20]
-        stp     x21,x22,[sp,#.LConvSymFrame_SavedRegisters_x21_x22]
+        str     x19,[sp,#32]
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
         csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
         add     x4,x4,3                 // InputChannels align to 4
@@ -120,9 +97,6 @@ Return Value:
         add     x5,x17,x5               // x5 -> C3
         ldr     x19,[x8,#.LConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
-        ldr     x20,[x8,#.LConvSymPostProcessParams_PreShift]
-        ldr     x21,[x8,#.LConvSymPostProcessParams_Multiplier]
-        ldr     x22,[x8,#.LConvSymPostProcessParams_PostShift]
 
         // TODO!! tiptoe around loading biases if we need to support
         // output channels none divisible by 16
@@ -373,15 +347,12 @@ InChLoopEpilogue:
         b.hi    KernelSizeLoop
 
 Requantize:
-        tst     w10,#.LMLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
-        bne     FixedPointScale
-FloatPointScale:
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValue
         ldp     q0,q1,[x19],32          // load scale vector
         ldp     q2,q3,[x19],32
-        b       ScaleWithFloatPoint
+        b       AccumulatorsToFloat
 
 BroadcastScaleValue:
         ld1r    {v0.4s},[x19]           // load scale Value
@@ -389,7 +360,7 @@ BroadcastScaleValue:
         mov     v2.16b, v0.16b
         mov     v3.16b, v0.16b
 
-ScaleWithFloatPoint:
+AccumulatorsToFloat:
         scvtf   v16.4s,v16.4s           // convert to float
         scvtf   v17.4s,v17.4s
         scvtf   v18.4s,v18.4s
@@ -438,87 +409,7 @@ ScaleWithFloatPoint:
         fcvtns  v29.4s,v29.4s
         fcvtns  v30.4s,v30.4s
         fcvtns  v31.4s,v31.4s
-        b Quantize
 
-FixedPointScale:
-        tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
-        beq     BroadcastFixedPointValue
-        ldp     q0,q1,[x20],32          // load preshift vector
-        ldp     q2,q3,[x20],32
-        ldp     q4,q5,[x21],32          // load multiplier vector
-        ldp     q6,q7,[x21],32
-        ldp     q8,q9,[x22],32          // load postshift vector
-        ldp     q10,q11,[x22],32
-        b       ScaleWithFixedPoint
-
-BroadcastFixedPointValue:
-        ld1r    {v0.4s},[x20]           // load preshift Value
-        mov     v1.16b, v0.16b
-        mov     v2.16b, v0.16b
-        mov     v3.16b, v0.16b
-
-        ld1r    {v4.4s},[x21]           // load multiplier Value
-        mov     v5.16b, v4.16b
-        mov     v6.16b, v4.16b
-        mov     v7.16b, v4.16b
-
-        ld1r    {v8.4s},[x22]           // load postshift Value
-        mov     v9.16b, v8.16b
-        mov     v10.16b, v8.16b
-        mov     v11.16b, v8.16b
-
-ScaleWithFixedPoint:
-        sqshl   v16.4s, v16.4s, v0.4s          // preshift
-        sqshl   v17.4s, v17.4s, v0.4s
-        sqshl   v18.4s, v18.4s, v0.4s
-        sqshl   v19.4s, v19.4s, v0.4s
-        sqshl   v20.4s, v20.4s, v1.4s
-        sqshl   v21.4s, v21.4s, v1.4s
-        sqshl   v22.4s, v22.4s, v1.4s
-        sqshl   v23.4s, v23.4s, v1.4s
-        sqshl   v24.4s, v24.4s, v2.4s
-        sqshl   v25.4s, v25.4s, v2.4s
-        sqshl   v26.4s, v26.4s, v2.4s
-        sqshl   v27.4s, v27.4s, v2.4s
-        sqshl   v28.4s, v28.4s, v3.4s
-        sqshl   v29.4s, v29.4s, v3.4s
-        sqshl   v30.4s, v30.4s, v3.4s
-        sqshl   v31.4s, v31.4s, v3.4s
-        sqdmulh v16.4s, v16.4s, v4.4s     // multiply by scale
-        sqdmulh v17.4s, v17.4s, v4.4s
-        sqdmulh v18.4s, v18.4s, v4.4s
-        sqdmulh v19.4s, v19.4s, v4.4s
-        sqdmulh v20.4s, v20.4s, v5.4s
-        sqdmulh v21.4s, v21.4s, v5.4s
-        sqdmulh v22.4s, v22.4s, v5.4s
-        sqdmulh v23.4s, v23.4s, v5.4s
-        sqdmulh v24.4s, v24.4s, v6.4s
-        sqdmulh v25.4s, v25.4s, v6.4s
-        sqdmulh v26.4s, v26.4s, v6.4s
-        sqdmulh v27.4s, v27.4s, v6.4s
-        sqdmulh v28.4s, v28.4s, v7.4s
-        sqdmulh v29.4s, v29.4s, v7.4s
-        sqdmulh v30.4s, v30.4s, v7.4s
-        sqdmulh v31.4s, v31.4s, v7.4s
-        srshl   v16.4s,v16.4s, v8.4s     // post shift
-        srshl   v17.4s,v17.4s, v8.4s
-        srshl   v18.4s,v18.4s, v8.4s
-        srshl   v19.4s,v19.4s, v8.4s
-        srshl   v20.4s,v20.4s, v9.4s
-        srshl   v21.4s,v21.4s, v9.4s
-        srshl   v22.4s,v22.4s, v9.4s
-        srshl   v23.4s,v23.4s, v9.4s
-        srshl   v24.4s,v24.4s, v10.4s
-        srshl   v25.4s,v25.4s, v10.4s
-        srshl   v26.4s,v26.4s, v10.4s
-        srshl   v27.4s,v27.4s, v10.4s
-        srshl   v28.4s,v28.4s, v11.4s
-        srshl   v29.4s,v29.4s, v11.4s
-        srshl   v30.4s,v30.4s, v11.4s
-        srshl   v31.4s,v31.4s, v11.4s
-
-Quantize:
         sqxtn   v16.4h,v16.4s
         sqxtn   v17.4h,v17.4s
         sqxtn   v18.4h,v18.4s
@@ -563,9 +454,8 @@ Quantize:
         b.hi    OutputChannelLoop
 
 ExitKernel:
-        ldp     x21,x22,[sp,#.LConvSymFrame_SavedRegisters_x21_x22]
-        ldp     x19,x20,[sp,#.LConvSymFrame_SavedRegisters_x19_x20]
-        ldp     d10,d11,[sp,#.LConvSymFrame_SavedRegisters_d10_d11]
+        ldr     x19,[sp,#32]
+        ldp     d10,d11,[sp,#16]
         ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
         ret
 
