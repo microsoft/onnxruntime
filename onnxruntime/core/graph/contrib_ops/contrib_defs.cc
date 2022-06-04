@@ -2419,6 +2419,46 @@ void RegisterContribSchemas() {
 
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for SNPE.")
+      .Attr("DLC", "payload of the SNPE DLC file.", AttributeProto::STRING)
+      .Attr(
+          "snpe_version",
+          "(Optional) SNPE version used to convert the model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr("target_device", "(Optional) Target device like CPU, DSP, etc.", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(
+          0,
+          "inputs",
+          "List of tensors for SNPE DLC input",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "outputs",
+          "One or more outputs, list of tensors for DLC output",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(uint16)", "tensor(float)"},
+          "Constrain input and output types to uint8, uint16, float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
   static const char* BitmaskDropout_ver1_doc = R"DOC(
 BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar).
 It produces two tensor outputs: output (floating-point tensor) and mask (optional `Tensor<uint32>`). If `training_mode` is true then the output Y will be a random dropout.

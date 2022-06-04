@@ -268,8 +268,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   if (use_per_session_threads_) {
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
-      if (!external_intra_op_thread_pool_)
-      {
+      if (!external_intra_op_thread_pool_) {
         bool allow_intra_op_spinning =
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1";
         OrtThreadPoolParams to = session_options_.intra_op_param;
@@ -284,8 +283,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         // If the thread pool can use all the processors, then
         // we set affinity of each thread to each processor.
         to.auto_set_affinity = to.thread_pool_size == 0 &&
-                              session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
-                              to.affinity_vec_len == 0;
+                               session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL &&
+                               to.affinity_vec_len == 0;
         to.allow_spinning = allow_intra_op_spinning;
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
@@ -303,8 +302,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       }
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
-      if (!external_inter_op_thread_pool_)
-      {
+      if (!external_inter_op_thread_pool_) {
         bool allow_inter_op_spinning =
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
         OrtThreadPoolParams to = session_options_.inter_op_param;
@@ -381,8 +379,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
       logging_manager_(session_env.GetLoggingManager()),
       external_intra_op_thread_pool_(external_intra_op_thread_pool),
       external_inter_op_thread_pool_(external_inter_op_thread_pool),
-      environment_(session_env)
-{
+      environment_(session_env) {
   // Initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
@@ -531,6 +528,11 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     if (trt_ep) {
       ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
     }
+  }
+
+  // if any EPs do not support concurrent calls to Run we add locking around graph execution
+  if (p_exec_provider->ConcurrentRunSupported() == false) {
+    is_concurrent_run_supported_ = false;
   }
 
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
@@ -918,13 +920,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 SessionState& session_state,
                                                 bool saving_model_in_ort_format) {
   // The transformer order:
-  // 1. built-in graph rewriter
-  // 2. each execution provider's transformer
-  // 3. do node placement according to kernel definition
-  // 4. insert copy nodes
-  // 5. insert cast nodes.
+  // 1. run level 1 optimizations. these only use ONNX operators.
+  // 2. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
+  // 3. run all optimizations. level 2 and 3 optimizations use contrib ops.
+  // 4. insert cast nodes
+  // 5. insert copy nodes
 
-  // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
+  // first apply execution provider independent level 1 graph optimizations.
   ORT_RETURN_IF_ERROR_SESSIONID_(
       graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
@@ -952,15 +954,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
-  // Do partitioning based on execution providers' capability.
+  // Do partitioning based on execution providers' capabilities.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
                                                        session_state.GetMutableFuncMgr(),
                                                        layout_transformer::TransformLayoutForCompilingEP, mode));
 
-  // apply transformers except default transformers
-  // Default transformers are required for correctness and they are owned and run by inference session
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+  // apply Level2 and higher transformers.
+  // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
+  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR_SESSIONID_(
         graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
@@ -1882,6 +1884,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
       // If Execute ever becomes async we need a different approach
       std::unique_ptr<logging::Logger> owned_run_logger;
       auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+      std::optional<std::lock_guard<OrtMutex>> sequential_run_lock;
+      if (is_concurrent_run_supported_ == false) {
+        sequential_run_lock.emplace(session_mutex_);
+      }
 
       // info all execution providers InferenceSession:Run started
       // TODO: only call OnRunStart for all providers in-use

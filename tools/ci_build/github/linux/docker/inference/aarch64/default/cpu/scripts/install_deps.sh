@@ -34,27 +34,13 @@ function GetFile {
 
   return $?
 }
-
-
-os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
-
-SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
-GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
-
-DISTRIBUTOR=$(lsb_release -i -s)
-
-if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
-  LIBDIR="lib64"
-else
-  LIBDIR="lib"
-fi
 
 cd /tmp/src
 
 echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.21.1/cmake-3.21.1-linux-`uname -m`.tar.gz /tmp/src/cmake-3.21.1-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.21.1-linux-`uname -m`.tar.gz --strip=1 -C /usr
+GetFile https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-`uname -m`.tar.gz /tmp/src/cmake-3.23.2-linux-`uname -m`.tar.gz
+tar -zxf /tmp/src/cmake-3.23.2-linux-`uname -m`.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
@@ -80,21 +66,6 @@ cd /tmp/src
 GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
 unzip /tmp/src/gradle-6.3-bin.zip
 mv /tmp/src/gradle-6.3 /usr/local/gradle
-
-if ! [ -x "$(command -v protoc)" ]; then
-  GetFile https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz /tmp/src/v3.18.1.tar.gz
-  tar -xf /tmp/src/v3.18.1.tar.gz -C /tmp/src
-  cd /tmp/src/protobuf-3.18.1
-  cmake ./cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo -DCMAKE_INSTALL_LIBDIR=lib64
-  make -j$(getconf _NPROCESSORS_ONLN)
-  make install
-fi
-
-export ONNX_ML=1
-export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-
-pip3 install -r ${0/%install_deps\.sh/requirements\.txt}
-
 
 cd /
 rm -rf /tmp/src
