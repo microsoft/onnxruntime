@@ -247,10 +247,19 @@ void TVMSetOutputsZeroCopy(TvmModule& mod,
 void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
                                std::vector<DLTensor>& outputs)
 {
-  TvmPackedFunc set_output = mod.GetFunction("set_outputs", false);
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    set_output("main", i, &outputs[i]);
+  size_t num_total_args = outputs.size() + 1;
+  std::vector<TVMValue> tvm_values(num_total_args);
+  std::vector<int> tvm_type_codes(num_total_args);
+  tvm_rt::TVMArgsSetter setter(tvm_values.data(), tvm_type_codes.data());
+  const std::string func_name = "main";
+  setter(0, func_name.c_str());
+  for (size_t k = 0; k < num_total_args - 1; ++k) {
+    setter(k+1, &outputs[k]);
   }
+
+  TvmPackedFunc set_output = mod.GetFunction("set_outputs", false);
+  tvm_rt::TVMRetValue rv;
+  set_output.CallPacked(tvm_rt::TVMArgs(tvm_values.data(), tvm_type_codes.data(), num_total_args), &rv);
 }
 
 void TVMGetOutputs(TvmModule& mod,
