@@ -33,8 +33,7 @@ TvmModule TVMCompile(const TvmEPOptions& options,
                      const std::string& onnx_txt,
                      const std::string& model_path,
                      int opset,
-                     const TVMTensorShapes& input_shapes)
-{
+                     const TVMTensorShapes& input_shapes) {
   ::tvm::Array<TvmIntArray> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
   {
@@ -203,8 +202,7 @@ TvmModule TVMSoCompile(const TvmEPOptions& options) {
 
 void TVMSetInputs(TvmModule& mod,
                   std::vector<size_t>& inds,
-                  std::vector<DLTensor>& inputs)
-{
+                  std::vector<DLTensor>& inputs) {
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
   TvmPackedFunc set_input_zero_copy = mod.GetFunction("set_input_zero_copy", false);
   for (size_t i = 0; i < inds.size(); ++i) {
@@ -218,8 +216,7 @@ void TVMSetInputs(TvmModule& mod,
 
 void TVM_VM_SetInputs(TvmModule& mod,
                       std::vector<size_t>& inds,
-                      std::vector<DLTensor>& inputs)
-{
+                      std::vector<DLTensor>& inputs) {
   size_t num_total_args = inputs.size() + 1;
   std::vector<TVMValue> tvm_values(num_total_args);
   std::vector<int> tvm_type_codes(num_total_args);
@@ -236,8 +233,7 @@ void TVM_VM_SetInputs(TvmModule& mod,
 }
 
 void TVMSetOutputsZeroCopy(TvmModule& mod,
-                           std::vector<DLTensor>& outputs)
-{
+                           std::vector<DLTensor>& outputs) {
   TvmPackedFunc set_output = mod.GetFunction("set_output_zero_copy", false);
   for (size_t i = 0; i < outputs.size(); ++i) {
     set_output(i, &outputs[i]);
@@ -245,8 +241,7 @@ void TVMSetOutputsZeroCopy(TvmModule& mod,
 }
 
 void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
-                               std::vector<DLTensor>& outputs)
-{
+                               std::vector<DLTensor>& outputs) {
   size_t num_total_args = outputs.size() + 1;
   std::vector<TVMValue> tvm_values(num_total_args);
   std::vector<int> tvm_type_codes(num_total_args);
@@ -263,8 +258,7 @@ void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
 }
 
 void TVMGetOutputs(TvmModule& mod,
-                   std::vector<DLTensor>& outputs)
-{
+                   std::vector<DLTensor>& outputs) {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < outputs.size(); ++i) {
     get_output(i, &outputs[i]);
@@ -272,8 +266,7 @@ void TVMGetOutputs(TvmModule& mod,
 }
 
 void TVM_VM_GetOutputs(TvmModule& mod,
-                       std::vector<DLTensor>& outputs)
-{
+                       std::vector<DLTensor>& outputs) {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < outputs.size(); ++i) {
     // TODO(vvchernov): think about improvement of memory management
@@ -283,8 +276,7 @@ void TVM_VM_GetOutputs(TvmModule& mod,
 }
 
 void TVMGetOutputShapes(TvmModule& mod,
-                        TVMTensorShapes& output_shapes)
-{
+                        TVMTensorShapes& output_shapes) {
   size_t size = output_shapes.size();
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < size; ++i) {
@@ -299,15 +291,13 @@ void TVMGetOutputShapes(TvmModule& mod,
   }
 }
 
-void TVMRun(TvmModule& mod)
-{
+void TVMRun(TvmModule& mod) {
   TvmPackedFunc run = mod.GetFunction("run", false);
   ORT_ENFORCE(run != nullptr, "Unable to retrieve graph executor run.");
   run();
 }
 
-void TVM_VM_Run(TvmModule& mod)
-{
+void TVM_VM_Run(TvmModule& mod) {
   TvmPackedFunc run = mod.GetFunction("invoke", false);
   ORT_ENFORCE(run != nullptr, "Unable to retrieve virtual machine invoke.");
   run("main");
