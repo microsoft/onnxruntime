@@ -173,6 +173,12 @@ void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, b
   }
 }
 
+void CpuTensorConsoleDumper::Print(const char* name) const {
+  if (!is_enabled_)
+    return;
+  std::cout << std::string(name);
+}
+
 #else
 void CpuTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 }
@@ -208,6 +214,9 @@ void CpuTensorConsoleDumper::Print(const char*, int, bool) const {
 }
 
 void CpuTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
+}
+
+void CpuTensorConsoleDumper::Print(const char* name) const {
 }
 
 #endif

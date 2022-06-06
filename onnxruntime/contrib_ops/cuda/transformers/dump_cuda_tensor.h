@@ -29,6 +29,8 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::transformers::ICons
   void Print(const char* name, const OrtValue& value) const override;
   void Print(const char* name, int index, bool end_line) const override;
   void Print(const char* name, const std::string& value, bool end_line) const override;
+  void Print(const char* name) const override;
+  void PrintLastError() const
 };
 
 }  // namespace transformers

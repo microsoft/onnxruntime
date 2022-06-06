@@ -174,8 +174,12 @@ void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {
-  if (is_enabled_)
-    DumpGpuTensor(name, tensor);
+  if (!is_enabled_)
+    return;
+
+  PrintLastError();
+
+  DumpGpuTensor(name, tensor);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const OrtValue& value) const {
@@ -187,6 +191,8 @@ void CudaTensorConsoleDumper::Print(const char* name, int index, bool end_line) 
   if (!is_enabled_)
     return;
 
+  PrintLastError();
+
   std::cout << std::string(name) << "[" << index << "]";
   if (end_line) {
     std::cout << std::endl;
@@ -197,9 +203,27 @@ void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, 
   if (!is_enabled_)
     return;
 
+  PrintLastError();
+
   std::cout << std::string(name) << "=" << value;
   if (end_line) {
     std::cout << std::endl;
+  }
+}
+
+void CudaTensorConsoleDumper::Print(const char* name) const{
+  if (!is_enabled_)
+    return;
+
+  PrintLastError();
+
+  std::cout << std::string(name) << std::endl;;
+}
+
+void CudaTensorConsoleDumper::PrintLastError() const {
+  auto err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    std::cout << "CUDA error " << cudaGetErrorName(err) << ":" << cudaGetErrorString(err) << std::endl;
   }
 }
 
@@ -239,6 +263,13 @@ void CudaTensorConsoleDumper::Print(const char*, int, bool) const {
 
 void CudaTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
 }
+
+void CudaTensorConsoleDumper::Print(const char* name) const{
+}
+
+void CudaTensorConsoleDumper::PrintLastError() const {
+}
+
 #endif
 
 }  // namespace transformers

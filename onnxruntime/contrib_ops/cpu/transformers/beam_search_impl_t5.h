@@ -156,7 +156,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                         static_cast<size_t>(parameters->BatchBeamSize()),
                         parameters->max_length,
                         parameters->sequence_length);
-
+  dumper->Print("***After cpu_state.SetSequence");
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
   this->beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters->batch_size),
@@ -170,7 +170,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                           hypothesis_score_allocator,
                                                           beam_hyps_allocator);
   this->beam_scorer_->Initialize(this->cpu_allocator_, parameters->sequence_length);
-
+  dumper->Print("***Before beam_state.Init");
   BeamSearchState<T> beam_state;
   constexpr bool use_position = false;
   beam_state.Init(this->temp_space_allocator_,
@@ -182,6 +182,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                   parameters->output_scores,
                   use_position);
 
+  dumper->Print("***Before init_beam_state_func_");
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
                         parameters->batch_size,
@@ -199,6 +200,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   int current_length = parameters->sequence_length;
   if (current_length + 1 < parameters->max_length) {
     ++iteration_counter;
+    dumper->Print("***Before GenerateNextToken");
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(encoder_fetches[0],
                                                 beam_next_tokens,
                                                 beam_indices,
@@ -206,6 +208,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                 cpu_state,
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
+    dumper->Print("***Before CreateInitialFeeds");
     ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(beam_next_tokens.as_span<const int32_t>(),
                                                              this->implicit_inputs_,
                                                              encoder_feeds,
@@ -213,6 +216,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              decoder_feeds,
                                                              this->device_copy_int32_func_,
                                                              this->cuda_stream_));
+    dumper->Print("***After CreateInitialFeeds");
   }
 
   // TODO(tianleiwu): allocate fetches. use ping-pong buffers for past state.
