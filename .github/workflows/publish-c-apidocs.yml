@@ -1,6 +1,8 @@
 name: Update C/C++ API Docs
 on:
-  workflow_dispatch
+  push:
+    branches:
+      - master
 
 jobs:
   publish:
