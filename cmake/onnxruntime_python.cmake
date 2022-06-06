@@ -698,6 +698,19 @@ if (onnxruntime_USE_OPENVINO)
     )
 endif()
 
+if (DEFINED ENV{OPENVINO_MANYLINUX})
+    file(GLOB onnxruntime_python_openvino_python_srcs CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/core/providers/openvino/scripts/*"
+    )
+
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          ${onnxruntime_python_openvino_python_srcs}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
 if (onnxruntime_USE_CUDA)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
