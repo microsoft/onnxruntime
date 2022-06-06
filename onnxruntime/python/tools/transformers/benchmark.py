@@ -151,11 +151,7 @@ def run_migraphx(
                         fusion_options,
                     )
             if "tf" in model_source:
-                (opt_onnx_model_file,
-                    onnx_model_file,
-                    is_valid_onnx_model,
-                    vocab_size,
-                    max_input_size,) = export_onnx_model_from_tf(
+                (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,)  = export_onnx_model_from_tf(
                     model_name,
                     MODELS[model_name][1],
                     MODELS[model_name][2],
