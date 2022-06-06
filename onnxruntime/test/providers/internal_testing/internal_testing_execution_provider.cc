@@ -34,18 +34,27 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       ops_{ops},
       stop_ops_{stop_ops},
       preferred_layout_{preferred_layout} {
-  //
-  // TODO: Allocation planner calls GetAllocator for the individual EP. It would be better if it goes through
-  // the session state to get the allocator so it's per-device (or for the allocation planner to try the EP first
-  // and fall back to using session state next by passing in a functor it can use to call SessionState::GetAllocator).
+}
 
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
-                                                            OrtAllocatorType::OrtDeviceAllocator));
-      });
+// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
+void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
+  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  auto cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
 
-  InsertAllocator(CreateAllocator(device_info));
+  if (!cpu_alloc) {
+    // craete and share our allocator
+    AllocatorCreationInfo allocator_info(
+        [](int) {
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
+                                                              OrtAllocatorType::OrtDeviceAllocator));
+        });
+
+    cpu_alloc = CreateAllocator(allocator_info);
+    allocator_manager.InsertAllocator(cpu_alloc);
+  }
+
+  // must use TryInsertAllocator to handle the EP being used in multiple InferenceSession instances.
+  TryInsertAllocator(cpu_alloc);
 }
 
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}

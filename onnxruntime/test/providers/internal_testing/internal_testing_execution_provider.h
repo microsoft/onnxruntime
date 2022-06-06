@@ -23,8 +23,8 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   DataLayout GetPreferredLayout() const override;
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
   InternalTestingExecutionProvider& SetDebugOutput(bool debug_output) {
     debug_output_ = debug_output;

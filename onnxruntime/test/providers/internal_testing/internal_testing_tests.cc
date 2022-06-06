@@ -428,6 +428,46 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
     ASSERT_STATUS_NOT_OK(session.Initialize());
   }
 }
+
+TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
+  auto init_session = [](std::vector<std::shared_ptr<IExecutionProvider>>& eps,
+                         InferenceSessionWrapper& session) {
+    for (const auto& ep : eps) {
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep));
+    }
+
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
+    ASSERT_STATUS_OK(session.Load(ort_model_path));
+    ASSERT_STATUS_OK(session.Initialize());
+  };
+
+  // create 2 sessions
+  SessionOptions so;
+  InferenceSessionWrapper session1(so, GetEnvironment());
+  InferenceSessionWrapper session2(so, GetEnvironment());
+
+  // and use the same EP instances in both
+  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
+  auto internal_ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
+                                                                        std::unordered_set<std::string>{},
+                                                                        DataLayout::NHWC);
+  std::shared_ptr<IExecutionProvider> cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo{});
+  std::vector<std::shared_ptr<IExecutionProvider>> eps{
+      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
+                                                         DataLayout::NHWC),
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+
+  // if RegisterAllocator isn't implemented properly a second call to InsertAllocator for the second session will fail.
+  // TryInsertAllocator needs to be used instead.
+  init_session(eps, session1);
+  init_session(eps, session2);
+
+  // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
+  ASSERT_EQ(eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get(),
+            eps[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get())
+      << "EPs do not have the same default allocator";
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

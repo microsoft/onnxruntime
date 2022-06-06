@@ -198,7 +198,10 @@ class IExecutionProvider {
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
 
-  // TODO: temporary solution, need to unify the interface in EP and AllocatorManager
+  // If the EP uses the RegisterAllocator infrastructure for allocator sharing, that will be called once per
+  // InferenceSession. As a single EP instance may be used in multiple sessions, the EP's allocators may have
+  // already been registered. To allow for that, when inserting an allocator in the RegisterAllocator implementation
+  // TryInsertAllocator must be used.
   void TryInsertAllocator(AllocatorPtr allocator);
 
   struct FusedNodeAndGraph {
