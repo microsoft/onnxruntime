@@ -31,7 +31,7 @@ Refer to the [installation instructions](../install/index.md#install-on-ios).
 ## Swift Usage
 
 The Objective-C API can be called from Swift code.
-To enable this, use a bridging header (more info [here](https://developer.apple.com/documentation/swift/imported_c_and_objective-c_apis/importing_objective-c_into_swift)) that imports the ORT Objective-C API header.
+To enable this, use a bridging header (more info [here](https://developer.apple.com/documentation/swift/importing-swift-into-objective-c/)) that imports the ORT Objective-C API header.
 
 ```objectivec
 // In the bridging header, import the ORT Objective-C API header.
