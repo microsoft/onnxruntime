@@ -11,6 +11,7 @@ redirect_from: /docs/reference/execution-providers/DirectML-ExecutionProvider
 
 The DirectML Execution Provider is a component of ONNX Runtime that uses [DirectML](https://docs.microsoft.com/en-us/windows/ai/directml/dml-intro) to accelerate inference of ONNX models. The DirectML execution provider is capable of greatly improving evaluation time of models using commodity GPU hardware, without sacrificing broad hardware support or requiring vendor-specific extensions to be installed.
 
+
 DirectML is a high-performance, hardware-accelerated DirectX 12 library for machine learning on Windows.  DirectML provides GPU acceleration for common machine learning tasks across a broad range of supported hardware and drivers.
 
 When used standalone, the DirectML API is a low-level DirectX 12 library and is suitable for high-performance, low-latency applications such as frameworks, games, and other real-time applications. The seamless interoperability of DirectML with Direct3D 12 as well as its low overhead and conformance across hardware makes DirectML ideal for accelerating machine learning when both high performance is desired, and the reliability and predictability of results across hardware is critical.
@@ -22,6 +23,20 @@ The DirectML Execution Provider currently uses DirectML version [1.8.0](https://
 
 * TOC placeholder
 {:toc}
+
+## Install
+Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](https://onnxruntime.ai/docs/install/#cccwinml-installs).
+
+## Requirements
+The DirectML execution provider requires any DirectX 12 capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Examples of compatible hardware include:
+
+- NVIDIA Kepler (GTX 600 series) and above
+- AMD GCN 1st Gen (Radeon HD 7000 series) and above
+- Intel Haswell (4th-gen core) HD Integrated Graphics and above
+- DirectML is compatible with Windows 10, version 1709 (10.0.16299; RS3, “Fall Creators Update”) and newer.
+- Qualcomm Adreno 600 and above
+
+DirectML was introduced in Windows 10, version 1903, and in the corresponding version of the [Windows SDK](https://docs.microsoft.com/en-us/windows/ai/directml/dml).
 
 
 ## Build
