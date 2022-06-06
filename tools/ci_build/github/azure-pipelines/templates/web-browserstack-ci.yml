@@ -7,6 +7,7 @@ jobs:
 - job: build_onnxruntime_web_browserstack
   pool: Onnxruntime-BrowserStack-for-Web
   timeoutInMinutes: 30
+  continueOnError: true
   workspace:
     clean: all
   steps:
@@ -99,4 +100,3 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-
