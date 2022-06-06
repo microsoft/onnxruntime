@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-variable"
+//#pragma GCC diagnostic push
+//#pragma GCC diagnostic ignored "-Wunused-variable"
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/tensor/transpose.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/longformer_attention.h"
 #include "contrib_ops/cuda/bert/longformer_global_impl.h"
@@ -66,9 +67,51 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
                                        "QOrderedLongformerAttention: oder_output must be same as order_input");
 }
 
+static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const TensorShape& right_shape,
+                                     bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
+                                     int64_t& stride_A, int64_t& stride_B, int64_t& stride_C, int64_t& batch_count) {
+  size_t left_num_dims = left_shape.NumDimensions();
+  size_t right_num_dims = right_shape.NumDimensions();
+
+  if (!(left_num_dims >= 3 && right_num_dims >= 2)) {
+    return false;
+  }
+
+  size_t left_leading_axis = trans_batch_a ? 0 : left_num_dims - 2;
+  size_t right_leading_axis = trans_batch_b ? 0 : right_num_dims - 2;
+  int64_t left_p = left_shape.SizeToDimension(left_num_dims - 2);
+  if (trans_batch_a) {
+    left_p = left_p * left_shape[left_num_dims - 2] / left_shape[0];
+  }
+  int64_t left_k = transa ? left_shape[left_leading_axis] : left_shape[left_num_dims - 1];
+
+  if (right_num_dims >= 3) {
+    int64_t right_p = right_shape.SizeToDimension(right_num_dims - 2);
+    if (trans_batch_b) {
+      right_p = right_p * right_shape[right_num_dims - 2] / right_shape[0];
+    }
+    if (left_p != right_p) {
+      return false;
+    }
+  }
+
+  int64_t right_k = transb ? right_shape[right_num_dims - 1] : right_shape[right_leading_axis];
+  if (left_k != right_k) {
+    return false;
+  }
+
+  int64_t n = transa ? left_shape[left_num_dims - 1] : left_shape[left_leading_axis];
+  int64_t m = transb ? right_shape[right_leading_axis] : right_shape[right_num_dims - 1];
+  stride_A = n * left_k / (trans_batch_a ? left_shape[0] : 1);
+  stride_B = right_num_dims == 2 ? 0 : right_k * m / (trans_batch_b ? right_shape[0] : 1);
+  stride_C = n * m;
+  batch_count = left_p;
+  return true;
+}
+
+
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
-
   // For Debugging...
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
@@ -137,10 +180,11 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   int n = 3 * hidden_size;
   int k = hidden_size;
 
-  size_t qkv_count = (size_t)m * (size_t)n;
+  size_t qkv_count = (size_t)m * (size_t)n;   
   size_t qkv_size = qkv_count * element_size;
   size_t qkv_3 = qkv_size + qkv_count * sizeof(int8_t);
   auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3);
+  auto gemm_buffer_2 = GetScratchBuffer<int8_t>(qkv_3);
 
   typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
 
@@ -154,6 +198,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
 
+  // Approach-1 - Do the quantized MatMul
   // TODO: bias need pre-processing, i.e., / *scale_qkvgemm
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size, sequence_length, n, k,
@@ -163,7 +208,104 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
 
   QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);
+
+
+  // Approach-2 - de-quantize and then do cuBlas Gemm
+  auto buffer_A = GetScratchBuffer<MLFloat16>(m * k);
+  auto buffer_B = GetScratchBuffer<MLFloat16>(k * n);
+
+
+  QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, input->Data<int8_t>(), (CudaT*)buffer_A.get(), *scale_input, batch_size, sequence_length, n);
   
+  AllocatorPtr alloc;
+  auto status = context->GetTempSpaceAllocator(&alloc);
+
+  auto t = Tensor::Create(DataTypeImpl::GetType<int8_t>(), 
+                           TensorShape({n, k}), (void*)weights->Data<int8_t>(), alloc->Info(), 0);
+  auto weights_transposed = GetScratchBuffer<int8_t>(k * n);
+  auto t_transposed = Tensor::Create(DataTypeImpl::GetType<int8_t>(), 
+                                      TensorShape({k, n}), weights_transposed.get(), alloc->Info(), 0);
+ 
+  std::vector<size_t> permutation = {1, 0};
+
+  ORT_RETURN_IF_ERROR(onnxruntime::cuda::Transpose::DoTranspose(device_prop,
+                            Stream(),
+                            CublasHandle(),
+                            permutation,
+                            *t, *t_transposed, 
+                            nullptr));
+
+QOrderDequantizeToRow(CUBLASLT_ORDER_ROW, stream, device_prop, t_transposed->Data<int8_t>(), (CudaT*)buffer_B.get(), *scale_weight, 1, k, n);
+
+ 
+
+  const CudaT alpha_half = ToCudaType<CudaT>::FromFloat(1.0f);
+  const CudaT zero_half = ToCudaType<CudaT>::FromFloat(0.0f);
+
+  int64_t stride_A, stride_B, stride_C, batch_count;
+
+  const int lda = k;
+  const int ldb = n;
+  const int ldc = n;
+
+  if (CanUseStridedBatchedGemm(input->Shape(), t_transposed->Shape(),
+                                      false, false, false, false, stride_A, stride_B, stride_C, batch_count)) {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(CublasHandle(),
+                                                          CUBLAS_OP_N,
+                                                          CUBLAS_OP_N,
+                                                          static_cast<int>(n),
+                                                          static_cast<int>(m / batch_size),
+                                                          static_cast<int>(k),
+                                                          &alpha_half,
+                                                          reinterpret_cast<const CudaT*>(buffer_B.get()),
+                                                          ldb,
+                                                          stride_B,
+                                                          reinterpret_cast<const CudaT*>(buffer_A.get()),
+                                                          lda,
+                                                          stride_A,
+                                                          &zero_half,
+                                                          reinterpret_cast<CudaT*>(gemm_buffer_2.get()),
+                                                          ldc,
+                                                          stride_C,
+                                                          static_cast<int>(batch_count),
+                                                          device_prop));
+
+  }
+  else {
+      ORT_THROW("No can go");
+  }
+
+  cudaStreamSynchronize(Stream());
+
+
+  // Check the results of the MatMul
+  CudaT* matmul_1 = reinterpret_cast<CudaT*>(gemm_buffer.get());
+  CudaT* matmul_2 = reinterpret_cast<CudaT*>(gemm_buffer_2.get());
+
+  half* matmul_1_host = (half*)malloc(sizeof(half) * m * n);
+  half* matmul_2_host = (half*)malloc(sizeof(half) * m * n);
+
+  cudaMemcpy(matmul_1_host, matmul_1, sizeof(half) * m * n, cudaMemcpyDeviceToHost);
+  cudaMemcpy(matmul_2_host, matmul_2, sizeof(half) * m * n, cudaMemcpyDeviceToHost);
+
+  float max_diff = 0;
+
+  for (int i = 0; i < m * n; ++i) {
+      float f1 = __half2float(matmul_1_host[i]);
+
+      float f2 = __half2float(matmul_2_host[i]);
+      // quantize this matmul value
+      float quantized_matmul_2_res = f2 / *scale_qkvgemm;
+      float quantized_matmul_2_res_clamped = std::min(std::max(quantized_matmul_2_res, -128.f), 127.f);
+      int8_t quantized_matmul_2_res_clamped_quant = static_cast<int8_t>(std::round(quantized_matmul_2_res_clamped));
+
+      f2 = quantized_matmul_2_res_clamped_quant * *scale_qkvgemm;
+
+      if (std::abs(f1 - f2) > max_diff) {
+          max_diff = std::abs(f1 - f2);
+      }
+  }
+
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
 
@@ -200,7 +342,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                           *scale_global_qkvgemm, batch_size, sequence_length, n);
   }
 
-  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, use_fast_kernel);
+  size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, false);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize + output_elements * element_size);
   MLFloat16* out_fp16 = (MLFloat16*)(((int8_t*)workspace_buffer.get()) + workSpaceSize);
   if (!LaunchLongformerAttentionKernel(
@@ -244,4 +386,4 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#pragma GCC diagnostic pop
+//#pragma GCC diagnostic pop

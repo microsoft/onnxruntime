@@ -931,6 +931,78 @@ std::vector<OrtValue> OpTester::ExecuteModel(
   return fetches;
 }
 
+void OpTester::Run(std::vector<OrtValue>& fetches,
+                  std::unique_ptr<IExecutionProvider> execution_provider) {
+#ifndef NDEBUG
+  run_called_ = true;
+#endif
+
+  ASSERT_TRUE(execution_provider != nullptr) << "provider_type " << execution_provider << " is nullptr.";
+
+  auto p_model = BuildGraph();
+  auto& graph = p_model->MainGraph();
+
+  Status status;
+
+  status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  if (!status.IsOK()) {
+    return;
+  }
+
+  // Hookup the inputs and outputs
+  std::unordered_map<std::string, OrtValue> feeds;
+  std::vector<std::string> output_names;
+  FillFeedsAndOutputNames(feeds, output_names);
+
+  // Run the model
+  SessionOptions so;
+  so.session_logid = op_;
+  so.session_log_verbosity_level = 1;
+
+  // run with target provider
+  // build the graph again as the cpu graph may be with casts
+  auto p_tp_model = BuildGraph();
+  auto& tp_graph = p_tp_model->MainGraph();
+
+  status = tp_graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  if (!status.IsOK()) {
+    return;
+  }
+
+  InferenceSession target_session_object{so, GetEnvironment()};
+  EXPECT_TRUE(target_session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  std::string s2;
+  p_tp_model->ToProto().SerializeToString(&s2);
+  std::istringstream model_proto_str1(s2);
+  status = target_session_object.Load(model_proto_str1);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Load failed with status: " << status.ErrorMessage();
+    return;
+  }
+
+  status = target_session_object.Initialize();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Initialize failed with status: " << status.ErrorMessage();
+    return;
+  }
+
+  status = target_session_object.Run({}, feeds, output_names, &fetches);
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  
+  //compare
+  //ASSERT_TRUE(cpu_fetches.size() == target_fetches.size());
+  //for (size_t i = 0; i < cpu_fetches.size(); i++) {
+  //  auto ret = CompareOrtValue(target_fetches[i], cpu_fetches[i], per_sample_tolerance, relative_per_sample_tolerance, false);
+  //  EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
+  //}
+}
+
 void OpTester::Run(
     ExpectResult expect_result, const std::string& expected_failure_string,
     const std::unordered_set<std::string>& excluded_provider_types,

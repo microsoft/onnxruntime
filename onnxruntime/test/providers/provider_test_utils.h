@@ -816,6 +816,9 @@ class OpTester {
            /*out*/ size_t* number_of_pre_packed_weights_counter = nullptr,
            /*out*/ size_t* number_of_shared_pre_packed_weights_counter = nullptr);
 
+void Run(std::vector<OrtValue>& fetches,
+         std::unique_ptr<IExecutionProvider> execution_provider);
+
   std::vector<OrtValue>
   GetFetches() { return fetches_; }
 
