@@ -22,12 +22,8 @@ class CudaKernel : public OpKernel {
         // Is this OK to have a non-const execution provider?
         provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
   }
-  // make all the cuda kernels async
-  bool IsAsync() const override {
-    return true;
-  }
 
-  Status ComputeAsync(OpKernelContext* p_op_kernel_context, DoneCallback done) const ORT_MUST_USE_RESULT override {
+  Status Compute(OpKernelContext* p_op_kernel_context) const override {
     // !!!!
     // TODO: this is a tempoarary workaround
     // we set the stream when every compute start to avoid change signature of Stream()
@@ -36,9 +32,6 @@ class CudaKernel : public OpKernel {
     std::lock_guard<OrtMutex> lock(stream_mutex_);
     stream_ = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->handle);
 
-    // all of our cuda EP kernels are actually "async", as the "ComputeInternal" just launch kernels to cuda stream
-    // although there might be some host code in ComputeInternal (like calculate shape / upload to gpu), but those
-    // code shouldn't be blocking.
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
@@ -49,14 +42,7 @@ class CudaKernel : public OpKernel {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
       }
     }
-    // now launch the callback to cuda stream, so it will be executed when the kernel is DONE.
-    DoneCallback* p = new DoneCallback(done);
-    CUDA_CALL_THROW(cudaStreamAddCallback(Stream(), cudaStreamCallback, p, 0));
-    return Status::OK();
-  }
-
-  Status Compute(OpKernelContext* p_op_kernel_context) const override {
-    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    return s;
   }
 
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;

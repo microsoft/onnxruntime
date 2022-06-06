@@ -35,93 +35,77 @@ class Memcpy final : public OpKernel {
  public:
   Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
 
-  bool IsAsync() const override {
-    auto& src_device = Info().GetInputLocation(0).device;
-    auto& dst_device = Info().GetOutputLocation(0).device;
-
-    return !((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
-           (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED));
-  }
-
-  Status ComputeAsync(OpKernelContext* ctx, DoneCallback done) const ORT_MUST_USE_RESULT override {
-    const auto* X = ctx->Input<Tensor>(0);
-    ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
-    Tensor* Y = ctx->Output(0, X->Shape());
-    ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-    auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
-    ORT_ENFORCE(gpu_data_transfer != nullptr, "Memcpy: can't find gpu data transfer.");
-    auto s = gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
-
-    if (s.IsOK()) {
-      auto err = cudaGetLastError();
-      if (err != cudaSuccess) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
-      }
-    }
-    // now launch the callback to cuda stream, so it will be executed when the kernel is DONE.
-    DoneCallback* p = new DoneCallback(done);
-    CUDA_CALL_THROW(cudaStreamAddCallback(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle), cudaStreamCallback, p, 0));
-    return Status::OK();
-  }
-
   Status Compute(OpKernelContext* ctx) const override {
-    // sync the stream frist, since it is a sync memory copy
-    cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle));
-
     auto X_type = ctx->InputType(0);
     if (X_type->IsTensorType()) {
       const auto* X = ctx->Input<Tensor>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      return Info().GetDataTransferManager().CopyTensor(*X, *Y);
-    } else if (X_type->IsSparseTensorType()) {
-      const auto* X = ctx->Input<SparseTensor>(0);
-      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
-      SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
-      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
-      return X->Copy(Info().GetDataTransferManager(), *Y);
-    } else if (X_type->IsTensorSequenceType()) {
-      const TensorSeq* X = ctx->Input<TensorSeq>(0);
-      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
-      TensorSeq* Y = ctx->Output<TensorSeq>(0);
-      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
-      auto X_dtype = X->DataType();
-      Y->SetType(X_dtype);
-      AllocatorPtr alloc;
+      // do we support async copy?
+      auto& src_device = Info().GetInputLocation(0).device;
+      auto& dst_device = Info().GetOutputLocation(0).device;
 
-      // If we are copying contents to CUDA, the allocator to use
-      // to allocate the buffers of the new tensors in the sequence
-      // can be temp space allocator associated with the CUDA EP
-      if (Node().OpType() == "MemcpyFromHost") {
-        auto status = ctx->GetTempSpaceAllocator(&alloc);
-        if (!status.IsOK()) {
-          return Status(common::ONNXRUNTIME, common::FAIL,
-                        "Memcpy cuda: unable to get an allocator.");
-        }
+      if (!((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
+            (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED))) {
+        auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+        return gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
       } else {
-        // If we are copying contents to CPU (op type is "MemcpyToHost"),
-        // the allocator to use to allocate the buffers of the new tensors
-        // in the sequence will be the allocator from the CPU EP
-        auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
-        if (!status.IsOK()) {
-          return Status(common::ONNXRUNTIME, common::FAIL,
-                        "Memcpy cuda: unable to get the CPU allocator.");
-        }
+        return Info().GetDataTransferManager().CopyTensor(*X, *Y);
       }
-      auto X_size = X->Size();
-      for (size_t i = 0; i < X_size; ++i) {
-        const Tensor& source_tensor = X->Get(i);
-        std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor);
-        if (!retval.IsOK()) {
-          return retval;
+    } else {
+      // TODO: support aysnc copy for sparse tensor
+      
+      // sync the stream frist, since it is a sync memory copy
+      cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle));
+      if (X_type->IsSparseTensorType()) {
+        const auto* X = ctx->Input<SparseTensor>(0);
+        ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+        SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
+        ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
+        return X->Copy(Info().GetDataTransferManager(), *Y);
+      } else if (X_type->IsTensorSequenceType()) {
+        const TensorSeq* X = ctx->Input<TensorSeq>(0);
+        ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
+        TensorSeq* Y = ctx->Output<TensorSeq>(0);
+        ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
+        auto X_dtype = X->DataType();
+        Y->SetType(X_dtype);
+        AllocatorPtr alloc;
+
+        // If we are copying contents to CUDA, the allocator to use
+        // to allocate the buffers of the new tensors in the sequence
+        // can be temp space allocator associated with the CUDA EP
+        if (Node().OpType() == "MemcpyFromHost") {
+          auto status = ctx->GetTempSpaceAllocator(&alloc);
+          if (!status.IsOK()) {
+            return Status(common::ONNXRUNTIME, common::FAIL,
+                          "Memcpy cuda: unable to get an allocator.");
+          }
+        } else {
+          // If we are copying contents to CPU (op type is "MemcpyToHost"),
+          // the allocator to use to allocate the buffers of the new tensors
+          // in the sequence will be the allocator from the CPU EP
+          auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
+          if (!status.IsOK()) {
+            return Status(common::ONNXRUNTIME, common::FAIL,
+                          "Memcpy cuda: unable to get the CPU allocator.");
+          }
         }
-        Y->Add(std::move(*target_tensor));
+        auto X_size = X->Size();
+        for (size_t i = 0; i < X_size; ++i) {
+          const Tensor& source_tensor = X->Get(i);
+          std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
+          Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor);
+          if (!retval.IsOK()) {
+            return retval;
+          }
+          Y->Add(std::move(*target_tensor));
+        }
+        return Status::OK();
       }
-      return Status::OK();
+      return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
     }
-    return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
 };
 

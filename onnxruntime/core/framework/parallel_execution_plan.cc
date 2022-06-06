@@ -289,10 +289,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         // TODO: set terminate flag from run_option
         OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, false, ctx.device_streams[cur_stream_idx]);
         if (p_kernel->IsAsync()) {
-          ExecutionContext* ctx_ptr = &ctx;
-          ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, [node_index, i, ctx_ptr]() {
-                ctx_ptr->RecycleNodeInputs(node_index);
-              }).IsOK(), MakeString("kernel fail!"));
+          assert(false);
         } else {
 #ifdef USE_CUDA
           static std::atomic_int color = 0;
