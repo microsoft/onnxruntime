@@ -42,6 +42,7 @@ namespace onnxruntime {
 #endif
 #endif
 
+class StreamAwareArena;
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
 // malloc (dlmalloc).
@@ -96,8 +97,13 @@ class BFCArena : public IAllocator {
 
   size_t AllocatedSize(const void* ptr);
 
- private:
-  void* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure);
+  using StreamId = void*;
+
+  virtual StreamAwareArena* AsStreamAwareAreana() {
+    return nullptr;
+  }
+
+ protected:
   void DeallocateRawInternal(void* ptr);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
@@ -142,6 +148,8 @@ class BFCArena : public IAllocator {
 
     // What bin are we in?
     BinNum bin_num = kInvalidBinNum;
+
+    StreamId stream_id = nullptr;
 
     bool in_use() const { return allocation_id != -1; }
 
@@ -192,6 +200,8 @@ class BFCArena : public IAllocator {
     Bin(BFCArena* allocator, size_t bs)
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
+
+  BFCArena::Chunk* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure, StreamId stream_id, bool enable_cross_stream_reusing);
 
   static const size_t kMinAllocationBits = 8;
   static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
@@ -342,9 +352,9 @@ class BFCArena : public IAllocator {
   // 'rounded_bytes' bytes.
   Status Extend(size_t rounded_bytes);
 
-  // Returns a pointer to an underlying allocated chunk of size
+  // Returns an underlying allocated chunk of size
   // 'rounded_bytes'.
-  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes);
+  BFCArena::Chunk* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes, StreamId stream_id, bool enable_cross_stream_reusing);
 
   // Splits the chunk specified by 'h' into two chunks, one at least
   // of size 'num_bytes'.
@@ -475,6 +485,29 @@ class BFCArena : public IAllocator {
   bool consider_first_allocation_region_for_shrinkage_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
+};
+
+class StreamAwareArena : public BFCArena {
+public:
+  StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
+                   size_t total_memory,
+                   bool enable_cross_stream_sharing,
+                   ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
+                   int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
+                   int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
+                   int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES);
+
+  //If size is 0, then this function returns either NULL,
+  //or a unique pointer value that can later be successfully
+  //passed to free(). Whatever, do not dereference that pointer
+  BFCArena::Chunk* AllocOnStream(size_t size, StreamId stream_id);
+
+  void ReleaseStreamBuffers(StreamId stream_id);
+
+  StreamAwareArena* AsStreamAwareAreana() override;
+
+private:
+  bool enable_cross_stream_reusing_;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

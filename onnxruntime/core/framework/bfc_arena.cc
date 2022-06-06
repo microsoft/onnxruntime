@@ -214,6 +214,8 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   c->allocation_id = -1;
   c->prev = kInvalidChunkHandle;
   c->next = kInvalidChunkHandle;
+  // assign the new created chunk to default stream, so it can be pick up by any stream
+  c->stream_id = nullptr;
 
   region_manager_.set_handle(c->ptr, h);
 
@@ -255,7 +257,8 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
 }
 
 void* BFCArena::Alloc(size_t size) {
-  return AllocateRawInternal(size, false);
+  auto* chunk = AllocateRawInternal(size, false, nullptr, false);
+  return chunk ? chunk->ptr : nullptr;
 }
 
 void* BFCArena::Reserve(size_t size) {
@@ -294,8 +297,10 @@ size_t BFCArena::AllocatedSize(const void* ptr) {
   return c->size;
 }
 
-void* BFCArena::AllocateRawInternal(size_t num_bytes,
-                                    bool dump_log_on_failure) {
+BFCArena::Chunk* BFCArena::AllocateRawInternal(size_t num_bytes,
+                                    bool dump_log_on_failure, 
+                                    StreamId stream_id, 
+                                    bool enable_cross_stream_reusing) {
   if (num_bytes == 0) {
     LOGS_DEFAULT(VERBOSE) << "tried to allocate 0 bytes";
     return nullptr;
@@ -309,9 +314,12 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
   std::lock_guard<OrtMutex> lock(lock_);
-  void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
-  if (ptr != nullptr) {
-    return ptr;
+  auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream_id, enable_cross_stream_reusing);
+  if (chunk != nullptr) {
+    // if it is on default stream (the new allocate chunk), assign to current stream
+    if (chunk->stream_id == nullptr)
+      chunk->stream_id = stream_id;
+    return chunk;
   }
 
   LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
@@ -320,9 +328,12 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // Try to extend
   auto status = Extend(rounded_bytes);
   if (status.IsOK()) {
-    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
-    if (ptr != nullptr) {
-      return ptr;
+    chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream_id, enable_cross_stream_reusing);
+    if (chunk != nullptr) {
+      // if it is on default stream (the new allocate chunk), assign to current stream
+      if (chunk->stream_id == nullptr)
+        chunk->stream_id = stream_id;
+      return chunk;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Failed to find a free memory block despite calling Extend. rounded_bytes=",
@@ -347,8 +358,9 @@ void BFCArena::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
-void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                             size_t num_bytes) {
+BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
+                             size_t num_bytes, StreamId stream_id, 
+                             bool enable_cross_stream_reusing) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -359,6 +371,12 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
       const BFCArena::ChunkHandle h = (*citer);
       BFCArena::Chunk* chunk = ChunkFromHandle(h);
       ORT_ENFORCE(!chunk->in_use());
+      // check whether it is belong to the same stream
+      // if chunk is on default stream (nullptr) it can be used by any stream.
+      if (!enable_cross_stream_reusing && chunk->stream_id != stream_id && chunk->stream_id != nullptr) {
+        continue;
+      }
+
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, so remove
         // it from the free bin structure prior to using.
@@ -386,7 +404,7 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
             std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
         stats_.max_alloc_size =
             std::max<int64_t>(stats_.max_alloc_size, static_cast<int64_t>(chunk->size));
-        return chunk->ptr;
+        return chunk;
       }
     }
   }
@@ -524,7 +542,7 @@ void BFCArena::Merge(BFCArena::ChunkHandle h1,
   Chunk* c1 = ChunkFromHandle(h1);
   Chunk* c2 = ChunkFromHandle(h2);
   // We can only merge chunks that are not in use.
-  ORT_ENFORCE(!c1->in_use() && !c2->in_use());
+  ORT_ENFORCE(!c1->in_use() && !c2->in_use() && c1->stream_id == c2->stream_id);
 
   // c1's prev doesn't change, still points to the same ptr, and is
   // still not in use.
@@ -600,7 +618,9 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
   // If the next chunk is free, coalesce the two
   if (c->next != kInvalidChunkHandle) {
     Chunk* cnext = ChunkFromHandle(c->next);
-    if (!cnext->in_use()) {
+    if (!cnext->in_use() &&
+        // only merge the chunks belong to the same stream
+        cnext->stream_id == c->stream_id) {
       //      VLOG(8) << "Chunk at " << cnext->ptr << " merging with c " <<
       //      c->ptr;
 
@@ -616,7 +636,9 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
   c = ChunkFromHandle(h);
   if (c->prev != kInvalidChunkHandle) {
     Chunk* cprev = ChunkFromHandle(c->prev);
-    if (!cprev->in_use()) {
+    if (!cprev->in_use() && 
+        // only merge the chunks belong to the same stream
+        cprev->stream_id == c->stream_id) {
       //      VLOG(8) << "Chunk at " << c->ptr << " merging into c->prev "
       //       << cprev->ptr;
 
@@ -726,4 +748,63 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
   LOGS_DEFAULT(INFO) << "Stats: \n"
                      << stats_.DebugString();
 }
+
+StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
+    size_t total_memory,
+    bool enable_cross_stream_sharing,
+    ArenaExtendStrategy arena_extend_strategy,
+    int initial_chunk_size_bytes,
+    int max_dead_bytes_per_chunk,
+    int initial_growth_chunk_size_bytes) : 
+    BFCArena(std::move(resource_allocator), 
+             total_memory, 
+             arena_extend_strategy, 
+             initial_chunk_size_bytes, 
+             max_dead_bytes_per_chunk, 
+             initial_growth_chunk_size_bytes), enable_cross_stream_reusing_(enable_cross_stream_sharing) {
+
+}
+
+BFCArena::Chunk* StreamAwareArena::AllocOnStream(size_t size, StreamId stream_id) {
+  return AllocateRawInternal(size, false, stream_id, enable_cross_stream_reusing_);
+}
+
+void StreamAwareArena::ReleaseStreamBuffers(StreamId stream_id) {
+  std::lock_guard<OrtMutex> lock(lock_);
+
+  for (const auto& region : region_manager_.regions()) {
+    ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
+    ChunkHandle h = region_begin_chunk;
+    while (h != kInvalidChunkHandle) {
+      Chunk* c = ChunkFromHandle(h);
+      if (c->stream_id == stream_id)
+        c->stream_id = nullptr;
+      h = c->next;
+    }
+  }
+
+  //FreeAndMaybeCoalesce
+  //since a set of chunks are set to nullptr, merge them if possibe
+  for (const auto& region : region_manager_.regions()) {
+    ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
+    ChunkHandle h = region_begin_chunk;
+    while (h != kInvalidChunkHandle) {
+      Chunk* c = ChunkFromHandle(h);
+      ChunkHandle h_next = c->next;
+      Chunk* c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
+      // merge untill next chunk is different stream
+      while (c_next && c_next->stream_id == c->stream_id) {
+        FreeAndMaybeCoalesce(h);
+        h_next = c->next;
+        c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
+      }
+      h = c->next;
+    }
+  }
+}
+
+StreamAwareArena* StreamAwareArena::AsStreamAwareAreana() {
+  return this;
+}
+
 }  // namespace onnxruntime
