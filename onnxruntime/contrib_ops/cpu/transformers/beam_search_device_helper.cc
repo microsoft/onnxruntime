@@ -10,6 +10,8 @@
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -31,11 +33,9 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
 }
 
 template <typename T>
-OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator) {
-  // Input shape (batch_size, sequence_length), required data type T.
+void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
+  // Input shape (batch_size, sequence_length). The input is required with data type T.
   // Output shape (batch_size * num_beams, sequence_length)
-  if (num_beams == 1)
-    return input;
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
@@ -44,7 +44,6 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
   int64_t dims[] = {batch_size * num_beams, sequence_length};
   TensorShape expanded_shape(&dims[0], 2);
 
-  OrtValue expanded;
   MLDataType element_type = input.Get<Tensor>().DataType();
   ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
 
@@ -59,8 +58,6 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
       target += sequence_length;
     }
   }
-
-  return expanded;
 }
 
 Status CreateGptInputs(
@@ -124,9 +121,9 @@ Status CreateGptInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  expanded_input_ids = ExpandInputs<int32_t>(input_ids, num_beams, allocator);
-  expanded_position_ids = ExpandInputs<int32_t>(position_ids, num_beams, allocator);
-  expanded_attention_mask = ExpandInputs<int32_t>(attention_mask, num_beams, allocator);
+  ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
+  ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
+  ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
 
   return Status::OK();
 }
@@ -338,18 +335,20 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
                       std::vector<OrtValue>& next_inputs,
                       gsl::span<const int32_t>& beam_indices,
                       AllocatorPtr allocator) {
-  for (size_t i = 1; i < last_outputs.size(); ++i) {
-    const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
+  int num_present_tensors = static_cast<int>(last_outputs.size()) - transformers::GptSubgraph::kFirstPresentOutputIndex;
+  for (int i = 0; i < num_present_tensors; ++i) {
+    const OrtValue& present = last_outputs[transformers::GptSubgraph::kFirstPresentOutputIndex + i];
+
+    // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
+    auto block_size_per_beam = past_shape[2] * past_shape[3] * past_shape[4];
+    auto past_key_size = past_shape[1] * past_shape[2] * past_shape[3] * past_shape[4];
 
     // Create a tensor with same shape.
     // TODO(tianleiwu): allocate one buffer for all layers
     OrtValue past;
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
-
-    auto block_size_per_beam = past_shape[2] * past_shape[3] * past_shape[4];
-    auto past_key_size = past_shape[1] * past_shape[2] * past_shape[3] * past_shape[4];
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
@@ -365,7 +364,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
       gsl::copy(present_value, past_value);
     }
 
-    next_inputs[i + 2] = past;
+    next_inputs[transformers::GptSubgraph::kFirstPastInputIndex + i] = past;
   }
 }
 
@@ -435,8 +434,9 @@ Status UpdateGptFeeds(
   // Update past state
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
-    for (size_t i = 1; i < last_outputs.size(); ++i) {
-      next_inputs[i + 2] = last_outputs[i];
+    const int k = transformers::GptSubgraph::kFirstPastInputIndex - transformers::GptSubgraph::kFirstPresentOutputIndex;
+    for (size_t i = transformers::GptSubgraph::kFirstPresentOutputIndex; i < last_outputs.size(); ++i) {
+      next_inputs[i + k] = last_outputs[i];
     }
   } else {
     PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator);
@@ -480,14 +480,14 @@ Status CreateEncoderInputs(
   Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
 
   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
-  // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
   int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
   const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
   int32_t* mask = mask_data;
   for (int i = 0; i < batch_size; i++) {
     int32_t abs_position = 0;
     for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
-      // Huggingface T5Tokenizer might add one pad token at the end with attention mask 1.
+      // T5Tokenizer might add one EOS pad token at the end.
+      // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
       // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
       if (*word_id == pad_token_id && abs_position == 0) {
         *mask = 0;
@@ -501,8 +501,8 @@ Status CreateEncoderInputs(
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // for encoder_input_ids and encoder_attention_mask
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  expanded_encoder_input_ids = ExpandInputs<int32_t>(encoder_input_ids, num_beams, allocator);
-  expanded_encoder_attention_mask = ExpandInputs<int32_t>(encoder_attention_mask, num_beams, allocator);
+  ExpandInputs<int32_t>(encoder_input_ids, num_beams, allocator, expanded_encoder_input_ids);
+  ExpandInputs<int32_t>(encoder_attention_mask, num_beams, allocator, expanded_encoder_attention_mask);
 
   // decoder_input_ids is optional.
   if (start_token_id >= 0) {
@@ -526,16 +526,17 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
                      int num_present_tensors,
                      gsl::span<const int32_t>& beam_indices,
                      AllocatorPtr allocator) {
-  for (int i = 1; i < 1 + num_present_tensors; ++i) {
-    const OrtValue& present = last_outputs[i];  // shape is like (batch_beam_size, 12, past_seq_len, 64)
+  for (int i = 0; i < num_present_tensors; ++i) {
+    const OrtValue& present = last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
+
+    // shape is like (batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
+    auto block_size_per_beam = past_shape[1] * past_shape[2] * past_shape[3];
 
     // Create a tensor with same shape.
     // TODO(tianleiwu): allocate one buffer for all layers
     OrtValue past;
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), past_shape, allocator, past);
-
-    auto block_size_per_beam = past_shape[1] * past_shape[2] * past_shape[3];
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
@@ -546,7 +547,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
       gsl::copy(present_beam, past_beam);
     }
 
-    next_inputs[i + 2] = past;
+    next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] = past;
   }
 }
 
@@ -595,13 +596,13 @@ Status UpdateDecoderFeeds(
   // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
-    for (int i = 1; i < 1 + num_present_tensors; ++i) {
-      next_inputs[i + 2] = last_outputs[i];
+    for (int i = 0; i < num_present_tensors; ++i) {
+      next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] =
+          last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
     }
   } else {
     PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator);
   }
-
   return Status::OK();
 }
 
