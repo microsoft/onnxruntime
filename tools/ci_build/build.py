@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 from distutils.version import LooseVersion
+from pathlib import Path
 
 from amd_hipify import amd_hipify
 
@@ -1800,7 +1801,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             python_path = None
             if args.use_tvm:
-                python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+                python_path = str((Path(build_dir) / config / "_deps" / "tvm-src" / "python").resolve())
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run.
