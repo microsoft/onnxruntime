@@ -279,6 +279,7 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
 endif()
 
 if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_ATEN)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
@@ -489,10 +490,10 @@ if (onnxruntime_USE_CUDA)
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
     )
 
-    # minimize the Windows includes. 
+    # minimize the Windows includes.
     # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE "WIN32_LEAN_AND_MEAN")
-    
+
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
     if (onnxruntime_USE_NUPHAR_TVM)
@@ -515,6 +516,10 @@ if (onnxruntime_USE_CUDA)
     set_property(TARGET onnxruntime_providers_cuda APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/cuda/symbols.def")
   else()
     message(FATAL_ERROR "onnxruntime_providers_cuda unknown platform, need to specify shared library exports for it")
+  endif()
+
+  if (onnxruntime_ENABLE_ATEN)
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE ENABLE_ATEN)
   endif()
 
   install(TARGETS onnxruntime_providers_cuda
@@ -1415,6 +1420,10 @@ if (onnxruntime_USE_ROCM)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE nsync_cpp)
   else()
     message(FATAL_ERROR "onnxruntime_providers_rocm unknown platform, need to specify shared library exports for it")
+  endif()
+
+  if (onnxruntime_ENABLE_ATEN)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE ENABLE_ATEN)
   endif()
 
   install(TARGETS onnxruntime_providers_rocm

@@ -1927,7 +1927,6 @@ endif()
 if (onnxruntime_ENABLE_PYTHON AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
   message(STATUS "ATEN support is enabled")
   set(onnxruntime_ENABLE_ATEN ON)
-  add_compile_definitions(ENABLE_ATEN)
 endif()
 
 

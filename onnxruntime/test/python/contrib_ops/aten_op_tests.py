@@ -24,7 +24,8 @@ class OrtOpTests(unittest.TestCase):
                 self.linear = torch.nn.Linear(embedding_dim, hidden_size)
 
             def forward(self, input):
-                return self.linear(self.embedding(input))
+                embedding_result = self.embedding(input)
+                return embedding_result, self.linear(embedding_result)
 
         N, num_embeddings, embedding_dim, hidden_size = 64, 32, 128, 128
         model = NeuralNetEmbedding(num_embeddings, embedding_dim, hidden_size)
@@ -87,7 +88,7 @@ class OrtOpTests(unittest.TestCase):
                         helper.make_value_info(
                             name=node.output[0],
                             type_proto=helper.make_tensor_type_proto(
-                                elem_type=1, shape=[node.output[0] + "_dim0", node.output[0] + "_dim1"]
+                                elem_type=TensorProto.FLOAT, shape=[node.output[0] + "_dim0", node.output[0] + "_dim1"]
                             ),
                         )
                     )
@@ -100,10 +101,11 @@ class OrtOpTests(unittest.TestCase):
 
         for _ in range(8):
             x = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64)
-            pt_y = model(x)
+            pt_y1, pt_y2 = model(x)
             session = ort.InferenceSession(exported_model.SerializeToString(), providers=["CPUExecutionProvider"])
-            ort_y = session.run([], {"x": x.numpy()})[0]
-            np.testing.assert_almost_equal(ort_y, pt_y.detach().numpy())
+            ort_y1, ort_y2 = session.run([], {"x": x.numpy()})
+            np.testing.assert_almost_equal(ort_y1, pt_y1.detach().numpy())
+            np.testing.assert_almost_equal(ort_y2, pt_y2.detach().numpy())
 
 
 if __name__ == "__main__":
