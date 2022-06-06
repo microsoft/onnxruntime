@@ -67,16 +67,19 @@ var paddedHeight = (int)(Math.Ceiling(image.Height / 32f) * 32f);
 var paddedWidth = (int)(Math.Ceiling(image.Width / 32f) * 32f);
 Tensor<float> input = new DenseTensor<float>(new[] { 3, paddedHeight, paddedWidth });
 var mean = new[] { 102.9801f, 115.9465f, 122.7717f };
-for (int y = paddedHeight - image.Height; y < image.Height; y++)
+image.ProcessPixelRows(accessor =>
 {
-    Span<Rgb24> pixelSpan = image.GetPixelRowSpan(y);
-    for (int x = paddedWidth - image.Width; x < image.Width; x++)
+    for (int y = paddedHeight - accessor.Height; y < accessor.Height; y++)
     {
-        input[0, y, x] = pixelSpan[x].B - mean[0];
-        input[1, y, x] = pixelSpan[x].G - mean[1];
-        input[2, y, x] = pixelSpan[x].R - mean[2];
+        Span<Rgb24> pixelSpan = accessor.GetRowSpan(y);
+        for (int x = paddedWidth - accessor.Width; x < accessor.Width; x++)
+        {
+            input[0, y, x] = pixelSpan[x].B - mean[0];
+            input[1, y, x] = pixelSpan[x].G - mean[1];
+            input[2, y, x] = pixelSpan[x].R - mean[2];
+        }
     }
-}
+});
 ```
 
 Here, we're creating a Tensor of the required size `(channels, paddedHeight, paddedWidth)`, accessing the pixel values, preprocessing them and finally assigning them to the tensor at the appropriate indicies.
