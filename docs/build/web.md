@@ -39,6 +39,11 @@ There are 2 steps to build ONNX Runtime Web:
 - Python (3.8+): https://www.python.org/downloads/
   - python should be added to the PATH environment variable
 
+- Ninja: https://ninja-build.org/
+  ```sh
+  pip install ninja
+  ```
+
 - Prepare emsdk:
   emsdk should be automatically installed at `<ORT_ROOT>/cmake/external/emsdk/emsdk`. If the folder structure does not exist, run the following commands in `<ORT_ROOT>/` to install git submodules:
   ```sh
