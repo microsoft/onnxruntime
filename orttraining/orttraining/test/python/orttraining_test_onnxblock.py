@@ -1,15 +1,17 @@
-import torch
-import io
-import onnx
-import onnxruntime.training.onnxblock as onnxblock
-import onnxruntime
-from onnxruntime.capi import _pybind_state as C
-import pytest
-import tempfile
-import os
 import copy
-import numpy as np
+import io
+import os
+import random
+import tempfile
 
+import numpy as np
+import onnx
+import pytest
+import torch
+
+import onnxruntime
+import onnxruntime.training.onnxblock as onnxblock
+from onnxruntime.capi import _pybind_state as C
 
 # PyTorch Module definitions
 
@@ -128,9 +130,7 @@ def _get_onnx_model(torch_model, model_inputs):
 
 
 def _to_numpy(tensor):
-    return (
-        tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
-    )
+    return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
 def _get_models(device, N, D_in, H, D_out):
@@ -164,9 +164,7 @@ def _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=None):
         ort_inputs[onnx_model.graph.input[1].name]
     for name, param in pt_model.named_parameters():
         ort_inputs[name] = _to_numpy(copy.deepcopy(param))
-        ort_inputs[f"{name}_grad.accumulation.buffer"] = _to_numpy(
-            torch.zeros_like(param)
-        )
+        ort_inputs[f"{name}_grad.accumulation.buffer"] = _to_numpy(torch.zeros_like(param))
     ort_inputs["lazy_reset_grad"] = np.full(1, True)
 
     return ort_inputs
@@ -225,9 +223,7 @@ def test_mse_loss_execution():
     # When
     with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
         onnx.save(onnx_model, onnx_fo.name)
-        ort_session = onnxruntime.InferenceSession(
-            onnx_fo.name, providers=C.get_available_providers()
-        )
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = mse_loss(pt_model(x), target)
@@ -253,9 +249,7 @@ def test_crossentropy_loss_execution():
     ort_output_names = [onnx_model.graph.output[0].name]
     ort_inputs = {
         onnx_model.graph.input[0].name: _to_numpy(copy.deepcopy(x)),
-        onnx_model.graph.input[1].name: _to_numpy(
-            copy.deepcopy(target).type(torch.int32)
-        ),
+        onnx_model.graph.input[1].name: _to_numpy(copy.deepcopy(target).type(torch.int32)),
     }
 
     def crossentropy_loss(prediction, target):
@@ -265,9 +259,7 @@ def test_crossentropy_loss_execution():
     # When
     with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
         onnx.save(onnx_model, onnx_fo.name)
-        ort_session = onnxruntime.InferenceSession(
-            onnx_fo.name, providers=C.get_available_providers()
-        )
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = crossentropy_loss(pt_model(x), target)
@@ -303,9 +295,7 @@ def test_bcewithlogits_loss_execution():
     # When
     with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
         onnx.save(onnx_model, onnx_fo.name)
-        ort_session = onnxruntime.InferenceSession(
-            onnx_fo.name, providers=C.get_available_providers()
-        )
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = bcewithlogits_loss(pt_model(x), target)
@@ -338,9 +328,7 @@ def test_mse_loss_training_graph_execution():
     # When
     with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
         onnx.save(onnx_model, onnx_fo.name)
-        ort_session = onnxruntime.InferenceSession(
-            onnx_fo.name, providers=C.get_available_providers()
-        )
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = mse_loss(pt_model(x), target)
@@ -370,9 +358,7 @@ def test_crossentropy_loss_training_graph_execution():
         _ = simple_model(onnx_model.graph.output[0].name)
 
     ort_output_names = _get_training_ort_output_names(pt_model, onnx_model)
-    ort_inputs = _get_training_ort_inputs(
-        x, target, pt_model, onnx_model, target_type=torch.int32
-    )
+    ort_inputs = _get_training_ort_inputs(x, target, pt_model, onnx_model, target_type=torch.int32)
 
     def crossentropy_loss(prediction, target):
         loss = torch.nn.CrossEntropyLoss()
@@ -381,9 +367,7 @@ def test_crossentropy_loss_training_graph_execution():
     # When
     with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
         onnx.save(onnx_model, onnx_fo.name)
-        ort_session = onnxruntime.InferenceSession(
-            onnx_fo.name, providers=C.get_available_providers()
-        )
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = crossentropy_loss(pt_model(x), target)
@@ -422,9 +406,7 @@ def test_bcewithlogits_loss_training_graph_execution():
     # When
     with tempfile.NamedTemporaryFile(suffix=".onnx") as onnx_fo:
         onnx.save(onnx_model, onnx_fo.name)
-        ort_session = onnxruntime.InferenceSession(
-            onnx_fo.name, providers=C.get_available_providers()
-        )
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
 
         ort_outs = ort_session.run(ort_output_names, ort_inputs)
         torch_outs = bcewithlogits_loss(pt_model(x), target)
@@ -439,9 +421,7 @@ def test_bcewithlogits_loss_training_graph_execution():
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
-@pytest.mark.parametrize(
-    "graph", [SimpleTrainingModelWithMSELoss, SimpleTrainingModelWithCrossEntropyLoss]
-)
+@pytest.mark.parametrize("graph", [SimpleTrainingModelWithMSELoss, SimpleTrainingModelWithCrossEntropyLoss])
 def test_adamw_optimizer_composition(graph):
     # Given
     device = "cuda"
@@ -501,16 +481,12 @@ def test_adamw_optimizer_execution():
         }
         for name, param in pt_model.named_parameters():
             ort_inputs[name] = _to_numpy(copy.deepcopy(param))
-            ort_inputs[f"{name}_grad.accumulation.out"] = _to_numpy(
-                copy.deepcopy(param.grad)
-            )
+            ort_inputs[f"{name}_grad.accumulation.out"] = _to_numpy(copy.deepcopy(param.grad))
             ort_inputs[f"{name}.exp_avg"] = _to_numpy(torch.zeros_like(param))
             ort_inputs[f"{name}.exp_avg_sq"] = _to_numpy(torch.zeros_like(param))
 
         # Then no error occurs when executing the model
-        ort_session = onnxruntime.InferenceSession(
-            onnx_fo.name, providers=C.get_available_providers()
-        )
+        ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
         _ = ort_session.run(ort_output_names, ort_inputs)
 
 
@@ -529,9 +505,7 @@ def test_retrieve_parameters():
 
     # Then
     assert not non_trainable_params
-    for ort_param, (pt_param_name, pt_param) in zip(
-        trainable_params, pt_model.named_parameters()
-    ):
+    for ort_param, (pt_param_name, pt_param) in zip(trainable_params, pt_model.named_parameters()):
         assert ort_param.name == pt_param_name
         assert np.allclose(
             np.frombuffer(ort_param.raw_data, dtype=np.float32).reshape(pt_param.shape),
@@ -550,10 +524,7 @@ def test_retrieve_parameters_before_building_gradient_graph():
     # When / Then
     with pytest.raises(Exception) as ex_info:
         _, _ = simple_model.parameters()
-    assert (
-        "Please build the training model first before trying to retrieve the parameters."
-        in str(ex_info.value)
-    )
+    assert "Please build the training model first before trying to retrieve the parameters." in str(ex_info.value)
 
 
 def test_save_checkpoint():
@@ -570,9 +541,7 @@ def test_save_checkpoint():
     # When
     with tempfile.TemporaryDirectory() as checkpoint_dir_name:
         checkpoint_file_path = os.path.join(checkpoint_dir_name, "checkpoint")
-        onnxblock.save_checkpoint(
-            (trainable_params, non_trainable_params), checkpoint_file_path
-        )
+        onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
 
         # Then
         assert os.path.exists(checkpoint_file_path)
@@ -623,3 +592,53 @@ def test_set_requires_grad_on_inputs():
 
     assert expected_input_gradient_buffer_name in graph_input_names
     assert expected_input_gradient_output_name in graph_output_names
+
+
+@pytest.mark.parametrize("model_type", [onnxblock.Model, onnxblock.TrainingModel])
+def test_weighted_average_model_composition(model_type):
+    # Given
+    class TwoOutputNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(TwoOutputNet, self).__init__()
+
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+            self.fc2_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu2 = torch.nn.ReLU()
+            self.fc2_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, model_input1, model_input2):
+            out1 = self.fc1_2(self.relu1(self.fc1_1(model_input1)))
+            out2 = self.fc2_2(self.relu2(self.fc2_1(model_input2)))
+            return out1, out2
+
+    class WeightedAvg(model_type):
+        def __init__(self, w1, w2):
+            super(WeightedAvg, self).__init__()
+
+            self.loss1 = onnxblock.loss.CrossEntropyLoss()
+            self.loss2 = onnxblock.loss.CrossEntropyLoss()
+            self.w1 = onnxblock.building_blocks.Value(w1)
+            self.w2 = onnxblock.building_blocks.Value(w2)
+            self.mul = onnxblock.building_blocks.Mul()
+            self.add = onnxblock.building_blocks.Add()
+
+        def build(self, loss_input_name1, loss_input_name2):
+            return self.add(
+                self.mul(self.w1(), self.loss1(loss_input_name1, labels_name="labels1")),
+                self.mul(self.w2(), self.loss2(loss_input_name2, labels_name="labels2")),
+            )
+
+    device = "cuda"
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = TwoOutputNet(D_in, H, D_out).to(device)
+    x1 = torch.randn(N, D_in, device=device)
+    x2 = torch.randn(N, D_in, device=device)
+    onnx_model = _get_onnx_model(pt_model, (x1, x2))
+
+    # When / Then no error occurs
+    weighted_model = WeightedAvg(random.random(), random.random())
+    with onnxblock.onnx_model(onnx_model):
+        output_name = weighted_model(onnx_model.graph.output[0].name, onnx_model.graph.output[1].name)

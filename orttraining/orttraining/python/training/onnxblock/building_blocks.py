@@ -3,10 +3,11 @@
 # _building_blocks.py
 
 from abc import ABC, abstractmethod
+
 import onnx
 
-import onnxruntime.training.onnxblock.model_accessor as accessor
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
+import onnxruntime.training.onnxblock.model_accessor as accessor
 
 
 class Block(ABC):
@@ -178,3 +179,19 @@ class Log(_UnaryOp):
 class Neg(_UnaryOp):
     def __init__(self):
         super(Neg, self).__init__("Neg")
+
+
+class Value(Block):
+    """Creates an initializer and adds it to the onnx model."""
+    def __init__(self, value):
+        self._value = value
+
+    def build(self):
+        # create the graph initializer for the exponent
+        initializer_name = graph_utils.generate_random_graph_name("initializer")
+        accessor.global_accessor.model.graph.initializer.append(
+            onnx.helper.make_tensor(
+                initializer_name, onnx.TensorProto.FLOAT, [1], [self._value]
+            )
+        )
+        return initializer_name
