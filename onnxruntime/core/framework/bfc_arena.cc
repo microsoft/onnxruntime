@@ -811,7 +811,8 @@ void StreamAwareArena::ReleaseStreamBuffers(StreamId stream_id) {
           h_next = c->next;
           c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
         }
-        InsertFreeChunkIntoBin(h);
+        if (c->bin_num == kInvalidBinNum)
+          InsertFreeChunkIntoBin(h);
       }
       h = c->next;
     }

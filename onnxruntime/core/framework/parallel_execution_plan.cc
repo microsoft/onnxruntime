@@ -11,6 +11,7 @@
 #include "core/common/logging/macros.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/stream_pool.h"
+#include "core/framework/bfc_arena.h"
 
 #ifdef USE_CUDA
 #include <nvtx3/nvToolsExtCuda.h>
@@ -93,6 +94,16 @@ struct ExecutionContext {
 
   ~ExecutionContext() {
     for (auto* stream : device_streams) {
+      auto& allocators = stream->provider->GetAllocators();
+      for (auto& alloc : allocators) {
+        if (alloc->Info().alloc_type == OrtArenaAllocator) {
+          auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
+          auto* stream_aware_alloc = static_cast<StreamAwareArena*>(arena_alloc);
+          if (stream_aware_alloc) {
+            stream_aware_alloc->ReleaseStreamBuffers(static_cast<BFCArena::StreamId>(stream));
+          }
+        }
+      }
       session_state->GetStreamPool().ReleaseStream(stream);
     }
   }
