@@ -33,7 +33,6 @@ The DirectML execution provider requires any DirectX 12 capable device. Almost a
 - NVIDIA Kepler (GTX 600 series) and above
 - AMD GCN 1st Gen (Radeon HD 7000 series) and above
 - Intel Haswell (4th-gen core) HD Integrated Graphics and above
-- DirectML is compatible with Windows 10, version 1709 (10.0.16299; RS3, “Fall Creators Update”) and newer.
 - Qualcomm Adreno 600 and above
 
 DirectML was introduced in Windows 10, version 1903, and in the corresponding version of the [Windows SDK](https://docs.microsoft.com/en-us/windows/ai/directml/dml).
