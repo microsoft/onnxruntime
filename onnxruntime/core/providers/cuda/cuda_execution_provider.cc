@@ -2438,7 +2438,9 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 
   // setup CUDA allocator
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cuda_alloc = GetAllocator(cuda_device.Id(), OrtMemTypeDefault);
+  // NOTE: We call IExecutionProvider::GetAllocator as CUDAExecutionProvider::GetAllocator will return
+  //       a per-thread allocator for OrtMemTypeDefault.
+  auto cuda_alloc = IExecutionProvider::GetAllocator(cuda_device.Id(), OrtMemTypeDefault);
   if (!cuda_alloc) {
     // use shared allocator if available
     cuda_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cuda_device);
@@ -2456,7 +2458,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
   if (!cuda_pinned_alloc) {
     cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -2480,7 +2482,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 
   // OrtMemTypeCPUInput -- op place the input on CPU and will not be accessed by CUDA kernel, no sync issue
-  auto cuda_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto cuda_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
   if (!cuda_cpu_alloc) {
     cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 

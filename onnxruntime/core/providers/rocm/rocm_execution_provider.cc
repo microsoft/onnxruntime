@@ -2230,7 +2230,9 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
   // setup ROCM allocator
-  auto rocm_alloc = GetAllocator(gpu_device.Id(), OrtMemTypeDefault);
+  // NOTE: We call IExecutionProvider::GetAllocator as ROCMExecutionProvider::GetAllocator will return
+  //       a per-thread allocator for OrtMemTypeDefault.
+  auto rocm_alloc = IExecutionProvider::GetAllocator(gpu_device.Id(), OrtMemTypeDefault);
   if (!rocm_alloc) {
     // use shared allocator if available
     rocm_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
@@ -2249,7 +2251,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto rocm_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
   if (!rocm_pinned_alloc) {
     rocm_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -2267,7 +2269,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
-  auto rocm_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
   if (!rocm_cpu_alloc) {
     rocm_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
