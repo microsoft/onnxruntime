@@ -121,7 +121,6 @@ def run_migraphx(
             input_names = all_input_names[:num_inputs]
             args.model_type = MODELS[model_name][3]
             fusion_options = FusionOptions.parse(args)
-            onnx_model_file = ""
             is_valid_onnx_model = True
             vocab_size = 0
             max_sequence_length = 0
@@ -152,7 +151,11 @@ def run_migraphx(
                         fusion_options,
                     )
             if "tf" in model_source:
-                (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,) = export_onnx_model_from_tf(
+                (opt_onnx_model_file,
+                    onnx_model_file,
+                    is_valid_onnx_model,
+                    vocab_size,
+                    max_input_size,) = export_onnx_model_from_tf(
                     model_name,
                     MODELS[model_name][1],
                     MODELS[model_name][2],
@@ -169,61 +172,60 @@ def run_migraphx(
                     use_raw_attention_mask,
                     overwrite,
                     model_fusion_statistics,
-                    fusion_options,
+                    None,
                 )
 
             if not is_valid_onnx_model:
                 continue
 
-            model = migraphx.parse_onnx(onnx_model_file)
-
-            model.compile(migraphx.get_target("gpu" if use_gpu else "cpu"))
-
-            config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-
             for batch_size in batch_sizes:
                 if batch_size <= 0:
                     continue
                 for sequence_length in sequence_lengths:
+
+                    
                     if max_sequence_length is not None and sequence_length > max_sequence_length:
                         continue
 
                     input_value_type = numpy.int64 if "pt" in model_source else numpy.int32
-                    inputs = create_onnxruntime_input(
-                        vocab_size,
-                        batch_size,
-                        sequence_length,
-                        input_names,
-                        config,
-                        input_value_type,
-                    )
-
+                    
                     logger.info(
                         "Run migraphx on {} with input shape {}".format(model_name, [batch_size, sequence_length])
                     )
-                    runtimes = timeit.repeat(lambda: model.run(inputs), repeat=repeat_times, number=1)
 
-                    result = {
-                        "engine": "migraphx",
-                        "version": migraphx.__version__,
-                        "providers": "NA",
-                        "device": "cuda" if use_gpu else "cpu",
-                        "optimizer": optimizer_info,
-                        "precision": precision,
-                        "io_binding": "",
-                        "model_name": model_name,
-                        "inputs": num_inputs,
-                        "threads": num_threads,
-                        "batch_size": batch_size,
-                        "sequence_length": sequence_length,
-                        "custom_layer_num": config_modifier.get_layer_num(),
-                        "datetime": str(datetime.now()),
-                    }
+                    model = migraphx.parse_onnx(onnx_model_file,
+                                                default_dim_value=batch_size,
+                                                map_input_dims={"input_ids": [batch_size,sequence_length]} )
 
-                    result.update(get_latency_result(runtimes, batch_size))
+                    model.compile(migraphx.get_target("gpu" if use_gpu else "ref"))
+                    config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
-                    logger.info(result)
-                    results.append(result)
+                    inputs = {"input_ids": numpy.random.randint(low=0, high=1, size=(batch_size,sequence_length), dtype=numpy.int64)}
+                    try:
+                        runtimes = timeit.repeat(lambda: model.run(inputs), repeat=repeat_times, number=1)
+                        result = {
+                            "engine": "migraphx",
+                            "version": migraphx.__version__,
+                            "providers": "NA",
+                            "device": "cuda" if use_gpu else "cpu",
+                            "optimizer": optimizer_info,
+                            "precision": precision,
+                            "io_binding": "",
+                            "model_name": model_name,
+                            "inputs": num_inputs,
+                            "threads": num_threads,
+                            "batch_size": batch_size,
+                            "sequence_length": sequence_length,
+                            "custom_layer_num": config_modifier.get_layer_num(),
+                            "datetime": str(datetime.now()),
+                        }
+
+                        result.update(get_latency_result(runtimes, batch_size))
+
+                        logger.info(result)
+                        results.append(result)
+                    except Exception as e:
+                        logger.error(f"FAIL! {e}")
 
     return results
 
