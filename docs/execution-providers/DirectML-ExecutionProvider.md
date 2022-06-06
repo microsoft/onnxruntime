@@ -25,15 +25,16 @@ The DirectML Execution Provider currently uses DirectML version [1.8.0](https://
 {:toc}
 
 ## Install
-Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](https://onnxruntime.ai/docs/install/#cccwinml-installs).
+Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](../install#cccwinml-installs).
 
 ## Requirements
-The DirectML execution provider requires any DirectX 12 capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Examples of compatible hardware include:
 
-- NVIDIA Kepler (GTX 600 series) and above
-- AMD GCN 1st Gen (Radeon HD 7000 series) and above
-- Intel Haswell (4th-gen core) HD Integrated Graphics and above
-- Qualcomm Adreno 600 and above
+The DirectML execution provider requires a DirectX 12 capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Here are some examples of compatible hardware:
+
+* NVIDIA Kepler (GTX 600 series) and above
+* AMD GCN 1st Gen (Radeon HD 7000 series) and above
+* Intel Haswell (4th-gen core) HD Integrated Graphics and above
+* Qualcomm Adreno 600 and above
 
 DirectML was introduced in Windows 10, version 1903, and in the corresponding version of the [Windows SDK](https://docs.microsoft.com/en-us/windows/ai/directml/dml).
 
