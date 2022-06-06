@@ -448,17 +448,12 @@ TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
 
   // and use the same EP instances in both
   const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
-  auto internal_ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
-                                                                        std::unordered_set<std::string>{},
-                                                                        DataLayout::NHWC);
-  std::shared_ptr<IExecutionProvider> cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo{});
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
       std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
                                                          DataLayout::NHWC),
       std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
 
-  // if RegisterAllocator isn't implemented properly a second call to InsertAllocator for the second session will fail.
-  // TryInsertAllocator needs to be used instead.
+  // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
   init_session(eps, session1);
   init_session(eps, session2);
 

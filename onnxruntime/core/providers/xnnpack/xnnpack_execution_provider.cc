@@ -60,29 +60,40 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  // TODO:
-  //   - Create `struct xnn_allocator` instance that wraps the ORT allocator and provide in the call to xnn_initialize
-  //   - Override IExecutionProvider::RegisterAllocator to share the CPU EP's allocator/arena instead of creating a
-  //     new allocator/arena here.
-  //
-  // We need to update InferenceSession so we make the RegisterAllocator calls after all EPs are registered,
-  // and do so in the reverse priority order as the CPU EP is registered last.
-  // We will also need to delay the call to xnn_initialize until after we have the allocator.
-  //
-  // Will make changes in a separate PR as they will primarily be about changing the allocator sharing infrastructure.
+}
 
+// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
+void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
+  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+
+  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
+  if (!cpu_alloc) {
+    // use shared allocator if available
+    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
+
+    if (!cpu_alloc) {
+      // create our allocator
+      AllocatorCreationInfo allocator_info(
+          [](int) {
+            return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+                                                                OrtAllocatorType::OrtDeviceAllocator));
+          });
+
+      cpu_alloc = CreateAllocator(allocator_info);
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(cpu_alloc);
+    }
+
+    InsertAllocator(cpu_alloc);
+  }
+
+  // TODO: Create `struct xnn_allocator` that wraps cpu_allocator, and provide in the call to xnn_initialize so that
+  //       xnnpack is using the ORT allocator.
   xnn_status st = xnn_initialize(nullptr);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
-
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                            OrtAllocatorType::OrtDeviceAllocator));
-      });
-
-  InsertAllocator(CreateAllocator(device_info));
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCapability(

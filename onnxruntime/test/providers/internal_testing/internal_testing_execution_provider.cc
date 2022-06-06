@@ -39,22 +39,29 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  auto cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
 
+  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
   if (!cpu_alloc) {
-    // craete and share our allocator
-    AllocatorCreationInfo allocator_info(
-        [](int) {
-          return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
-                                                              OrtAllocatorType::OrtDeviceAllocator));
-        });
+    // use shared allocator if available
+    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
 
-    cpu_alloc = CreateAllocator(allocator_info);
-    allocator_manager.InsertAllocator(cpu_alloc);
+    if (!cpu_alloc) {
+      // create our allocator
+      AllocatorCreationInfo allocator_info(
+          [](int) {
+            return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
+                                                                OrtAllocatorType::OrtDeviceAllocator));
+          });
+
+      cpu_alloc = CreateAllocator(allocator_info);
+
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(cpu_alloc);
+    }
+
+    InsertAllocator(cpu_alloc);
   }
-
-  // must use TryInsertAllocator to handle the EP being used in multiple InferenceSession instances.
-  TryInsertAllocator(cpu_alloc);
 }
 
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}

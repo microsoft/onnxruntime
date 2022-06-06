@@ -128,54 +128,67 @@ void MIGraphXExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
   OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
   OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  
-  // Try to get a HIP allocator from allocator manager first
-  // Used to allocate HIP device memory
-  allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
-  if (nullptr == allocator_) {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
 
-    allocator_ = CreateAllocator(default_memory_info);
-    allocator_manager.InsertAllocator(allocator_);
+  // setup HIP allocator
+  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+  if (!allocator_) {
+    // use shared allocator if available
+    allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
+
+    if (!allocator_) {
+      AllocatorCreationInfo default_memory_info(
+          [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+
+      allocator_ = CreateAllocator(default_memory_info);
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(allocator_);
+    }
+
+    InsertAllocator(allocator_);
   }
-
-  TryInsertAllocator(allocator_);
 
   // OrtMemTypeCPUOutput -- allocated by hipMallocHost, used to copy HIP device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto hip_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-  if (nullptr == hip_pinned_alloc) {
-    AllocatorCreationInfo pinned_allocator_info(
-        [](OrtDevice::DeviceId device_id) {
-          return CreateROCMPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-        },
-        pinned_device.Id());
-    hip_pinned_alloc = CreateAllocator(pinned_allocator_info);
-    allocator_manager.InsertAllocator(hip_pinned_alloc);
+  auto hip_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  if (!hip_pinned_alloc) {
+    hip_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
+
+    if (!hip_pinned_alloc) {
+      AllocatorCreationInfo pinned_allocator_info(
+          [](OrtDevice::DeviceId device_id) {
+            return CreateROCMPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+          },
+          pinned_device.Id());
+      hip_pinned_alloc = CreateAllocator(pinned_allocator_info);
+      allocator_manager.InsertAllocator(hip_pinned_alloc);
+    }
+
+    InsertAllocator(hip_pinned_alloc);
   }
 
-  TryInsertAllocator(hip_pinned_alloc);
+  auto hip_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  if (!hip_cpu_alloc) {
+    hip_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
-  auto hip_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-  if (nullptr == hip_cpu_alloc) {
-    // This will be refactored/removed when allocator and execution provider are decoupled.
-    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
-    // CPUAllocator is OrtMemTypeDefault for CPU EP
-    AllocatorCreationInfo cpu_memory_info(
-        [](int device_id) {
-          return std::make_unique<CPUAllocator>(
-              OrtMemoryInfo("MIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                            OrtMemTypeCPUInput));
-        },
-        cpu_device.Id());
+    if (!hip_cpu_alloc) {
+      // This will be refactored/removed when allocator and execution provider are decoupled.
+      // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+      // CPUAllocator is OrtMemTypeDefault for CPU EP
+      AllocatorCreationInfo cpu_memory_info(
+          [](int device_id) {
+            return std::make_unique<CPUAllocator>(
+                OrtMemoryInfo("MIP_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                              OrtMemTypeCPUInput));
+          },
+          cpu_device.Id());
 
-    hip_cpu_alloc = CreateAllocator(cpu_memory_info);
-    allocator_manager.InsertAllocator(hip_cpu_alloc);
+      hip_cpu_alloc = CreateAllocator(cpu_memory_info);
+      allocator_manager.InsertAllocator(hip_cpu_alloc);
+    }
+
+    InsertAllocator(hip_cpu_alloc);
   }
-
-  TryInsertAllocator(hip_cpu_alloc);
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {

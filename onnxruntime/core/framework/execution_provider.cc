@@ -78,35 +78,19 @@ void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   }
 }
 
-static void InsertAllocatorImpl(AllocatorPtr allocator,
-                                std::unordered_map<int, AllocatorPtr>& allocators,
-                                std::vector<AllocatorPtr>& allocator_list,
-                                bool throw_if_dup) {
+void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
   const int key = MakeKey(info.id, info.mem_type);
 
-  auto iter = allocators.find(key);
-  if (iter != allocators.end()) {
-    auto msg = MakeString("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
-                          " Existing allocator: ", iter->second->Info().name,
-                          " New allocator: ", allocator->Info().name);
-    if (throw_if_dup) {
-      ORT_THROW(msg);
-    }
-
-    LOGS_DEFAULT(WARNING) << msg;
+  auto iter = allocators_.find(key);
+  if (iter != allocators_.end()) {
+    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
+              " Existing allocator: ", iter->second->Info().name,
+              " New allocator: ", allocator->Info().name);
   } else {
-    allocators.insert({key, allocator});
-    allocator_list.push_back(allocator);
+    allocators_.insert({key, allocator});
+    allocator_list_.push_back(allocator);
   }
-}
-
-void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
-  InsertAllocatorImpl(allocator, allocators_, allocator_list_, true);
-}
-
-void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
-  InsertAllocatorImpl(allocator, allocators_, allocator_list_, false);
 }
 
 void IExecutionProvider::RegisterAllocator(AllocatorManager&) {

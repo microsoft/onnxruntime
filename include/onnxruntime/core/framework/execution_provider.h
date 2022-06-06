@@ -198,12 +198,6 @@ class IExecutionProvider {
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
 
-  // If the EP uses the RegisterAllocator infrastructure for allocator sharing, that will be called once per
-  // InferenceSession. As a single EP instance may be used in multiple sessions, the EP's allocators may have
-  // already been registered. To allow for that, when inserting an allocator in the RegisterAllocator implementation
-  // TryInsertAllocator must be used.
-  void TryInsertAllocator(AllocatorPtr allocator);
-
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'

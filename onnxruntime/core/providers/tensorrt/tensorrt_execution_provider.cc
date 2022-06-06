@@ -453,54 +453,67 @@ void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
   OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
-  // Try to get a CUDA allocator from allocator manager first
-  // Used to allocate CUDA device memory
-  allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
-  if (nullptr == allocator_) {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
-    allocator_ = CreateAllocator(default_memory_info);
-    allocator_manager.InsertAllocator(allocator_);
-  }
+  // setup CUDA allocator
+  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+  if (!allocator_) {
+    // use shared allocator if available
+    allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
 
-  TryInsertAllocator(allocator_);
+    if (!allocator_) {
+      AllocatorCreationInfo default_memory_info(
+          [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+      allocator_ = CreateAllocator(default_memory_info);
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(allocator_);
+    }
+
+    InsertAllocator(allocator_);
+  }
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
-  if (nullptr == cuda_pinned_alloc) {
-    AllocatorCreationInfo pinned_allocator_info(
-        [](OrtDevice::DeviceId device_id) {
-          return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-        },
-        pinned_device.Id());
+  auto cuda_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  if (!cuda_pinned_alloc) {
+    cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
-    cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
-    allocator_manager.InsertAllocator(cuda_pinned_alloc);
+    if (!cuda_pinned_alloc) {
+      AllocatorCreationInfo pinned_allocator_info(
+          [](OrtDevice::DeviceId device_id) {
+            return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+          },
+          pinned_device.Id());
+
+      cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
+      allocator_manager.InsertAllocator(cuda_pinned_alloc);
+    }
+
+    InsertAllocator(cuda_pinned_alloc);
   }
 
-  TryInsertAllocator(cuda_pinned_alloc);
+  auto cuda_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  if (!cuda_cpu_alloc) {
+    cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
-  auto cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
-  if (nullptr == cuda_cpu_alloc) {
-    // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
-    // This will be refactored/removed when allocator and execution provider are decoupled.
-    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
-    // CPUAllocator is OrtMemTypeDefault for CPU EP
-    AllocatorCreationInfo cpu_memory_info(
-        [](int device_id) {
-          return std::make_unique<CPUAllocator>(
-              OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                            OrtMemTypeCPUInput));
-        },
-        cpu_device.Id());
+    if (!cuda_cpu_alloc) {
+      // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+      // This will be refactored/removed when allocator and execution provider are decoupled.
+      // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+      // CPUAllocator is OrtMemTypeDefault for CPU EP
+      AllocatorCreationInfo cpu_memory_info(
+          [](int device_id) {
+            return std::make_unique<CPUAllocator>(
+                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                              OrtMemTypeCPUInput));
+          },
+          cpu_device.Id());
 
-    cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
-    allocator_manager.InsertAllocator(cuda_cpu_alloc);
+      cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
+      allocator_manager.InsertAllocator(cuda_cpu_alloc);
+    }
+
+    InsertAllocator(cuda_cpu_alloc);
   }
-
-  TryInsertAllocator(cuda_cpu_alloc);
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {

@@ -283,10 +283,6 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   g_host->IExecutionProvider__InsertAllocator(this, allocator);
 }
 
-void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
-  g_host->IExecutionProvider__TryInsertAllocator(this, allocator);
-}
-
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
