@@ -4,6 +4,7 @@
 #pragma once
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -28,7 +29,9 @@ class T5EncoderSubgraph : public Subgraph {
       std::vector<OrtValue>& feeds,
       const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
       const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-      IAllocatorUniquePtr<char>& buffer);
+      IAllocatorUniquePtr<char>& buffer,
+      OrtValue& expanded_decoder_input_ids,
+      const IConsoleDumper* dumper);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;

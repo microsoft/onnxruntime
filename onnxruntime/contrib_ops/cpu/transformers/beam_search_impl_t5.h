@@ -111,6 +111,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                  this->IsCuda());
 
   IAllocatorUniquePtr<char> buffer;
+  OrtValue expanded_decoder_input_ids; // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
       this->implicit_inputs_,
@@ -120,7 +121,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       encoder_feeds,
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
-      buffer));
+      buffer,
+      expanded_decoder_input_ids,
+      this->GetConsoleDumper()));
 
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
                                              encoder_feeds_fetches_manager,
@@ -148,9 +151,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Initialize resources
   // ------------------------------------
 
-  // Copy the third input of encoder graph to sequence. That input contains decoder_start_token_id for each beam.
-  // TODO(tianleiwu): support encoder with 2 input. The following assumes encoder has 3 inputs.
-  cpu_state.SetSequence(encoder_feeds[2].Get<Tensor>().DataAsSpan<int32_t>(),
+  // Copy expanded_decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
+  cpu_state.SetSequence(expanded_decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>(),
                         static_cast<size_t>(parameters->BatchBeamSize()),
                         parameters->max_length,
                         parameters->sequence_length);
@@ -236,14 +238,14 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                     this->context_.GetTerminateFlag(),
                                     this->context_.Logger());
 
+    ORT_RETURN_IF_ERROR(status);
+
 #ifdef DEBUG_BEAM_SEARCH
     for (int i = 0; i <= T5DecoderSubgraph::kFirstPresentOutputIndex; i++) {
       dumper->Print("decoder_fetches", i, true);
       dumper->Print("", decoder_fetches[i]);
     }
 #endif
-
-    ORT_RETURN_IF_ERROR(status);
 
     const OrtValue& logits = decoder_fetches[0];
     ORT_RETURN_IF_ERROR(this->GenerateNextToken(logits,

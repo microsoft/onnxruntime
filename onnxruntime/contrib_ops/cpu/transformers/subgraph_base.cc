@@ -58,7 +58,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   std::vector<std::string> feed_names;
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
-  // Currently, input_ids is in CPU even for CUDA operator, so we have to use first output to find device location.
+  // Use the first output (logits) to find device location.
   const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state,
                                                                         subgraph_output_names[0]);
 

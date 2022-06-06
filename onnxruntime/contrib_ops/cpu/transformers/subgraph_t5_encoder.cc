@@ -8,7 +8,6 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
 #include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
-#include "contrib_ops/cpu/transformers/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -105,7 +104,11 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
     std::vector<OrtValue>& feeds,
     const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
     const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-    IAllocatorUniquePtr<char>& buffer) {
+    IAllocatorUniquePtr<char>& buffer,
+    OrtValue& expanded_decoder_input_ids,
+    const IConsoleDumper* dumper) {
+  ORT_UNUSED_PARAMETER(dumper);
+
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // The ordering is the same as used in Setup
@@ -117,7 +120,6 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
   OrtValue expanded_encoder_input_ids;
   OrtValue expanded_encoder_attention_mask;
-  OrtValue expanded_decoder_input_ids;  // filled with start token ID
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids,
                                                  num_beams,
                                                  pad_token_id,

@@ -114,7 +114,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     void* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
-  // Allocate subgraph inputs to be same as encoder subgraph
+  // Allocate subgraph inputs from same device as inputs of encoder subgraph
   AllocatorPtr allocator = session_state_->GetAllocator(encoder_feeds[0].Get<Tensor>().Location());
 
   // copy beam next tokens in CPU to input_ids in provider device (CPU for CPU EP, or GPU for CUDA EP).

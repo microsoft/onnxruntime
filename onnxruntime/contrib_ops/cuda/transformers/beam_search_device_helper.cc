@@ -96,8 +96,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   size_t total_bytes = 0;
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
-      const TensorShape& shape = input.Get<Tensor>().Shape();
-      total_bytes += shape.Size() * input.Type()->Size();
+      total_bytes += input.Get<Tensor>().Shape().Size() * input.Type()->Size();
     }
   }
 
@@ -113,8 +112,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
-      const TensorShape& shape = tensor.Shape();
-      const size_t bytes = input.Type()->Size() * shape.Size();
+      const size_t bytes = input.Type()->Size() * tensor.Shape().Size();
       MLDataType dataType = tensor.DataType();
       if (dataType == DataTypeImpl::GetType<int32_t>()) {
         memcpy(destination, input.Get<Tensor>().Data<int32_t>(), bytes);
@@ -126,7 +124,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
                                dataType, " is not supported yet");
       }
 
-      // Alignment is ignored here, because GPT has int32 inputs (past is empty) and T5 encoder has int64 inputs.
+      // Do not need alignment because GPT has int32 inputs (past is empty) and T5 encoder has int64 inputs.
       destination += bytes;
     }
   }
@@ -149,8 +147,14 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   const OrtMemoryInfo& location = provider->GetAllocator(0, OrtMemTypeDefault)->Info();
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
+      const Tensor& tensor = input.Get<Tensor>();
+      const TensorShape& shape = tensor.Shape();
+      const size_t bytes = input.Type()->Size() * shape.Size();
+      MLDataType dataType = tensor.DataType();
+
       OrtValue device_input;
-      Tensor::InitOrtValue(input.Type(), input.Get<Tensor>().Shape(), gpu_data, location, device_input);
+      Tensor::InitOrtValue(dataType, shape, gpu_data, location, device_input);
+      gpu_data += bytes;
       feeds.push_back(device_input);
     }
   }
@@ -400,7 +404,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                         gsl::span<const int32_t>& beam_indices,
                         AllocatorPtr allocator,
                         void* stream) {
-  int num_present_tensors = last_outputs.size() - transformers::GptSubgraph::kFirstPresentOutputIndex;
+  int num_present_tensors = static_cast<int>(last_outputs.size()) - transformers::GptSubgraph::kFirstPresentOutputIndex;
   for (int i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[transformers::GptSubgraph::kFirstPresentOutputIndex + i];
 

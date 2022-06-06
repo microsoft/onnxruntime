@@ -33,11 +33,9 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
 }
 
 template <typename T>
-OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator) {
-  // Input shape (batch_size, sequence_length), required data type T.
+void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
+  // Input shape (batch_size, sequence_length). The input is required with data type T.
   // Output shape (batch_size * num_beams, sequence_length)
-  if (num_beams == 1)
-    return input;
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
@@ -46,7 +44,6 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
   int64_t dims[] = {batch_size * num_beams, sequence_length};
   TensorShape expanded_shape(&dims[0], 2);
 
-  OrtValue expanded;
   MLDataType element_type = input.Get<Tensor>().DataType();
   ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
 
@@ -61,8 +58,6 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
       target += sequence_length;
     }
   }
-
-  return expanded;
 }
 
 Status CreateGptInputs(
@@ -126,9 +121,9 @@ Status CreateGptInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  expanded_input_ids = ExpandInputs<int32_t>(input_ids, num_beams, allocator);
-  expanded_position_ids = ExpandInputs<int32_t>(position_ids, num_beams, allocator);
-  expanded_attention_mask = ExpandInputs<int32_t>(attention_mask, num_beams, allocator);
+  ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
+  ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
+  ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
 
   return Status::OK();
 }
@@ -340,7 +335,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
                       std::vector<OrtValue>& next_inputs,
                       gsl::span<const int32_t>& beam_indices,
                       AllocatorPtr allocator) {
-  int num_present_tensors = last_outputs.size() - transformers::GptSubgraph::kFirstPresentOutputIndex;
+  int num_present_tensors = static_cast<int>(last_outputs.size()) - transformers::GptSubgraph::kFirstPresentOutputIndex;
   for (int i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[transformers::GptSubgraph::kFirstPresentOutputIndex + i];
 
@@ -485,14 +480,14 @@ Status CreateEncoderInputs(
   Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
 
   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
-  // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
   int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
   const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
   int32_t* mask = mask_data;
   for (int i = 0; i < batch_size; i++) {
     int32_t abs_position = 0;
     for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
-      // Huggingface T5Tokenizer might add one pad token at the end with attention mask 1.
+      // T5Tokenizer might add one EOS pad token at the end.
+      // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
       // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
       if (*word_id == pad_token_id && abs_position == 0) {
         *mask = 0;
@@ -506,8 +501,8 @@ Status CreateEncoderInputs(
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // for encoder_input_ids and encoder_attention_mask
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  expanded_encoder_input_ids = ExpandInputs<int32_t>(encoder_input_ids, num_beams, allocator);
-  expanded_encoder_attention_mask = ExpandInputs<int32_t>(encoder_attention_mask, num_beams, allocator);
+  ExpandInputs<int32_t>(encoder_input_ids, num_beams, allocator, expanded_encoder_input_ids);
+  ExpandInputs<int32_t>(encoder_attention_mask, num_beams, allocator, expanded_encoder_attention_mask);
 
   // decoder_input_ids is optional.
   if (start_token_id >= 0) {
