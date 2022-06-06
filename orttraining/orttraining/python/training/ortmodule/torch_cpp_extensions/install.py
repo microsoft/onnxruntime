@@ -41,7 +41,9 @@ def _install_extension(ext_name, ext_path, cwd):
 def build_torch_cpp_extensions():
     """Builds PyTorch CPP extensions and returns metadata."""
     # Run this from within onnxruntime package folder
-    is_gpu_available = (torch.version.cuda is not None or torch.version.hip is not None) and (ortmodule.ONNXRUNTIME_CUDA_VERSION is not None or ortmodule.ONNXRUNTIME_ROCM_VERSION is not None)
+    is_gpu_available = (torch.version.cuda is not None or torch.version.hip is not None) and (
+        ortmodule.ONNXRUNTIME_CUDA_VERSION is not None or ortmodule.ONNXRUNTIME_ROCM_VERSION is not None
+    )
     os.chdir(ortmodule.ORTMODULE_TORCH_CPP_DIR)
 
     # Extensions might leverage CUDA/ROCM versions internally
