@@ -785,7 +785,7 @@ var validCombos = {
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
     "linux,Python,X64,OpenVINO":
-        "Follow installation instructions from <a href='https://github.com/intel/onnxruntime/releases/latest' target='_blank'>here</a>. Docker image also <a href='https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18' target='_blank'>available</a>.",
+        "pip install onnxruntime-openvino <br/>Docker image also <a href='https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18' target='_blank'>available</a>.",
 
     "windows,C-API,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
@@ -797,7 +797,7 @@ var validCombos = {
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
     "windows,Python,X64,OpenVINO":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+        "pip install onnxruntime-openvino",
 
     "windows,C-API,X64,TensorRT":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
