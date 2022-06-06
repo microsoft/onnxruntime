@@ -460,6 +460,8 @@ def parse_arguments():
         help="Build with OpenVINO for specific hardware.",
     )
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
+    parser.add_argument("--use_snpe", action="store_true", help="Build with SNPE support.")
+    parser.add_argument("--snpe_root", help="Path to SNPE SDK root.")
     parser.add_argument("--use_nnapi", action="store_true", help="Build with NNAPI support.")
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
@@ -673,7 +675,9 @@ def get_config_build_dir(build_dir, config):
     return os.path.join(build_dir, config)
 
 
-def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None):
+def run_subprocess(
+    args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None, cuda_home=None
+):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -689,6 +693,10 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None, shell=Fa
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
+    # Add nvcc's folder to PATH env so that our cmake file can find nvcc
+    if cuda_home:
+        my_env["PATH"] = os.path.join(cuda_home, "bin") + os.pathsep + my_env["PATH"]
+
     if python_path:
         if "PYTHONPATH" in my_env:
             my_env["PYTHONPATH"] += os.pathsep + python_path
@@ -778,6 +786,7 @@ def generate_build_tree(
     acl_libs,
     armnn_home,
     armnn_libs,
+    snpe_root,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -904,7 +913,8 @@ def generate_build_tree(
     add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
-        add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
+        if args.cuda_version:
+            add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
@@ -946,6 +956,9 @@ def generate_build_tree(
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
+
+    if snpe_root and os.path.exists(snpe_root):
+        cmake_args += ["-DSNPE_ROOT=" + snpe_root]
 
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
@@ -1052,6 +1065,9 @@ def generate_build_tree(
 
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
+
+    if args.use_snpe:
+        cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
     if args.ios:
         needed_args = [
@@ -1224,6 +1240,7 @@ def generate_build_tree(
                 "-DCMAKE_BUILD_TYPE={}".format(config),
             ],
             cwd=config_build_dir,
+            cuda_home=cuda_home,
         )
 
 
@@ -2389,6 +2406,8 @@ def main():
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
 
+    snpe_root = args.snpe_root
+
     acl_home = args.acl_home
     acl_libs = args.acl_libs
 
@@ -2604,6 +2623,7 @@ def main():
             acl_libs,
             armnn_home,
             armnn_libs,
+            snpe_root,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,

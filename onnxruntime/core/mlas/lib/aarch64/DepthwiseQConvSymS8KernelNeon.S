@@ -17,44 +17,23 @@ Abstract:
 
 #include "asmmacro.h"
 
-
-        .equ    MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE,               2
-        .equ    MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE,               4
-
 //
 // Stack frame layout for the depthwise conv kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d8_d9,      0
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11,    16
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13,    32
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15,    48
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters,            64
-        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters_Neg,        -64
-        .equ    .LConvSymDepthwiseKernelFrame_PostProcessParams,         0 + .LConvSymDepthwiseKernelFrame_SavedRegisters
-        .equ    .LConvSymDepthwiseKernelFrame_KernelFlags,               8 + .LConvSymDepthwiseKernelFrame_SavedRegisters
 
-/*
-struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
-    const int32_t* Bias{nullptr};
-    const float* Scale{nullptr};
-    float MinimumValue;
-    float MaximumValue;
-    int32_t OutputZeroPoint;
-    int32_t Padding;
-    const int32_t* Multiplier{nullptr};
-    const int32_t* PreShift{nullptr};
-    const int32_t* PostShift{nullptr};
-};
-*/
-        .equ  .LConvSymPostProcessParams_Bias,                     0
-        .equ  .LConvSymPostProcessParams_Scale,                    8
-        .equ  .LConvSymPostProcessParams_Min,                      16
-        .equ  .LConvSymPostProcessParams_Max,                      20
-        .equ  .LConvSymPostProcessParams_ZeroPoint,                24
-        .equ  .LConvSymPostProcessParams_Multiplier,               32
-        .equ  .LConvSymPostProcessParams_PreShift,                 40
-        .equ  .LConvSymPostProcessParams_PostShift,                48
+        .equ    .LConvSymDepthwiseKernelFrame_SavedRegisters,       (4 * 8)
+        .equ    .LConvSymDepthwiseKernelFrame_PostProcessParams,    0 + .LConvSymDepthwiseKernelFrame_SavedRegisters
+        .equ    .LConvSymDepthwiseKernelFrame_KernelFlags,          8 + .LConvSymDepthwiseKernelFrame_SavedRegisters
+
+        .equ    .LConvSymDepthwisePostProcessParams_Bias,           0
+        .equ    .LConvSymDepthwisePostProcessParams_Scale,          8
+        .equ    .LConvSymDepthwisePostProcessParams_Min,            16
+        .equ    .LConvSymDepthwisePostProcessParams_Max,            20
+        .equ    .LConvSymDepthwisePostProcessParams_ZeroPoint,      24
+
+        .equ    MLAS_CONV_SYM_FLAG_INPUT_DIRECT,                    1
+        .equ    MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE,               2
 
         .text
 
@@ -68,28 +47,28 @@ Routine Description:
 Arguments:
 
     Input (x0) - Supplies the address of the indirection buffer.
-
+ 
     Filter (x1) - Supplies the address of the filter buffer.
 
     Output (x2) - Supplies the address of the output buffer.
 
     KernelSize (x3) - Supplies the size of the kernel.
-
+ 
     Channels (x4) - Supplies the number of input and output channels.
-
+ 
     ChannelOffset (x5) - Supplies the byte offset from the indirection buffer base
         address for this iteration.
-
+ 
     ChannelCount (x6) - Supplies the number of channels this iteration produces.
-
+ 
         This implementation requires the count to be 16 or 8
-
+ 
     OutputCount (x7)- Supplies the number of output elements this iteration produces.
-
-        This implementation requires the count to be in the range 1 to 4.
-
+ 
+        This implementation requires the count to be in the range 1 to 2.
+ 
     PostProcessParams - Supplies the address of the post process parameter block.
-
+ 
     KernelFlags - Supplies additional flags controlling the operation.
 
 Return Value:
@@ -100,16 +79,14 @@ Return Value:
 
         FUNCTION_ENTRY MlasConvSymDepthwiseS8KernelNeon
 
-        stp     d8,d9,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_Neg]!
+        stp     d12,d13,[sp,#-.LConvSymDepthwiseKernelFrame_SavedRegisters]!
         ldr     x8,[sp,#.LConvSymDepthwiseKernelFrame_PostProcessParams]
-        stp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11]
-        stp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13]
-        stp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15]
+        stp     d14,d15,[sp,#16]
         cmp     x7,2
         add     x9,x0,x3,lsl#3              // x9 -> &A1
         add     x14,x0,x3,lsl#4             // x14 -> &A2
         add     x15,x9,x3,lsl#4             // x15 -> &A3
-        ldr     x16,[x8,#.LConvSymPostProcessParams_Bias]
+        ldr     x16,[x8,#.LConvSymDepthwisePostProcessParams_Bias]
         csel    x9,x0,x9,lo                 // x9 -> &A0 if OutputCount < 2
         csel    x14,x0,x14,ls               // x14 -> &A0 if OutputCount <= 2
         ldr     x11,[x9],#8                 // x11 -> A1 iter 0
@@ -184,7 +161,7 @@ Return Value:
         smlal   v12.8h,v1.8b,v2.8b
         ldr     x11,[x9],#8                 // x11 -> A1 iter 2
         smlal2  v13.8h,v1.16b,v2.16b
-        b.eq    .LEpilogueC16P3             // 3 pixel remains
+        b.eq    .LEpilogueC16P3             // 3 pixel remains      
         ldr     q2,[x12,x5]                 // A2 iter 1
         smlal   v14.8h,v1.8b,v3.8b
         ldr     x12,[x0],#8                 // x12 -> A0 iter 3
@@ -251,15 +228,22 @@ Return Value:
         saddw   v30.4s,v30.4s,v15.4h
         saddw2  v31.4s,v31.4s,v15.8h
         ldr     w9,[sp,#.LConvSymDepthwiseKernelFrame_KernelFlags]
+        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
         smull   v12.8h,v0.8b,v4.8b
         smull2  v13.8h,v0.16b,v4.16b
+        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
         smull   v14.8h,v0.8b,v6.8b
         smull2  v15.8h,v0.16b,v6.16b
         smlal   v12.8h,v1.8b,v2.8b
         smlal2  v13.8h,v1.16b,v2.16b
         smlal   v14.8h,v1.8b,v3.8b
         smlal2  v15.8h,v1.16b,v3.16b
-        tst     w9,#MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
+        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ld1r    {v4.4s},[x12]               // load scale val
+        b.eq    .LSkipScaleVecLoad2
+        ldp     q4,q5,[x12],#32             // load scale vector if per channel
+        ldp     q6,q3,[x12]
+.LSkipScaleVecLoad2:
         saddw   v16.4s,v16.4s,v12.4h
         saddw2  v17.4s,v17.4s,v12.8h
         saddw   v18.4s,v18.4s,v13.4h
@@ -268,7 +252,7 @@ Return Value:
         saddw2  v21.4s,v21.4s,v14.8h
         saddw   v22.4s,v22.4s,v15.4h
         saddw2  v23.4s,v23.4s,v15.8h
-        b       .LRequantization
+        b       .LDequantization
 
 .LProcC16P1:
         //
@@ -343,8 +327,10 @@ Return Value:
         // Loop epilogue (process last single pixel) mixed with loading of dequantization params
         //
         ldr     w9,[sp,#.LConvSymDepthwiseKernelFrame_KernelFlags]
+        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
         smull   v12.8h,v0.8b,v4.8b
         smull2  v13.8h,v0.16b,v4.16b
+        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
         smull   v14.8h,v0.8b,v6.8b
         smull2  v15.8h,v0.16b,v6.16b
         saddw   v24.4s,v24.4s,v12.4h
@@ -359,7 +345,12 @@ Return Value:
         smull2  v13.8h,v0.16b,v2.16b
         smull   v14.8h,v0.8b,v3.8b
         smull2  v15.8h,v0.16b,v3.16b
-        tst     w9,#MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
+        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ld1r    {v4.4s},[x12]               // load scale val
+        b.eq    .LSkipScaleVecLoad
+        ldp     q4,q5,[x12],#32             // load scale vector if per channel
+        ldp     q6,q3,[x12]
+.LSkipScaleVecLoad:
         saddw   v16.4s,v16.4s,v12.4h
         saddw2  v17.4s,v17.4s,v12.8h
         saddw   v18.4s,v18.4s,v13.4h
@@ -369,24 +360,7 @@ Return Value:
         saddw   v22.4s,v22.4s,v15.4h
         saddw2  v23.4s,v23.4s,v15.8h
 
-.LRequantization:
-        b.ne    .LFixedPointScale
-.LFloatingPointScale:
-        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
-        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
-        beq     .LBroadcastScaleValue
-        ldp     q4,q5,[x12],#32             // load scale vector if per channel
-        ldp     q6,q3,[x12]
-        b       .LScaleWithFloatPoint
-
-.LBroadcastScaleValue:
-        ld1r    {v4.4s},[x12]               // load scale val
-        mov     v5.16b,v4.16b               // broadcast scale val if not per channel
-        mov     v6.16b,v4.16b
-        mov     v3.16b,v4.16b
-
-.LScaleWithFloatPoint:
+.LDequantization:
         scvtf   v24.4s,v24.4s               // convert to float
         scvtf   v25.4s,v25.4s
         scvtf   v26.4s,v26.4s
@@ -403,6 +377,11 @@ Return Value:
         scvtf   v21.4s,v21.4s
         scvtf   v22.4s,v22.4s
         scvtf   v23.4s,v23.4s
+        b.ne    .LSkipScaleBroadcast
+        mov     v5.16b,v4.16b               // broadcast scale val if not per channel
+        mov     v6.16b,v4.16b
+        mov     v3.16b,v4.16b
+.LSkipScaleBroadcast:
         fmul    v24.4s,v24.4s,v4.4s         // multiply by scale
         fmul    v25.4s,v25.4s,v5.4s
         fmul    v26.4s,v26.4s,v6.4s
@@ -435,90 +414,6 @@ Return Value:
         fcvtns  v21.4s,v21.4s
         fcvtns  v22.4s,v22.4s
         fcvtns  v23.4s,v23.4s
-        b .LQuantize
-
-.LFixedPointScale:
-        ldr     x10,[x8,#.LConvSymPostProcessParams_PreShift]
-        ldr     x11,[x8,#.LConvSymPostProcessParams_Multiplier]
-        ldr     x12,[x8,#.LConvSymPostProcessParams_PostShift]
-        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
-        beq     .LBroadcastFixedPointValue
-        ldp     q0,q1,[x10],32          // load preshift vector
-        ldp     q2,q3,[x10],32
-        ldp     q4,q5,[x11],32          // load multiplier vector
-        ldp     q6,q7,[x11],32
-        ldp     q8,q9,[x12],32          // load postshift vector
-        ldp     q10,q11,[x12],32
-        b       .LScaleWithFixedPoint
-
-.LBroadcastFixedPointValue:
-        ld1r    {v0.4s},[x10]           // load preshift Value
-        mov     v1.16b, v0.16b
-        mov     v2.16b, v0.16b
-        mov     v3.16b, v0.16b
-
-        ld1r    {v4.4s},[x11]           // load multiplier Value
-        mov     v5.16b, v4.16b
-        mov     v6.16b, v4.16b
-        mov     v7.16b, v4.16b
-
-        ld1r    {v8.4s},[x12]           // load postshift Value
-        mov     v9.16b, v8.16b
-        mov     v10.16b, v8.16b
-        mov     v11.16b, v8.16b
-
-.LScaleWithFixedPoint:
-        sqshl     v24.4s, v24.4s, v0.4s          // preshift
-        sqshl     v25.4s, v25.4s, v1.4s
-        sqshl     v26.4s, v26.4s, v2.4s
-        sqshl     v27.4s, v27.4s, v3.4s
-        sqshl     v28.4s, v28.4s, v0.4s
-        sqshl     v29.4s, v29.4s, v1.4s
-        sqshl     v30.4s, v30.4s, v2.4s
-        sqshl     v31.4s, v31.4s, v3.4s
-        sqshl     v16.4s, v16.4s, v0.4s
-        sqshl     v17.4s, v17.4s, v1.4s
-        sqshl     v18.4s, v18.4s, v2.4s
-        sqshl     v19.4s, v19.4s, v3.4s
-        sqshl     v20.4s, v20.4s, v0.4s
-        sqshl     v21.4s, v21.4s, v1.4s
-        sqshl     v22.4s, v22.4s, v2.4s
-        sqshl     v23.4s, v23.4s, v3.4s
-        sqdmulh   v24.4s, v24.4s, v4.4s          // multiplier
-        sqdmulh   v25.4s, v25.4s, v5.4s
-        sqdmulh   v26.4s, v26.4s, v6.4s
-        sqdmulh   v27.4s, v27.4s, v7.4s
-        sqdmulh   v28.4s, v28.4s, v4.4s
-        sqdmulh   v29.4s, v29.4s, v5.4s
-        sqdmulh   v30.4s, v30.4s, v6.4s
-        sqdmulh   v31.4s, v31.4s, v7.4s
-        sqdmulh   v16.4s, v16.4s, v4.4s
-        sqdmulh   v17.4s, v17.4s, v5.4s
-        sqdmulh   v18.4s, v18.4s, v6.4s
-        sqdmulh   v19.4s, v19.4s, v7.4s
-        sqdmulh   v20.4s, v20.4s, v4.4s
-        sqdmulh   v21.4s, v21.4s, v5.4s
-        sqdmulh   v22.4s, v22.4s, v6.4s
-        sqdmulh   v23.4s, v23.4s, v7.4s
-        srshl     v24.4s, v24.4s, v8.4s          // post shift
-        srshl     v25.4s, v25.4s, v9.4s
-        srshl     v26.4s, v26.4s, v10.4s
-        srshl     v27.4s, v27.4s, v11.4s
-        srshl     v28.4s, v28.4s, v8.4s
-        srshl     v29.4s, v29.4s, v9.4s
-        srshl     v30.4s, v30.4s, v10.4s
-        srshl     v31.4s, v31.4s, v11.4s
-        srshl     v16.4s, v16.4s, v8.4s
-        srshl     v17.4s, v17.4s, v9.4s
-        srshl     v18.4s, v18.4s, v10.4s
-        srshl     v19.4s, v19.4s, v11.4s
-        srshl     v20.4s, v20.4s, v8.4s
-        srshl     v21.4s, v21.4s, v9.4s
-        srshl     v22.4s, v22.4s, v10.4s
-        srshl     v23.4s, v23.4s, v11.4s
-
-.LQuantize:
         sqxtn   v24.4h,v24.4s               // shorten to int16
         sqxtn   v26.4h,v26.4s
         sqxtn2  v24.8h,v25.4s
@@ -563,10 +458,8 @@ Return Value:
         str     q20,[x2]
 
 .LExitKernel:
-        ldp     d14,d15,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d14_d15]
-        ldp     d12,d13,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d12_d13]
-        ldp     d10,d11,[sp,#.LConvSymDepthwiseKernelFrame_SavedRegisters_d10_d11]
-        ldp     d8,d9,[sp], #.LConvSymDepthwiseKernelFrame_SavedRegisters
+        ldp     d14,d15,[sp,#16]
+        ldp     d12,d13,[sp],#.LConvSymDepthwiseKernelFrame_SavedRegisters
         ret
 
 .LProcess8Channels:
@@ -608,7 +501,7 @@ Return Value:
         ldr     x11,[x9],#8                 // x11 -> A1 iter 2
         smlal   v14.8h,v1.8b,v3.8b
         ldr     d2,[x12,x5]                 // A2 iter 1
-        b.eq    .LEpilogueC8P3              // 3 pixel remains
+        b.eq    .LEpilogueC8P3              // 3 pixel remains      
         ldr     d3,[x13,x5]                 // A3 iter 1
         saddw   v24.4s,v24.4s,v12.4h
         ldr     x12,[x0],#8                 // x12 -> A0 iter 3
@@ -653,15 +546,21 @@ Return Value:
         saddw2  v29.4s,v29.4s,v14.8h
         ldr     w9,[sp,#.LConvSymDepthwiseKernelFrame_KernelFlags]
         smull   v12.8h,v0.8b,v4.8b
+        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
         smull   v14.8h,v0.8b,v6.8b
+        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
         smlal   v12.8h,v1.8b,v2.8b
         smlal   v14.8h,v1.8b,v3.8b
-        tst     w9,#MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
+        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ld1r    {v4.4s},[x12]               // load scale val
+        b.eq    .LSkipScaleVecLoad2C8
+        ldp     q4,q5,[x12],#32             // load scale vector if per channel
+.LSkipScaleVecLoad2C8:
         saddw   v16.4s,v16.4s,v12.4h
         saddw2  v17.4s,v17.4s,v12.8h
         saddw   v20.4s,v20.4s,v14.4h
         saddw2  v21.4s,v21.4s,v14.8h
-        b       .LRequantizationC8
+        b       .LDequantC8
 
 .LProcC8P1:
         //
@@ -714,7 +613,9 @@ Return Value:
         // Loop epilogue (process last single pixel) mixed with loading of dequantization params
         //
         ldr     w9,[sp,#.LConvSymDepthwiseKernelFrame_KernelFlags]
+        ldr     x12,[x8,#.LConvSymDepthwisePostProcessParams_Scale]
         smull   v12.8h,v0.8b,v4.8b
+        ldr     w15,[x8,#.LConvSymDepthwisePostProcessParams_ZeroPoint]
         smull   v14.8h,v0.8b,v6.8b
         saddw   v24.4s,v24.4s,v12.4h
         saddw2  v25.4s,v25.4s,v12.8h
@@ -722,27 +623,17 @@ Return Value:
         saddw2  v29.4s,v29.4s,v14.8h
         smull   v12.8h,v0.8b,v2.8b
         smull   v14.8h,v0.8b,v3.8b
-        tst     w9,#MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
+        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ld1r    {v4.4s},[x12]               // load scale val
+        b.eq    .LSkipScaleVecLoadC8
+        ldp     q4,q5,[x12]                 // load scale vector if per channel
+.LSkipScaleVecLoadC8:
         saddw   v16.4s,v16.4s,v12.4h
         saddw2  v17.4s,v17.4s,v12.8h
         saddw   v20.4s,v20.4s,v14.4h
         saddw2  v21.4s,v21.4s,v14.8h
 
-.LRequantizationC8:
-        b.ne    .LFixedPointScaleC8
-.LFloatingPointScaleC8:
-        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
-        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
-        beq     .LBroadcastScaleValueC8
-        ldp     q4,q5,[x12]                // load scale vector if per channel
-        b       .LScaleWithFloatPointC8
-
-.LBroadcastScaleValueC8:
-        ld1r    {v4.4s},[x12]               // load scale val
-        mov     v5.16b,v4.16b               // broadcast scale val if not per channel
-
-.LScaleWithFloatPointC8:
+.LDequantC8:
         scvtf   v24.4s,v24.4s               // convert to float
         scvtf   v25.4s,v25.4s
         scvtf   v28.4s,v28.4s
@@ -751,6 +642,9 @@ Return Value:
         scvtf   v17.4s,v17.4s
         scvtf   v20.4s,v20.4s
         scvtf   v21.4s,v21.4s
+        b.ne    .LSkipScaleBroadcastC8
+        mov     v5.16b,v4.16b               // broadcast scale val if not per channel
+.LSkipScaleBroadcastC8:
         fmul    v24.4s,v24.4s,v4.4s         // multiply by scale
         fmul    v25.4s,v25.4s,v5.4s
         fmul    v28.4s,v28.4s,v4.4s
@@ -767,57 +661,6 @@ Return Value:
         fcvtns  v17.4s,v17.4s
         fcvtns  v20.4s,v20.4s
         fcvtns  v21.4s,v21.4s
-        b       .LQuantizeC8
-
-.LFixedPointScaleC8:
-        ldr     x10,[x8,#.LConvSymPostProcessParams_PreShift]
-        ldr     x11,[x8,#.LConvSymPostProcessParams_Multiplier]
-        ldr     x12,[x8,#.LConvSymPostProcessParams_PostShift]
-        tst     w9,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w15,[x8,#.LConvSymPostProcessParams_ZeroPoint]
-        beq     .LBroadcastFixedPointValueC8
-        ldp     q0,q1,[x10],32          // load preshift vector
-        ldp     q4,q5,[x11],32          // load multiplier vector
-        ldp     q8,q9,[x12],32          // load postshift vector
-        b       .LScaleWithFixedPointC8
-
-.LBroadcastFixedPointValueC8:
-        ld1r    {v0.4s},[x10]           // load preshift Value
-        mov     v1.16b, v0.16b
-
-        ld1r    {v4.4s},[x11]           // load multiplier Value
-        mov     v5.16b, v4.16b
-
-        ld1r    {v8.4s},[x12]           // load postshift Value
-        mov     v9.16b, v8.16b
-
-.LScaleWithFixedPointC8:
-        sqshl     v24.4s, v24.4s, v0.4s          // preshift
-        sqshl     v25.4s, v25.4s, v1.4s
-        sqshl     v28.4s, v28.4s, v0.4s
-        sqshl     v29.4s, v29.4s, v1.4s
-        sqshl     v16.4s, v16.4s, v0.4s
-        sqshl     v17.4s, v17.4s, v1.4s
-        sqshl     v20.4s, v20.4s, v0.4s
-        sqshl     v21.4s, v21.4s, v1.4s
-        sqdmulh   v24.4s, v24.4s, v4.4s          // multiplier
-        sqdmulh   v25.4s, v25.4s, v5.4s
-        sqdmulh   v28.4s, v28.4s, v4.4s
-        sqdmulh   v29.4s, v29.4s, v5.4s
-        sqdmulh   v16.4s, v16.4s, v4.4s
-        sqdmulh   v17.4s, v17.4s, v5.4s
-        sqdmulh   v20.4s, v20.4s, v4.4s
-        sqdmulh   v21.4s, v21.4s, v5.4s
-        srshl     v24.4s, v24.4s, v8.4s          // post shift
-        srshl     v25.4s, v25.4s, v9.4s
-        srshl     v28.4s, v28.4s, v8.4s
-        srshl     v29.4s, v29.4s, v9.4s
-        srshl     v16.4s, v16.4s, v8.4s
-        srshl     v17.4s, v17.4s, v9.4s
-        srshl     v20.4s, v20.4s, v8.4s
-        srshl     v21.4s, v21.4s, v9.4s
-
-.LQuantizeC8:
         dup     v0.8h,w15
         sqxtn   v24.4h,v24.4s               // shorten to int16
         sqxtn2  v24.8h,v25.4s

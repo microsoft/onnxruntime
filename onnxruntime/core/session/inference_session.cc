@@ -917,13 +917,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 SessionState& session_state,
                                                 bool saving_model_in_ort_format) {
   // The transformer order:
-  // 1. built-in graph rewriter
-  // 2. each execution provider's transformer
-  // 3. do node placement according to kernel definition
-  // 4. insert copy nodes
-  // 5. insert cast nodes.
+  // 1. run level 1 optimizations. these only use ONNX operators.
+  // 2. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
+  // 3. run all optimizations. level 2 and 3 optimizations use contrib ops.
+  // 4. insert cast nodes
+  // 5. insert copy nodes
 
-  // first apply global(execution provider independent),  level 1(default/system/basic) graph to graph optimizations
+  // first apply execution provider independent level 1 graph optimizations.
   ORT_RETURN_IF_ERROR_SESSIONID_(
       graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
@@ -951,15 +951,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
-  // Do partitioning based on execution providers' capability.
+  // Do partitioning based on execution providers' capabilities.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
                                                        session_state.GetMutableFuncMgr(),
                                                        layout_transformer::TransformLayoutForCompilingEP, mode));
 
-  // apply transformers except default transformers
-  // Default transformers are required for correctness and they are owned and run by inference session
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+  // apply Level2 and higher transformers.
+  // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
+  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR_SESSIONID_(
         graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
@@ -1271,9 +1271,7 @@ common::Status InferenceSession::Initialize() {
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
     if (!have_cpu_ep) {
       LOGS(*session_logger_, INFO) << "Adding default CPU execution provider.";
-      const bool use_fixed_point_requant_on_arm64 =
-          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigFixedPointRequantOnARM64, "0") == "1";
-      CPUExecutionProviderInfo epi(session_options_.enable_cpu_mem_arena, use_fixed_point_requant_on_arm64);
+      CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
       auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
     }
