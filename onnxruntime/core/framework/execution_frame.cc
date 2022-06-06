@@ -45,8 +45,11 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
-  all_values_[ort_value_idx] = ort_value;
+  if (all_values_[ort_value_idx].IsAllocated()) {
+    ORT_RETURN_IF_ERROR(CopyTensor(ort_value.Get<Tensor>(), *all_values_[ort_value_idx].GetMutable<Tensor>()));
+  } else {
+    all_values_[ort_value_idx] = ort_value;
+  }
   return Status::OK();
 }
 #endif
