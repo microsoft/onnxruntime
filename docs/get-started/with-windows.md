@@ -54,19 +54,7 @@ To use your own version of ONNX Runtime, replace onnxruntime.dll with your desir
 ## Supported Versions
 Windows 8.1+
 
-## Install
-Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See: [Install ORT](../install#cccwinml-installs).
 
-## Requirements
-
-The DirectML execution provider requires a DirectX 12 capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Here are some examples of compatible hardware:
-
-* NVIDIA Kepler (GTX 600 series) and above
-* AMD GCN 1st Gen (Radeon HD 7000 series) and above
-* Intel Haswell (4th-gen core) HD Integrated Graphics and above
-* Qualcomm Adreno 600 and above
-
-DirectML was introduced in Windows 10, version 1903, and in the corresponding version of the Windows SDK.
 
 <p><a href="#">Back to top</a></p>
 
