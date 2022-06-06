@@ -147,6 +147,8 @@ In order to use the precompiled model, only need to pass two options:
 * **so_folder** - as a value, you must pass the path to the directory where 
 the files of the precompiled model are located.
 
+You can read more about these options in section [Configuration options](#configuration-options) above.
+
 
 ## Samples
 - [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
