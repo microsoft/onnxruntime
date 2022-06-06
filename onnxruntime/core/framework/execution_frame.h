@@ -25,6 +25,7 @@ class OrtValueNameIdxMap;
 class OrtValuePatternPlanner;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
+struct Stream;
 
 class IExecutionFrame {
  protected:
@@ -132,7 +133,8 @@ class ExecutionFrame final : public IExecutionFrame {
                  const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                 const SessionState& session_state);
+                 const SessionState& session_state,
+                 const std::vector<Stream*>* device_streams);
 
   ~ExecutionFrame() override;
 
@@ -206,6 +208,8 @@ class ExecutionFrame final : public IExecutionFrame {
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
 
+  Stream* GetValueStream(int ort_value_idx) const;
+
   const SessionState& session_state_;
 
   // map of index to custom allocator
@@ -228,6 +232,8 @@ class ExecutionFrame final : public IExecutionFrame {
   // by i, if the key i exists.
   // inferred_shapes_ is generated together with mem_patterns_.
   std::unordered_map<int, TensorShape> inferred_shapes_;
+
+  const std::vector<Stream*>* device_streams_;
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

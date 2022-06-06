@@ -39,7 +39,7 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   }
 
   root_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                                         fetch_allocators, session_state);
+                                                         fetch_allocators, session_state, nullptr);
   //std::cout << "start nodes:" << std::endl;
   for (auto node_index : session_state.GetGraphViewer().GetRootNodes()) {
     auto p_op_kernel = session_state.GetKernel(node_index);

@@ -66,11 +66,9 @@ struct ExecutionContext {
   std::vector<Stream*> device_streams;
 
   ExecutionContext(const SessionState& sess_state,
-                   ExecutionFrame* execution_frame,
                    std::vector<std::unique_ptr<LogicStream>>& logic_streams,
                    std::vector<size_t> notification_owners,
                    const logging::Logger& sess_logger) : session_state(&sess_state),
-                                                         frame(execution_frame),
                                                          logger(&sess_logger) {
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
@@ -87,6 +85,10 @@ struct ExecutionContext {
 
     auto* para_exe_plan = const_cast<SessionState&>(sess_state).GetParalllelExecutionPlan();
     release_plan = para_exe_plan->GenerateReleasePlan();
+  }
+
+  void SetFrame(ExecutionFrame* execution_frame) {
+    frame = execution_frame;
   }
 
   ~ExecutionContext() {
@@ -120,6 +122,8 @@ struct ParallelExecutionPlanImpl {
                          const logging::Logger& logger);
 
   const std::vector<int>& GetRefCounts() const { return value_ref_counts_; }
+
+  const std::unordered_map<size_t, size_t>& GetValueToStreamMap() { return value_to_stream_map_; }
 
   std::vector<std::unique_ptr<LogicStream>> logic_streams_;
   const SessionState& session_state_;
@@ -405,10 +409,11 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                                                   std::vector<OrtValue>& fetches,
                                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                   const logging::Logger& logger) {
-  ExecutionFrame frame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state);
   auto* tp = session_state.GetInterOpThreadPool();
   // prepare the execution context, notifications got initialized.
-  ExecutionContext execution_context(session_state, &frame, logic_streams_, notification_owners_, logger);
+  ExecutionContext execution_context(session_state, logic_streams_, notification_owners_, logger);
+  ExecutionFrame frame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, &execution_context.device_streams);
+  execution_context.SetFrame(&frame);
   // execution_context.release_plan = GenerateReleasePlan();
   std::unique_ptr<Barrier[]> barriers{new Barrier[num_logic_streams_-1]}; // TODO: handle case when num_logic_streams_ == 0
 
@@ -484,6 +489,10 @@ std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> ParallelExecutionPlan:
     }
   }
   return release_plan;
+}
+
+const std::unordered_map<size_t, size_t>& ParallelExecutionPlan::GetValueToStreamMap() const {
+  return impl_->GetValueToStreamMap();
 }
 
 }  // namespace onnxruntime

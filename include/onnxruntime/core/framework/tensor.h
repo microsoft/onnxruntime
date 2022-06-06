@@ -34,6 +34,9 @@ namespace onnxruntime {
   Memory is owned and managed by Executor / Workspace, so Tensor just uses
   it, and won't do any allocation / release.
 */
+
+using BufferCreateFn = std::function<void*(size_t)>;
+
 class Tensor final {
  public:
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
@@ -83,6 +86,9 @@ class Tensor final {
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
          gsl::span<const int64_t> strides = {});
 
+  Tensor(MLDataType p_type, const TensorShape& shape, const OrtMemoryInfo& alloc_info, BufferCreateFn create_fn, BufferFreeFn delete_fn,
+         gsl::span<const int64_t> strides = {});
+
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
   /// initializes OrtValue with it.
@@ -95,6 +101,14 @@ class Tensor final {
   static void InitOrtValue(MLDataType elt_type,
                            const TensorShape& shape,
                            std::shared_ptr<IAllocator> allocator,
+                           OrtValue& ort_value,
+                           gsl::span<const int64_t> strides = {});
+
+  static void InitOrtValue(MLDataType elt_type,
+                           const TensorShape& shape,
+                           const OrtMemoryInfo& alloc_info, 
+                           BufferCreateFn create_fn, 
+                           BufferFreeFn delete_fn,
                            OrtValue& ort_value,
                            gsl::span<const int64_t> strides = {});
 
@@ -111,6 +125,9 @@ class Tensor final {
    * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
+         ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
+
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, BufferCreateFn create_fn, BufferFreeFn delete_fn,
          ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   ~Tensor();
@@ -216,7 +233,7 @@ class Tensor final {
   }
 
   bool OwnsBuffer() const noexcept {
-    return buffer_deleter_ != nullptr;
+    return buffer_delete_fn_ != nullptr;
   }
 
   /**
@@ -275,7 +292,7 @@ class Tensor final {
   void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,
-            AllocatorPtr deleter,
+            BufferFreeFn delete_fn,
             ptrdiff_t offset = 0,
             gsl::span<const int64_t> strides = {});
 
@@ -291,7 +308,7 @@ class Tensor final {
      otherwise tensor will use the deleter to release the buffer when
      tensor is released.
   */
-  AllocatorPtr buffer_deleter_;
+  BufferFreeFn buffer_delete_fn_;
 
   TensorShape shape_;
 #ifdef ENABLE_TRAINING

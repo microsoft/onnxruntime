@@ -368,6 +368,8 @@ class BFCArena : public IAllocator {
   // possible.
   void FreeAndMaybeCoalesce(ChunkHandle h);
 
+  BFCArena::ChunkHandle Coalesce(ChunkHandle h);
+
   // Adds the chunk 'h' to the proper free bin.
   void InsertFreeChunkIntoBin(ChunkHandle h);
 

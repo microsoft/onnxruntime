@@ -21,9 +21,20 @@
 #include "core/framework/memory_info.h"
 #endif
 
+#include "core/framework/stream_handles.h"
+#include "core/framework/bfc_arena.h"
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+
+static StreamAwareArena* AsStreamBasedAllocator(AllocatorPtr allocator) {
+  if (allocator->Info().alloc_type == OrtArenaAllocator) {
+    BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
+    return arena_ptr->AsStreamAwareAreana();
+  }
+  return nullptr;
+}
 
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
@@ -329,11 +340,13 @@ bool IExecutionFrame::IsOutput(int ort_value_idx) const {
 ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds,
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               const SessionState& session_state)
+                               const SessionState& session_state,
+                               const std::vector<Stream*>* device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
-      planner_(nullptr) {
+      planner_(nullptr),
+      device_streams_(device_streams) {
   Init(
       feed_mlvalue_idxs, feeds, session_state.GetInitializedTensors(),
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -415,6 +428,8 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
               // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
 #endif
+              // the memory pattern buffer will leave in the whole execution.
+              // alloc it with default stream
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
@@ -466,6 +481,15 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
                                                           const TensorShape& shape, bool create_fence) {
   return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape,
                                                   create_fence);
+}
+
+Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
+  auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
+  auto it = value_to_stream_map.find(ort_value_idx);
+  if (it != value_to_stream_map.end() && device_streams_ && it->second < device_streams_->size()) {
+    return (*device_streams_)[it->second];
+  }
+  return nullptr;
 }
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
@@ -539,7 +563,31 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   //no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
-  Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
+  Stream* current_stream = GetValueStream(ort_value_index);
+  auto create_fn = [this, alloc, current_stream](size_t len) {
+    auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
+    if (stream_aware_alloc && current_stream) {
+      auto* chunk = stream_aware_alloc->AllocOnStream(len, static_cast<BFCArena::StreamId>(current_stream));
+      Stream* chunk_stream = static_cast<Stream*>(chunk->stream_id);
+      if (chunk_stream != current_stream) {
+        //TODO: sync
+        ORT_ENFORCE(chunk_stream);
+        auto notificaiton = chunk_stream->CreateNotification(/*TODO*/ 0);
+        notificaiton->Activate();
+        auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
+            chunk_stream->provider->Type(), current_stream->provider->Type());
+        wait_handle(*current_stream, *notificaiton);
+        // it should be ok to release the notification now, as the wait is already launch to stream.
+      }
+      return chunk->ptr;
+    } else {
+      return alloc->Alloc(len);
+    }
+  };
+
+  auto delete_fn = [alloc](void* buf) { if (buf) alloc->Free(buf); };
+
+  Tensor::InitOrtValue(element_type, shape, alloc->Info(), create_fn, delete_fn, ort_value);
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need

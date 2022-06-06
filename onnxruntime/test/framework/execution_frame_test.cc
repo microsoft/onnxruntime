@@ -67,7 +67,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame({}, {}, {}, outputs, {}, state);
+  ExecutionFrame frame({}, {}, {}, outputs, {}, state, nullptr);
 
   int start_index = frame.GetNodeOffset(node->Index());
   ASSERT_EQ(start_index, 0);
@@ -135,7 +135,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame({}, {}, {}, outputs, {}, state);
+  ExecutionFrame frame({}, {}, {}, outputs, {}, state, nullptr);
 
   int start_index = frame.GetNodeOffset(node->Index());
   ASSERT_EQ(start_index, 0);
@@ -194,7 +194,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   ASSERT_TRUE(mlvalue_name_idx_map.GetIdx("Y", y_idx).IsOK());
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame({x_idx}, {value}, {y_idx}, outputs, {}, state);
+  ExecutionFrame frame({x_idx}, {value}, {y_idx}, outputs, {}, state, nullptr);
 
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
@@ -270,7 +270,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                        std::vector<float>(6, 1.0f), &v3);
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
+  ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state, nullptr);
 
   OrtValue& mlvalue3 = *frame.GetMutableNodeInputOrOutputMLValue(3);
   OrtValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);

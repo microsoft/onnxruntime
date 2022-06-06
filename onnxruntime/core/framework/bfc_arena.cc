@@ -533,6 +533,7 @@ void BFCArena::DeallocateRawInternal(void* ptr) {
 
   // Consider coalescing it.
   FreeAndMaybeCoalesce(h);
+  
 }
 
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.
@@ -613,6 +614,15 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
 
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.
+  ChunkHandle chunk_to_reassign = Coalesce(h);
+  InsertFreeChunkIntoBin(chunk_to_reassign);
+}
+
+BFCArena::ChunkHandle BFCArena::Coalesce(ChunkHandle h) {
+  Chunk* c = ChunkFromHandle(h);
+  ORT_ENFORCE(!c->in_use());
+  // This chunk is no longer in-use, consider coalescing the chunk
+  // with adjacent chunks.
   ChunkHandle chunk_to_reassign = h;
 
   // If the next chunk is free, coalesce the two
@@ -636,7 +646,7 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
   c = ChunkFromHandle(h);
   if (c->prev != kInvalidChunkHandle) {
     Chunk* cprev = ChunkFromHandle(c->prev);
-    if (!cprev->in_use() && 
+    if (!cprev->in_use() &&
         // only merge the chunks belong to the same stream
         cprev->stream_id == c->stream_id) {
       //      VLOG(8) << "Chunk at " << c->ptr << " merging into c->prev "
@@ -650,7 +660,7 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
     }
   }
 
-  InsertFreeChunkIntoBin(chunk_to_reassign);
+  return chunk_to_reassign;
 }
 
 std::array<BFCArena::BinDebugInfo, BFCArena::kNumBins>
@@ -777,8 +787,9 @@ void StreamAwareArena::ReleaseStreamBuffers(StreamId stream_id) {
     ChunkHandle h = region_begin_chunk;
     while (h != kInvalidChunkHandle) {
       Chunk* c = ChunkFromHandle(h);
-      if (c->stream_id == stream_id)
+      if (c->stream_id == stream_id) {
         c->stream_id = nullptr;
+      }
       h = c->next;
     }
   }
@@ -790,13 +801,17 @@ void StreamAwareArena::ReleaseStreamBuffers(StreamId stream_id) {
     ChunkHandle h = region_begin_chunk;
     while (h != kInvalidChunkHandle) {
       Chunk* c = ChunkFromHandle(h);
-      ChunkHandle h_next = c->next;
-      Chunk* c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
-      // merge untill next chunk is different stream
-      while (c_next && c_next->stream_id == c->stream_id) {
-        FreeAndMaybeCoalesce(h);
-        h_next = c->next;
-        c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
+      // if c is in use, can't coalesce
+      if (!c->in_use()) {
+        ChunkHandle h_next = c->next;
+        Chunk* c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
+        // merge untill next chunk is different stream
+        while (c_next && !c_next->in_use() && c_next->stream_id == c->stream_id) {
+          Coalesce(h);
+          h_next = c->next;
+          c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
+        }
+        InsertFreeChunkIntoBin(h);
       }
       h = c->next;
     }

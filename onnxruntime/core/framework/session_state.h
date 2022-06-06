@@ -186,6 +186,8 @@ class SessionState {
 
   ParallelExecutionPlan* GetParalllelExecutionPlan();
 
+  const ParallelExecutionPlan& GetConstParalllelExecutionPlan() const;
+
   const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const;
 
   /**

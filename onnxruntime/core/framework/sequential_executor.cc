@@ -160,7 +160,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     tp = session_state.Profiler().Start();
   }
 
-  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
+  ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, nullptr};
 
 #if !defined(ORT_MINIMAL_BUILD)
   const auto* const to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
