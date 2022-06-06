@@ -421,17 +421,12 @@ def test_bcewithlogits_loss_training_graph_execution():
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
-<<<<<<< HEAD
-@pytest.mark.parametrize("graph", [SimpleTrainingModelWithMSELoss, SimpleTrainingModelWithCrossEntropyLoss])
-def test_adamw_optimizer_composition(graph):
-=======
 @pytest.mark.parametrize(
     "graph",
     [SimpleTrainingModelWithMSELoss, SimpleTrainingModelWithCrossEntropyLoss, SimpleTrainingModelWithBCEWithLogitsLoss],
 )
 @pytest.mark.parametrize("grad_clipping", [None, onnxblock.optim.ClipGradNorm(2.5)])
 def test_adamw_optimizer_composition(graph, grad_clipping):
->>>>>>> Support for gradient clipping
     # Given
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -449,6 +444,8 @@ def test_adamw_optimizer_composition(graph, grad_clipping):
         assert optimizer_model
 
 
+# TODO: Add a test for correctness when creation of ortvalues of
+# tensor seq is possible on cuda
 def test_adamw_optimizer_execution():
     # Given
     device = "cuda"
@@ -485,16 +482,15 @@ def test_adamw_optimizer_execution():
         ort_inputs = {
             "learning_rate": np.full(1, learning_rate, dtype=np.float32),
             "step": np.full(1, step, dtype=np.int64),
+            "params": [],
+            "first_order_moments": [],
+            "second_order_moments": [],
         }
         for name, param in pt_model.named_parameters():
-            ort_inputs[name] = _to_numpy(copy.deepcopy(param))
-<<<<<<< HEAD
-            ort_inputs[f"{name}_grad.accumulation.out"] = _to_numpy(copy.deepcopy(param.grad))
-=======
+            ort_inputs["params"].append(_to_numpy(copy.deepcopy(param)))
             ort_inputs[f"{name}_grad"] = _to_numpy(copy.deepcopy(param.grad))
->>>>>>> Support for gradient clipping
-            ort_inputs[f"{name}.exp_avg"] = _to_numpy(torch.zeros_like(param))
-            ort_inputs[f"{name}.exp_avg_sq"] = _to_numpy(torch.zeros_like(param))
+            ort_inputs["first_order_moments"].append(_to_numpy(torch.zeros_like(param)))
+            ort_inputs["second_order_moments"].append(_to_numpy(torch.zeros_like(param)))
 
         # Then no error occurs when executing the model
         ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())

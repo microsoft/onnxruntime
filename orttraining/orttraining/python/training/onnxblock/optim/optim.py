@@ -161,9 +161,10 @@ class AdamW(model.Model):
         # TODO: Avoid hard coded input/output strings
         learning_rate_name = "learning_rate"
         step_name = "step"
+        params_name = "params"
+        first_order_moments_name = "first_order_moments"
+        second_order_moments_name = "second_order_moments"
         gradient_suffix = "_grad"
-        first_order_moment_suffix = "exp_avg"
-        second_order_moment_fuffix = "exp_avg_sq"
 
         trainable_parameters, _ = parameters
 
@@ -175,17 +176,20 @@ class AdamW(model.Model):
             ]
         )
 
-        param_names, grad_names, moment1_names, moment2_names = [], [], [], []
-        for param in trainable_parameters:
-            param_names.append(param.name)
-            grad_names.append(f"{param.name}{gradient_suffix}")
-            moment1_names.append(f"{param.name}.{first_order_moment_suffix}")
-            moment2_names.append(f"{param.name}.{second_order_moment_fuffix}")
+        # Prepare the tensor sequence inputs for params and moments
+        for input_name in [params_name, first_order_moments_name, second_order_moments_name]:
+            onnx_model.graph.input.append(
+                onnx.helper.make_tensor_sequence_value_info(input_name, trainable_parameters[0].data_type, None)
+            )
 
-            for input_name in [param_names[-1], grad_names[-1], moment1_names[-1], moment2_names[-1]]:
-                onnx_model.graph.input.append(
-                    onnx.helper.make_tensor_value_info(input_name, param.data_type, param.dims)
-                )
+        # TODO: Make the grads as a tensor sequence input after implementing clip grad
+        # normalization implementation which takes in a tensor sequence.
+        grad_names = []
+        for param in trainable_parameters:
+            grad_names.append(f"{param.name}{gradient_suffix}")
+            onnx_model.graph.input.append(
+                onnx.helper.make_tensor_value_info(grad_names[-1], param.data_type, param.dims)
+            )
 
         # Clip the gradients if needed
         if self._clip_grad is not None:
@@ -195,10 +199,10 @@ class AdamW(model.Model):
         updated_flag_name = self._adamw(
             learning_rate_name,
             step_name,
-            self._sc(*param_names),
+            params_name,
             self._sc(*grad_names),
-            self._sc(*moment1_names),
-            self._sc(*moment2_names),
+            first_order_moments_name,
+            second_order_moments_name,
         )
 
         # Create the graph outputs

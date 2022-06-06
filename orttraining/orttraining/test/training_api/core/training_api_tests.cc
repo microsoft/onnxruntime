@@ -95,7 +95,9 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   }
 }
 
-TEST(TrainingApiTest, OptimStep) {
+// TODO: enable this test once Set Execution Provider functionality is
+//       available.
+TEST(TrainingApiTest, DISABLED_OptimStep) {
   auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
