@@ -6,6 +6,7 @@
 - [Build](#build-onnx-runtime-with-the-tvm-execution-provider)
 - [Configuration options](#configuration-options)
 - [Performance Tuning](#performance-tuning)
+    - [Using precompiled model](#using-precompiled-model)
 - [Samples](#samples)
 - [Known issues](#known-issues)
 
@@ -131,6 +132,21 @@ so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
 tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["TvmExecutionProvider"], provider_options=po)
 ```
+
+### Using precompiled model
+It is also possible to use a precompiled model.
+
+The compiled model can be obtained using the [OctoML platform](https://onnx.octoml.ai) 
+or compiled directly (see **Support precompiled model** section in
+[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+for more information on model compilation).
+
+In order to use the precompiled model, only need to pass two options:
+* **executor** - `vm` (`VirtualMachine`) must be used as a value 
+(this functionality is not supported for `GraphExecutor`);
+* **so_folder** - as a value, you must pass the path to the directory where 
+the files of the precompiled model are located.
+
 
 ## Samples
 - [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
