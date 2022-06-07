@@ -8,10 +8,8 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     )
 
 if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  message("**********************ON DEVICE TRAINING IS ENABLED**************************")
   file(GLOB_RECURSE on_device_training_api_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_api/include/onnxruntime_training_c_api.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_api/onnxruntime_training_c_api.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_api/*.cc"
   )
 
   list(APPEND onnxruntime_session_srcs ${on_device_training_api_srcs})

@@ -211,3 +211,11 @@ ORT_API_STATUS_IMPL(OrtApis::SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_pa
   return nullptr;
   API_IMPL_END
 }
+
+ORT_API(void, OrtApis::ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session) {
+  delete reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
+}
+
+ORT_API(void, OrtApis::ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckpointState* checkpoint_state) {
+  delete reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
+}
