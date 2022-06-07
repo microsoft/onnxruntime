@@ -469,7 +469,6 @@ def parse_arguments():
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
     parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
-    parser.add_argument("--use_openmp", action="store_true", help="Build with OpenMP")
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument("--use_vitisai", action="store_true", help="Build with Vitis-AI")
@@ -799,7 +798,6 @@ def generate_build_tree(
         cmake_path,
         cmake_dir,
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
-        "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
         # and "find_package(Python 3.5 COMPONENTS Development.Module)". The first one is deprecated and it
@@ -807,7 +805,6 @@ def generate_build_tree(
         # of them to get the best compatibility.
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
-        "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
@@ -817,29 +814,19 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_SHARED_LIB=" + ("ON" if args.build_shared_lib else "OFF"),
         "-Donnxruntime_BUILD_APPLE_FRAMEWORK=" + ("ON" if args.build_apple_framework else "OFF"),
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
-        "-Donnxruntime_DNNL_GPU_RUNTIME=" + (args.dnnl_gpu_runtime if args.use_dnnl else ""),
-        "-Donnxruntime_DNNL_OPENCL_ROOT=" + (args.dnnl_opencl_root if args.use_dnnl else ""),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
-        "-Donnxruntime_USE_OPENMP="
-        + (
-            "ON"
-            if args.use_openmp and not (args.use_nnapi or args.android or (args.ios and is_macOS()) or args.use_rknpu)
-            else "OFF"
-        ),
         "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar or args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
-        "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
-        "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
         # By default - we currently support only cross compiling for ARM/ARM64
         # (no native compilation supported through this script).
         "-Donnxruntime_CROSS_COMPILING=" + ("ON" if args.arm64 or args.arm64ec or args.arm else "OFF"),
@@ -865,7 +852,6 @@ def generate_build_tree(
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
-        "-Donnxruntime_ENABLE_TRANSFORMERS_TOOL_TEST=" + ("ON" if args.enable_transformers_tool_test else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
         "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
@@ -884,14 +870,12 @@ def generate_build_tree(
         "-Donnxruntime_USE_NCCL=" + ("OFF" if args.disable_nccl else "ON"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
-        "-Donnxruntime_ROCM_HOME=" + (rocm_home if args.use_rocm else ""),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
-        "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING="
         + ("OFF" if args.disable_wasm_exception_catching else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
@@ -902,12 +886,28 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
         + ("ON" if args.enable_external_custom_op_schemas else "OFF"),
-        "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
+    if args.use_winml:
+        cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))
+    if args.use_dnnl:
+        cmake_args.append("-Donnxruntime_DNNL_GPU_RUNTIME=" + args.dnnl_gpu_runtime)
+        cmake_args.append("-Donnxruntime_DNNL_OPENCL_ROOT=" + args.dnnl_opencl_root)
+    if args.build_wasm:
+        cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
+    if args.use_migraphx:
+        cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
+    if args.use_cuda:
+        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(args.parallel))
+    if args.use_rocm:
+        cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
+        cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
+    if args.use_tensorrt:
+        cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
     add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
