@@ -129,3 +129,6 @@ If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Pro
 
 Android NNAPI Execution Provider can be built using building commands in [Android Build instructions](#android-build-instructions) with `--use_nnapi`
 
+## Test Android changes using emulator
+
+If you want to test your changes in an Android build using the emulator, see [Testing Android Changes using the Emulator](../Android_testing.md).
