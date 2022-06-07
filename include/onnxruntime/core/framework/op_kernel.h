@@ -174,6 +174,13 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace rocm
 }  // namespace contrib
 
+namespace contrib {
+namespace snpe {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace snpe
+}  // namespace contrib
+
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
 // Naming convention for operator kernel classes

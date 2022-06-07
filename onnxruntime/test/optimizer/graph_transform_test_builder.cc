@@ -25,7 +25,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        double per_sample_tolerance,
                        double relative_per_sample_tolerance,
                        std::unique_ptr<GraphTransformer> transformer,
-                       const std::function<void(SessionOptions&)>& add_session_options) {
+                       const std::function<void(SessionOptions&)>& add_session_options,
+                       const InlinedHashSet<std::string>& disabled_optimizers) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -58,6 +59,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
       ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));
+    } else if (!disabled_optimizers.empty()) {
+      ASSERT_STATUS_OK(session.FilterEnabledOptimizers(InlinedHashSet<std::string>{disabled_optimizers}));
     }
 
     ASSERT_STATUS_OK(session.Initialize());
