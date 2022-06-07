@@ -47,6 +47,7 @@ op_metrics_columns = [
     ("input_ep", "Input EP", "InputEP"),
     ("operator", "Operator", "Operator"),
     ("assigned_ep", "Assigned EP", "AssignedEP"),
+    ("event_category", "Event Category", "EventCategory"),
     ("num_instances", "Num Instances", "NumInstances"),
     ("total_dur", "Total Duration", "TotalDuration"),
     ("min_dur", "Min Duration", "MinDuration"),
@@ -102,7 +103,6 @@ def pretty_print(pp, json_object):
     pp.pprint(json_object)
     sys.stdout.flush()
 
-
 def parse_model_run_info(data):
     model_run_info = []
 
@@ -113,24 +113,47 @@ def parse_model_run_info(data):
     return model_run_info
 
 
-def parse_model_run(data, model_run_info):
+def add_op_map_entry(provider_op_map, provider, op_name, duration):
+    if provider not in provider_op_map:
+        provider_op_map[provider] = {}
+
+    op_map = provider_op_map[provider]
+
+    if op_name not in op_map:
+        op_map[op_name] = {
+            "num_instances": 1,
+            "total_dur": duration,
+            "min_dur": duration,
+            "max_dur": duration
+        }
+    else:
+        op_info = op_map[op_name]
+
+        op_info["num_instances"] += 1
+        op_info["total_dur"] += duration
+        op_info["min_dur"] = min(duration, op_info["min_dur"])
+        op_info["max_dur"] = max(duration, op_info["max_dur"])
+
+
+def parse_model_run(profile_entries, target_model_run):
     """
     Parses profile data to obtain operator usage information for the given 'model run'.
 
-    :param data: List of profile data entries.
-    :param model_run_info: Time range information on the model run to parse.
+    :param profile_entries: List of profile data entries.
+    :param target_model_run: Time range information on the model run to parse.
 
     :return: The parsed operator usage information.
     """
 
-    provider_op_map = {}  # ep -> map of operator to duration
-    model_run_start = model_run_info["ts"]
-    model_run_end = model_run_start + model_run_info["dur"]
+    provider_node_op_map = {}  # ep -> map of node operator info
+    provider_kernel_op_map = {}  # ep -> map of kernel operator info
+    model_run_start = target_model_run["ts"]
+    model_run_end = model_run_start + target_model_run["dur"]
 
+    # Used to track the previous CPU node that launched kernel(s).
     prev_node = None
 
-    # Parse nodes in the model run
-    for entry in data:
+    for entry in profile_entries:
         entry_start = entry["ts"]
         entry_end = entry_start + entry["dur"]
 
@@ -149,150 +172,57 @@ def parse_model_run(data, model_run_info):
             prev_node = None
             continue
 
-        # Parse a graph node that is assigned to some EP. The node's duration includes only CPU execution time.
+        # Parse a graph node. The node's duration represents execution time on a CPU thread (regardless of EP).
         if entry["cat"] == "Node":
             prev_node = None
 
             if re.search(".*kernel_time", entry["name"]) and ("provider" in entry["args"]):
-                args = entry["args"]
-                provider = args["provider"]
+                entry_args = entry["args"]
+                add_op_map_entry(provider_node_op_map, entry_args["provider"], entry_args["op_name"], entry["dur"])
+                prev_node = entry
 
-                if provider not in provider_op_map:
-                    provider_op_map[provider] = {}
-
-                op_map = provider_op_map[provider]
-                op_map[entry["name"]] = {"ts": entry["ts"], "dur": entry["dur"], "op_name": args["op_name"]}
-                prev_node = op_map[entry["name"]]
-
-        # Parse a CUDA kernel spawned by a previous node. The kernel's duration corresponds to GPU exec time.
-        elif entry["cat"] == "Kernel" and prev_node and entry["args"]["op_name"] == prev_node["op_name"]:
-            prev_node_end = prev_node["ts"] + prev_node["dur"]
-            kernel_start = entry["ts"]
-            kernel_end = kernel_start + entry["dur"]
-
-            # The node runs in the CPU and the kernel runs in the GPU. So, only add the portion of the
-            # kernel's duration that does not overlap with the corresponding CPU operation.
-            if kernel_end > prev_node_end:
-                overlap = prev_node_end - kernel_start
-                prev_node["dur"] += entry["dur"] if overlap <= 0 else entry["dur"] - overlap
+        # Parse a GPU kernel that was launched by a previous node. Kernels only run on TensorRT or CUDA EPs.
+        elif entry["cat"] == "Kernel" and prev_node is not None:
+            add_op_map_entry(provider_kernel_op_map, prev_node["args"]["provider"], entry["args"]["op_name"],
+                             entry["dur"])
         else:
             prev_node = None
 
-    # Return the parsed model run info and the index to the end of the run.
-    return provider_op_map
+    return (provider_node_op_map, provider_kernel_op_map)
 
 
-def parse_single_file(f):
+def parse_session_profile(profile):
     """
-    Parses a JSON profile file and returns information on op usage per EP.
+    Parses a JSON profile file and returns information on operator usage per EP.
 
-    :param f: The string contents of the profile file.
+    :param profile: The file handle for the profile to parse.
 
     :return: Dictionary containing operator usage information per EP.
     """
 
     try:
-        data = json.load(f)
+        profile_entries = json.load(profile)
     except Exception:
         return None
 
     # Get information on where each model run starts and ends.
-    model_run_info = parse_model_run_info(data)
+    model_run_info = parse_model_run_info(profile_entries)
+    print("{} contains {} model runs".format(profile, len(model_run_info)))
+    print(model_run_info)
 
     if not model_run_info:
         return None
 
     # Use the model run with the lowest total duration.
     min_run = min(model_run_info, key=lambda entry: entry["dur"])
+    print("{} has min run with duration {}".format(profile, min_run["dur"]))
 
     # Parse model run
-    provider_op_map = parse_model_run(data, min_run)
+    print("Parsing model run for {}".format(profile))
+    op_maps = parse_model_run(profile_entries, min_run)
 
-    return provider_op_map
-
-
-def get_ep_operator_metrics(ep, ep_nodes):
-    """
-    Returns a dictionary of summarized operator metrics.
-
-    :param ep: The EP for which to summarize operator metrics. Should be a key in `ep_nodes`.
-    :param ep_nodes: A dictionary that maps an ORT execution provider to a dictionary of node information.
-
-        Ex: {
-                "CUDAExecutionProvider": {
-                    "node0": {"dur": 200, "op_name": "Conv"},
-                    "node1": {"dur": 100, "op_name": "Conv"},
-                    ...
-                },
-                "CPUExecutionProvider": {...}
-            }
-
-    :return: A dictionary of summarized operator metrics.
-
-        Ex: {
-                "Conv": {"num_instances": 20, "total_dur": 32003, "min_dur": 10, "max_dur": 200},
-                "Add": {"num_instances": 22, "total_dur": ... }
-            }
-    """
-
-    ep_operator_metrics = {}
-
-    if ep in ep_nodes:
-        nodes = ep_nodes[ep]
-
-        for _, node_info in nodes.items():
-            node_dur = int(node_info["dur"])
-            op_name = node_info["op_name"]
-
-            if op_name not in ep_operator_metrics:
-                ep_operator_metrics[op_name] = {
-                    "num_instances": 1,
-                    "total_dur": node_dur,
-                    "min_dur": node_dur,
-                    "max_dur": node_dur,
-                }
-            else:
-                node_op_info = ep_operator_metrics[op_name]
-                node_op_info["num_instances"] += 1
-                node_op_info["total_dur"] += node_dur
-                node_op_info["min_dur"] = min(node_dur, node_op_info["min_dur"])
-                node_op_info["max_dur"] = max(node_dur, node_op_info["max_dur"])
-
-    return ep_operator_metrics
-
-
-def get_operator_metrics(ep_nodes):
-    """
-    Returns the number of operators and the total execution time for each execution provider.
-
-    :param ep_nodes: A dictionary that maps an ORT execution provider to a dictionary of node information.
-
-        Ex: {
-                "CUDAExecutionProvider": {
-                    "node0": {"dur": 200, "op_name": "Conv"},
-                    "node1": {"dur": 100, "op_name": "Conv"},
-                    ...
-                },
-                "CPUExecutionProvider": {...}
-            }
-
-    :return: A dictionary that maps an ORT execution provider to a dictionary of summarized operator metrics.
-
-        Ex: {
-                "CPUExecutionProvider" : {
-                    "Conv": {"num_instances": 20, "total_dur": 32003, "min_dur": 10, "max_dur": 200},
-                    "Add": {"num_instances": 22, "total_dur": ... }
-                },
-                "CUDAExecutionProvider": { ... },
-                "TensorrtExecutionProvider: { ... }
-            }
-    """
-
-    return {
-        cpu_ep: get_ep_operator_metrics(cpu_ep, ep_nodes),
-        cuda_ep: get_ep_operator_metrics(cuda_ep, ep_nodes),
-        trt_ep: get_ep_operator_metrics(trt_ep, ep_nodes),
-    }
+    print(op_maps)
+    return op_maps
 
 
 def get_profile_metrics(path, profile_already_parsed, logger=None):
@@ -316,9 +246,9 @@ def get_profile_metrics(path, profile_already_parsed, logger=None):
 
         logger.info("start to parse {} ...".format(profile))
         with open(profile) as f:
-            op_map = parse_single_file(f)
-            if op_map:
-                data.append(op_map)
+            op_maps = parse_session_profile(f)
+            if op_maps and op_maps[0]:
+                data.append(op_maps)
 
     if len(data) == 0:
         logger.info("No profile metrics got.")

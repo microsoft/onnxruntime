@@ -31,7 +31,6 @@ from perf_utils import (
     disable,
     enable_all,
     extended,
-    get_operator_metrics,
     get_output,
     get_profile_metrics,
     is_standalone,
@@ -660,11 +659,12 @@ def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
     if model_name not in model_to_metrics:
         model_to_metrics[model_name] = {}
 
-    for ep, op_map in ep_to_operator.items():
+    for ep, op_maps in ep_to_operator.items():
         if ep not in model_to_metrics[model_name]:
             model_to_metrics[model_name][ep] = {}
 
-        model_to_metrics[model_name][ep]["operator_metrics"] = get_operator_metrics(op_map)
+        model_to_metrics[model_name][ep]["nodes"] = op_maps[0]
+        model_to_metrics[model_name][ep]["kernels"] = op_maps[1]
 
 
 ###################################################################################################
@@ -1279,6 +1279,9 @@ def run_onnxruntime(args, models):
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 time.sleep(1)  # avoid to generate same profile file name
 
+                if "ORT-TRT" in ep:
+                    trt_ep_options["trt_dump_subgraphs"] = "True"
+
                 providers = ep_to_provider_list[ep]
                 provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
 
@@ -1350,7 +1353,9 @@ def run_onnxruntime(args, models):
                 # get metrics from profiling file
                 metrics = get_profile_metrics(path, profile_already_parsed, logger)
                 if metrics:
-                    logger.info(ep)
+                    if "ORT-TRT" in ep:
+                        pass # Parse subgraphs
+
                     ep_to_operator[ep] = metrics
 
                 remove_files(args.running_mode, model_info["working_directory"])
@@ -1764,7 +1769,7 @@ def output_latency(results, csv_filename):
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
 
-def get_operator_metrics_rows(model, input_ep, operator_metrics):
+def get_operator_metrics_rows(model, input_ep, event_category, operator_metrics):
     """
     Returns a list of rows to append to the 'operator metrics' CSV file.
     Each row contains metrics (e.g., num_instances, duration, etc.) for a particular operator (e.g, Conv, Add, etc.) used
@@ -1772,6 +1777,7 @@ def get_operator_metrics_rows(model, input_ep, operator_metrics):
 
     :param model: The name of the model (e.g., zfnet512-9).
     :param input_ep: The name of the input EP (e.g., ORT-CUDAFp32, ORT-TRTFp32, etc.).
+    :param event_category: The event category (i.e., "Node" or "Kernel").
     :param operator_metrics: A dictionary that maps on ORT execution provider to a dictionary of operator metrics.
 
         Ex: {
@@ -1788,8 +1794,9 @@ def get_operator_metrics_rows(model, input_ep, operator_metrics):
             {
                 "model_name": "zfnet512-9",
                 "input_ep": "ORT-CUDAFp32",
-                "Operator": "Conv",
+                "operator": "Conv",
                 "assigned_ep": "CUDAExecutionProvider",
+                "event_category": "Node",
                 "num_instances": 333,
                 "total_dur": 12345,
                 "min_dur": 31,
@@ -1809,6 +1816,7 @@ def get_operator_metrics_rows(model, input_ep, operator_metrics):
                 "input_ep": input_ep,
                 "operator": op_name,
                 "assigned_ep": assigned_ep,
+                "event_category": event_category,
                 "num_instances": metrics["num_instances"],
                 "total_dur": metrics["total_dur"],
                 "min_dur": metrics["min_dur"],
@@ -1852,7 +1860,10 @@ def output_metrics(model_to_metrics, csv_filename):
         for model, ep_info in model_to_metrics.items():
             for input_ep in [cuda, trt, cuda_fp16, trt_fp16]:
                 if input_ep in ep_info:
-                    rows = get_operator_metrics_rows(model, input_ep, ep_info[input_ep]["operator_metrics"])
+                    rows = get_operator_metrics_rows(model, input_ep, "Node", ep_info[input_ep]["nodes"])
+                    results.extend(rows)
+
+                    rows = get_operator_metrics_rows(model, input_ep, "Kernel", ep_info[input_ep]["kernels"])
                     results.extend(rows)
 
         for value in results:
@@ -1976,7 +1987,6 @@ def parse_arguments():
         default={
             "trt_engine_cache_enable": "True",
             "trt_max_workspace_size": "4294967296",
-            "trt_dump_subgraphs": "True", # TODO: Should only be set for validation?
         },
         action=ParseDictArgAction,
         metavar=dict_arg_metavar,
