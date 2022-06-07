@@ -73,10 +73,14 @@ struct ExecutionContext {
                                                          logger(&sess_logger) {
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
-      auto* stream = sess_state.GetStreamPool().GetStream(logic_stream->ep_);
-      // TODO: if EP doesn't provide stream support, fallback to CPU stream (sync on the host thread)
-      ORT_ENFORCE(stream);
-      device_streams.push_back(stream);
+      if (logic_stream->commands_.size() > 0) {
+        auto* stream = sess_state.GetStreamPool().GetStream(logic_stream->ep_);
+        // TODO: if EP doesn't provide stream support, fallback to CPU stream (sync on the host thread)
+        ORT_ENFORCE(stream);
+        device_streams.push_back(stream);
+      } else {
+        device_streams.push_back(nullptr);
+      }
     }
 
     for (auto i = 0; i < notification_owners.size(); ++i) {
@@ -94,17 +98,19 @@ struct ExecutionContext {
 
   ~ExecutionContext() {
     for (auto* stream : device_streams) {
-      auto& allocators = stream->provider->GetAllocators();
-      for (auto& alloc : allocators) {
-        if (alloc->Info().alloc_type == OrtArenaAllocator) {
-          auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-          auto* stream_aware_alloc = static_cast<StreamAwareArena*>(arena_alloc);
-          if (stream_aware_alloc) {
-            stream_aware_alloc->ReleaseStreamBuffers(static_cast<BFCArena::StreamId>(stream));
+      if (stream) {
+        auto& allocators = stream->provider->GetAllocators();
+        for (auto& alloc : allocators) {
+          if (alloc->Info().alloc_type == OrtArenaAllocator) {
+            auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
+            auto* stream_aware_alloc = static_cast<StreamAwareArena*>(arena_alloc);
+            if (stream_aware_alloc) {
+              stream_aware_alloc->ReleaseStreamBuffers(static_cast<BFCArena::StreamId>(stream));
+            }
           }
         }
+        session_state->GetStreamPool().ReleaseStream(stream);
       }
-      session_state->GetStreamPool().ReleaseStream(stream);
     }
   }
 
