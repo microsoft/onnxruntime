@@ -326,7 +326,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   a.Free(stream2_chunk_b->ptr);
   // test clean stream2
   a.ReleaseStreamBuffers(stream2_id);
-  auto stream1_chunk_e = a.AllocOnStream(4096, stream1_id);
+  auto stream1_chunk_e = a.AllocOnStream(8192, stream1_id);
   // now it should pick the stream2_chunk_a's buffer
   EXPECT_EQ(stream1_chunk_e->ptr, stream2_chunk_a->ptr);
   a.Free(stream1_chunk_c->ptr);
