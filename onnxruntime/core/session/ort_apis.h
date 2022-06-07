@@ -375,4 +375,33 @@ ORT_API_STATUS_IMPL(InvokeOp,
 
 ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
+ORT_API_STATUS_IMPL(CreateTrainingSession,  _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
+                  _Outptr_ OrtTrainingSession** out);
+
+ORT_API_STATUS_IMPL(InitializeTrainingSession,  _Inout_ OrtTrainingSession* session, _Inout_ OrtCheckpointState* checkpoint_state,
+                  _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
+                  _In_ const ORTCHAR_T* optimizer_model_path);
+
+ORT_API(void, ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session);
+
+ORT_API_STATUS_IMPL(ResetGrad, _Inout_ OrtTrainingSession* session);
+
+ORT_API_STATUS_IMPL(TrainStep, _Inout_ OrtTrainingSession* session, _In_opt_ const OrtRunOptions* run_options,
+                     _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
+                     size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+
+ORT_API_STATUS_IMPL(EvalStep, _Inout_ OrtTrainingSession* session, _In_opt_ const OrtRunOptions* run_options,
+                     _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len,
+                     size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
+
+ORT_API_STATUS_IMPL(OptimizerStep, _Inout_ OrtTrainingSession* session, _In_opt_ const OrtRunOptions* run_options);
+
+ORT_API_STATUS_IMPL(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Outptr_ OrtCheckpointState** checkpoint_state);
+
+ORT_API_STATUS_IMPL(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_opt_ OrtCheckpointState* checkpoint_state,
+                  bool save_optimizer_state);
+
+ORT_API(void, ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckpointState* session);
+#endif
 }  // namespace OrtApis

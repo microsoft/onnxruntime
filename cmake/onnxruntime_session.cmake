@@ -7,6 +7,17 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
     )
 
+if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+  message("**********************ON DEVICE TRAINING IS ENABLED**************************")
+  file(GLOB_RECURSE on_device_training_api_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/training_api/include/onnxruntime_training_c_api.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_api/onnxruntime_training_c_api.cc"
+  )
+
+  list(APPEND onnxruntime_session_srcs ${on_device_training_api_srcs})
+endif()
+
+
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_session_src_exclude
     "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
@@ -48,7 +59,7 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  onnxruntime_add_include_to_target(onnxruntime_session Python::Module) 
+  onnxruntime_add_include_to_target(onnxruntime_session Python::Module)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

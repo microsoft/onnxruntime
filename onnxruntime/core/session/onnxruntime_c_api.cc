@@ -2527,6 +2527,20 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::CreateOp,
     &OrtApis::InvokeOp,
     &OrtApis::ReleaseOp,
+#ifdef ENABLE_TRAINING_ON_DEVICE
+    // Experimental for on-device training. Always keep at the bottom.
+    &OrtApis::LoadCheckpoint,
+    &OrtApis::SaveCheckpoint,
+    &OrtApis::CreateTrainingSession,
+    &OrtApis::InitializeTrainingSession,
+    &OrtApis::ResetGrad,
+    &OrtApis::TrainStep,
+    &OrtApis::EvalStep,
+    &OrtApis::OptimizerStep,
+    &OrtApis::ReleaseTrainingSession,
+    &OrtApis::ReleaseCheckpointState,
+#endif
+
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
