@@ -8,7 +8,7 @@ on:
 
 jobs:
   Explore-GitHub-Actions:
-    runs-on: [self-hosted, 1ES.Pool=onnxruntime-github-ubuntu-2004-cpu]
+    runs-on: ubuntu-latest
     steps:
        - uses: actions/checkout@v3
        - uses: actions/setup-python@v3
