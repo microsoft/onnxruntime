@@ -2,33 +2,49 @@
 # Licensed under the MIT License.
 
 import argparse
+import collections
 import json
 import os
 import platform
 import sys
 import unittest
+from typing import Dict, Type
 
 import numpy as np
 import onnx
-import onnx.backend.test
+import onnx.backend.test.case.test_case
+import onnx.backend.test.runner
 
-import onnxruntime.backend as c2
+from onnxruntime import backend
 
 pytest_plugins = ("onnx.backend.test.report",)
 
 
-class OrtBackendTest(onnx.backend.test.BackendTest):
-    def __init__(self, backend, parent_module=None):
-        super(OrtBackendTest, self).__init__(backend, parent_module)
+class OrtBackendTest(onnx.backend.test.runner.Runner):
+    def __init__(
+        self,
+        backend,
+        parent_module: str,
+        rtol_default: float,
+        atol_default: float,
+        rtol_overrides: Dict[str, float],
+        atol_overrides: Dict[str, float],
+    ):
+        self._rtol_overrides = collections.defaultdict(lambda: rtol_default)
+        self._rtol_overrides.update(rtol_overrides)
+        self._atol_overrides = collections.defaultdict(lambda: atol_default)
+        self._atol_overrides.update(atol_overrides)
+
+        super().__init__(backend, parent_module=parent_module)
 
     @classmethod
     def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
         def assert_similar_array(ref_output, output):
             np.testing.assert_equal(ref_output.dtype, output.dtype)
-            if ref_output.dtype == np.object:
+            if ref_output.dtype == object:
                 np.testing.assert_array_equal(ref_output, output)
             else:
-                np.testing.assert_allclose(ref_output, output, rtol=1e-3, atol=1e-5)
+                np.testing.assert_allclose(ref_output, output, rtol=rtol, atol=atol)
 
         np.testing.assert_equal(len(ref_outputs), len(outputs))
         for i in range(len(outputs)):
@@ -38,9 +54,35 @@ class OrtBackendTest(onnx.backend.test.BackendTest):
             else:
                 assert_similar_array(ref_outputs[i], outputs[i])
 
+    def _add_model_test(self, tc: onnx.backend.test.case.test_case.TestCase, kind: str) -> None:
+        tc.rtol = self._rtol_overrides[tc.name]
+        tc.atol = self._atol_overrides[tc.name]
+        super()._add_model_test(tc, kind)
+
+
+def load_jsonc(basename: str):
+    with open(
+        os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            "testdata",
+            basename,
+        )
+    ) as f:
+        lines = f.readlines()
+    lines = [x.split("//")[0] for x in lines]
+    return json.loads("\n".join(lines))
+
 
 def create_backend_test(testname=None):
-    backend_test = OrtBackendTest(c2, __name__)
+    overrides = load_jsonc("onnx_backend_test_series_overrides.jsonc")
+    backend_test = OrtBackendTest(
+        backend,
+        __name__,
+        overrides["rtol_default"],
+        overrides["atol_default"],
+        overrides["rtol_overrides"],
+        overrides["atol_overrides"],
+    )
 
     # Type not supported
     backend_test.exclude(r"(FLOAT16)")
@@ -48,40 +90,29 @@ def create_backend_test(testname=None):
     if testname:
         backend_test.include(testname + ".*")
     else:
-        # read filters data
-        with open(
-            os.path.join(
-                os.path.dirname(os.path.realpath(__file__)),
-                "testdata",
-                "onnx_backend_test_series_filters.jsonc",
-            )
-        ) as f:
-            filters_lines = f.readlines()
-        filters_lines = [x.split("//")[0] for x in filters_lines]
-        filters = json.loads("\n".join(filters_lines))
-
+        filters = load_jsonc("onnx_backend_test_series_filters.jsonc")
         current_failing_tests = filters["current_failing_tests"]
 
         if platform.architecture()[0] == "32bit":
             current_failing_tests += filters["current_failing_tests_x86"]
 
-        if c2.supports_device("DNNL"):
+        if backend.supports_device("DNNL"):
             current_failing_tests += filters["current_failing_tests_DNNL"]
 
-        if c2.supports_device("NNAPI"):
+        if backend.supports_device("NNAPI"):
             current_failing_tests += filters["current_failing_tests_NNAPI"]
 
-        if c2.supports_device("OPENVINO_GPU_FP32") or c2.supports_device("OPENVINO_GPU_FP16"):
+        if backend.supports_device("OPENVINO_GPU_FP32") or backend.supports_device("OPENVINO_GPU_FP16"):
             current_failing_tests += filters["current_failing_tests_OPENVINO_GPU"]
 
-        if c2.supports_device("OPENVINO_MYRIAD"):
+        if backend.supports_device("OPENVINO_MYRIAD"):
             current_failing_tests += filters["current_failing_tests_OPENVINO_GPU"]
             current_failing_tests += filters["current_failing_tests_OPENVINO_MYRIAD"]
 
-        if c2.supports_device("OPENVINO_CPU_FP32"):
+        if backend.supports_device("OPENVINO_CPU_FP32"):
             current_failing_tests += filters["current_failing_tests_OPENVINO_CPU_FP32"]
 
-        if c2.supports_device("MIGRAPHX"):
+        if backend.supports_device("MIGRAPHX"):
             current_failing_tests += [
                 "^test_constant_pad_cpu",
                 "^test_round_cpu",
@@ -116,7 +147,7 @@ def create_backend_test(testname=None):
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA
         # EPs are available (Windows GPU CI pipeline has this config) - these test will pass because CUDA has higher precendence than DML
         # and the nodes are assigned to only the CUDA EP (which supports these tests)
-        if c2.supports_device("DML") and not c2.supports_device("GPU"):
+        if backend.supports_device("DML") and not backend.supports_device("GPU"):
             current_failing_tests += [
                 "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
                 "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu",
