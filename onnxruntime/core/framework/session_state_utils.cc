@@ -61,7 +61,10 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
 // released with the deleter of the ORT value which holds the ext data tensor
 struct ExtDataNullAllocator : public IAllocator {
   ExtDataNullAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
-  void* Alloc(size_t size) override { ORT_UNUSED_PARAMETER(size); return nullptr; }
+  void* Alloc(size_t size) override {
+    ORT_UNUSED_PARAMETER(size);
+    return nullptr;
+  }
   void Free(void* p) override { ORT_UNUSED_PARAMETER(p); }
 };
 
@@ -70,11 +73,7 @@ struct ExtDataNullAllocator : public IAllocator {
 struct ExtDataValueDeleter {
   OrtCallback ext_delete_cb;
   Tensor* p_tensor;
-  int id;
-  const logging::Logger& logger;
   void operator()(void*) noexcept {
-    LOGS(logger, INFO) << "deleting " << id;
-    std::cout << "deleting " << id << std::endl;
     this->ext_delete_cb.f(this->ext_delete_cb.param);
     delete this->p_tensor;
   }
@@ -85,8 +84,7 @@ struct ExtDataValueDeleter {
 // by the OrtValue's deleter
 static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                        OrtValue& ort_value, int id, const logging::Logger& logger)
-{
+                                                        OrtValue& ort_value) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   ORT_ENFORCE(! proto_path.empty());
 
@@ -107,7 +105,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const st
 
   auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, ext_data_alloc);
 
-  ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get(), id, logger };
+  ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get() };
 
   ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
   return common::Status::OK();
@@ -117,10 +115,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
-                                             const logging::Logger& logger,
                                              bool use_device_allocator_for_initializers = false) {
 
-  LOGS(logger, INFO) << "allocator is " << alloc->Info().name;
   if (bool(alloc) == (m != nullptr)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
@@ -131,7 +127,6 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
   if (m != nullptr) {
-      // not here
     p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
     if (m->GetLen() < p_tensor->SizeInBytes()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
@@ -150,13 +145,10 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   }
 
-  // LOGS(logger, INFO) << "tensor location " << p_tensor->Location().name;
   if (strcmp(p_tensor->Location().name, CPU) == 0) {
     // deserialize directly to CPU tensor
-    // LOGS(logger, INFO) << "deserialize directly to CPU tensor";
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
   } else {  // non-cpu tensor
-    // LOGS(logger, INFO) << "deserialize to non-CPU tensor";
     if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
     }
@@ -171,16 +163,13 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
       // (may expand it if there isn't a chunk that can be allotted to the memory request).
       // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
-      // LOGS(logger, INFO) << "deserialize to non-CPU tensor using default cpu alloc";
       p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
     }
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
-    // LOGS(logger, INFO) << "copying temp tensor to final destination";
     Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
-    // LOGS(logger, INFO) << "done copying temp tensor to final destination";
     if (!copy_status.IsOK()) {
       if (copy_status.ErrorMessage().empty()) {
         // The windows execution provider does not return any error message today for CopyTensor since it is
@@ -245,7 +234,6 @@ common::Status SaveInitializedTensors(
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
-    std::cout << "xxx first " << entry.first << std::endl;
     if (use_user_supplied_initializer(entry.first)) {
       user_supplied_initializer_ids.insert(ort_value_index);
     }
@@ -303,7 +291,6 @@ common::Status SaveInitializedTensors(
   }
 
   OrtCallback deleter{nullptr, nullptr};
-  LOGS(logger, INFO) << "planner is type " << typeid(planner).name();
 
   //3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
@@ -312,21 +299,18 @@ common::Status SaveInitializedTensors(
     OrtValue ort_value;
 
     auto location = exec_plan.GetLocation(ort_value_index).name;
-    // LOGS(logger, INFO) << "XXX location " << location;
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       ort_value = *(session_options.initializers_to_share_map.at(name));
-      // LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
-    }
-    else if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
+      LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
+    } else if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
-      Status st = ExtDataTensorProtoToTensor(env, graph_loc, tensor_proto, ort_value, entry.first, logger);
-      if (! st.IsOK()) {
+      Status st = ExtDataTensorProtoToTensor(env, graph_loc, tensor_proto, ort_value);
+      if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Load of external data tensor " << name << " failed." << st.ErrorMessage();
         return Status(st.Category(), st.Code(), oss.str());
       }
-    }
-    else {
+    } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
       std::unique_ptr<MemBuffer> m;
@@ -335,12 +319,9 @@ common::Status SaveInitializedTensors(
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
       bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
-      // LOGS(logger, INFO) << "use_device_allocator_for_initializers " << use_device_allocator_for_initializers;
 
-      // const MemBuffer* x = m.get();
-      // LOGS(logger, INFO) << "membuffer is null " << ((x == nullptr) ? "1" : "0");
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
-                                         data_transfer_mgr, logger, use_device_allocator_for_initializers);
+                                         data_transfer_mgr, use_device_allocator_for_initializers);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
@@ -419,10 +400,20 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
     // implicit inputs to a node could come directly from a feed, so we need to make sure they have an entry too
     const auto& node_implicit_inputs = node.ImplicitInputDefs();
     if (!node_implicit_inputs.empty()) {
+      // In the main graph, the location of the implicit input(s) is the location it
+      // is consumed in the main graph if there is an explicit consumer.
+      // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes and
+      // all of them have been partitioned to the same EP, its location is the
+      // location of the non-CPU device corresponding to the EP.
+      // If multiple EPs are involved, then the planned location for such implicit inputs
+      // just default to CPU (as there is ambiguity involved as to which non-CPU device is
+      // most optimal)
+
       // In nested subgraphs, the location of the implicit input(s) is the location it
       // is consumed in the subgraph if there is an explicit consumer.
       // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes, its
       // location is the location of the value in the enclosing outer scope.
+
       // All this is setup in the planner, we just use the location from the plan here.
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
