@@ -1404,6 +1404,15 @@ inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_HARDMAX_OPERATO
         OperatorField(&DML_ACTIVATION_HARDMAX_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_HARDMAX1_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ACTIVATION_HARDMAX1_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ACTIVATION_HARDMAX1_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ACTIVATION_HARDMAX1_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.AxisCount))),
+        OperatorField(&DML_ACTIVATION_HARDMAX1_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_HARD_SIGMOID_OPERATOR_DESC& desc)
 {
     return {
@@ -1442,6 +1451,15 @@ inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_LOG_SOFTMAX_OPE
     return {
         OperatorField(&DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
         OperatorField(&DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.AxisCount))),
+        OperatorField(&DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
     };
 }
 inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_PARAMETERIZED_RELU_OPERATOR_DESC& desc)
@@ -1498,6 +1516,15 @@ inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_SOFTMAX_OPERATO
     return {
         OperatorField(&DML_ACTIVATION_SOFTMAX_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
         OperatorField(&DML_ACTIVATION_SOFTMAX_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_SOFTMAX1_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_ACTIVATION_SOFTMAX1_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_ACTIVATION_SOFTMAX1_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_ACTIVATION_SOFTMAX1_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.AxisCount))),
+        OperatorField(&DML_ACTIVATION_SOFTMAX1_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const UINT*>(desc.Axes), desc.AxisCount)),
     };
 }
 inline std::vector<OperatorField> GetFields(const DML_ACTIVATION_SOFTPLUS_OPERATOR_DESC& desc)
@@ -1689,11 +1716,13 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_ELU: return DML_ACTIVATION_ELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_CELU: return DML_ACTIVATION_CELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_HARDMAX: return DML_ACTIVATION_HARDMAX_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ACTIVATION_HARDMAX1: return DML_ACTIVATION_HARDMAX1_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_HARD_SIGMOID: return DML_ACTIVATION_HARD_SIGMOID_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_IDENTITY: return DML_ACTIVATION_IDENTITY_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_LEAKY_RELU: return DML_ACTIVATION_LEAKY_RELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_LINEAR: return DML_ACTIVATION_LINEAR_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX: return DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1: return DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_PARAMETERIZED_RELU: return DML_ACTIVATION_PARAMETERIZED_RELU_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_PARAMETRIC_SOFTPLUS: return DML_ACTIVATION_PARAMETRIC_SOFTPLUS_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_RELU: return DML_ACTIVATION_RELU_OPERATOR_SCHEMA;
@@ -1701,6 +1730,7 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ACTIVATION_SCALED_TANH: return DML_ACTIVATION_SCALED_TANH_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_SIGMOID: return DML_ACTIVATION_SIGMOID_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_SOFTMAX: return DML_ACTIVATION_SOFTMAX_OPERATOR_SCHEMA;
+    case DML_OPERATOR_ACTIVATION_SOFTMAX1: return DML_ACTIVATION_SOFTMAX1_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_SOFTPLUS: return DML_ACTIVATION_SOFTPLUS_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_SOFTSIGN: return DML_ACTIVATION_SOFTSIGN_OPERATOR_SCHEMA;
     case DML_OPERATOR_ACTIVATION_TANH: return DML_ACTIVATION_TANH_OPERATOR_SCHEMA;
@@ -2276,6 +2306,10 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_ACTIVATION_HARDMAX_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_ACTIVATION_HARDMAX_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ACTIVATION_HARDMAX1:
+        return AbstractOperatorDesc(
+            &DML_ACTIVATION_HARDMAX1_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ACTIVATION_HARDMAX1_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_ACTIVATION_HARD_SIGMOID:
         return AbstractOperatorDesc(
             &DML_ACTIVATION_HARD_SIGMOID_OPERATOR_SCHEMA,
@@ -2296,6 +2330,10 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1:
+        return AbstractOperatorDesc(
+            &DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_ACTIVATION_PARAMETERIZED_RELU:
         return AbstractOperatorDesc(
             &DML_ACTIVATION_PARAMETERIZED_RELU_OPERATOR_SCHEMA,
@@ -2324,6 +2362,10 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_ACTIVATION_SOFTMAX_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_ACTIVATION_SOFTMAX_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_ACTIVATION_SOFTMAX1:
+        return AbstractOperatorDesc(
+            &DML_ACTIVATION_SOFTMAX1_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_ACTIVATION_SOFTMAX1_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_ACTIVATION_SOFTPLUS:
         return AbstractOperatorDesc(
             &DML_ACTIVATION_SOFTPLUS_OPERATOR_SCHEMA,
