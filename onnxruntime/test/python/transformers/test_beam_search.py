@@ -13,6 +13,8 @@ import pytest
 import torch
 from parity_utilities import find_transformers_source
 
+from onnxruntime import get_available_providers
+
 if find_transformers_source() and find_transformers_source(["models", "t5"]):
     from benchmark_helper import Precision
     from convert_beam_search import main as run
@@ -43,7 +45,7 @@ class TestBeamSearchGpt(unittest.TestCase):
             "I enjoy walking in the park",
             "Test best way to invest",
         ]
-
+        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
         self.remove_onnx_files()
 
     def tearDown(self):
@@ -56,20 +58,26 @@ class TestBeamSearchGpt(unittest.TestCase):
         if os.path.exists(self.beam_search_onnx_path):
             os.remove(self.beam_search_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None):
+    def run_beam_search(self, extra_arguments: str, sentences=None, devices=["CPU", "GPU"]):
         arguments = " ".join(self.default_arguments + [extra_arguments]).split()
-        result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+        if "CPU" in devices:
+            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+
+        if "GPU" in devices and self.enable_cuda:
+            if "--use_gpu" not in arguments:
+                arguments.append("--use_gpu")
+                result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+                self.assertTrue(
+                    result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}"
+                )
+
         os.remove(self.beam_search_onnx_path)
-        self.assertTrue(result["parity"], "ORT and PyTorch result is different")
 
     @pytest.mark.slow
-    def test_cpu(self):
-        self.run_beam_search("--num_return_sequences 2")
-
-    @pytest.mark.slow
-    def test_gpu(self):
-        if torch.cuda.is_available():
-            self.run_beam_search("--use_gpu")
+    def test_return_sequences(self):
+        for return_sequences in [1, 2]:
+            self.run_beam_search(f"--num_return_sequences {return_sequences}")
 
     @pytest.mark.slow
     def test_early_stopping(self):
@@ -81,7 +89,8 @@ class TestBeamSearchGpt(unittest.TestCase):
 
     @pytest.mark.slow
     def test_length_penalty(self):
-        self.run_beam_search("--length_penalty 0.5")
+        for length_penalty in [0.5, 2.0]:
+            self.run_beam_search(f"--length_penalty {length_penalty}")
 
     @pytest.mark.slow
     def test_no_repeat_ngram(self):
@@ -106,6 +115,8 @@ class TestBeamSearchT5(unittest.TestCase):
             "--output_sequences_score",
             "--repetition_penalty 2.0",
         ]
+
+        self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
 
         export_t5_onnx_models(
             self.model_name,
@@ -145,20 +156,26 @@ class TestBeamSearchT5(unittest.TestCase):
         if os.path.exists(self.encoder_onnx_path):
             os.remove(self.encoder_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None):
+    def run_beam_search(self, extra_arguments: str, sentences=None, devices=["CPU", "GPU"]):
         arguments = " ".join(self.default_arguments + [extra_arguments]).split()
-        result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+        if "CPU" in devices:
+            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+
+        if "GPU" in devices and self.enable_cuda:
+            if "--use_gpu" not in arguments:
+                arguments.append("--use_gpu")
+                result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+                self.assertTrue(
+                    result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}"
+                )
+
         os.remove(self.beam_search_onnx_path)
-        self.assertTrue(result["parity"], "ORT and PyTorch result is different")
 
     @pytest.mark.slow
-    def test_cpu(self):
-        self.run_beam_search("--num_return_sequences 2")
-
-    @pytest.mark.slow
-    def test_gpu(self):
-        if torch.cuda.is_available():
-            self.run_beam_search("--use_gpu")
+    def test_return_sequences(self):
+        for return_sequences in [1, 2]:
+            self.run_beam_search(f"--num_return_sequences {return_sequences}")
 
     @pytest.mark.slow
     def test_early_stopping(self):
@@ -170,7 +187,8 @@ class TestBeamSearchT5(unittest.TestCase):
 
     @pytest.mark.slow
     def test_length_penalty(self):
-        self.run_beam_search("--length_penalty 0.5")
+        for length_penalty in [0.5, 2.0]:
+            self.run_beam_search(f"--length_penalty {length_penalty}")
 
     @pytest.mark.slow
     def test_no_repeat_ngram(self):

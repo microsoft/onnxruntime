@@ -6,17 +6,20 @@
 This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
-   python convert_beam_search.py -m gpt2 --decoder_onnx ./onnx_models/gpt2_past_fp32.onnx         \
-          --output ./onnx_models/gpt2_beam_search.onnx --output_sequences_scores
+    python convert_beam_search.py -m gpt2 --decoder_onnx ./onnx_models/gpt2_past_fp32.onnx     \
+        --output ./onnx_models/gpt2_beam_search.onnx --output_sequences_scores
 
-Example 2: convert T5 model with beam search:
-   cd ./models/t5
-   python convert_to_onnx.py -m t5-small
-   cd ../..
-   python convert_beam_search.py -m t5-small --model_type t5                                      \
-          --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
-          --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
-          --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+Example 2: convert T5 model with beam search in two steps:
+    cd ./models/t5
+    python convert_to_onnx.py -m t5-small
+    cd ../..
+    python convert_beam_search.py -m t5-small --model_type t5                                   \
+        --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
+        --encoder_decoder_init_onnx ./models/t5/onnx_models/t5-small_encoder_decoder_init.onnx  \
+        --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+
+Example 3: convert T5 model with beam search. All in one step:
+    python convert_beam_search.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
 """
 
 import argparse
@@ -25,22 +28,21 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import numpy as np
 import onnx
 import torch
 from benchmark_helper import Precision
-from onnx import helper
 from onnx import onnx_pb as onnx_proto
-from packaging import version
 from transformers import GPT2Config, GPT2LMHeadModel, GPT2Tokenizer, T5Config, T5ForConditionalGeneration, T5Tokenizer
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
 from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
 from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
 
-config: Union[GPT2Config, T5Config] = None
+sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
+from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -75,9 +77,10 @@ def parse_arguments(argv=None):
 
     parser.add_argument(
         "--decoder_onnx",
-        required=True,
+        required=False,
         type=str,
-        help="Output directory for decoder onnx model, or model path ends with .onnx",
+        default="",
+        help="Path of onnx model for decoder. Required for gpt2 model type.",
     )
 
     parser.add_argument(
@@ -85,14 +88,14 @@ def parse_arguments(argv=None):
         required=False,
         type=str,
         default="",
-        help="path of ONNX model for encoder and decoder initialization. Required for t5 model type.",
+        help="Path of ONNX model for encoder and decoder initialization. For t5 model type.",
     )
 
     parser.add_argument(
         "--output",
         required=False,
         type=str,
-        help="Output directory for beam search model, or model path ends with .onnx",
+        help="Output path for onnx model with beam search.",
     )
 
     parser.add_argument(
@@ -118,6 +121,14 @@ def parse_arguments(argv=None):
         help="do not run parity test",
     )
     parser.set_defaults(disable_parity=False)
+
+    parser.add_argument(
+        "--verbose",
+        required=False,
+        action="store_true",
+        help="Print more information",
+    )
+    parser.set_defaults(verbose=False)
 
     parser.add_argument(
         "--torch_performance",
@@ -226,7 +237,6 @@ def parse_arguments(argv=None):
 def gpt2_to_onnx(args):
     model_name = args.model_name_or_path
 
-    print(f"use convert_to_onnx.py to convert model {model_name} to onnx {args.decoder_onnx} ...")
     arguments = [
         "--model_name_or_path",
         model_name,
@@ -252,13 +262,34 @@ def gpt2_to_onnx(args):
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
         arguments.extend(["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
+
+    if args.verbose:
+        print(f"arguments for convert_to_onnx:{arguments}")
+
     convert_gpt2_to_onnx(argv=arguments)
 
 
-def shape_inference(decoder_onnx_path):
-    if version.parse(onnx.__version__) >= version.parse("1.11.0"):
-        logger.warn("SymbolicShapeInference might fail using onnx version 1.11. Please install 1.10.0 for now.")
+def t5_to_onnx(args):
+    paths = export_t5_onnx_models(
+        args.model_name_or_path,
+        args.cache_dir,
+        Path(args.output).parent,
+        use_gpu=args.use_gpu,
+        use_external_data_format=args.use_external_data_format,
+        optimize_onnx=False,
+        precision=args.precision,
+        verbose=False,
+        use_decoder_start_token=False,
+        merge_encoder_and_decoder_init=True,
+        overwrite=True,
+        disable_auto_mixed_precision=False,
+        use_int32_inputs=True,
+    )
+    args.encoder_decoder_init_onnx = paths[0]
+    args.decoder_onnx = paths[1]
 
+
+def shape_inference(decoder_onnx_path):
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
@@ -441,11 +472,20 @@ def verify_t5_encoder_decoder_init_subgraph(graph, precision):
 
 
 def convert_model(args):
-    if os.path.exists(args.decoder_onnx):
-        print(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
-    else:
-        assert args.model_type == "gpt2", "please have onnx model ready for model type that is not gpt2"
-        gpt2_to_onnx(args)
+    if args.model_type == "gpt2":
+        if os.path.exists(args.decoder_onnx):
+            print(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
+        else:
+            print(f"Convert GPT model {args.model_name_or_path} to onnx {args.decoder_onnx} ...")
+            gpt2_to_onnx(args)
+    else:  # t5
+        if args.decoder_onnx and args.encoder_decoder_init_onnx:
+            print(
+                f"skip convert_to_onnx since paths specified: {args.decoder_onnx} and {args.encoder_decoder_init_onnx}"
+            )
+        else:
+            print(f"Convert T5 model {args.model_name_or_path} to onnx ...")
+            t5_to_onnx(args)
 
     # TODO(tianleiwu): fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
     enable_shape_inference = args.model_type == "gpt2"
@@ -454,12 +494,13 @@ def convert_model(args):
         print(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx)
 
-    global config
     if args.model_type == "gpt2":
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     else:
         config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-    print(config)
+
+    if args.verbose:
+        print(config)
 
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id
@@ -499,7 +540,7 @@ def convert_model(args):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = helper.make_node(
+    node = onnx.helper.make_node(
         "BeamSearch",
         inputs=inputs,
         outputs=outputs,
@@ -508,12 +549,12 @@ def convert_model(args):
     node.domain = "com.microsoft"
     node.attribute.extend(
         [
-            helper.make_attribute("eos_token_id", eos_token_id),
-            helper.make_attribute("pad_token_id", pad_token_id),
-            helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
-            helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
-            helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-            helper.make_attribute("decoder", model.graph),
+            onnx.helper.make_attribute("eos_token_id", eos_token_id),
+            onnx.helper.make_attribute("pad_token_id", pad_token_id),
+            onnx.helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
+            onnx.helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
+            onnx.helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+            onnx.helper.make_attribute("decoder", model.graph),
         ]
     )
 
@@ -526,8 +567,8 @@ def convert_model(args):
         verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
         node.attribute.extend(
             [
-                helper.make_attribute("encoder", init_model.graph),
-                helper.make_attribute(
+                onnx.helper.make_attribute("encoder", init_model.graph),
+                onnx.helper.make_attribute(
                     "decoder_start_token_id", config.decoder_start_token_id if len(init_model.graph.input) == 3 else -1
                 ),
             ]
@@ -536,15 +577,15 @@ def convert_model(args):
     from onnx import TensorProto
 
     # graph inputs
-    input_ids = helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
-    max_length = helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
-    min_length = helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
-    num_beams = helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
-    num_return_sequences = helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
-    temperature = helper.make_tensor_value_info("temperature", TensorProto.FLOAT, [1])
-    length_penalty = helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
-    repetition_penalty = helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
-    vocab_mask = helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
+    input_ids = onnx.helper.make_tensor_value_info("input_ids", TensorProto.INT32, ["batch_size", "sequence_length"])
+    max_length = onnx.helper.make_tensor_value_info("max_length", TensorProto.INT32, [1])
+    min_length = onnx.helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
+    num_beams = onnx.helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
+    num_return_sequences = onnx.helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
+    temperature = onnx.helper.make_tensor_value_info("temperature", TensorProto.FLOAT, [1])
+    length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
+    repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
+    vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
 
     graph_inputs = [
         input_ids,
@@ -559,23 +600,23 @@ def convert_model(args):
     ]
 
     if args.prefix_vocab_mask:
-        prefix_vocab_mask = helper.make_tensor_value_info(
+        prefix_vocab_mask = onnx.helper.make_tensor_value_info(
             "prefix_vocab_mask", TensorProto.INT32, ["batch_size", vocab_size]
         )
         graph_inputs.append(prefix_vocab_mask)
 
     # graph outputs
-    sequences = helper.make_tensor_value_info(
+    sequences = onnx.helper.make_tensor_value_info(
         "sequences",
         TensorProto.INT32,
         ["batch_size", "num_return_sequences", "max_length"],
     )
 
-    sequences_scores = helper.make_tensor_value_info(
+    sequences_scores = onnx.helper.make_tensor_value_info(
         "sequences_scores", TensorProto.FLOAT, ["batch_size", "num_return_sequences"]
     )
 
-    scores = helper.make_tensor_value_info(
+    scores = onnx.helper.make_tensor_value_info(
         "scores",
         TensorProto.FLOAT,
         ["max_length - sequence_length", "batch_size", "num_beams", vocab_size],
@@ -591,7 +632,7 @@ def convert_model(args):
     if args.output_token_scores:
         graph_outputs.append(scores)
 
-    new_graph = helper.make_graph(
+    new_graph = onnx.helper.make_graph(
         [node],
         f"{args.model_type}-beam-search",
         graph_inputs,
@@ -600,7 +641,7 @@ def convert_model(args):
     )
 
     # Create the model
-    new_model = helper.make_model(
+    new_model = onnx.helper.make_model(
         new_graph,
         producer_name="onnxruntime.transformers",
         opset_imports=model.opset_import,
@@ -695,7 +736,6 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: Optional[List[
     else:
         bad_words_ids = []
 
-    global config
     config = model.config
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id
@@ -874,7 +914,6 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
     else:
         bad_words_ids = []
 
-    global config
     config = model.config
     eos_token_id = config.eos_token_id
     pad_token_id = config.eos_token_id
@@ -1009,8 +1048,19 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
 
 def main(argv=None, sentences=None):
     args = parse_arguments(argv)
-    if args.model_type == "t5":
-        assert args.encoder_decoder_init_onnx, "please export t5 to onnx models before using this tool"
+
+    if args.model_type == "gpt2":
+        if not args.decoder_onnx:
+            raise ValueError("--decoder_onnx shall be specified for gpt2 model")
+    elif args.model_type == "t5":
+        if args.encoder_decoder_init_onnx and not os.path.exists(args.encoder_decoder_init_onnx):
+            raise ValueError(f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}")
+        if args.decoder_onnx and not os.path.exists(args.decoder_onnx):
+            raise ValueError(f"Path does not exist: --decoder_onnx {args.decoder_onnx}")
+        if (args.encoder_decoder_init_onnx and not args.decoder_onnx) or (
+            args.decoder_onnx and not args.encoder_decoder_init_onnx
+        ):
+            raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
 
     convert_model(args)
 
