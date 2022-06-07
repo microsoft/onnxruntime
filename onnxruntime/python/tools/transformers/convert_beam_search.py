@@ -11,7 +11,7 @@ Example 1: convert gpt2 model with beam search:
 
 Example 2: convert T5 model with beam search:
    cd ./models/t5
-   python convert_to_onnx.py -m t5-small --use_int32_inputs
+   python convert_to_onnx.py -m t5-small
    cd ../..
    python convert_beam_search.py -m t5-small --model_type t5                                      \
           --decoder_onnx ./models/t5/onnx_models/t5-small_decoder.onnx                            \
@@ -37,8 +37,8 @@ from packaging import version
 from transformers import GPT2Config, GPT2LMHeadModel, GPT2Tokenizer, T5Config, T5ForConditionalGeneration, T5Tokenizer
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from convert_to_onnx import main as convert_gpt2_to_onnx
-from gpt2_helper import PRETRAINED_GPT2_MODELS
+from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
+from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
 
 config: Union[GPT2Config, T5Config] = None
 
@@ -252,7 +252,7 @@ def gpt2_to_onnx(args):
         #       Need change cuda kernel to support a combination of fp32 logits and fp16 past state.
         #       Currently logits and past state shall be same data type.
         arguments.extend(["--op_block_list", "Add", "LayerNormalization", "FastGelu"])
-    convert_gpt2_to_onnx(arguments)
+    convert_gpt2_to_onnx(argv=arguments)
 
 
 def shape_inference(decoder_onnx_path):
@@ -271,9 +271,7 @@ def shape_inference(decoder_onnx_path):
 
 
 def create_ort_session(model_path, use_gpu):
-    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
-    from onnxruntime import __version__ as ort_version
-    from onnxruntime import get_available_providers
+    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -307,10 +305,9 @@ def verify_gpt2_subgraph(graph, precision):
         if i >= 3:
             expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
 
-        if graph.input[i].type.tensor_type.elem_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}"
-            )
+        input_type = graph.input[i].type.tensor_type.elem_type
+        if input_type != expected_type:
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
     print("Verifying GPT-2 graph inputs: name and data type are good.")
 
     expected_outputs = ["logits"] + [f"present_{i}" for i in range(layer_count)]
@@ -322,10 +319,9 @@ def verify_gpt2_subgraph(graph, precision):
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
         expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
-        if graph.output[i].type.tensor_type.elem_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.output[i].type.tensor_type.elem_type}"
-            )
+        output_type = graph.output[i].type.tensor_type.elem_type
+        if output_type != expected_type:
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
     print("Verifying GPT-2 graph outputs: name and data type are good.")
 
     # TODO(tianleiwu): verify shapes of inputs and outputs.
@@ -368,10 +364,9 @@ def verify_t5_decoder_subgraph(graph, precision):
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
         expected_type = onnx_proto.TensorProto.INT32 if i < 2 else float_type
-        if graph.input[i].type.tensor_type.elem_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}"
-            )
+        input_type = graph.input[i].type.tensor_type.elem_type
+        if input_type != expected_type:
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
 
     # Expect outputs:
     #   logits:               (B, 1, vocab_size)
@@ -389,11 +384,9 @@ def verify_t5_decoder_subgraph(graph, precision):
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
-
-        if graph.output[i].type.tensor_type.elem_type != float_type:
-            raise ValueError(
-                f"Output {i} is expected to have onnx data type {float_type}. Got {graph.output[i].type.tensor_type.elem_type}"
-            )
+        output_type = graph.output[i].type.tensor_type.elem_type
+        if output_type != float_type:
+            raise ValueError(f"Output {i} is expected to have onnx data type {float_type}. Got {output_type}")
 
 
 def verify_t5_encoder_decoder_init_subgraph(graph, precision):
@@ -414,10 +407,9 @@ def verify_t5_encoder_decoder_init_subgraph(graph, precision):
             raise ValueError(f"Input {i} is expected to be {expected_input}. Got {graph.input[i].name}")
 
         expected_type = onnx_proto.TensorProto.INT32
-        if graph.input[i].type.tensor_type.elem_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}"
-            )
+        input_type = graph.input[i].type.tensor_type.elem_type
+        if input_type != expected_type:
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {input_type}")
 
     # Expected outputs:
     #   logits:                (B, 1, vocab_size)
@@ -441,10 +433,9 @@ def verify_t5_encoder_decoder_init_subgraph(graph, precision):
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
         expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
-        if graph.output[i].type.tensor_type.elem_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.output[i].type.tensor_type.elem_type}"
-            )
+        output_type = graph.output[i].type.tensor_type.elem_type
+        if output_type != expected_type:
+            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
 
     print("T5 encoder graph verified: name and data type of inputs and outputs are good.")
 
@@ -865,8 +856,10 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
     if sentences is None:
         sentences = [
             "translate English to French: The product is released",
-            "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
-            + "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
+            "summarize: research continues to show that pets bring real health benefits to their owners."
+            + "Having a dog around can lead to lower levels of stress for both adults and kids.",
+            # "summarize: I enjoy walking in the park. It makes my mind feel calm and refreshed. "
+            # + "I enjoy looking at the trees, flowers, and wildlife around me, and listening to sound from natural.",
         ]
 
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)
@@ -1020,9 +1013,6 @@ def main(argv=None, sentences=None):
         assert args.encoder_decoder_init_onnx, "please export t5 to onnx models before using this tool"
 
     convert_model(args)
-
-    # print("You have 30 seconds to attach a debugger...")
-    # time.sleep(30)
 
     if args.model_type == "t5":
         return test_t5_model(args, use_vocab_mask=True, sentences=sentences)
