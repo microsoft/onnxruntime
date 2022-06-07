@@ -11,15 +11,16 @@ namespace fb = flatbuffers;
 
 namespace onnxruntime {
 
-gsl::span<const ArgTypeAndIndex> KernelTypeStrResolver::ResolveKernelTypeStr(
-    const OpIdentifier& op_id, const std::string& kernel_type_str) const {
-  if (auto op_it = op_kernel_type_str_map_.find(op_id); op_it != op_kernel_type_str_map_.end()) {
-    const auto& type_str_map = op_it->second;
-    if (const auto type_str_it = type_str_map.find(kernel_type_str); type_str_it != type_str_map.end()) {
-      return type_str_it->second;
-    }
-  }
-  ORT_THROW("Failed to resolve type string '", kernel_type_str, "' for op ", op_id);
+Status KernelTypeStrResolver::ResolveKernelTypeStr(
+    const OpIdentifier& op_id, const std::string& kernel_type_str,
+    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
+  const auto op_it = op_kernel_type_str_map_.find(op_id);
+  ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
+  const auto& type_str_map = op_it->second;
+  const auto type_str_it = type_str_map.find(kernel_type_str);
+  ORT_RETURN_IF(type_str_it == type_str_map.end(), "Failed to find args for kernel type string: ", kernel_type_str);
+  resolved_args = type_str_it->second;
+  return Status::OK();
 }
 
 bool KernelTypeStrResolver::RegisterKernelTypeStrToArgsMap(OpIdentifier op_id,
@@ -28,10 +29,11 @@ bool KernelTypeStrResolver::RegisterKernelTypeStrToArgsMap(OpIdentifier op_id,
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema) {
+Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered_out) {
   auto op_id = MakeOpId(op_schema);
   if (Contains(op_kernel_type_str_map_, op_id)) {
-    return false;
+    if (registered_out) *registered_out = false;
+    return Status::OK();
   }
 
   const auto type_constraint_names = [&]() {
@@ -50,7 +52,7 @@ bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_
                               op_schema.inputs().size() + op_schema.outputs().size());
 
   auto process_formal_params = [&](ArgType arg_type,
-                                   gsl::span<const ONNX_NAMESPACE::OpSchema::FormalParameter> params) {
+                                   gsl::span<const ONNX_NAMESPACE::OpSchema::FormalParameter> params) -> Status {
     for (size_t i = 0; i < params.size(); ++i) {
       const auto& param = params[i];
       auto curr_arg_type_and_idx = ArgTypeAndIndex{arg_type, i};
@@ -74,37 +76,42 @@ bool KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_
           return formal_params[idx].GetTypeStr();
         };
 
-        ORT_ENFORCE(formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
+        ORT_RETURN_IF_NOT(formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
                     "Kernel type string already exists for formal parameter name '", param.GetName(),
                     "', but the existing argument with that formal parameter name has a different formal parameter "
                     "type string.");
       }
       args_for_io_name.push_back(std::move(curr_arg_type_and_idx));
     }
+    return Status::OK();
   };
 
-  process_formal_params(ArgType::kInput, op_schema.inputs());
-  process_formal_params(ArgType::kOutput, op_schema.outputs());
+  ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kInput, op_schema.inputs()));
+  ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kOutput, op_schema.outputs()));
 
-  return RegisterKernelTypeStrToArgsMap(std::move(op_id), std::move(kernel_type_str_map));
+  const bool registered = RegisterKernelTypeStrToArgsMap(std::move(op_id),
+                                                         std::move(kernel_type_str_map));
+  if (registered_out) *registered_out = registered;
+  return Status::OK();
 }
 
-bool KernelTypeStrResolver::RegisterNodeOpSchema(const Node& node) {
-  ORT_ENFORCE(node.Op() != nullptr, "Op schema must be available.");
+Status KernelTypeStrResolver::RegisterNodeOpSchema(const Node& node) {
+  ORT_RETURN_IF(node.Op() == nullptr, "Op schema must be available.");
   return RegisterOpSchema(*node.Op());
 }
 
-void KernelTypeStrResolver::RegisterGraphNodeOpSchemas(const Graph& graph) {
+Status KernelTypeStrResolver::RegisterGraphNodeOpSchemas(const Graph& graph) {
   for (const Node& node : graph.Nodes()) {
-    RegisterNodeOpSchema(node);
+    ORT_RETURN_IF_ERROR(RegisterNodeOpSchema(node));
 
     if (node.ContainsSubgraph()) {
       const auto subgraphs = node.GetSubgraphs();
       for (const auto& subgraph : subgraphs) {
-        RegisterGraphNodeOpSchemas(*subgraph);
+        ORT_RETURN_IF_ERROR(RegisterGraphNodeOpSchemas(*subgraph));
       }
     }
   }
+  return Status::OK();
 }
 
 Status KernelTypeStrResolver::SaveToOrtFormat(

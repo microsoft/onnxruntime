@@ -1336,6 +1336,8 @@ common::Status InferenceSession::Initialize() {
                                                                session_options_.graph_optimization_level,
                                                                minimal_build_optimization_handling));
 
+      // TODO load kernel_registry_manager_'s KernelTypeStrResolver from ORT format model, if any
+
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
                                                     execution_providers_, kernel_registry_manager_,
@@ -1414,8 +1416,7 @@ common::Status InferenceSession::Initialize() {
                                              serialized_session_state,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
-                                             saving_ort_format,
-                                             &kernel_type_str_resolver_));
+                                             saving_ort_format));
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {

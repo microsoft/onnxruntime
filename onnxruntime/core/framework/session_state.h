@@ -305,8 +305,7 @@ class SessionState {
                               const SessionOptions& session_options = {},
                               const onnxruntime::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
-                              bool saving_ort_format = false,
-                              const KernelTypeStrResolver* kernel_type_str_resolver = nullptr);
+                              bool saving_ort_format = false);
 
   SessionState* Parent() {
     return parent_;
@@ -369,7 +368,6 @@ class SessionState {
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
-                                  const KernelTypeStrResolver& kernel_type_str_resolver,
                                   bool saving_ort_format);
 #endif
 

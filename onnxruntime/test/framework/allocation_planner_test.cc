@@ -262,7 +262,9 @@ class PlannerTest : public ::testing::Test {
         state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
-    if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
+    const auto kernel_type_str_resolver = KernelTypeStrResolver::CreateFromNodeOpSchema(*p_node);
+    if (KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
+                                             kernel_type_str_resolver)) {
       auto st = reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<DummyOpKernel>(info); return Status::OK(); }));
@@ -270,7 +272,7 @@ class PlannerTest : public ::testing::Test {
     }
 
     const KernelCreateInfo* kci;
-    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", &kci));
+    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, &kci));
     kernel_create_info_map.insert({p_node->Index(), gsl::not_null<const KernelCreateInfo*>(kci)});
   }
 

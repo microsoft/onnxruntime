@@ -6,7 +6,9 @@
 #include <vector>
 #include <list>
 #include <unordered_map>
+
 #include "core/common/status.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/ort_mutex.h"
 
@@ -15,7 +17,6 @@ struct KernelCreateInfo;
 class ExecutionProviders;
 class IExecutionProvider;
 class KernelRegistry;
-class KernelTypeStrResolver;
 class OpKernel;
 class SessionState;
 
@@ -31,7 +32,7 @@ class KernelRegistryManager {
   KernelRegistryManager() = default;
 
   // Register kernels from providers
-  Status RegisterKernels(const ExecutionProviders& execution_providers) ORT_MUST_USE_RESULT;
+  Status RegisterKernels(const ExecutionProviders& execution_providers);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // The registry passed in this function has highest priority than anything already in this KernelRegistryManager,
@@ -47,7 +48,7 @@ class KernelRegistryManager {
    * Search kernel registry by provider type.
    * @param type provider type string
    * @return It returns all the possible results. The returned value may contain garbage that doesn't belong to
-   *         this provider. Caller should do the filtering. The returned value won't have no nullptrs.
+   *         this provider. Caller should do the filtering. The returned value won't have any nullptrs.
    */
   std::vector<const KernelRegistry*> GetKernelRegistriesByProviderType(const std::string& type) const {
     std::vector<const KernelRegistry*> result;
@@ -63,20 +64,12 @@ class KernelRegistryManager {
   // This function assumes the node is already assigned to an execution provider
   // Don't call this function before graph partition is done
   Status SearchKernelRegistry(const Node& node,
-                              const KernelTypeStrResolver& kernel_type_str_resolver,
-                              /*out*/ const KernelCreateInfo** kernel_create_info) const;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // This function assumes the node is already assigned to an execution provider
-  // Don't call this function before graph partition is done
-  Status SearchKernelRegistry(const Node& node,
                               /*out*/ const KernelCreateInfo** kernel_create_info) const;
 
   /**
    * Whether this node can be run on this provider
    */
   static bool HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type);
-#endif
 
   /**
    * Search the kernel registries given a kernel def hash.
@@ -89,13 +82,33 @@ class KernelRegistryManager {
                       SessionState& session_state,
                       const KernelCreateInfo& kernel_create_info, std::unique_ptr<OpKernel>& out) const;
 
+  const KernelTypeStrResolver& GetKernelTypeStrResolver() const {
+    return kernel_type_str_resolver_;
+  }
+
+  void SetKernelTypeStrResolver(KernelTypeStrResolver kernel_type_str_resolver) {
+    kernel_type_str_resolver_ = std::move(kernel_type_str_resolver);
+  }
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 
  private:
+#if !defined(ORT_MINIMAL_BUILD)
+  Status EnsureKernelTypeStrResolvesForNodeOpSchema(const Node& node) const;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   // key is provider type. Each kernel registry in this collection only belongs to one specific provider
   std::unordered_map<std::string, std::shared_ptr<KernelRegistry>> provider_type_to_registry_;
   // Each kernel registry may contain kernels from many different providers.
   // in order to search kernels from a specific provider, we have to iterate all its elements
   std::list<std::shared_ptr<KernelRegistry>> custom_kernel_registries_;
+
+  // kernel type str resolver used by kernel registries for kernel matching
+#if !defined(ORT_MINIMAL_BUILD)
+  // in a full build, this serves as a cache that is populated incrementally, so we make it `mutable`
+  // in a minimal build, it should be fully populated externally
+  mutable
+#endif
+      KernelTypeStrResolver kernel_type_str_resolver_;
 };
 }  // namespace onnxruntime

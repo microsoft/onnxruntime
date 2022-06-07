@@ -683,8 +683,6 @@ class InferenceSession {
   // If true, use the per session ones, or else the global threadpools.
   bool use_per_session_threads_;
 
-  KernelTypeStrResolver kernel_type_str_resolver_;
-
   KernelRegistryManager kernel_registry_manager_;
 
 #if !defined(ORT_MINIMAL_BUILD)

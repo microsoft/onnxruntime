@@ -119,11 +119,10 @@ void SessionState::CreateGraphInfo() {
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
-                                              const KernelTypeStrResolver& kernel_type_str_resolver,
                                               bool saving_ort_format) {
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
-    auto status = kernel_registry_manager.SearchKernelRegistry(node, kernel_type_str_resolver, &kci);
+    auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     if (!status.IsOK() && saving_ort_format) {
       // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
       // in that case we assigned the node to that EP but do not compile it into a fused node.
@@ -132,7 +131,7 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
       // is loaded in a minimal build, the compiling EP will replace this node if possible. if that's not possible for
       // some reason we can fallback to the CPU EP implementation via this hash.
       node.SetExecutionProviderType(kCpuExecutionProvider);
-      status = kernel_registry_manager.SearchKernelRegistry(node, kernel_type_str_resolver, &kci);
+      status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     }
 
     ORT_RETURN_IF_ERROR(status);
@@ -145,7 +144,6 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
     for (const auto& name_to_subgraph_session_state : entry.second) {
       SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
       ORT_RETURN_IF_ERROR(subgraph_session_state.PopulateKernelCreateInfo(kernel_registry_manager,
-                                                                          kernel_type_str_resolver,
                                                                           saving_ort_format));
     }
   }
@@ -987,8 +985,6 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
   ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
 
-  KernelTypeStrResolver kernel_type_str_resolver{};  // TODO populate this from ORT format model
-
   // TODO don't use add_kernel_and_set_node_ep_by_hash
   // look up KernelCreateInfo with hash and
   // - add KernelCreateInfo for node
@@ -1024,9 +1020,9 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       };
 
   auto add_kernel =
-      [&kernel_registry_manager, &kernel_type_str_resolver, this](const Node& node) -> Status {
+      [&kernel_registry_manager, this](const Node& node) -> Status {
     const KernelCreateInfo* kci = nullptr;
-    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(node, kernel_type_str_resolver, &kci));
+    ORT_RETURN_IF_ERROR(kernel_registry_manager.SearchKernelRegistry(node, &kci));
 
     {
       const bool inserted = kernel_create_info_map_.emplace(node.Index(),
@@ -1212,18 +1208,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                           const SessionOptions& session_options,
                                           const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
-                                          bool saving_ort_format,
-                                          const KernelTypeStrResolver* kernel_type_str_resolver) {
-#if !defined(ORT_MINIMAL_BUILD)
-  std::optional<KernelTypeStrResolver> kernel_type_str_resolver_from_graph;
-  if (kernel_type_str_resolver == nullptr) {
-    kernel_type_str_resolver_from_graph = KernelTypeStrResolver::CreateFromGraphNodeOpSchemas(graph_);
-    kernel_type_str_resolver = &*kernel_type_str_resolver;
-  }
-#else
-  ORT_RETURN_IF(kernel_type_str_resolver == nullptr, "kernel_type_str_resolver must be provided in this build.");
-#endif
-
+                                          bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
@@ -1237,8 +1222,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
-    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, *kernel_type_str_resolver,
-                                                 saving_ort_format));
+    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 #else
     ORT_UNUSED_PARAMETER(saving_ort_format);
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,

@@ -16,7 +16,6 @@ class KernelTypeStrResolver;
 
 /**
  * Each provider has a KernelRegistry. Often, the KernelRegistry only belongs to that specific provider.
- *
  */
 class KernelRegistry {
  public:
@@ -27,38 +26,24 @@ class KernelRegistry {
 
   Status Register(KernelCreateInfo&& create_info);
 
+  // Check if an execution provider can create kernel for a node and return the kernel if so
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const KernelTypeStrResolver& kernel_type_str_resolver,
                        const KernelCreateInfo** out) const;
 
-#if !defined(ORT_MINIMAL_BUILD)
-
   static bool HasImplementationOf(const KernelRegistry& r, const Node& node,
-                                  ProviderType exec_provider) {
+                                  ProviderType exec_provider,
+                                  const KernelTypeStrResolver& kernel_type_str_resolver) {
     const KernelCreateInfo* info;
-    Status st = r.TryFindKernel(node, exec_provider, &info);
+    Status st = r.TryFindKernel(node, exec_provider, kernel_type_str_resolver, &info);
     return st.IsOK();
   }
 
-  // factory functions should always return a unique_ptr for maximum flexibility
-  // for its clients unless the factory is managing the lifecycle of the pointer
-  // itself.
-  // TODO(Task:132) Make usage of unique_ptr/shared_ptr as out param consistent
-  Status TryCreateKernel(const Node& node, const IExecutionProvider& execution_provider,
-                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                         const OrtValueNameIdxMap& mlvalue_name_idx_map, FuncManager& funcs_mgr,
-                         const DataTransferManager& data_transfer_mgr,
-                         std::unique_ptr<OpKernel>& op_kernel) const;
-
-  // Check if an execution provider can create kernel for a node and return the kernel if so
-  Status TryFindKernel(const Node& node, ProviderType exec_provider,
-                       const KernelCreateInfo** out) const;
-
+#if !defined(ORT_MINIMAL_BUILD)
   // Find KernelCreateInfo in instant mode
   Status TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
                        const std::unordered_map<std::string, MLDataType>& type_constraints,
                        ProviderType exec_provider, const KernelCreateInfo** out) const;
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Try to find the kernel given a kernel def hash.

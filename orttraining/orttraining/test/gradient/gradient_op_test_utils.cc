@@ -185,6 +185,8 @@ void GradientOpTester::Run(
 
         bool valid = true;
 
+        KernelTypeStrResolver kernel_type_str_resolver{};
+
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {
           if (node.OpType() == kConstant)
@@ -199,13 +201,14 @@ void GradientOpTester::Run(
           }
 
           auto reg = execution_provider->GetKernelRegistry();
+          ASSERT_STATUS_OK(kernel_type_str_resolver.RegisterNodeOpSchema(node));
           const KernelCreateInfo* kci;
-          auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
+          auto st = reg->TryFindKernel(node, execution_provider->Type(), kernel_type_str_resolver, &kci);
           if (!st.IsOK()) {
             if (!node.CanBeInlined()) {
               valid = false;
             } else {
-              // TODO: hanlde the nested function case.
+              // TODO: handle the nested function case.
               std::unique_ptr<Function> node_func;
               st = node.GetInstantiateFunctionBody(node_func);
               if (!st.IsOK()) {
@@ -213,9 +216,9 @@ void GradientOpTester::Run(
               } else {
                 for (auto& sub_node : node_func->Body().Nodes()) {
                   if (sub_node.OpType() != "Constant") {
-                    auto sub_reg = execution_provider->GetKernelRegistry();
+                    ASSERT_STATUS_OK(kernel_type_str_resolver.RegisterNodeOpSchema(sub_node));
                     const KernelCreateInfo* sub_kci;
-                    st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
+                    st = reg->TryFindKernel(sub_node, execution_provider->Type(), kernel_type_str_resolver, &sub_kci);
                     if (!st.IsOK()) {
                       valid = false;
                       break;

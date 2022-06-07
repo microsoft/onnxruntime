@@ -61,7 +61,9 @@ bool MatchKernelDefTypes(const Node& node,
   const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
   for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
     const auto op_id = MakeOpId(node);
-    const auto constraint_args = kernel_type_str_resolver.ResolveKernelTypeStr(op_id, kernel_type_str);
+    gsl::span<const ArgTypeAndIndex> constraint_args{};
+    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(op_id, kernel_type_str,
+                                                                     constraint_args));
 
     for (const auto [arg_type, formal_arg_idx] : constraint_args) {
       const NodeArg* arg;
@@ -192,32 +194,6 @@ Status KernelRegistry::TryFindKernel(const Node& node,
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status KernelRegistry::TryCreateKernel(const Node& node,
-                                       const IExecutionProvider& execution_provider,
-                                       const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
-                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                       FuncManager& funcs_mgr,
-                                       const DataTransferManager& data_transfer_mgr,
-                                       /*out*/ std::unique_ptr<OpKernel>& op_kernel) const {
-  const KernelCreateInfo* kernel_create_info = nullptr;
-  ORT_RETURN_IF_ERROR(TryFindKernel(node, execution_provider.Type(), &kernel_create_info));
-  OpKernelInfo kernel_info(node,
-                           *kernel_create_info->kernel_def,
-                           execution_provider,
-                           constant_initialized_tensors,
-                           ort_value_name_idx_map,
-                           data_transfer_mgr);
-  return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
-}
-
-Status KernelRegistry::TryFindKernel(const Node& node,
-                                     ProviderType exec_provider,
-                                     const KernelCreateInfo** out) const {
-  KernelTypeStrResolver kernel_type_str_resolver{};
-  kernel_type_str_resolver.RegisterNodeOpSchema(node);
-  return TryFindKernel(node, exec_provider, kernel_type_str_resolver, out);
-}
-
 Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
                                      const std::unordered_map<std::string, MLDataType>& type_constraints,
                                      ProviderType exec_provider, const KernelCreateInfo** kernel_out) const {

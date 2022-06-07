@@ -1117,6 +1117,7 @@ void OpTester::Run(
           continue;
 
         bool valid = true;
+        const auto kernel_type_str_resolver = KernelTypeStrResolver::CreateFromGraphNodeOpSchemas(graph);
 
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {
@@ -1134,11 +1135,13 @@ void OpTester::Run(
               provider_type == onnxruntime::kDnnlExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
-          if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
+          if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type(),
+                                                   kernel_type_str_resolver)) {
             valid = false;
             for (auto& custom_session_registry : custom_session_registries_) {
               if (KernelRegistry::HasImplementationOf(*custom_session_registry->GetKernelRegistry(),
-                                                      node, execution_provider->Type())) {
+                                                      node, execution_provider->Type(),
+                                                      kernel_type_str_resolver)) {
                 valid = true;
                 break;
               }
