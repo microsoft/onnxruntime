@@ -336,6 +336,9 @@ namespace OperatorHelper
         static const int sc_sinceVer_Transpose = 13;
         static const int sc_sinceVer_Unsqueeze = 13;
         static const int sc_sinceVer_ReduseSum = 13;
+        static const int sc_sinceVer_Softmax = 13;
+        static const int sc_sinceVer_LogSoftmax = 13;
+        static const int sc_sinceVer_Hardmax = 13;
     } // namespace OnnxOperatorSet13
 
     namespace OnnxOperatorSet14

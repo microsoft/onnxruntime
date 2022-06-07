@@ -24,8 +24,8 @@ struct EnumTraits<DML_TENSOR_TYPE>
 template <>
 struct EnumTraits<DML_OPERATOR_TYPE>
 {
-    static constexpr auto ValueCount = 157;
-    static constexpr size_t ActivationFunctionCount = 21;
+    static constexpr auto ValueCount = 160;
+    static constexpr size_t ActivationFunctionCount = 24;
 };
 
 template <>
@@ -1030,6 +1030,12 @@ struct OperatorDescTraits<DML_ACTIVATION_HARDMAX_OPERATOR_DESC>
 };
 
 template <>
+struct OperatorDescTraits<DML_ACTIVATION_HARDMAX1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_HARDMAX1;
+};
+
+template <>
 struct OperatorDescTraits<DML_ACTIVATION_HARD_SIGMOID_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_HARD_SIGMOID;
@@ -1057,6 +1063,12 @@ template <>
 struct OperatorDescTraits<DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_LOG_SOFTMAX;
+};
+
+template <>
+struct OperatorDescTraits<DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1;
 };
 
 template <>
@@ -1099,6 +1111,12 @@ template <>
 struct OperatorDescTraits<DML_ACTIVATION_SOFTMAX_OPERATOR_DESC>
 {
     static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_SOFTMAX;
+};
+
+template <>
+struct OperatorDescTraits<DML_ACTIVATION_SOFTMAX1_OPERATOR_DESC>
+{
+    static constexpr DML_OPERATOR_TYPE Type = DML_OPERATOR_ACTIVATION_SOFTMAX1;
 };
 
 template <>
@@ -1996,6 +2014,12 @@ struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_HARDMAX>
 };
 
 template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_HARDMAX1>
+{
+    using DescType = DML_ACTIVATION_HARDMAX1_OPERATOR_DESC;
+};
+
+template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_HARD_SIGMOID>
 {
     using DescType = DML_ACTIVATION_HARD_SIGMOID_OPERATOR_DESC;
@@ -2023,6 +2047,12 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_LOG_SOFTMAX>
 {
     using DescType = DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1>
+{
+    using DescType = DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_DESC;
 };
 
 template <>
@@ -2065,6 +2095,12 @@ template <>
 struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_SOFTMAX>
 {
     using DescType = DML_ACTIVATION_SOFTMAX_OPERATOR_DESC;
+};
+
+template <>
+struct OperatorTypeTraits<(DML_OPERATOR_TYPE)DML_OPERATOR_ACTIVATION_SOFTMAX1>
+{
+    using DescType = DML_ACTIVATION_SOFTMAX1_OPERATOR_DESC;
 };
 
 template <>
@@ -2402,6 +2438,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_CELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_HARDMAX:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_HARDMAX_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ACTIVATION_HARDMAX1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_HARDMAX1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_HARD_SIGMOID:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_HARD_SIGMOID_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_IDENTITY:
@@ -2412,6 +2450,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_LINEAR_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_LOG_SOFTMAX_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_LOG_SOFTMAX1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_PARAMETERIZED_RELU:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_PARAMETERIZED_RELU_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_PARAMETRIC_SOFTPLUS:
@@ -2426,6 +2466,8 @@ auto OperatorTypeVisitor(DML_OPERATOR_TYPE type, Visitor&& visitor, Ts&&... args
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SIGMOID_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_SOFTMAX:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SOFTMAX_OPERATOR_DESC{}, std::forward<Ts>(args)...);
+    case DML_OPERATOR_ACTIVATION_SOFTMAX1:
+        return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SOFTMAX1_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_SOFTPLUS:
         return std::invoke(std::forward<Visitor>(visitor), DML_ACTIVATION_SOFTPLUS_OPERATOR_DESC{}, std::forward<Ts>(args)...);
     case DML_OPERATOR_ACTIVATION_SOFTSIGN:

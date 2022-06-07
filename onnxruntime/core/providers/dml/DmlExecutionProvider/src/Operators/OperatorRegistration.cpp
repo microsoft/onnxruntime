@@ -179,8 +179,11 @@ DML_OP_EXTERN_CREATION_FUNCTION(Elu);
 DML_OP_EXTERN_CREATION_FUNCTION(Celu);
 DML_OP_EXTERN_CREATION_FUNCTION(Selu);
 DML_OP_EXTERN_CREATION_FUNCTION(Softmax);
+DML_OP_EXTERN_CREATION_FUNCTION(Softmax13);
 DML_OP_EXTERN_CREATION_FUNCTION(LogSoftmax);
+DML_OP_EXTERN_CREATION_FUNCTION(LogSoftmax13);
 DML_OP_EXTERN_CREATION_FUNCTION(Hardmax);
+DML_OP_EXTERN_CREATION_FUNCTION(Hardmax13);
 DML_OP_EXTERN_CREATION_FUNCTION(Softsign);
 DML_OP_EXTERN_CREATION_FUNCTION(Softplus);
 DML_OP_EXTERN_CREATION_FUNCTION(ParametricSoftplus);
@@ -643,16 +646,13 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  Selu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    // TODO: Update Softmax-13/LogSoftmax-13/Hardmax-13 family ops behavior to align with other frameworks https://github.com/onnx/onnx/pull/2879
-    // {REG_INFO(  13,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  Softmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  LogSoftmax,                         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     11,  LogSoftmax,                         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    // TODO: Update Softmax-13/LogSoftmax-13/Hardmax-13 family ops behavior to align with other frameworks https://github.com/onnx/onnx/pull/2879
-    // {REG_INFO(  13,  LogSoftmax,                         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  LogSoftmax,                         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Hardmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Hardmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    // TODO: Update Softmax-13/LogSoftmax-13/Hardmax-13 family ops behavior to align with other frameworks https://github.com/onnx/onnx/pull/2879
-    // {REG_INFO(  13,  Hardmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  Hardmax,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Softsign,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Softplus,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  ParametricSoftplus,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
