@@ -25,7 +25,7 @@ public:
 
         ActivationOperatorDescUnion operatorDesc = {};
 
-        int coerceAxis = TensorAxis::DoNotCoerce;
+        std::vector<uint32_t> dmlAxes;
 
         switch (operatorType)
         {
@@ -39,7 +39,29 @@ public:
         case DML_OPERATOR_ACTIVATION_HARDMAX:
             {
                 const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
-                coerceAxis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1), onnxDimCount);
+                int axis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1), onnxDimCount);
+                std::vector<int32_t> onnxAxes(onnxDimCount - axis);
+                std::iota(onnxAxes.begin(), onnxAxes.end(), static_cast<int32_t>(axis));
+
+                dmlAxes.resize(onnxDimCount - axis);
+                GetDmlAdjustedAxes(onnxAxes, onnxDimCount, m_inputTensorDescs.front().GetDimensionCount(), /*out*/ dmlAxes);
+
+                operatorDesc.hardmax1.Axes = dmlAxes.data();
+                operatorDesc.hardmax1.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
+            }
+            break;
+
+        case DML_OPERATOR_ACTIVATION_SOFTMAX1:
+        case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1:
+        case DML_OPERATOR_ACTIVATION_HARDMAX1:
+            {
+                const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
+                int onnxAxis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, -1), onnxDimCount);
+
+                dmlAxes.push_back(GetDmlAdjustedAxis(onnxAxis, onnxDimCount, m_inputTensorDescs.front().GetDimensionCount()));
+
+                operatorDesc.hardmax1.Axes = dmlAxes.data();
+                operatorDesc.hardmax1.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
             }
             break;
 
@@ -100,12 +122,6 @@ public:
             break;
         }
 
-        if (coerceAxis != TensorAxis::DoNotCoerce)
-        {
-            m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelCreationContext, 0, coerceAxis);
-            m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelCreationContext, 0, coerceAxis);
-        }
-
         gsl::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
         std::vector<DML_TENSOR_DESC> inputDescs;
         std::vector<DML_TENSOR_DESC> outputDescs;
@@ -135,8 +151,23 @@ public:
             operatorDesc.elu.OutputTensor = outputDescs.data();
         }
 
-        DML_OPERATOR_DESC opDesc = { operatorType, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { remappedOperatorType(operatorType), &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
+    }
+
+private:
+    DML_OPERATOR_TYPE remappedOperatorType(const DML_OPERATOR_TYPE operatorType) const {
+        switch (operatorType)
+        {
+            case DML_OPERATOR_ACTIVATION_HARDMAX:
+                return DML_OPERATOR_ACTIVATION_HARDMAX1;
+            case DML_OPERATOR_ACTIVATION_SOFTMAX:
+                return DML_OPERATOR_ACTIVATION_SOFTMAX1;
+            case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX:
+                return DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1;
+            default:
+                return operatorType;
+        }
     }
 };
 
