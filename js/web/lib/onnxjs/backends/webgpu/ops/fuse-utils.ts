@@ -3,9 +3,6 @@
 
 import {Attribute} from '../../../attribute';
 import {MAX_CLIP, MIN_CLIP} from '../../../util';
-import {GlslValueFunction} from '../glsl-definitions';
-
-import {glslClip, glslRelu, glslSigmoid} from './unary-op';
 
 export interface InternalActivationAttributes {
   readonly activation: string;
@@ -15,26 +12,20 @@ export interface InternalActivationAttributes {
 }
 
 export function getActicationSnippet(attributes: InternalActivationAttributes) {
-  let func: GlslValueFunction;
   switch (attributes.activation) {
     case 'Relu':
-      func = glslRelu();
-      break;
+      return {activationFunction: '', applyActivation: 'value = max(value, 0.0);'};
     case 'Sigmoid':
-      func = glslSigmoid();
-      break;
+      return {activationFunction: '', applyActivation: 'value = (1.0 / (1.0 + exp(-value)));'};
     case 'Clip':
-      func = glslClip(attributes.clipMin!, attributes.clipMax!);
-      break;
-    // TODO: adding other activations that can be fused.
+      return {
+        activationFunction: `let clip_min_=f32(${attributes.clipMin!});let clip_max_=f32(${attributes.clipMax!});`,
+        applyActivation: 'value = clamp(value, clip_min_, clip_max_);'
+      };
+      // TODO: adding other activations that can be fused.
     default:
       return {activationFunction: '', applyActivation: ''};
   }
-
-  const activationName = func.name;
-  const activationFunction = func.body;
-  const applyActivation = `value = ${activationName}_(value);`;
-  return {activationFunction, applyActivation};
 }
 
 export const parseInternalActivationAttributes = (attributes: Attribute): InternalActivationAttributes => {

@@ -8,6 +8,7 @@ import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
+import {WORKGROUP_SIZE} from './common';
 import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 
 export const matMul: OperatorAsyncImplementation<InternalActivationAttributes> =
@@ -36,42 +37,55 @@ function createMatmulProgramInfo(
   if (!outputShape) {
     throw new Error('Can\'t use matmul on the given tensors');
   }
-  const coordsDataType = getCoordsDataType(outputShape.length);
-  const allGlChannels = getGlChannels();
+  const outputSize = ShapeUtil.size(outputShape);
+  // TODO: support broadcasting
+
+  const dataType = 'f32';  // TODO: support other data type
   const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
-  const hasBias = inputs.length > 2;
-  const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
-  const getBiasForMatmulSnippet =
-      hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, false)}` : '';
-
-  const rank = outputShape.length;
-  const arank = aShape.length;
-  const brank = bShape.length;
-  const sharedDim = aShape[aShape.length - 1];
+  const M = outputShape[outputShape.length - 2];
+  const K = aShape[aShape.length - 1];
+  const N = outputShape[outputShape.length - 1];
   const shaderSource = `
-    ${activationFunction}
-    ${getBiasForMatmulSnippet}
-    float process(int indices[${rank}]) {
-        int a[${arank}];
-        int b[${brank}];
-        bcastMatmulIndices_A(indices, a);
-        bcastMatmulIndices_B(indices, b);
+  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  let M: u32 = ${M}u;
+  let N: u32 = ${N}u;
+  let K: u32 = ${K}u;
 
-        float value;
-        for (int k=0; k<${sharedDim}; ++k) {
-            a[${arank - 1}] = k;
-            b[${brank - 2}] = k;
-            value += _A(a) * _B(b);
-        }
-        ${processBias}
-        ${applyActivation}
-        return value;
-    }`;
+  @group(0) @binding(0) var<storage, read> a : array<${dataType}>;
+  @group(0) @binding(1) var<storage, read> b : array<${dataType}>;
+  @group(0) @binding(2) var<storage, write> output : array<${dataType}>;
+
+  ${activationFunction}
+
+  @stage(compute) @workgroup_size(WORKGROUP_SIZE)
+  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+
+    // Guard against out-of-bounds work group sizes
+    if (global_id.x >= ${outputSize}u) {
+      return;
+    }
+
+    let stack = global_id.x / (M * N);
+    let mn = global_id.x % (M * N);
+    let n = global_id.x % N;
+    let m = mn / N;
+
+    let offsetA = stack * (M * K);
+    let offsetB = stack * (K * N);
+
+    var value = ${dataType}(0);
+    for (var k: u32 = 0u; k<${K}u; k++) {
+      value += a[offsetA + m * K + k] * b[offsetB + k * N + n];
+    }
+    ${applyActivation}
+    output[global_id.x] = value;
+  }`;
   return {
     ...metadata,
-    output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
+    outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
     shaderSource,
+    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
   };
 }
 
@@ -99,40 +113,3 @@ const validateInputs = (inputs: Tensor[]): void => {
     throw new Error('inputs types should match');
   }
 };
-
-export function getBiasForMatmul(
-    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[], outShape: readonly number[],
-    isPacked: boolean): string {
-  let unpackedCoordsSnippet = '';
-  const inRank = inShape.length;
-  const outRank = outShape.length;
-  const rankDiff = outRank - inRank;
-  if (outRank < 2 && inRank > 0) {
-    unpackedCoordsSnippet = 'coords';
-  } else {
-    unpackedCoordsSnippet = inShape.map((s, i) => `coords.${allGlChannels[i + rankDiff]}`).join(', ');
-  }
-  const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
-  const coordsSnippet = broadcastDims.map(d => `coords.${allGlChannels[d + rankDiff]} = 0;`).join('\n');
-  const inSize = ShapeUtil.size(inShape);
-  const isInputScalar = inSize === 1;
-  let output = 'vec4(outputValue.xx, outputValue.yy)';
-  if (isInputScalar) {
-    output = 'vec4(outputValue.x)';
-  }
-  const getBiasForMatmulSource = isPacked ? `
-vec4 getBiasForMatmul() {
-  ${coordsDataType} coords = getOutputCoords();
-  ${coordsSnippet}
-  vec4 outputValue = getBias(${unpackedCoordsSnippet});
-  return ${output};
-}` :
-                                            `
-float getBiasForMatmul() {
-  ${coordsDataType} coords = getOutputCoords();
-  ${coordsSnippet}
-  return getBias(coords.x);
-}`;
-
-  return getBiasForMatmulSource;
-}
