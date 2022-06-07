@@ -34,6 +34,8 @@ class KernelRegistryManager;
 
 namespace onnxruntime {
 
+class KernelTypeStrResolver;
+
 /**
    Logical device representation.
 */
@@ -93,10 +95,13 @@ class IExecutionProvider {
      contains more than one node. The node indexes contained in sub-graphs may
      have overlap, and it's ONNXRuntime's responsibility to do the partition
      and decide whether a node will be assigned to <*this> execution provider.
+     `kernel_type_str_resolver` can be used to look up kernels in
+     `kernel_registries`.
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const std::vector<const KernelRegistry*>& kernel_registries) const;
+                const std::vector<const KernelRegistry*>& kernel_registries,
+                const KernelTypeStrResolver& kernel_type_str_resolver) const;
 
   /**
      Get kernel registry per execution provider type.
@@ -258,15 +263,15 @@ class IExecutionProvider {
     return logger_;
   }
 
-  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance. 
+  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance.
    The model hash is also returned if you wish to include that in the MetaDef name to ensure uniqueness across models.
    @param graph_viewer[in] Graph viewer that GetCapability was called with. Can be for the main graph or nested graph.
-   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model. 
-                          This is created using the model path if available, 
+   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model.
+                          This is created using the model path if available,
                           or the model input names and the output names from all nodes in the main graph.
    @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
             compiled kernels, so the name must be unique and deterministic across models and sessions.
-            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
+            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;

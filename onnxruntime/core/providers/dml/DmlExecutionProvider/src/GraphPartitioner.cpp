@@ -252,6 +252,7 @@ namespace Dml
     bool IsNodeSupportedByDml(
         const onnxruntime::Node& node,
         const onnxruntime::KernelRegistry& registry,
+        const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const InternalRegistrationInfoMap& internalRegInfoMap,
         bool allow64BitInputThroughStrides,
@@ -261,7 +262,8 @@ namespace Dml
         ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
         const onnxruntime::KernelCreateInfo* createInfo;
-        Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo);
+        Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, kernel_type_str_resolver,
+                                           &createInfo);
         if (!st.IsOK())
         {
             return false;
@@ -293,6 +295,7 @@ namespace Dml
         const onnxruntime::GraphViewer& graph,
         const onnxruntime::Node& node,
         const std::vector<const onnxruntime::KernelRegistry*>& dmlRegistries,
+        const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const InternalRegistrationInfoMap& internalRegInfoMap,
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
@@ -310,7 +313,8 @@ namespace Dml
         for (auto registry : dmlRegistries) 
         {
             bool allow64BitInputThroughStrides = true;
-            if (IsNodeSupportedByDml(node, *registry, supportedDeviceDataTypeMask, internalRegInfoMap, allow64BitInputThroughStrides, nodeNameToPartitionMap))
+            if (IsNodeSupportedByDml(node, *registry, kernel_type_str_resolver, supportedDeviceDataTypeMask,
+                                     internalRegInfoMap, allow64BitInputThroughStrides, nodeNameToPartitionMap))
             {
                 *isDmlNode = true;
 
@@ -321,7 +325,8 @@ namespace Dml
                 // Ensure that shape information is known statically for the inputs and outputs of the node,
                 // which is required for MLGraph compilation.
                 const onnxruntime::KernelCreateInfo* createInfo;
-                if (!registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo).IsOK())
+                if (!registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider, kernel_type_str_resolver,
+                                             &createInfo).IsOK())
                 {
                     continue;
                 }
@@ -609,6 +614,7 @@ namespace Dml
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
+        const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
@@ -666,6 +672,7 @@ namespace Dml
                 graph,
                 node,
                 registries,
+                kernel_type_str_resolver,
                 supportedDeviceDataTypeMask,
                 internalRegInfoMap,
                 &nodeNameToPartitionMap,
@@ -786,6 +793,7 @@ namespace Dml
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
+        const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix
@@ -801,6 +809,7 @@ namespace Dml
             graph,
             internalRegInfoMap, 
             registries,
+            kernel_type_str_resolver,
             supportedDeviceDataTypeMask,
             graphNodePropertyMap, 
             requiredInitializerMap);

@@ -54,7 +54,8 @@ TvmSoExecutionProvider::~TvmSoExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TvmSoExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/,
+                                      const KernelTypeStrResolver& /*kernel_type_str_resolver*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;

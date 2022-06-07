@@ -2349,7 +2349,8 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                     const std::vector<const KernelRegistry*>& kernel_registries,
+                                     const KernelTypeStrResolver& kernel_type_str_resolver) const {
   InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -2363,7 +2364,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     }
 
     for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(node, Type(), &cuda_kernel_def);
+      auto st = registry->TryFindKernel(node, Type(), kernel_type_str_resolver, &cuda_kernel_def);
 
       // at least one registry has a CUDA kernel for this node
       if (st.IsOK())
@@ -2411,7 +2412,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For CUDA EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, kernel_type_str_resolver, candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)

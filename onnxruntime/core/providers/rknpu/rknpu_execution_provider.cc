@@ -65,7 +65,8 @@ std::vector<std::vector<int>> RknpuExecutionProvider::GetSupportedNodes(
 
 std::vector<std::unique_ptr<ComputeCapability>>
 RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/,
+                                      const KernelTypeStrResolver& /*kernel_type_str_resolver*/) const {
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
 

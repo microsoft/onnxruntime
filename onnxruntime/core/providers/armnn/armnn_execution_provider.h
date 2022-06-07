@@ -26,10 +26,6 @@ class ArmNNExecutionProvider : public IExecutionProvider {
   explicit ArmNNExecutionProvider(const ArmNNExecutionProviderInfo& info);
   virtual ~ArmNNExecutionProvider();
 
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
-
   const void* GetExecutionHandle() const noexcept override {
     // The ArmNN interface does not return anything interesting.
     return nullptr;

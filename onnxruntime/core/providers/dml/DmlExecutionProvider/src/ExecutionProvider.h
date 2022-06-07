@@ -83,7 +83,8 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
         GetCapability(
             const onnxruntime::GraphViewer& graph,
-            const std::vector<const onnxruntime::KernelRegistry*>& registries
+            const std::vector<const onnxruntime::KernelRegistry*>& registries,
+            const KernelTypeStrResolver& kernel_type_str_resolver
             ) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;
@@ -244,7 +245,8 @@ namespace Dml
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
             GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries) const final override;
+                const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries,
+                const KernelTypeStrResolver& kernel_type_str_resolver) const final override;
 
         onnxruntime::common::Status OnSessionInitializationEnd() override
         { 

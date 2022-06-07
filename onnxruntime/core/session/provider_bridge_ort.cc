@@ -211,8 +211,9 @@ struct ProviderHostImpl : ProviderHost {
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const std::string& provider_type,
                                                      gsl::span<const KernelRegistry* const> kernel_registries,
+                                                     const KernelTypeStrResolver& kernel_type_str_resolver,
                                                      gsl::span<const NodeIndex> tentative_nodes) override {
-    return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
+    return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, kernel_type_str_resolver, tentative_nodes);
   }
 
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
@@ -265,7 +266,11 @@ struct ProviderHostImpl : ProviderHost {
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
   void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::TryInsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                    const std::vector<const KernelRegistry*>& kernel_registries) override { return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries); }
+                                                                                    const std::vector<const KernelRegistry*>& kernel_registries,
+                                                                                    const KernelTypeStrResolver& kernel_type_str_resolver) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries, kernel_type_str_resolver);
+  }
+
   // !!! this api will be deprecated soon
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
     return p->IExecutionProvider::Compile(fused_nodes, node_compute_funcs);
@@ -569,8 +574,10 @@ struct ProviderHostImpl : ProviderHost {
   void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
   Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override { return p->Register(std::move(create_info)); }
 
-  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) override {
-    return p->TryFindKernel(node, exec_provider, out);
+  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider,
+                                       const KernelTypeStrResolver& kernel_type_str_resolver,
+                                       const KernelCreateInfo** out) override {
+    return p->TryFindKernel(node, exec_provider, kernel_type_str_resolver, out);
   }
 
   // PrimitiveDataTypeBase (wrapped)

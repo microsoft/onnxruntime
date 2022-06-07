@@ -86,12 +86,13 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProvider::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries) const
+        const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries,
+        const KernelTypeStrResolver& kernel_type_str_resolver) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
-        return m_impl->GetCapability(graph, kernel_registries);
+        return m_impl->GetCapability(graph, kernel_registries, kernel_type_str_resolver);
 #else
-        return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_registries);
+        return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_registries, kernel_type_str_resolver);
 #endif
     }
 
@@ -521,7 +522,8 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const std::vector<const onnxruntime::KernelRegistry*>& registries) const
+        const std::vector<const onnxruntime::KernelRegistry*>& registries,
+        const KernelTypeStrResolver& kernel_type_str_resolver) const
     {
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask();
@@ -530,6 +532,7 @@ namespace Dml
             graph,
             *m_internalRegInfoMap,
             registries,
+            kernel_type_str_resolver,
             deviceDataTypeMask,
             m_kernelRegistry.get(),
             partitionKernelPrefix

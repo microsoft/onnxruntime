@@ -499,7 +499,11 @@ struct KernelRegistry final {
 
   Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
 
-  Status TryFindKernel(const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) const { return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, out); }
+  Status TryFindKernel(const Node& node, ProviderType exec_provider,
+                       const KernelTypeStrResolver& kernel_type_str_resolver,
+                       const KernelCreateInfo** out) const {
+    return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, kernel_type_str_resolver, out);
+  }
 
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;

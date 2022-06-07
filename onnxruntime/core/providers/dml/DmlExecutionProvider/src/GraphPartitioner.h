@@ -45,6 +45,7 @@ namespace Dml
         const onnxruntime::GraphViewer& graph,
         const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
+        const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
@@ -55,6 +56,7 @@ namespace Dml
         const onnxruntime::GraphViewer& graph,
         const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
         const std::vector<const onnxruntime::KernelRegistry*>& registries,
+        const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix
@@ -63,6 +65,7 @@ namespace Dml
     bool IsNodeSupportedByDml(
         const onnxruntime::Node& node,
         const onnxruntime::KernelRegistry& registry,
+        const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
         bool allow64BitInputThroughStrides,

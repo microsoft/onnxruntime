@@ -28,12 +28,13 @@ AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                  const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                  const std::vector<const KernelRegistry*>& kernel_registries,
+                                  const KernelTypeStrResolver& kernel_type_str_resolver) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 #if !defined(ORT_MINIMAL_BUILD)
   for (auto& node : graph.Nodes()) {
     for (auto registry : kernel_registries) {
-      if (KernelRegistry::HasImplementationOf(*registry, node, Type())) {
+      if (KernelRegistry::HasImplementationOf(*registry, node, Type(), kernel_type_str_resolver)) {
         std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes.push_back(node.Index());
         result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));

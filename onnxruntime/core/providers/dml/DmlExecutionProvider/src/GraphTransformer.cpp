@@ -11,6 +11,7 @@
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/graph_utils.h"
 
 namespace Dml
@@ -84,6 +85,8 @@ namespace Dml
         // graph while iterating over it
         std::vector<NodeToAdd> nodesToAdd;
 
+        const auto kernel_type_str_resolver = onnxruntime::KernelTypeStrResolver::CreateFromGraphNodeOpSchemas(*graph);
+
         for (auto& node : graph->Nodes())
         {
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
@@ -93,6 +96,7 @@ namespace Dml
             if (!IsNodeSupportedByDml(
                 node,
                 *registry,
+                kernel_type_str_resolver,
                 m_providerImpl->GetSupportedDeviceDataTypeMask(),
                 *m_providerImpl->GetInternalRegistrationInfoMap().get(),
                 allow64BitInputThroughStrides,
@@ -116,7 +120,8 @@ namespace Dml
 
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!onnxruntime::KernelRegistry::HasImplementationOf(*registry, outputNode, onnxruntime::kDmlExecutionProvider)) 
+            if (!onnxruntime::KernelRegistry::HasImplementationOf(*registry, kernel_type_str_resolver, outputNode,
+                                                                  onnxruntime::kDmlExecutionProvider))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;

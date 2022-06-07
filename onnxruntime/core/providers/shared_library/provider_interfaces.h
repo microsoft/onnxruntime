@@ -178,6 +178,7 @@ struct ProviderHost {
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const std::string& provider_type,
                                                              gsl::span<const KernelRegistry* const> kernel_registries,
+                                                             const KernelTypeStrResolver& kernel_type_str_resolver,
                                                              gsl::span<const NodeIndex> tentative_nodes) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
@@ -219,7 +220,8 @@ struct ProviderHost {
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                            const std::vector<const KernelRegistry*>& kernel_registries) = 0;
+                                                                                            const std::vector<const KernelRegistry*>& kernel_registries,
+                                                                                            const KernelTypeStrResolver& kernel_type_str_resolver) = 0;
   //!!! This API will be deprecated soon
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
@@ -495,7 +497,9 @@ struct ProviderHost {
   virtual std::shared_ptr<KernelRegistry> KernelRegistry__construct() = 0;
   virtual void KernelRegistry__operator_delete(KernelRegistry* p) = 0;
   virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
-  virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) = 0;
+  virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider,
+                                               const KernelTypeStrResolver& kernel_type_str_resolver,
+                                               const KernelCreateInfo** out) = 0;
 
   // PrimitiveDataTypeBase
   virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;

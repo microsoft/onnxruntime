@@ -116,7 +116,9 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                                  TransformLayoutFunction transform_layout) {
   {
     GraphViewer graph_viewer(graph);
-    capabilities = current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()));
+    capabilities = current_ep.GetCapability(graph_viewer,
+                                            kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()),
+                                            kernel_registry_mgr.GetKernelTypeStrResolver());
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -142,7 +144,9 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     if (modified) {
       capabilities.clear();
       GraphViewer graph_viewer(graph);
-      capabilities = current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()));
+      capabilities = current_ep.GetCapability(graph_viewer,
+                                              kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()),
+                                              kernel_registry_mgr.GetKernelTypeStrResolver());
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
