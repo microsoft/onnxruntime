@@ -15,7 +15,7 @@
 #include <cmath>
 
 // NOTE: These were added to the standard op set. We register them under the MS domain
-// for backwards compatibility, but new users should use the standard ops instead.
+// for backwards compatibility, but new users should use the standard ops instead. Ideally these would be deleted.
 namespace onnxruntime {
 namespace signal {
 
@@ -66,42 +66,28 @@ inline const ONNX_NAMESPACE::TensorShapeProto* getOptionalInputShape(ONNX_NAMESP
 std::function<void(OpSchema&)> CosineSumWindowOpDocGenerator(const char* name) {
   return [name](OpSchema& schema) {
     std::string doc;
-    POPULATE_OP_DOC_STR(
-        doc = R"DOC(
+    POPULATE_OP_DOC_STR(doc = R"DOC(
 Generates a {name} window as described in the paper https://ieeexplore.ieee.org/document/1455106.
 )DOC";
-        ReplaceAll(doc, "{name}", name););
+                        ReplaceAll(doc, "{name}", name););
 
     schema.SetDoc(doc);
     schema.Attr("output_datatype",
                 "The data type of the output tensor. "
                 "Strictly must be one of the values from DataType enum in TensorProto whose values correspond to T2. "
                 "The default value is 1 = FLOAT. ",
-                AttributeProto::INT,
-                static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT));
+                AttributeProto::INT, static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT));
     schema.Attr("periodic",
                 "If 1, returns a window to be used as periodic function. If 0, return a symmetric window. "
                 "When 'periodic' is specified, hann computes a window of length size + 1 and returns the first size "
                 "points. The default value is 1. ",
-                AttributeProto::INT,
-                static_cast<int64_t>(1));
-    schema.Input(0,
-                 "size",
-                 "A scalar value indicating the length of the window.",
-                 "T1",
-                 OpSchema::Single,
-                 true,
-                 1,
+                AttributeProto::INT, static_cast<int64_t>(1));
+    schema.Input(0, "size", "A scalar value indicating the length of the window.", "T1", OpSchema::Single, true, 1,
                  OpSchema::NonDifferentiable);
-    schema.Output(0,
-                  "output",
+    schema.Output(0, "output",
                   "A Hann window with length: size. "
                   "The output has the shape: [size].",
-                  "T2",
-                  OpSchema::Single,
-                  true,
-                  1,
-                  OpSchema::NonDifferentiable);
+                  "T2", OpSchema::Single, true, 1, OpSchema::NonDifferentiable);
     schema.TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
       // Update the output data type to the output_datatype
       auto output_datatype = getAttribute(ctx, "output_datatype",
@@ -135,7 +121,47 @@ Generates a {name} window as described in the paper https://ieeexplore.ieee.org/
   };
 }
 
+ONNX_NAMESPACE::NodeProto WindowOpFunctionNode(const char* name) {
+  ONNX_NAMESPACE::NodeProto node;
+  node.set_op_type(std::string(name) + "Window");
+
+  auto* output_datatype = node.add_attribute();
+  output_datatype->set_name("output_datatype");
+  output_datatype->set_ref_attr_name("output_datatype");
+
+  auto* periodic = node.add_attribute();
+  periodic->set_name("periodic");
+  periodic->set_ref_attr_name("periodic");
+
+  node.add_input("size");
+  node.add_output("output");
+  return node;
+}
+
 void RegisterSignalSchemas() {
+  ONNX_NAMESPACE::NodeProto dft_function_node;
+  dft_function_node.set_op_type("DFT");
+
+  auto* dft_function_onesided = dft_function_node.add_attribute();
+  dft_function_onesided->set_name("onesided");
+  dft_function_onesided->set_ref_attr_name("onesided");
+
+  auto* dft_function_axis = dft_function_node.add_attribute();
+  dft_function_axis->set_name("axis");
+  dft_function_axis->set_ref_attr_name("axis");
+
+  auto* dft_function_inverse = dft_function_node.add_attribute();
+  dft_function_inverse->set_name("inverse");
+  dft_function_inverse->set_ref_attr_name("inverse");
+
+  dft_function_node.add_input("input");
+  dft_function_node.add_input("dft_length");
+  dft_function_node.add_output("output");
+
+  ONNX_NAMESPACE::OperatorSetIdProto onnx_op_set_17;
+  onnx_op_set_17.set_domain(kOnnxDomain);
+  onnx_op_set_17.set_version(17);
+
   MS_SIGNAL_OPERATOR_SCHEMA(DFT)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
@@ -144,44 +170,30 @@ void RegisterSignalSchemas() {
             "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier "
             "transform satisfies the conjugate symmetry.The output tensor will return the first floor(n_fft/2) + 1 "
             "values from the DFT. Values can be 0 or 1.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(0))
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT, static_cast<int64_t>(0))
       .Attr("axis",
             "The axis on which to perform the DFT. By default this value is set to 0, which corresponds to the first "
             "dimension after the batch index. This value must be less than signal_dimN, where signal_dimN is the "
             "number of dimensions in the signal.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(0))
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT, static_cast<int64_t>(0))
       .Attr("inverse",
             "Whether to perform the inverse discrete fourier transform. By default this value is set to 0, which "
             "corresponds to false.",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Input(0,
-             "input",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(0, "input",
              "For real input, the following shape is expected: [batch_idx][signal_dim1][signal_dim2]..."
              "[signal_dimN][1].  For complex input, the following shape is expected: "
              "[batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]. The first dimension is the batch dimension. "
              "The following N dimensions correspond to the signal's dimensions. "
              "The final dimension represents the real and imaginary parts of the value in that order.",
-             "T1",
-             OpSchema::Single,
-             true,
-             1,
-             OpSchema::NonDifferentiable)
-      .Input(1,
-             "dft_length",
+             "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Input(1, "dft_length",
              "The length of the signal."
              "If greater than the axis dimension, the signal will be zero-padded up to dft_length. "
              "If less than the axis dimension, only the first dft_length values will be used as the signal. "
              "It's an optional value. ",
-             "T2",
-             OpSchema::Optional,
-             true,
-             1,
-             OpSchema::NonDifferentiable)
-      .Output(0,
-              "output",
+             "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "output",
               "The Fourier Transform of the input vector."
               "If onesided is 0, the following shape is expected: "
               "[batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]. "
@@ -193,14 +205,9 @@ void RegisterSignalSchemas() {
               "[batch_idx][signal_dim1][signal_dim2]...[floor(signal_dimN/2)+1][2]. "
               "The signal_dim at the specified axis is equal to the dft_length.",
               "T1")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain scalar length types to int64_t.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(int32)", "tensor(int64)"}, "Constrain scalar length types to int64_t.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         bool is_onesided = static_cast<bool>(getAttribute(ctx, "onesided", 0));
         bool inverse = static_cast<bool>(getAttribute(ctx, "inverse", 0));
@@ -225,11 +232,7 @@ void RegisterSignalSchemas() {
         auto rank = input_shape.dim_size();
 
         if (!(-rank <= axis && axis < rank)) {
-          fail_shape_inference(
-              "axis attribute value ",
-              axis,
-              " is invalid for a tensor of rank ",
-              rank);
+          fail_shape_inference("axis attribute value ", axis, " is invalid for a tensor of rank ", rank);
         }
 
         auto axis_idx = (axis >= 0 ? axis : axis + rank);
@@ -284,26 +287,23 @@ void RegisterSignalSchemas() {
         }
 
         updateOutputShape(ctx, 0, result_shape_proto);
-      });
+      })
+      .FunctionBody({dft_function_node}, {onnx_op_set_17});
 
-  ONNX_NAMESPACE::NodeProto idft_function_body_node;
-  idft_function_body_node.set_op_type("DFT");
+  ONNX_NAMESPACE::NodeProto idft_function_node;
+  idft_function_node.set_op_type("DFT");
 
-  auto* idft_function_body_inverse = idft_function_body_node.add_attribute();
-  idft_function_body_inverse->set_name("inverse");
-  idft_function_body_inverse->set_i(1);
+  auto* idft_function_inverse = idft_function_node.add_attribute();
+  idft_function_inverse->set_name("inverse");
+  idft_function_inverse->set_i(1);
 
-  auto* idft_function_body_axis = idft_function_body_node.add_attribute();
-  idft_function_body_axis->set_name("axis");
-  idft_function_body_axis->set_ref_attr_name("axis");
+  auto* idft_function_axis = idft_function_node.add_attribute();
+  idft_function_axis->set_name("axis");
+  idft_function_axis->set_ref_attr_name("axis");
 
-  idft_function_body_node.add_input("input");
-  idft_function_body_node.add_input("dft_length");
-  idft_function_body_node.add_output("output");
-
-  ONNX_NAMESPACE::OperatorSetIdProto idft_function_body_op_set;
-  idft_function_body_op_set.set_domain(kOnnxDomain);
-  idft_function_body_op_set.set_version(17);
+  idft_function_node.add_input("input");
+  idft_function_node.add_input("dft_length");
+  idft_function_node.add_output("output");
 
   MS_SIGNAL_OPERATOR_SCHEMA(IDFT)
       .SetDomain(kMSExperimentalDomain)
@@ -313,10 +313,8 @@ void RegisterSignalSchemas() {
             "The axis on which to perform the DFT. By default this value is set to 0, which corresponds to the first "
             "dimension after the batch index."
             "This value must be less than signal_dimN, where signal_dimN is the number of dimensions in the signal.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(0))
-      .Input(0,
-             "input",
+            AttributeProto::AttributeType::AttributeProto_AttributeType_INT, static_cast<int64_t>(0))
+      .Input(0, "input",
              "For real multi-dimensional input, the following shape is expected: "
              "[batch_idx][signal_dim1][signal_dim2]...[signal_dimN][1]."
              "For complex multi-dimensional input, the following shape is expected: "
@@ -324,36 +322,21 @@ void RegisterSignalSchemas() {
              "The first dimension is the batch dimension."
              "The final dimension represents the real and imaginary parts of the value.",
              "T1")
-      .Input(1,
-             "dft_length",
+      .Input(1, "dft_length",
              "The length of the signal."
              "If greater than the axis dimension, the signal will be zero-padded up to dft_length. "
              "If less than the axis dimension, only the first dft_length values will be used as the signal. "
              "It's an optional value. ",
-             "T2",
-             OpSchema::Optional,
-             true,
-             1,
-             OpSchema::NonDifferentiable)
-      .Output(0,
-              "output",
+             "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "output",
               "The inverse discrete Fourier transform of the input. "
               "The signal_dim at the specified axis is equal to the dft_length."
               "The expected shape is [batch_idx][signal_dim1][signal_dim2]...[signal_dimN][2]"
               "For all types of input, the last dimension of the output represents the components of a complex number.",
-              "T1",
-              OpSchema::Single,
-              true,
-              1,
-              OpSchema::NonDifferentiable)
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(int64)"},
-          "Constrain scalar length types to int64_t.")
+              "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(int64)"}, "Constrain scalar length types to int64_t.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         auto& input_shape = getInputShape(ctx, 0);
@@ -369,84 +352,61 @@ void RegisterSignalSchemas() {
 
         updateOutputShape(ctx, 0, result_shape);
       })
-      .FunctionBody({idft_function_body_node}, {idft_function_body_op_set});
+      .FunctionBody({idft_function_node}, {onnx_op_set_17});
+
+  ONNX_NAMESPACE::NodeProto stft_function_node;
+  stft_function_node.set_op_type("STFT");
+
+  auto* stft_function_onesided = idft_function_node.add_attribute();
+  stft_function_onesided->set_name("onesided");
+  stft_function_onesided->set_ref_attr_name("onesided");
+
+  stft_function_node.add_input("signal");
+  stft_function_node.add_input("frame_step");
+  stft_function_node.add_input("window");
+  stft_function_node.add_input("frame_length");
+  stft_function_node.add_output("output");
 
   MS_SIGNAL_OPERATOR_SCHEMA(STFT)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(STFT)DOC")
-      .Attr(
-          "onesided",
-          "If onesided is 1, only values for w in [0, 1, 2, ..., floor(n_fft/2) + 1] are returned because "
-          "the real-to-complex Fourier transform satisfies the conjugate symmetry, i.e., X[m, w] = X[m,w] = "
-          "X[m,n_fft-w]*. Note if the input or window tensors are complex, then onesided output is not possible. "
-          "Enabling onesided with real inputs performs a Real-valued fast Fourier transform (RFFT)."
-          "When invoked with real or complex valued input, the default value is 1. "
-          "Values can be 0 or 1.",
-          AttributeProto::INT,
-          static_cast<int64_t>(1))
-      .Input(0,
-             "signal",
+      .Attr("onesided",
+            "If onesided is 1, only values for w in [0, 1, 2, ..., floor(n_fft/2) + 1] are returned because "
+            "the real-to-complex Fourier transform satisfies the conjugate symmetry, i.e., X[m, w] = X[m,w] = "
+            "X[m,n_fft-w]*. Note if the input or window tensors are complex, then onesided output is not possible. "
+            "Enabling onesided with real inputs performs a Real-valued fast Fourier transform (RFFT)."
+            "When invoked with real or complex valued input, the default value is 1. "
+            "Values can be 0 or 1.",
+            AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "signal",
              "Input tensor representing a real or complex valued signal. "
              "For real input, the following shape is expected: [batch_size][signal_length][1]. "
              "For complex input, the following shape is expected: [batch_size][signal_length][2], where "
              "[batch_size][signal_length][0] represents the real component and [batch_size][signal_length][1] "
              "represents the imaginary component of the signal.",
-             "T1",
-             OpSchema::Single,
-             true,
-             1,
+             "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .Input(1, "frame_step", "The number of samples to step between successive DFTs.", "T2", OpSchema::Single, true, 1,
              OpSchema::NonDifferentiable)
-      .Input(1,
-             "frame_step",
-             "The number of samples to step between successive DFTs.",
-             "T2",
-             OpSchema::Single,
-             true,
-             1,
-             OpSchema::NonDifferentiable)
-      .Input(2,
-             "window",
+      .Input(2, "window",
              "A tensor representing the window that will be slid over the signal."
              "The window must have rank 1 with shape: [window_shape]. "
              "It's an optional value. ",
-             "T1",
-             OpSchema::Optional,
-             true,
-             1,
-             OpSchema::NonDifferentiable)
-      .Input(3,
-             "frame_length",
+             "T1", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Input(3, "frame_length",
              "A scalar representing the size of the DFT. "
              "It's an optional value.",
-             "T2",
-             OpSchema::Optional,
-             true,
-             1,
-             OpSchema::NonDifferentiable)
-      .Output(0,
-              "output",
+             "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(0, "output",
               "The Short-time Fourier Transform of the signals."
               "If onesided is 1, the output has the shape: [batch_size][frames][dft_unique_bins][2], where "
               "dft_unique_bins is frame_length // 2 + 1 (the unique components of the DFT) "
               "If onesided is 0, the output has the shape: [batch_size][frames][frame_length][2], where frame_length "
               "is the length of the DFT.",
-              "T1",
-              OpSchema::Single,
-              true,
-              1,
-              OpSchema::NonDifferentiable)
-      .TypeConstraint(
-          "T1",
-          {"tensor(float)",
-           "tensor(float16)",
-           "tensor(double)",
-           "tensor(bfloat16)"},
-          "Constrain signal and output to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain scalar length types to int64_t.")
+              "T1", OpSchema::Single, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain signal and output to float tensors.")
+      .TypeConstraint("T2", {"tensor(int32)", "tensor(int64)"}, "Constrain scalar length types to int64_t.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -553,116 +513,50 @@ void RegisterSignalSchemas() {
         result_shape_proto.add_dim()->set_dim_value(dft_size);
         result_shape_proto.add_dim()->set_dim_value(2);
         updateOutputShape(ctx, 0, result_shape_proto);
-      });
+      })
+      .FunctionBody({stft_function_node}, {onnx_op_set_17});
 
   // Window Functions
   MS_SIGNAL_OPERATOR_SCHEMA(HannWindow)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .FillUsing(CosineSumWindowOpDocGenerator("Hann"))
-      .TypeConstraint(
-          "T1",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain the input size to int64_t.")
-      .TypeConstraint(
-          "T2",
-          ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
-          "Constrain output types to numeric tensors.")
-      .FunctionBody(R"ONNX(
-        {
-          A0 = Constant <value = float {0.5}>()
-          A1 = Constant <value = float {0.5}>()
-          A2 = Constant <value = float {0.0}>()
-          Zero = Constant <value = float {0.0}>()
-          One = Constant <value = float {1.0}>()
-          Two = Constant <value = float {2.0}>()
-          Tau = Constant <value = float {6.2831853}>()
-          Size_FP = Cast <to = 1> (size)
-          AngularIncrement = Div (Tau, Size_FP)
-          Range = Range (Zero, Size_FP, One)
-          RangeAngular = Mul (Range, AngularIncrement)
-          TwoRangeAngular = Mul (RangeAngular, Two)
-          CosTwoRangeAngular = Cos (TwoRangeAngular)
-          A2_Component = Mul (A2, CosTwoRangeAngular)
-          CosRangeAngular = Cos (RangeAngular)
-          A1_Component = Mul (A1, CosRangeAngular)
-          Temp0 = Add (A1_Component, A2_Component)
-          Temp1 = Sub (A0, Temp0)
-          output = Cast <to : int = @output_datatype> (Temp1)
-        }
-        )ONNX");
+      .TypeConstraint("T1", {"tensor(int32)", "tensor(int64)"}, "Constrain the input size to int64_t.")
+      .TypeConstraint("T2", ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
+                      "Constrain output types to numeric tensors.")
+      .FunctionBody({WindowOpFunctionNode("Hann")}, {onnx_op_set_17});
 
   MS_SIGNAL_OPERATOR_SCHEMA(HammingWindow)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .FillUsing(CosineSumWindowOpDocGenerator("Hamming"))
-      .TypeConstraint(
-          "T1",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain the input size to int64_t.")
-      .TypeConstraint(
-          "T2",
-          ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
-          "Constrain output types to numeric tensors.")
-      .FunctionBody(R"ONNX(
-        {
-          A0 = Constant <value = float {0.54347826087}>()
-          A1 = Constant <value = float {0.45652173913}>()
-          A2 = Constant <value = float {0.0}>()
-          Zero = Constant <value = float {0.0}>()
-          One = Constant <value = float {1.0}>()
-          Two = Constant <value = float {2.0}>()
-          Tau = Constant <value = float {6.2831853}>()
-          Size_FP = Cast <to = 1> (size)
-          AngularIncrement = Div (Tau, Size_FP)
-          Range = Range (Zero, Size_FP, One)
-          RangeAngular = Mul (Range, AngularIncrement)
-          TwoRangeAngular = Mul (RangeAngular, Two)
-          CosTwoRangeAngular = Cos (TwoRangeAngular)
-          A2_Component = Mul (A2, CosTwoRangeAngular)
-          CosRangeAngular = Cos (RangeAngular)
-          A1_Component = Mul (A1, CosRangeAngular)
-          Temp0 = Add (A1_Component, A2_Component)
-          Temp1 = Sub (A0, Temp0)
-          output = Cast <to : int = @output_datatype> (Temp1)
-        }
-        )ONNX");
+      .TypeConstraint("T1", {"tensor(int32)", "tensor(int64)"}, "Constrain the input size to int64_t.")
+      .TypeConstraint("T2", ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
+                      "Constrain output types to numeric tensors.")
+      .FunctionBody({WindowOpFunctionNode("Hamming")}, {onnx_op_set_17});
 
   MS_SIGNAL_OPERATOR_SCHEMA(BlackmanWindow)
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .FillUsing(CosineSumWindowOpDocGenerator("Blackman"))
-      .TypeConstraint(
-          "T1",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain the input size to int64_t.")
-      .TypeConstraint(
-          "T2",
-          ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
-          "Constrain output types to numeric tensors.")
-      .FunctionBody(R"ONNX(
-        {
-          A0 = Constant <value = float {0.42}>()
-          A1 = Constant <value = float {0.5}>()
-          A2 = Constant <value = float {0.08}>()
-          Zero = Constant <value = float {0.0}>()
-          One = Constant <value = float {1.0}>()
-          Two = Constant <value = float {2.0}>()
-          Tau = Constant <value = float {6.2831853}>()
-          Size_FP = Cast <to = 1> (size)
-          AngularIncrement = Div (Tau, Size_FP)
-          Range = Range (Zero, Size_FP, One)
-          RangeAngular = Mul (Range, AngularIncrement)
-          TwoRangeAngular = Mul (RangeAngular, Two)
-          CosTwoRangeAngular = Cos (TwoRangeAngular)
-          A2_Component = Mul (A2, CosTwoRangeAngular)
-          CosRangeAngular = Cos (RangeAngular)
-          A1_Component = Mul (A1, CosRangeAngular)
-          Temp0 = Add (A1_Component, A2_Component)
-          Temp1 = Sub (A0, Temp0)
-          output = Cast <to : int = @output_datatype> (Temp1)
-        }
-        )ONNX");
+      .TypeConstraint("T1", {"tensor(int32)", "tensor(int64)"}, "Constrain the input size to int64_t.")
+      .TypeConstraint("T2", ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
+                      "Constrain output types to numeric tensors.")
+      .FunctionBody({WindowOpFunctionNode("Blackman")}, {onnx_op_set_17});
+
+  ONNX_NAMESPACE::NodeProto mel_function_node;
+  stft_function_node.set_op_type("MelWeightMatrix");
+
+  auto* mel_function_output_datatype = idft_function_node.add_attribute();
+  mel_function_output_datatype->set_name("output_datatype");
+  mel_function_output_datatype->set_ref_attr_name("output_datatype");
+
+  mel_function_node.add_input("num_mel_bins");
+  mel_function_node.add_input("dft_length");
+  mel_function_node.add_input("sample_rate");
+  mel_function_node.add_input("lower_edge_hertz");
+  mel_function_node.add_input("upper_edge_hertz");
+  mel_function_node.add_output("output");
 
   static const char* MelWeightMatrix_doc = R"DOC(
 Generate a MelWeightMatrix that can be used to re-weight a Tensor containing a linearly sampled frequency spectra
@@ -686,45 +580,17 @@ linear scale spectrum values (e.g. STFT magnitudes) to generate a "mel spectrogr
             "Strictly must be one of the types from DataType enum in TensorProto.",
             ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
             static_cast<int64_t>(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT))
-      .Input(0,
-             "num_mel_bins",
-             "The number of bands in the mel spectrum.",
-             "T1")
-      .Input(1,
-             "dft_length",
-             "The size of the FFT.",
-             "T1")
-      .Input(2,
-             "sample_rate",
-             "",
-             "T1")
-      .Input(3,
-             "lower_edge_hertz",
-             "",
-             "T2")
-      .Input(4,
-             "upper_edge_hertz",
-             "",
-             "T2")
-      .Output(0,
-              "output",
-              "The MEL Matrix",
-              "T3")
-      .TypeConstraint(
-          "T1",
-          {"tensor(int32)", "tensor(int64)"},
-          "Constrain to integer tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(float)",
-           "tensor(float16)",
-           "tensor(double)",
-           "tensor(bfloat16)"},
-          "Constrain to float tensors")
-      .TypeConstraint(
-          "T3",
-          ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
-          "Constrain to any numerical types.")
+      .Input(0, "num_mel_bins", "The number of bands in the mel spectrum.", "T1")
+      .Input(1, "dft_length", "The size of the FFT.", "T1")
+      .Input(2, "sample_rate", "", "T1")
+      .Input(3, "lower_edge_hertz", "", "T2")
+      .Input(4, "upper_edge_hertz", "", "T2")
+      .Output(0, "output", "The MEL Matrix", "T3")
+      .TypeConstraint("T1", {"tensor(int32)", "tensor(int64)"}, "Constrain to integer tensors.")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain to float tensors")
+      .TypeConstraint("T3", ONNX_NAMESPACE::OpSchema::all_numeric_types_with_bfloat(),
+                      "Constrain to any numerical types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto output_datatype = getAttribute(
             ctx, "output_datatype", static_cast<int64_t>(onnx::TensorProto::DataType::TensorProto_DataType_FLOAT));
@@ -758,7 +624,8 @@ linear scale spectrum values (e.g. STFT magnitudes) to generate a "mel spectrogr
           result_shape.add_dim()->set_dim_value(num_mel_bins_value);
           updateOutputShape(ctx, 0, result_shape);
         }
-      });
+      })
+      .FunctionBody({mel_function_node}, {onnx_op_set_17});
 }
 
 }  // namespace signal
