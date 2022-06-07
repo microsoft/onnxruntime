@@ -58,8 +58,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace xnnpack;
 
-XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
-    : IExecutionProvider{kXnnpackExecutionProvider, true} {
+XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
+    : IExecutionProvider{kXnnpackExecutionProvider, true}, xnnpack_thread_pool_ (new XnnpackThreadPool())
+{
   // TODO:
   //   - Create `struct xnn_allocator` instance that wraps the ORT allocator and provide in the call to xnn_initialize
   //   - Override IExecutionProvider::RegisterAllocator to share the CPU EP's allocator/arena instead of creating a
@@ -83,6 +84,7 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
       });
 
   InsertAllocator(CreateAllocator(device_info));
+  xnnpack_thread_pool_->InitializeWithPoolSize(info.xnn_thread_pool_size);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCapability(

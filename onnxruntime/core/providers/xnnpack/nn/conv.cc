@@ -166,7 +166,7 @@ bool Conv::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer&
   return supported;
 }
 
-Conv::Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_{info} {
+Conv::Conv(const OpKernelInfo& info) : XnnpackKernel(info), conv_attrs_{info} {
   // get values from any fusion with an activation
   if (info.GetAttr<std::string>("activation", &conv_attrs_.activation).IsOK()) {
     std::vector<float> activation_params;
@@ -281,15 +281,20 @@ Status Conv::Compute(OpKernelContext* context) const {
   if (Y->Shape().Size() == 0) {
     return Status::OK();
   }
+  xnn_status status;
+  pthreadpool_t t_pool = GetThreadPool();
 
-  xnn_status status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), N, H, W, X.Data<float>(), Y->MutableData<float>(),
-                                                       nullptr /*threadpool*/);  // TBD: how to handle threading
+  if (is_op0_initilized == false) {
+    status = xnn_setup_convolution2d_nhwc_f32(op0_.get(), N, H, W, X.Data<float>(), Y->MutableData<float>(),
+                                              t_pool /*threadpool*/);  // TBD: how to handle threading
 
-  if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_f32 returned ", status);
+    if (status != xnn_status_success) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_f32 returned ", status);
+    }
+    is_op0_initilized = true;
   }
 
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(op0_.get(), t_pool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

@@ -469,6 +469,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
+#ifdef USE_XNNPACK
+    OrtXnnpackProviderOptions xnnpack_options{0, 0};
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Xnnpack(session_options, &xnnpack_options));
+#else
+    ORT_THROW("XNNPack is not supported in this build\n");
+#endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }

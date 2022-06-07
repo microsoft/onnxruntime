@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Xnnpack, _In_ OrtSessionOptions* options) 
-ORT_ALL_ARGS_NONNULL;
+ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Xnnpack, _In_ OrtSessionOptions* options, _In_ OrtXnnpackProviderOptions* ep_options)
+    ORT_ALL_ARGS_NONNULL;
 
 #ifdef __cplusplus
 }

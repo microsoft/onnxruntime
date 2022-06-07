@@ -75,7 +75,7 @@ bool MaxPool::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphView
 }
 
 MaxPool::MaxPool(const OpKernelInfo& info)
-    : OpKernel(info),
+    : XnnpackKernel(info),
       pool_attrs_{info, "MaxPool", info.node().SinceVersion()} {
   uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs_.pads[0]);
   uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs_.pads[1]);

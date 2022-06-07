@@ -190,6 +190,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kXnnpackExecutionProvider;
         } else {
           return false;
         }
