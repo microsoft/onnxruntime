@@ -156,7 +156,7 @@ public:
     }
 
 private:
-    DML_OPERATOR_TYPE remappedOperatorType(const DML_OPERATOR_TYPE operatorType) const noexpect{
+    DML_OPERATOR_TYPE remappedOperatorType(const DML_OPERATOR_TYPE operatorType) const {
         switch (operatorType)
         {
             case DML_OPERATOR_ACTIVATION_HARDMAX:
