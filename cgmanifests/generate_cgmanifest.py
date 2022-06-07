@@ -72,7 +72,7 @@ proc = subprocess.run(
         "foreach",
         "--quiet",
         "--recursive",
-        "{} {} $toplevel/$sm_path".format(
+        "'{}' '{}' $toplevel/$sm_path".format(
             normalize_path_separators(sys.executable),
             normalize_path_separators(os.path.join(SCRIPT_DIR, "print_submodule_info.py")),
         ),

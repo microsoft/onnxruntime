@@ -7,25 +7,17 @@
 # --------------------------------------------------------------------------
 import abc
 import itertools
+import uuid
 from enum import Enum
 from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import ModelProto, TensorProto, helper
-from onnx import onnx_pb as onnx_proto
+from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime
 
-from .quant_utils import (
-    QuantType,
-    apply_plot,
-    clone_model_with_shape_infer,
-    load_model,
-    model_has_infer_metadata,
-    smooth_distribution,
-)
-from .registry import QLinearOpsRegistry
+from .quant_utils import apply_plot, clone_model_with_shape_infer, load_model, smooth_distribution
 
 
 class CalibrationMethod(Enum):
@@ -203,52 +195,37 @@ class MinMaxCalibrater(CalibraterBase):
         """
         model = clone_model_with_shape_infer(self.model)
 
-        added_nodes = []
-        added_outputs = []
-        tensors, value_infos = self.select_tensors_to_calibrate(model)
+        tensors, _ = self.select_tensors_to_calibrate(model)
+        reshape_shape_name = str(uuid.uuid4())
+        reshape_shape = numpy_helper.from_array(np.array([1], dtype=np.int64), reshape_shape_name)
+        model.graph.initializer.append(reshape_shape)
 
-        for tensor in tensors:
-
+        def add_reduce_min_max(tensor_name, reduce_op_name):
             # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
             # To make the code simple, we always let keepdims to be 1.
             keepdims = 1
 
-            # dim could be:
-            #   [dim_param: "batch_size", dim_value: 256, dim_value: 36, dim_value: 64],
-            #   [dim_value: 0],
-            #   ...
-            # Please see the definition of TensorShapeProto https://github.com/onnx/onnx/blob/master/onnx/onnx.proto#L651
-            dim = value_infos[tensor].type.tensor_type.shape.dim
-            shape = (1,) if len(dim) == 1 else tuple(1 for i in range(len(dim)))
-
-            # Adding ReduceMin nodes
-            reduce_min_name = tensor + "_ReduceMin"
-            reduce_min_node = onnx.helper.make_node(
-                "ReduceMin",
-                [tensor],
-                [tensor + "_ReduceMin"],
-                reduce_min_name,
-                keepdims=keepdims,
+            # Adding ReduceMin/ReduceMax nodes: ReduceMin/ReduceMax -> Reshape-> (output)
+            reduce_output = tensor_name + "_" + reduce_op_name
+            intermediate_output = reduce_output + "_Reshape"
+            reduce_node = onnx.helper.make_node(
+                reduce_op_name, [tensor_name], [intermediate_output], keepdims=keepdims, name=reduce_output
             )
 
-            added_nodes.append(reduce_min_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, shape))
-
-            # Adding ReduceMax nodes
-            reduce_max_name = tensor + "_ReduceMax"
-            reduce_max_node = onnx.helper.make_node(
-                "ReduceMax",
-                [tensor],
-                [tensor + "_ReduceMax"],
-                reduce_max_name,
-                keepdims=keepdims,
+            reshape_node = onnx.helper.make_node(
+                "Reshape",
+                inputs=[intermediate_output, reshape_shape_name],
+                outputs=[reduce_output],
+                name=intermediate_output,
             )
 
-            added_nodes.append(reduce_max_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, shape))
+            model.graph.node.extend([reduce_node, reshape_node])
+            model.graph.output.append(helper.make_tensor_value_info(reduce_output, TensorProto.FLOAT, [1]))
 
-        model.graph.node.extend(added_nodes)
-        model.graph.output.extend(added_outputs)
+        for tensor in tensors:
+            add_reduce_min_max(tensor, "ReduceMin")
+            add_reduce_min_max(tensor, "ReduceMax")
+
         onnx.save(
             model,
             self.augmented_model_path,
