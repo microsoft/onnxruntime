@@ -116,7 +116,7 @@ To build on Windows with `--build_java` enabled you must also:
 * set JAVA_HOME to the path to your JDK install
   * this could be the JDK from Android Studio, or a [standalone JDK install](https://www.oracle.com/java/technologies/javase-downloads.html)
   * e.g. Powershell: `$env:JAVA_HOME="C:\Program Files\Java\jdk-15"` CMD: `set JAVA_HOME=C:\Program Files\Java\jdk-15`
-* install [Gradle](https://gradle.org/install/) and add the directory to the PATH
+* install [Gradle version 6.8.3](https://gradle.org/install/) and add the directory to the PATH
   * e.g. Powershell: `$env:PATH="$env:PATH;C:\Gradle\gradle-6.6.1\bin"` CMD: `set PATH=%PATH%;C:\Gradle\gradle-6.6.1\bin`
 * run the build from an admin window
   * the Java build needs permissions to create a symlink, which requires an admin window
