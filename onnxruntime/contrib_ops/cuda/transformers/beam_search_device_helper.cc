@@ -180,9 +180,10 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
 
   // copy sequence lengths to GPU
   // since next_positions is only needed to update feeds after subgraph execution, so it is fine to use Async here.
-  // cudaMemsetAsync(beam_state->next_positions.data(), 0, beam_state->next_positions.size_bytes(), cuda_stream);
-  cudaMemcpyAsync(beam_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
-                  cudaMemcpyHostToDevice, cuda_stream);
+  if (!beam_state->next_positions.empty()) {  // next_positions is empty for T5
+    cudaMemcpyAsync(beam_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
+                    cudaMemcpyHostToDevice, cuda_stream);
+  }
 }
 
 template <typename T>

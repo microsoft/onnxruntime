@@ -226,7 +226,7 @@ Status UpdateDecoderFeeds(
 // Utility Functions
 // ---------------------------------------------------------------
 template <typename T>
-OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator);
+void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

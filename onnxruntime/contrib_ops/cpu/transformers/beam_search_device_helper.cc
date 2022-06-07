@@ -666,7 +666,7 @@ template Status UpdateDecoderFeeds<float>(
     int num_beams,
     const transformers::IConsoleDumper* dumper);
 
-template OrtValue ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator);
+template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib
