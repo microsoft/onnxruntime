@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 #include <cstdlib>
+#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 namespace test {
@@ -298,5 +299,40 @@ TEST(BFCArenaTest, TestBackoffDoesntHang) {
   BFCArena a(std::unique_ptr<IAllocator>(new BadAllocator()), 10 * 1024 * 1024);
   EXPECT_THROW(a.Alloc(1024), OnnxRuntimeException) << "Arena should be unable to allocate memory";
 }
+
+TEST(StreamAwareArenaTest, TwoStreamAllocation) {
+  StreamAwareArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, false);
+  CheckStats(&a, 0, 0, 0, 0);
+
+  int stream1, stream2;
+
+  BFCArena::StreamId stream1_id = static_cast<BFCArena::StreamId>(&stream1);
+  BFCArena::StreamId stream2_id = static_cast<BFCArena::StreamId>(&stream2);
+
+  auto* stream1_chunk_a = a.AllocOnStream(4096, stream1_id);
+  auto* stream2_chunk_a = a.AllocOnStream(4096, stream2_id);
+  a.Free(stream1_chunk_a->ptr);
+  auto* stream2_chunk_b = a.AllocOnStream(4096, stream2_id);
+  EXPECT_EQ(stream2_chunk_b->stream_id, stream2_id);
+  // stream2 can't reuse stream1's chunk
+  EXPECT_NE(stream2_chunk_b->ptr, stream1_chunk_a->ptr);
+  a.Free(stream2_chunk_a->ptr);
+  auto* stream1_chunk_c = a.AllocOnStream(4096, stream1_id);
+  // it should pick the first chunk
+  EXPECT_EQ(stream1_chunk_c->ptr, stream1_chunk_a->ptr);
+  auto* stream1_chunk_d = a.AllocOnStream(4096, stream1_id);
+  // it shouldn't pick stream2_chunk_a's buffer
+  EXPECT_NE(stream1_chunk_d->ptr, stream2_chunk_a->ptr);
+  a.Free(stream2_chunk_b->ptr);
+  // test clean stream2
+  a.ReleaseStreamBuffers(stream2_id);
+  auto stream1_chunk_e = a.AllocOnStream(4096, stream1_id);
+  // now it should pick the stream2_chunk_a's buffer
+  EXPECT_EQ(stream1_chunk_e->ptr, stream2_chunk_a->ptr);
+  a.Free(stream1_chunk_c->ptr);
+  a.Free(stream1_chunk_d->ptr);
+  a.Free(stream1_chunk_e->ptr);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
