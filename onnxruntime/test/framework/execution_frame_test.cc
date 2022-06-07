@@ -301,7 +301,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   ASSERT_EQ(p->GetBlock(4)->offset_, kAllocAlignment);
 }
 
-#if defined(ENABLE_TRAINING) && defined(ENABLE_ATEN)
+#ifdef ENABLE_TRAINING
 TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   auto cpu_xp = CreateCPUExecutionProvider();
   auto xp_type = cpu_xp->Type();

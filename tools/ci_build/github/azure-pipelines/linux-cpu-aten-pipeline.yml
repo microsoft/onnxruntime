@@ -41,7 +41,8 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --skip_test
+              --skip_test \
+              --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2

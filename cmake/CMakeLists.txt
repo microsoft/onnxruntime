@@ -184,6 +184,9 @@ option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
 
 option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 
+# ATen fallback support
+option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -2033,8 +2036,7 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-if ((onnxruntime_ENABLE_PYTHON OR onnxruntime_ENABLE_TRAINING) AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
-  message(STATUS "ATEN support is enabled")
+if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
