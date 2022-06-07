@@ -487,8 +487,8 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
         static_cast<double>(num_channels * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (std::ptrdiff_t i = first; i < last; ++i) {
-            const int32_t x = i % output_width;
-            const int32_t y = i / output_width;
+            const int32_t x = static_cast<int32_t>(i % output_width);
+            const int32_t y = static_cast<int32_t>(i / output_width);
 
             // when use_extrapolation is set and original index of x or y is out of the dim range
             // then use extrapolation_value as the output value.

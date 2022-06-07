@@ -1059,20 +1059,20 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
         if (is_nchw) {
-          UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
+          UpsampleBilinear(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
                            height_scale, width_scale, roi,
                            use_extrapolation_, extrapolation_value_, X->Data<T>(),
                            Y->MutableData<T>(), alloc, get_original_coordinate_,
                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           if (use_extrapolation_) {
-            NhwcUpsampleBilinear<T, true>(batch_size, num_channels, input_height, input_width, output_height, output_width,
+            NhwcUpsampleBilinear<T, true>(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
                                           height_scale, width_scale, roi,
                                           extrapolation_value_, X->Data<T>(),
                                           Y->MutableData<T>(), alloc, get_original_coordinate_,
                                           output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
           } else {
-            NhwcUpsampleBilinear<T, false>(batch_size, num_channels, input_height, input_width, output_height, output_width,
+            NhwcUpsampleBilinear<T, false>(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
                                            height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(),
                                            Y->MutableData<T>(), alloc, get_original_coordinate_,
                                            output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
@@ -1217,6 +1217,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   return BaseCompute(context, *roi_ptr, scales_array, output_dims);
 }
 
+#if 0
 template <>
 void NhwcUpsampleBilinear<int8_t, false>(const int32_t batch_size,
                                          const int32_t num_channels,
@@ -1271,5 +1272,6 @@ void NhwcUpsampleBilinear<int8_t, false>(const int32_t batch_size,
         });
   }
 }
+#endif
 
 }  // namespace onnxruntime
