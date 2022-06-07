@@ -27,7 +27,7 @@ ONNX Runtime is not explicitly tested with every variation/combination of enviro
 
   * Tested with Windows 10 and Windows Server 2019
   * May be compatible with Windows 7+
-  * Windows Machine Learning ([WinRT](../get-started/with-windows.md))
+  * Windows Machine Learning ([Windows](../get-started/with-windows.md))
     * CPU: Windows 8.1+
     * GPU: Windows 10 1709+
 
