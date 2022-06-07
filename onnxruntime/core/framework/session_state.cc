@@ -28,10 +28,20 @@ void SessionState::SetupAllocators() {
   for (const auto& provider : execution_providers_) {
     for (const auto& allocator : provider->GetAllocators()) {
       const OrtMemoryInfo& memory_info = allocator->Info();
-      if (allocators_.find(memory_info) != allocators_.end()) {
-        // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
-        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
-                            << ". Ignoring allocator from " << provider->Type();
+      auto iter = allocators_.find(memory_info);
+      // TODO: This might need a dirty hack to guarantee an EP that overrides GetAllocator and returns a per-thread
+      // allocator is always preferred over another EP that provides an allocator for the same device.
+      // Currently that would be CUDA EP wins over TRT EP, and ROCM EP wins over MIGraphX EP.
+      //
+      // Ideally we could push the per-thread logic into a wrapper IAllocator implementation so that an EP could
+      // simply wrap its allocator with that if needed.
+      if (iter != allocators_.end()) {
+        // EPs could be sharing allocators so no info message unless this is a different instance
+        if (iter->second(memory_info.id, memory_info.mem_type) != allocator) {
+          // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
+          LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+                              << ". Ignoring allocator from " << provider->Type();
+        }
       } else {
         // slightly weird indirection to go back to the provider to get the allocator each time it's needed
         // in order to support scenarios such as the CUDA EP's per-thread allocator.

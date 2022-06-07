@@ -110,12 +110,18 @@ ONNX_OPERATOR_KERNEL_EX(
 
 }  // namespace cuda
 
-AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                                        CUDAExecutionProviderExternalAllocatorInfo external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) {
+AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id,
+                                                        size_t gpu_mem_limit,
+                                                        ArenaExtendStrategy arena_extend_strategy,
+                                                        CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
+                                                        OrtArenaCfg* default_memory_arena_cfg) {
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
-          return std::make_unique<CUDAExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
+          return std::make_unique<CUDAExternalAllocator>(id, CUDA,
+                                                         external_allocator_info.alloc,
+                                                         external_allocator_info.free,
+                                                         external_allocator_info.empty_cache);
         },
         device_id,
         false);

@@ -36,6 +36,15 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       preferred_layout_{preferred_layout} {
 }
 
+AllocatorPtr InternalTestingExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
+  // replicate setup that some EPs have with a local allocator
+  if (mem_type == OrtMemTypeDefault) {
+    return local_allocator_;
+  } else {
+    return IExecutionProvider::GetAllocator(device_id, mem_type);
+  }
+}
+
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
@@ -60,6 +69,7 @@ void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& alloc
       allocator_manager.InsertAllocator(cpu_alloc);
     }
 
+    local_allocator_ = cpu_alloc;
     InsertAllocator(cpu_alloc);
   }
 }

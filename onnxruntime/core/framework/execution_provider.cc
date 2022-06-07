@@ -55,10 +55,14 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 // Update allocator in the provider if already present; ignore if not.
 // We match using the device id, OrtMemType and OrtDevice info.
 // We ignore the allocator name, and OrtAllocatorType (whether internally an arena is used or not).
-// TODO: We should remove OrtAllocatorType from OrtMemoryInfo as it's an implmentation detail of the allocator.
+// TODO: We should remove OrtAllocatorType from OrtMemoryInfo as it's an implementation detail of the allocator.
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
 
+  // TODO: This only works on allocators that are stored in this class. If a derived class overrides GetAllocator
+  // (e.g. the CUDA EP) and stores AllocatorPtr instances in the derived class we know nothing about them.
+  // In theory we could call GetAllocator instead of allocators_.find, however the CUDA EP does things this way to
+  // return a per-thread allocator from the GetAllocator override, and it's not clear if that could/should be replaced.
   auto iter = allocators_.find(MakeKey(info.id, info.mem_type));
   if (iter != allocators_.end()) {
     // check device as mem_type is relative to the device
