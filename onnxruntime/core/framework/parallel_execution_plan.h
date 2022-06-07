@@ -12,6 +12,7 @@
 namespace onnxruntime {
 
 class SessionState;
+struct ReleasePlan;
 struct AllocPlanPerValue;
 struct ParallelExecutionPlanImpl;
 
@@ -35,8 +36,9 @@ class ParallelExecutionPlan : public IExecutor, public SequentialExecutionPlan {
   const std::vector<int>& GetRefCounts() const;
   const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const;
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;
-  std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> GenerateReleasePlan();
+  std::unique_ptr<ReleasePlan> GenerateReleasePlan() const;
   const std::unordered_map<size_t, size_t>& GetValueToStreamMap() const;
+  void GenerateReusePlan();
 };
 
 }  // namespace onnxruntime

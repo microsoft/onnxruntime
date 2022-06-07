@@ -12,6 +12,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/stream_pool.h"
 #include "core/framework/bfc_arena.h"
+#include "core/framework/tensorprotoutils.h"
 
 #ifdef USE_CUDA
 #include <nvtx3/nvToolsExtCuda.h>
@@ -55,6 +56,12 @@ struct LogicStream {
   ~LogicStream() {}
 };
 
+struct ReleasePlan {
+  std::unique_ptr<std::atomic_int[]> value_ref_counts_;
+  std::unordered_map<OrtValueIndex, OrtValueIndex> reused_map_;
+  std::unordered_map<onnxruntime::NodeIndex, std::vector<OrtValueIndex>> node_value_map_;
+};
+
 // execution context that support to execute a command on stream.
 // The notifications got instantiated when execution context is constructed.
 // TODO: if we merge the notifications to execution frame, we might don't need this.
@@ -63,7 +70,7 @@ struct ExecutionContext {
   ExecutionFrame* frame;
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
-  std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
+  std::unique_ptr<ReleasePlan> release_plan;
   std::vector<Stream*> device_streams;
 
   ExecutionContext(const SessionState& sess_state,
@@ -115,10 +122,19 @@ struct ExecutionContext {
   }
 
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
-    if (release_plan.find(node_index) != release_plan.end()) {
-      for (auto value_index : release_plan[node_index]) {
-        ORT_THROW_IF_ERROR(frame->ReleaseMLValue(value_index));
-        LOGS(*logger, INFO) << "value " << value_index << " released";
+    ORT_ENFORCE(frame);
+    for (auto it : release_plan->node_value_map_[node_index]) {
+      if (--release_plan->value_ref_counts_[it] == 0) {
+        auto original_it = release_plan->reused_map_.find(it);
+        if (original_it == release_plan->reused_map_.end()) {
+          ORT_ENFORCE(frame->ReleaseMLValue(it).IsOK());
+          LOGS(*logger, INFO) << "ort value " << it << " released";
+        } else {
+          if (--release_plan->value_ref_counts_[original_it->second] == 0) {
+            ORT_ENFORCE(frame->ReleaseMLValue(original_it->second).IsOK());
+            LOGS(*logger, INFO) << "ort value " << original_it->second << " released";
+          }
+        }
       }
     }
   }
@@ -156,6 +172,13 @@ struct ParallelExecutionPlanImpl {
   ProviderStreamMap provider_stream_map_;
   OpStreamMap op_stream_map_;
   std::vector<std::vector<std::string>> streams_log_;   // save up nodes per stream for logging
+
+  // dependence_graph_ keeps the dependencies combining model graph and logic streams
+  // e.g. dependence_graph_[downstream_node] = [upstream_node_0, upstream_node_1, upstream_node_2 ...]
+  // upstream_node_0 and upstream_node_1 are the immmediate upstream nodes of downstream_node
+  // upstream_node_2 is the immediate nodes ahead of downstream_node is the same logic stream
+  InlinedHashMap<onnxruntime::NodeIndex, InlinedHashSet<onnxruntime::NodeIndex>> dependence_graph_;
+  std::unordered_map<onnxruntime::OrtValueIndex, std::unordered_set<onnxruntime::NodeIndex>> value_consumer_map_;
 };
 
 //todo: remove dependency on session_state
@@ -278,7 +301,12 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
   }
   //5. add commands to logic queue
   for (auto i = 0; i < num_logic_streams_; ++i) {
-    for (auto node_index : nodes_in_stream[i]) {
+    for (auto j = 0; j < nodes_in_stream[i].size(); ++j) {
+      auto node_index = nodes_in_stream[i][j];
+      if (j > 0) {
+        // add dependency for current logic stream
+        dependence_graph_[node_index].insert(nodes_in_stream[i][j - 1]);
+      }
       auto cur_stream_idx = node_to_stream_map_[node_index];
       // check if any producer is not in current stream, if yes, create a wait
       auto* node = graph_viewer.GetNode(node_index);
@@ -298,6 +326,10 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
             LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
           });
         }
+      }
+      for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+        // add dependency for model graph
+        dependence_graph_[it->Index()].insert(node_index);
       }
       // push launch kernel command
       logic_streams_[i]->commands_.push_back([this, node, node_index, cur_stream_idx, i, &value_map](ExecutionContext& ctx) {
@@ -320,32 +352,13 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           eventAttrib.message.ascii = p_kernel->Node().OpType().c_str();
           nvtxRangePushEx(&eventAttrib);
 #endif
-          ORT_ENFORCE(p_kernel->Compute(&kernel_ctx).IsOK(), MakeString("kernel fail!"));
+          ORT_ENFORCE(p_kernel->Compute(&kernel_ctx).IsOK(), MakeString("kernel fail on node ") + node->Name());
 
           ctx.RecycleNodeInputs(node_index);
 #ifdef USE_CUDA
           nvtxRangePop();
 #endif
         }
-        /*
-        //test indirect release - release input values of input nodes
-        const auto& input_node_args = node->InputDefs();
-        for (int input_index_local = 0; input_index_local < input_node_args.size(); ++input_index_local) {
-          const auto* input_arg = input_node_args[input_index_local];
-          OrtValueIndex input_idx_global;
-          if (value_map.GetIdx(input_arg->Name(), input_idx_global).IsOK()) {
-            if (value_node_map_.find(input_idx_global) != value_node_map_.end()) {
-              NodeIndex owning_node = value_node_map_[input_idx_global];
-              ctx.RecycleNodeInputs(owning_node);
-            }
-          }
-        }
-        if (p_kernel->IsAsync()) {
-          ORT_ENFORCE(p_kernel->ComputeAsync(&kernel_ctx, []() {}).IsOK(), MakeString("kernel fail!"));
-        } else {
-          ORT_ENFORCE(p_kernel->Compute(&kernel_ctx).IsOK(), MakeString("kernel fail!"));
-        }*/
-        //test indirect release - done
         LOGS(*ctx.logger, INFO) << "stream " << i << " complete with " << node->Name();
       });
       // check if any notification generated by this node, if yes, push a activate
@@ -385,6 +398,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
       const auto* input_arg = input_node_args[input_index_local];
       OrtValueIndex input_idx_global;
       ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
+      value_consumer_map_[input_idx_global].insert(node_index);
       if (node_outputs.find(input_idx_global) != node_outputs.end()) {
         value_ref_counts_[input_idx_global]++;
         node_value_map_[node_index].push_back(input_idx_global);
@@ -407,16 +421,6 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
 
 ParallelExecutionPlanImpl::~ParallelExecutionPlanImpl() {
 }
-
-//ReleasePlan ParallelExecutionPlanImpl::GenerateReleasePlan() const {
-//  ReleasePlan release_plan;
-//  release_plan.ref_counts.reset(new std::atomic_int[value_ref_counts_.size()]);
-//  for (int i = 0; i < value_ref_counts_.size(); ++i) {
-//    release_plan.ref_counts[i] = value_ref_counts_[i];
-//  }
-//  release_plan.node_ref_count_map = this->node_value_map_;
-//  return release_plan;
-//}
 
 common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
@@ -494,19 +498,277 @@ const std::vector<int>& ParallelExecutionPlan::GetRefCounts() const {
     return impl_->value_ref_counts_; 
 }
 
-std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> ParallelExecutionPlan::GenerateReleasePlan() {
-  std::unordered_map<NodeIndex, std::vector<OrtValueIndex>> release_plan;
-  for (const auto& exe_plan : execution_plan) {
-    release_plan[exe_plan.node_index] = {};
-    for (int i = exe_plan.free_from_index; i < exe_plan.free_to_index; ++i) {
-      release_plan[exe_plan.node_index].push_back(to_be_freed[i]);
+const std::unordered_map<size_t, size_t>& ParallelExecutionPlan::GetValueToStreamMap() const {
+  return impl_->GetValueToStreamMap();
+}
+
+bool operator==(const onnx::TensorShapeProto& shape1, const onnx::TensorShapeProto& shape2) {
+  namespace on = ONNX_NAMESPACE;
+  int rank1 = shape1.dim_size();
+  if (shape2.dim_size() != rank1) return false;
+  for (int i = 0; i < rank1; i++) {
+    const auto& val1 = shape1.dim(i);
+    const auto& val2 = shape2.dim(i);
+    if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
+        (val1.dim_value() == val2.dim_value()))
+      continue;  // same known dimension
+    if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
+      const auto& val1_param = val1.dim_param();
+      if (val1_param == val2.dim_param() && !val1_param.empty())
+        continue;  // same unknown dimension
+    }
+    return false;
+  }
+  return true;
+}
+
+std::unique_ptr<ReleasePlan> ParallelExecutionPlan::GenerateReleasePlan() const {
+  auto release_plan = std::make_unique<ReleasePlan>();
+  int num_values = impl_->session_state_.GetOrtValueNameIdxMap().MaxIdx() + 1;
+  release_plan->value_ref_counts_.reset(new std::atomic_int[num_values]);
+  for (auto value_it : impl_->value_consumer_map_) {
+    release_plan->value_ref_counts_[value_it.first] = static_cast<int>(value_it.second.size());
+    for (auto node_it : value_it.second) {
+      release_plan->node_value_map_[node_it].push_back(value_it.first);
+    }
+  }
+  for (OrtValueIndex i = 0; i < allocation_plan.size(); ++i) {
+    if (allocation_plan[i].reused_buffer > 0) {
+      release_plan->reused_map_[i] = allocation_plan[i].reused_buffer;
     }
   }
   return release_plan;
 }
 
-const std::unordered_map<size_t, size_t>& ParallelExecutionPlan::GetValueToStreamMap() const {
-  return impl_->GetValueToStreamMap();
+void ParallelExecutionPlan::GenerateReusePlan() {
+  InlinedHashMap<NodeIndex, int> dependents;
+  for (const auto& it : impl_->dependence_graph_) {
+    for (NodeIndex node_index : it.second) {
+      dependents[node_index]++;
+    }
+  }
+  std::deque<NodeIndex> que;
+  for (const auto& it : impl_->dependence_graph_) {
+    if (dependents[it.first] == 0) {
+      que.push_back(it.first);
+    }
+  }
+
+  // fetch_all_dependents will collect all dependent nodes for "node_index"
+  std::function<std::set<NodeIndex>(NodeIndex)> fetch_all_dependents = [&](NodeIndex node_index) {
+    std::set<NodeIndex> dependents;
+
+    std::function<void(NodeIndex)> dfs = [&](NodeIndex curr) {
+      if (dependents.find(curr) == dependents.end()) {
+        dependents.insert(curr);
+        for (NodeIndex dep : impl_->dependence_graph_[curr]) {
+          dfs(dep);
+        }
+      }
+    };
+
+    dfs(node_index);
+    return dependents;
+  };
+
+  // waiting_list keeps all values who want to reuse some upstream values' memory
+  std::map<OrtMemoryInfo, std::map<size_t, typename std::map<const onnxruntime::NodeArg* const, std::set<NodeIndex>*>>> waiting_list;
+
+  // for each node, dependents_map keeps all its dependent upstream nodes that are sure to be completed ahead
+  std::map<NodeIndex, std::set<NodeIndex>> dependents_map;
+
+  std::set<OrtValueIndex> reused;
+
+  const auto& graph_viewer = impl_->session_state_.GetGraphViewer();
+  const auto& value_map = impl_->session_state_.GetOrtValueNameIdxMap();
+  const auto& kernel_create_info_map = impl_->session_state_.GetKernelCreateInfoMap();
+
+  std::function<void(NodeIndex)> TryReuseInput = [&](NodeIndex node_index) {
+    auto* node = graph_viewer.GetNode(node_index);
+
+    for (int output_arg_num = 0; output_arg_num < node->OutputDefs().size(); output_arg_num++) {
+      auto p_output_arg = node->OutputDefs()[output_arg_num];
+      OrtValueIndex output_idx_global{};
+      if (!value_map.GetIdx(p_output_arg->Name(), output_idx_global).IsOK()) {
+        continue;
+      }
+
+      auto kci_it = kernel_create_info_map.find(node_index);
+      if (kci_it == kernel_create_info_map.end()) {
+        continue;
+      }
+
+      const KernelCreateInfo& ci = *kci_it->second;
+      if (ci.kernel_def == nullptr) {
+        continue;
+      }
+
+      bool found_reusable = false;
+      const auto& alias_map = ci.kernel_def->Alias();
+      auto input_args = node->InputDefs();
+      for (auto& pair : alias_map) {
+        if (pair.second == output_arg_num) {
+          // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for reshape)
+          if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
+            auto p_input_arg = input_args[pair.first];
+            if (p_input_arg->Exists()) {
+              OrtValueIndex reusable_input{};
+              if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK()) {
+                LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
+                allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+                allocation_plan[output_idx_global].reused_buffer = reusable_input;
+                impl_->value_consumer_map_[reusable_input].insert(impl_->value_consumer_map_[output_idx_global].begin(),
+                                                                  impl_->value_consumer_map_[output_idx_global].end());
+                reused.insert(reusable_input);
+                found_reusable = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (found_reusable) {
+        continue;
+      }
+
+      const auto& inplace_map = ci.kernel_def->MayInplace();
+      for (auto& pair : inplace_map) {
+        if (pair.second == output_arg_num) {
+          if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
+            auto p_input_arg = input_args[pair.first];
+            if (p_input_arg->Exists()) {
+              OrtValueIndex input_arg_index{};
+              if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK()) {
+                auto original = allocation_plan[input_arg_index].reused_buffer;
+                if (impl_->value_consumer_map_[original].size() == 1) {
+                  auto* input_shape = p_input_arg->Shape();
+                  auto* output_shape = p_output_arg->Shape();
+                  if (input_shape && output_shape && input_shape->ByteSizeLong() == output_shape->ByteSizeLong()) {
+                    LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
+                    allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+                    allocation_plan[output_idx_global].reused_buffer = input_arg_index;
+                    impl_->value_consumer_map_[original].insert(impl_->value_consumer_map_[output_idx_global].begin(),
+                                                                impl_->value_consumer_map_[output_idx_global].end());
+                    reused.insert(input_arg_index);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  };  //TryReuseInput
+
+  // go over the outputs of "node_index" and try to reuse its memory
+  std::function<void(NodeIndex)> TryReuseOutput = [&](NodeIndex node_index) {
+    dependents_map[node_index] = fetch_all_dependents(node_index);
+    auto* node = graph_viewer.GetNode(node_index);
+    const auto& output_defs = node->OutputDefs();
+
+    for (int output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
+      const auto& node_output = output_defs[output_idx_local];
+      if (!node_output->Exists()) continue;
+      OrtValueIndex output_idx_global{};
+
+      if (value_map.GetIdx(node_output->Name(), output_idx_global).IsOK()) {
+        if (reused.find(output_idx_global) != reused.end() ||
+            allocation_plan[output_idx_global].alloc_kind != AllocKind::kAllocate) {
+          continue;  // skip when it is already reused
+        }
+
+        const auto* shape = node_output->Shape();
+        if (!shape) continue;
+        size_t size_in_bytes = shape->ByteSizeLong();
+
+        const auto& location = allocation_plan[output_idx_global].location;
+        auto local_iter = waiting_list.find(location);
+        if (local_iter == waiting_list.end()) {
+          waiting_list[location][size_in_bytes][node_output] = &dependents_map[node_index];
+          continue;
+        }
+
+        auto size_iter = local_iter->second.find(size_in_bytes);
+        if (size_iter == local_iter->second.end()) {
+          waiting_list[location][size_in_bytes][node_output] = &dependents_map[node_index];
+          continue;
+        }
+
+        bool get_reused = false;
+        for (auto node_iter = size_iter->second.begin(); node_iter != size_iter->second.end();) {
+          const onnxruntime::NodeArg* const downstream_arg = node_iter->first;
+          OrtValueIndex downstream_value{};
+
+          if (!value_map.GetIdx(downstream_arg->Name(), downstream_value).IsOK()) {
+            node_iter = next(node_iter);
+            continue;
+          }
+
+          const auto* downstream_shape = downstream_arg->Shape();
+          if (!(*downstream_shape == *shape)) {
+            node_iter = next(node_iter);
+            continue;
+          }
+
+          auto* deps = node_iter->second;
+
+          if (deps->find(node_index) == deps->end()) {
+            node_iter = next(node_iter);
+            continue;
+          }
+
+          bool all_covered = true;
+          for (auto consumer : impl_->value_consumer_map_[output_idx_global]) {
+            if (deps->find(consumer) == deps->end()) {
+              all_covered = false;
+              break;
+            }
+          }
+          if (all_covered) {
+            LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
+            allocation_plan[downstream_value].alloc_kind = AllocKind::kReuse;
+            allocation_plan[downstream_value].reused_buffer = output_idx_global;
+            get_reused = true;
+            // add new consumer for the value to be reused
+            impl_->value_consumer_map_[output_idx_global].insert(impl_->value_node_map_[downstream_value]);
+            impl_->value_consumer_map_[output_idx_global].insert(impl_->value_consumer_map_[downstream_value].begin(),
+                                                                 impl_->value_consumer_map_[downstream_value].end());
+            node_iter = size_iter->second.erase(node_iter);
+            if (size_iter->second.empty()) {
+              local_iter->second.erase(size_iter);
+            }
+            break; // only resued once
+          } else {
+            // dependents not fully covered, cannot reuse, try next one in waiting_list
+            node_iter = next(node_iter);
+          }
+        }  // for
+        if (get_reused) {
+          reused.insert(output_idx_global);
+        } else {
+          // if not getting reused, add to waiting
+          waiting_list[location][size_in_bytes][node_output] = &dependents_map[node_index];
+        }
+      }
+    }
+  };  // TryReuseOutput
+
+  // topological traverse of the dependency graph
+  std::unordered_set<NodeIndex> visited;
+  while (!que.empty()) {
+    NodeIndex node_index = que.front();
+    visited.insert(node_index);
+    TryReuseInput(node_index);   // try reuse node's inputs as its outputs
+    TryReuseOutput(node_index);  // try reuse node's outputs for downstream nodes
+    que.pop_front();
+    for (NodeIndex next_node_index : impl_->dependence_graph_[node_index]) {
+      if (--dependents[next_node_index] == 0) {
+        que.push_back(next_node_index);
+      }
+    }
+  }
 }
 
 }  // namespace onnxruntime

@@ -71,6 +71,11 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   bool enable_memory_reuse_ = true;
 };
 
+class ParalllelPlannerContext : public SequentialPlannerContext {
+ public:
+  explicit ParalllelPlannerContext() : SequentialPlannerContext(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false) {}
+};
+
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
