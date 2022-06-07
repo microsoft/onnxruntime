@@ -1,0 +1,15 @@
+# sets the NightlyBuildOption variable if the NIGHTLY_BUILD environment variable is appropriately set
+
+steps:
+- task: PythonScript@0
+  displayName: 'Set NightlyBuildOption variable'
+  inputs:
+    scriptSource: inline
+    script: |
+      import os
+
+      name = "NightlyBuildOption"
+      value = "--nightly_build" if os.environ.get("NIGHTLY_BUILD") == "1" else ""
+
+      print("Setting variable: {} = '{}'".format(name, value))
+      print("##vso[task.setvariable variable={}]{}".format(name, value))

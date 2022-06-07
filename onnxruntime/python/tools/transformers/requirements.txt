@@ -1,0 +1,12 @@
+onnx >= 1.8
+numpy
+coloredlogs
+psutil
+py-cpuinfo
+py3nvml
+packaging
+transformers >= 4.0
+scipy
+
+# please follow https://pytorch.org/ to install PyTorch for your OS
+torch >= 1.8

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <!-- Configurations that affect the Test Framework -->
+  <RunConfiguration>
+    <!-- Path relative to solution directory -->
+    <ResultsDirectory>.\TestResults</ResultsDirectory>
+
+    <!-- [x86] | x64  
+      - You can also change it from menu Test, Test Settings, Default Processor Architecture -->
+    <TargetPlatform>x64</TargetPlatform>
+
+    <!-- Framework35 | [Framework40] | Framework45 -->
+    <TargetFrameworkVersion>Framework45</TargetFrameworkVersion>
+  </RunConfiguration>
+  
+  <!-- see https://github.com/csoltenborn/GoogleTestAdapter/blob/master/GoogleTestAdapter/TestAdapter/GoogleTestAdapterSettings.xsd for possible values -->
+  <GoogleTestAdapterSettings>
+    <SolutionSettings>
+      <Settings>
+        <TestDiscoveryTimeoutInSeconds>60</TestDiscoveryTimeoutInSeconds>
+      </Settings>
+    </SolutionSettings>
+    <ProjectSettings>
+    </ProjectSettings>
+  </GoogleTestAdapterSettings>  
+  
+  <!-- Configurations for data collectors -->
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0" assemblyQualifiedName="Microsoft.VisualStudio.Coverage.DynamicCoverageDataCollector, Microsoft.VisualStudio.TraceCollector, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+        <Configuration>
+          <CodeCoverage>
+            <Functions>
+              <Include>
+                <Function>^onnxruntime.*</Function> <!-- all code in the onnxruntime namespace -->
+                <Function>.*onnx_layout_transformation.*</Function>
+              </Include>
+              <Exclude>
+                <Function>^onnxruntime\:\:test.*</Function> <!-- exclude all code in the onnxruntime::test* namespaces -->
+                <Function>^onnxruntime\:\:MakeString&lt;.*</Function> <!-- onnxruntime::MakeString<types...> -->
+                <Function>^onnxruntime\:\:MakeStringInternal&lt;.*</Function> <!-- onnxruntime::MakeString<types...> -->
+              </Exclude>
+            </Functions>
+            <!--
+            <ModulePaths>
+              <Exclude>
+                <ModulePath>.*\\test\\*</ModulePath> 
+              </Exclude>
+            </ModulePaths>            
+            <Sources>
+              <Include>
+                <Source>.*\\core\\*</Source>
+              </Include>
+            </Sources>
+            -->
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+      
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

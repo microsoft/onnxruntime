@@ -1,0 +1,12 @@
+{
+  "name": "04_create-inference-session",
+  "version": "1.0.0",
+  "description": "This example shows how to create `InferenceSession` in different ways.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "onnxruntime": "0.0.1-dev.20200429.2"
+  }
+}

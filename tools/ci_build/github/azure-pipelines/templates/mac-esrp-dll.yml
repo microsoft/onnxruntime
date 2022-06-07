@@ -1,0 +1,45 @@
+parameters:
+  FolderPath: ''
+  DisplayName: ''
+  DoEsrp: 'false'
+  Pattern: '*.dll'
+
+steps:
+- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+  displayName: ${{ parameters.DisplayName }}
+  inputs:
+    ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'
+    FolderPath: ${{ parameters.FolderPath }}
+    Pattern: ${{ parameters.Pattern }}
+    signConfigType: inlineSignParams
+    inlineOperation: |
+      [
+        {
+          "keyCode": "CP-230012",
+          "operationSetCode": "SigntoolSign",
+          "parameters": [
+            {
+              "parameterName": "OpusName",
+              "parameterValue": "Microsoft"
+            },
+            {
+              "parameterName": "OpusInfo",
+              "parameterValue": "http://www.microsoft.com"
+            },
+            {
+              "parameterName": "PageHash",
+              "parameterValue": "/NPH"
+            },
+            {
+              "parameterName": "FileDigest",
+              "parameterValue": "/fd sha256"
+            },
+            {
+              "parameterName": "TimeStamp",
+              "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
+            }
+          ],
+          "toolName": "signtool",
+          "toolVersion": "6.2.9304.0"
+        }
+      ]

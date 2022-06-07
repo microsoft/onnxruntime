@@ -1,0 +1,43 @@
+[
+  {
+    "name": "relu",
+    "operator": "Relu",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [1.0, -2.0, 0, 2.0],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 0, 0, 2.0],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

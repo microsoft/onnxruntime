@@ -1,0 +1,25 @@
+# runs the specified steps while logged in to the container registry
+
+parameters:
+- name: Steps
+  type: stepList
+- name: ContainerRegistry
+  type: string
+
+steps:
+- task: Docker@2
+  inputs:
+    containerRegistry: "${{ parameters.ContainerRegistry }}"
+    command: "login"
+    addPipelineData: false
+  displayName: "Log in to container registry"
+
+- ${{ parameters.Steps }}
+
+- task: Docker@2
+  inputs:
+    containerRegistry: "${{ parameters.ContainerRegistry }}"
+    command: "logout"
+    addPipelineData: false
+  displayName: "Log out of container registry"
+  condition: always()

@@ -1,0 +1,76 @@
+parameters:
+- name: image_tag
+  displayName: Image Tag
+  type: string
+  default: latest
+
+variables:
+  docker_image_prefix: onnxruntime-training
+  linux_gpu_dockerfile: '$(Build.SourcesDirectory)/dockerfiles/Dockerfile.training'
+  docker_build_context: '$(Build.SourcesDirectory)/dockerfiles'
+  build_config: Release
+
+name: $(Date:yyyyMMdd)$(Rev:.r)
+jobs:
+- job: Linux_py_GPU_Build_Test_Release_Dockerfile
+  timeoutInMinutes: 110
+  workspace:
+    clean: all
+  pool: Onnxruntime-Linux-GPU
+  steps:
+  - task: CmdLine@2
+    displayName: Build builder stage of docker file
+    inputs:
+      script: |
+        docker build \
+          --pull \
+          -t ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+          --target builder \
+          --no-cache \
+          --build-arg COMMIT="$(Build.SourceVersion)" \
+          --build-arg BUILD_CONFIG="${{ variables.build_config }}" \
+          -f ${{ variables.linux_gpu_dockerfile }} \
+          ${{ variables.docker_build_context }}
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: Run tests
+    inputs:
+      script: |
+        docker run \
+          --gpus all \
+          --rm \
+          ${{ variables.docker_image_prefix }}-manylinux-gpu-release-stage1 \
+          python onnxruntime/tools/ci_build/build.py \
+          --build_dir onnxruntime/build \
+          --config ${{ variables.build_config }} \
+          --test \
+          --enable_onnx_tests
+      workingDirectory: $(Build.SourcesDirectory) 
+
+  - task: Docker@2
+    displayName: Build entire docker file
+    inputs:
+      command: build
+      containerRegistry: 'ortrelease'
+      repository: 'onnxruntime-training'
+      arguments: --build-arg COMMIT="$(Build.SourceVersion)" --build-arg BUILD_CONFIG="${{ variables.build_config }}"
+      Dockerfile: '${{ variables.linux_gpu_dockerfile }}'
+      buildContext: '${{ variables.docker_build_context }}'
+      tags: |
+        $(Build.BuildNumber)
+        ${{ parameters.image_tag }}
+
+  - task: Docker@2
+    displayName: Push docker image
+    inputs:
+      command: push
+      containerRegistry: 'ortrelease'
+      repository: 'onnxruntime-training'
+      tags: |
+        $(Build.BuildNumber)
+        ${{ parameters.image_tag }}
+
+  - template: templates/component-governance-component-detection-steps.yml
+
+  - template: templates/clean-agent-build-directory-step.yml

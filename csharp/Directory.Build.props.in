@@ -1,0 +1,16 @@
+<!-- @DIRECTORY_BUILD_PROPS_COMMENT@ -->
+<Project>
+  <PropertyGroup>
+    <!-- Note: build.py puts the CMake binary directory under an additional directory named for the build
+               configuration, so we want the parent directory here. -->
+    <OnnxRuntimeBuildDirectory>@CMAKE_BINARY_DIR@/..</OnnxRuntimeBuildDirectory>
+    
+    <OnnxRuntimeCsharpRoot>$(MSBuildThisDirectory)</OnnxRuntimeCsharpRoot>
+    <RestorePackagesPath>$(MSBuildThisFileDirectory)\packages</RestorePackagesPath>
+    <RestoreConfigFile>$(MSBuildThisFileDirectory)\NuGet.CSharp.config</RestoreConfigFile>
+    <MSBuildWarningsAsMessages>NU1503</MSBuildWarningsAsMessages>
+    <RestoreIgnoreFailedSource>true</RestoreIgnoreFailedSource>
+
+    <DefineConstants>@CSHARP_PREPROCESSOR_DEFINES@$(DefineConstants)</DefineConstants>
+  </PropertyGroup>
+</Project>

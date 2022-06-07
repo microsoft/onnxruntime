@@ -1,0 +1,16 @@
+parameters:
+- name: arch
+  type: string
+
+- name: os
+  type: string
+
+- name: artifactName
+  type: string
+  default: ''
+  
+steps:
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/${{ parameters.os }}/${{ parameters.arch }}/onnxruntime_binding.node' 
+        artifactName: '${{parameters.artifactName}}'

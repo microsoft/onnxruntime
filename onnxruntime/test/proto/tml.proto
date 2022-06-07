@@ -1,0 +1,108 @@
+syntax = "proto2";
+
+import "onnx/onnx-ml.proto";
+
+package onnxruntime.proto;
+
+//must sync with data_types.h
+//MapStringToString
+//MapStringToInt64
+//MapStringToFloat
+//MapStringToDouble
+//MapInt64ToString
+//MapInt64ToInt64
+//MapInt64ToFloat
+//MapInt64ToDouble
+//VectorString
+//VectorFloat
+//VectorInt64
+//VectorDouble
+//VectorMapStringToFloat
+//VectorMapInt64ToFloat
+
+message MapStringToString {
+  map<string, string> v = 1;
+}
+
+message MapStringToInt64 {
+  map<string, int64> v = 1;
+}
+
+message MapStringToDouble {
+  map<string, double> v = 1;
+}
+
+message MapStringToFloat {
+  map<string, float> v = 1;
+}
+
+message MapInt64ToString {
+  map<int64, string> v = 1;
+}
+
+message MapInt64ToInt64 {
+  map<int64, int64> v = 1;
+}
+
+message MapInt64ToFloat {
+  map<int64, float> v = 1;
+}
+
+message MapInt64ToDouble {
+  map<int64, double> v = 1;
+}
+
+message VectorString {
+  repeated string v = 1;
+}
+
+message VectorFloat {
+  repeated float v = 1;
+}
+
+message VectorInt64 {
+  repeated int64 v = 1;
+}
+
+message VectorDouble {
+  repeated double v = 1;
+}
+
+message VectorMapStringToFloat {
+  repeated MapStringToFloat v = 1;
+}
+
+message VectorMapInt64ToFloat {
+  repeated MapInt64ToFloat v = 1;
+}
+
+message TraditionalMLData {
+  oneof values {
+    MapStringToString map_string_to_string = 1;
+    MapStringToInt64 map_string_to_int64 = 2;
+    MapStringToFloat map_string_to_float = 3;
+    MapStringToDouble map_string_to_double = 4;
+    MapInt64ToString map_int64_to_string = 5;
+    MapInt64ToInt64 map_int64_to_int64 = 6;
+    MapInt64ToFloat map_int64_to_float = 7;
+    MapInt64ToDouble map_int64_to_double = 8;
+    VectorString vector_string = 9;
+    VectorFloat vector_float = 10;
+    VectorInt64 vector_int64 = 11;
+    VectorDouble vector_double = 12;
+    VectorMapStringToFloat vector_map_string_to_float = 13;
+    VectorMapInt64ToFloat vector_map_int64_to_float = 14;
+    onnx.TensorProto tensor = 16;
+  }
+  // Optionally, a name for the tensor.
+  optional string name = 15;
+  optional string debug_info = 17;  //A human-readable string for helping debugging
+}
+
+message TestCaseConfig {
+  optional double per_sample_tolerance = 1;
+  optional double relative_per_sample_tolerance = 2;
+  optional bool post_processing = 3;
+}
+// For using protobuf-lite
+option optimize_for = LITE_RUNTIME;
