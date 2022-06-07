@@ -255,7 +255,8 @@ class T5Helper:
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         if isinstance(model, T5Encoder):
             return T5EncoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        elif isinstance(model, T5EncoderDecoderInit):
+
+        if isinstance(model, T5EncoderDecoderInit):
             return T5EncoderDecoderInitHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
-        else:
-            return T5DecoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
+
+        return T5DecoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)

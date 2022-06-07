@@ -9,6 +9,7 @@
 #include "core/framework/allocator.h"
 #endif
 
+#include <vector>
 #include "gsl/gsl"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/beam_search_shared.h"

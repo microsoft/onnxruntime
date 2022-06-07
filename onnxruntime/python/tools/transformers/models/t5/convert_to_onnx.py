@@ -208,7 +208,7 @@ def export_onnx_models(
             max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
         if max_diff > 1e-4:
-            logger.warn("PyTorch and OnnxRuntime results are NOT close")
+            logger.warning("PyTorch and OnnxRuntime results are NOT close")
 
         output_paths.append(output_path)
 
@@ -232,7 +232,7 @@ def main():
         assert args.use_gpu, "fp16 requires --use_gpu"
 
     if args.optimize_onnx:
-        logger.warn("Graph optimization for T5 is not implemented yet.")
+        logger.warning("Graph optimization for T5 is not implemented yet.")
 
     output_paths = export_onnx_models(
         args.model_name_or_path,

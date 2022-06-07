@@ -7,6 +7,7 @@
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -185,8 +186,6 @@ class T5EncoderDecoderInitHelper:
                     2: sequence_length,
                     3: head_size,
                 }
-
-        import tempfile
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             temp_onnx_model_path = os.path.join(tmp_dir_name, "model.onnx")

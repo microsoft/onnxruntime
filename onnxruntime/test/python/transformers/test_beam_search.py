@@ -29,7 +29,7 @@ class TestBeamSearchGpt(unittest.TestCase):
     """Test BeamSearch for GPT-2 model"""
 
     def setUp(self):
-        # TODO: use a smaller model and enable tests in CI pipeline
+    """Setup Test Environment"""
         self.model_name = "gpt2"
         self.gpt2_onnx_path = os.path.join(".", "onnx_models", "gpt2_past_fp32_shape.onnx")
         self.beam_search_onnx_path = os.path.join(".", "onnx_models", "gpt2_beam_search.onnx")
@@ -49,28 +49,31 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.remove_onnx_files()
 
     def tearDown(self):
+    """Clean Test Environment"""
         self.remove_onnx_files()
 
     def remove_onnx_files(self):
+    """Remove generated ONNX files"""
         if os.path.exists(self.gpt2_onnx_path):
             os.remove(self.gpt2_onnx_path)
 
         if os.path.exists(self.beam_search_onnx_path):
             os.remove(self.beam_search_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None, devices=["CPU", "GPU"]):
+    def run_beam_search(self, extra_arguments: str, sentences=None):
+    """Run beam search test on CPU and GPU"""
         arguments = " ".join(self.default_arguments + [extra_arguments]).split()
-        if "CPU" in devices:
-            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
-            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
 
-        if "GPU" in devices and self.enable_cuda:
+        # Test CPU
+        result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+        self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+
+        # Test GPU
+        if self.enable_cuda:
             if "--use_gpu" not in arguments:
                 arguments.append("--use_gpu")
-                result = run(arguments, sentences=self.sentences if sentences is None else sentences)
-                self.assertTrue(
-                    result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}"
-                )
+            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
         os.remove(self.beam_search_onnx_path)
 
@@ -156,19 +159,19 @@ class TestBeamSearchT5(unittest.TestCase):
         if os.path.exists(self.encoder_onnx_path):
             os.remove(self.encoder_onnx_path)
 
-    def run_beam_search(self, extra_arguments: str, sentences=None, devices=["CPU", "GPU"]):
+    def run_beam_search(self, extra_arguments: str, sentences=None):
         arguments = " ".join(self.default_arguments + [extra_arguments]).split()
-        if "CPU" in devices:
-            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
-            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
 
-        if "GPU" in devices and self.enable_cuda:
+        # Test CPU
+        result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+        self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+
+        # Test GPU
+        if self.enable_cuda:
             if "--use_gpu" not in arguments:
                 arguments.append("--use_gpu")
-                result = run(arguments, sentences=self.sentences if sentences is None else sentences)
-                self.assertTrue(
-                    result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}"
-                )
+            result = run(arguments, sentences=self.sentences if sentences is None else sentences)
+            self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
 
         os.remove(self.beam_search_onnx_path)
 

@@ -10,7 +10,7 @@ import argparse
 import os
 import random
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 from onnx import ModelProto, TensorProto, numpy_helper
@@ -114,28 +114,28 @@ def fake_input_mask_data(
     return data
 
 
-def output_test_data(dir: str, inputs: Dict[str, np.ndarray]):
+def output_test_data(directory: str, inputs: Dict[str, np.ndarray]):
     """Output input tensors of test data to a directory
 
     Args:
-        dir (str): path of a directory
+        directory (str): path of a directory
         inputs (Dict[str, np.ndarray]): map from input name to value
     """
-    if not os.path.exists(dir):
+    if not os.path.exists(directory):
         try:
-            os.mkdir(dir)
+            os.mkdir(directory)
         except OSError:
-            print("Creation of the directory %s failed" % dir)
+            print("Creation of the directory %s failed" % directory)
         else:
-            print("Successfully created the directory %s " % dir)
+            print("Successfully created the directory %s " % directory)
     else:
-        print("Warning: directory %s existed. Files will be overwritten." % dir)
+        print("Warning: directory %s existed. Files will be overwritten." % directory)
 
     index = 0
     for name, data in inputs.items():
         tensor = numpy_helper.from_array(data, name)
-        with open(os.path.join(dir, "input_{}.pb".format(index)), "wb") as f:
-            f.write(tensor.SerializeToString())
+        with open(os.path.join(directory, "input_{}.pb".format(index)), "wb") as file:
+            file.write(tensor.SerializeToString())
         index += 1
 
 
@@ -363,8 +363,8 @@ def get_bert_inputs(
                                                                                  segment_ids and input_mask
     """
     model = ModelProto()
-    with open(onnx_file, "rb") as f:
-        model.ParseFromString(f.read())
+    with open(onnx_file, "rb") as file:
+        model.ParseFromString(file.read())
 
     onnx_model = OnnxModel(model)
     return find_bert_inputs(onnx_model, input_ids_name, segment_ids_name, input_mask_name)
@@ -488,24 +488,24 @@ def create_and_save_test_data(
     )
 
     for i, inputs in enumerate(all_inputs):
-        dir = os.path.join(output_dir, "test_data_set_" + str(i))
-        output_test_data(dir, inputs)
+        directory = os.path.join(output_dir, "test_data_set_" + str(i))
+        output_test_data(directory, inputs)
 
     if only_input_tensors:
         return
 
     import onnxruntime
 
-    sess = onnxruntime.InferenceSession(model)
-    output_names = [output.name for output in sess.get_outputs()]
+    session = onnxruntime.InferenceSession(model)
+    output_names = [output.name for output in session.get_outputs()]
 
     for i, inputs in enumerate(all_inputs):
-        dir = os.path.join(output_dir, "test_data_set_" + str(i))
-        result = sess.run(output_names, inputs)
+        directory = os.path.join(output_dir, "test_data_set_" + str(i))
+        result = session.run(output_names, inputs)
         for i, output_name in enumerate(output_names):
-            tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_names[i])
-            with open(os.path.join(dir, "output_{}.pb".format(i)), "wb") as f:
-                f.write(tensor_result.SerializeToString())
+            tensor_result = numpy_helper.from_array(np.asarray(result[i]), output_name)
+            with open(os.path.join(directory, "output_{}.pb".format(i)), "wb") as file:
+                file.write(tensor_result.SerializeToString())
 
 
 def main():

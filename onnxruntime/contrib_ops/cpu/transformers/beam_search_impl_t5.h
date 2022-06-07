@@ -111,7 +111,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                  this->IsCuda());
 
   IAllocatorUniquePtr<char> buffer;
-  OrtValue expanded_decoder_input_ids; // Tensor in CPU, and it will be used to initialize sequence in cpu_state
+  OrtValue expanded_decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
       this->implicit_inputs_,
