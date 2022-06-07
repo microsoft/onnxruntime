@@ -126,8 +126,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._propagate_cast_ops_level = 1
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
-        # Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
-        self._allow_layer_norm_mod_precision = False
 
         # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
@@ -463,7 +461,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.propagate_cast_ops_config.level = self._propagate_cast_ops_level
         graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
         graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
-        graph_transformer_config.allow_layer_norm_mod_precision = self._allow_layer_norm_mod_precision
         return graph_transformer_config
 
     def _initialize_graph_builder(self, training):

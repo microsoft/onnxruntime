@@ -1,136 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <unordered_map>
+
 #include "core/graph/function_utils.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "onnx/shape_inference/implementation.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/model_load_utils.h"
-
-namespace ONNX_NAMESPACE {
-// Infer shape for functions. This also supports
-// nested model local functions.
-// TODO: Add this to onnx instead of adding it here.
-void InferShapeForFunctionNode(
-    InferenceContext& ctx,
-    const FunctionProto& func_proto,
-    const onnxruntime::InlinedHashMap<std::string, int>& func_opset_imports,
-    const ShapeInferenceOptions& options,
-    const ISchemaRegistry* schema_registry,
-    const onnxruntime::InlinedHashMap<std::string, const FunctionProto*>& in_model_functions,
-    std::function<std::string(const std::string& function_domain, const std::string& function_name)> get_func_id) {
-  GraphProto g;
-  // Get a temporary tensor-shape map
-  const auto num_func_inputs = func_proto.input_size();
-  std::unordered_map<std::string, TypeProto*> value_types_by_name;
-  onnxruntime::InlinedVector<TypeProto> types_cache;
-  types_cache.reserve(func_proto.input_size());
-  for (int i = 0; i < num_func_inputs; ++i) {
-    types_cache.push_back(*ctx.getInputType(i));
-    value_types_by_name[func_proto.input().Get(i)] = &types_cache[i];
-  }
-
-  // Get a temporary initial value map
-  std::unordered_map<std::string, const TensorProto*> initializers_by_name;
-  std::unordered_map<std::string, const SparseTensorProto*> sparse_initializers_by_name;
-  for (int i = 0; i < static_cast<int>(ctx.getNumInputs()) && i < num_func_inputs; ++i) {
-    const TypeProto* type = ctx.getInputType(i);
-    if (type->value_case() == TypeProto::kTensorType && ctx.getInputData(i) != nullptr) {
-      initializers_by_name[func_proto.input().Get(i)] = ctx.getInputData(i);
-    } else if (type->value_case() == TypeProto::kSparseTensorType &&
-               ctx.getInputSparseData(i) != nullptr) {
-      sparse_initializers_by_name[func_proto.input().Get(i)] = ctx.getInputSparseData(i);
-    }
-  }
-  std::unordered_map<std::string, const AttributeProto*> attr_map;
-  for (auto& attr : func_proto.attribute()) {
-    if (ctx.getAttribute(attr) != nullptr) {
-      attr_map[attr] = ctx.getAttribute(attr);
-    }
-  }
-
-  for (auto& n : func_proto.node()) {
-    NodeProto copy_n(n);
-    // Add attribute information into the temporary node
-    copy_n.clear_attribute();
-    for (const auto& attr : n.attribute()) {
-      if (attr.has_ref_attr_name()) {
-        if (attr_map.count(attr.ref_attr_name())) {
-          auto copy_attr = *attr_map[attr.ref_attr_name()];
-          copy_attr.set_name(attr.name());
-          copy_n.add_attribute()->CopyFrom(copy_attr);
-        }
-      } else {
-        copy_n.add_attribute()->CopyFrom(attr);
-      }
-    }
-    ONNX_NAMESPACE::shape_inference::InferenceContextImpl func_node_ctx(
-        copy_n, value_types_by_name, initializers_by_name, sparse_initializers_by_name, {});
-
-    // Resolve domain for node
-    auto it = func_opset_imports.find(n.domain());
-    if (it == func_opset_imports.end()) {
-      fail_type_inference("Cannot infer type and shape for function", func_proto.name(),
-                          ". No opset import for domain", n.domain(), " referenced by function body node ",
-                          n.name(), " optype ", n.op_type());
-    }
-    auto domain_version = it->second;
-    const auto schema = schema_registry->GetSchema(n.op_type(), domain_version, n.domain());
-    if (schema) {
-      schema->GetTypeAndShapeInferenceFunction()(func_node_ctx);
-    } else {
-      // check model local functions for FunctionProto
-      auto iter = in_model_functions.find(get_func_id(n.domain(), n.op_type()));
-      if (iter == in_model_functions.end()) {
-        return;
-      }
-
-      onnxruntime::InlinedHashMap<std::string, int> func_node_opset_imports;
-      for (const auto& opset_import : iter->second->opset_import()) {
-        // If graph imports does not contain opset_import then insert it otherwise the one in graph imports overrides.
-        // If the opset imports are not compatible then this will be caught during function body inline.
-        func_node_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
-      }
-
-      InferShapeForFunctionNode(func_node_ctx, *iter->second, func_node_opset_imports, options, schema_registry, in_model_functions, get_func_id);
-    }
-
-    for (int i = 0; i < copy_n.output_size(); ++i) {
-      TypeProto* inferred_output_type = func_node_ctx.getOutputType(i);
-      // Checking, Storing the inferred information
-      auto iter = value_types_by_name.find(n.output(i));
-      TypeProto* existingType = nullptr;
-      if (iter != value_types_by_name.end()) {
-        existingType = iter->second;
-        shape_inference::checkShapesAndTypes(*inferred_output_type, *existingType);
-      } else {
-        // Store the inferred type info in the
-        // subgraph temporarily
-        auto vi = g.add_value_info();
-        vi->set_name(copy_n.output(i));
-        existingType = vi->mutable_type();
-      }
-
-      shape_inference::mergeShapesAndTypes(*inferred_output_type, existingType);
-
-      // Make merged info available to further inference.
-      value_types_by_name[copy_n.output(i)] = existingType;
-    }
-  }
-  for (int i = 0; i < func_proto.output_size(); ++i) {
-    const std::string& output_name = func_proto.output().Get(i);
-    // Skip if no type inferred for the tensor
-    auto iter = value_types_by_name.find(output_name);
-    if (iter != value_types_by_name.cend()) {
-      // Copy the type info to ctx
-      // to pass back to main graph
-      auto type_proto = ctx.getOutputType(i);
-      type_proto->CopyFrom(*(iter->second));
-    }
-  }
-}
-
-}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 namespace function_utils {
@@ -415,7 +292,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   const auto onnx_released_versions =
       schema_registry.GetLastReleasedOpsetVersions(false);
 
-  InlinedHashMap<std::string, int> func_domain_to_version;
+  std::unordered_map<std::string, int> func_domain_to_version;
   for (auto& opSet : onnx_func_proto->opset_import()) {
     const auto& domain = opSet.domain();
     const auto version = gsl::narrow_cast<int>(opSet.version());
@@ -437,7 +314,10 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
       [onnx_func_proto, func_domain_to_version, &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
         ONNX_NAMESPACE::ShapeInferenceOptions options{true, 1, false};
-        InferShapeForFunctionNode(ctx, *onnx_func_proto, func_domain_to_version, options, schema_registry, model_local_functions, function_utils::GetFunctionIdentifier);
+        std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
+                                                                                       model_local_functions.end());
+        ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
+                                                                   schema_registry, ctx, options, map_copy);
       });
 
   op_schema->Finalize();
