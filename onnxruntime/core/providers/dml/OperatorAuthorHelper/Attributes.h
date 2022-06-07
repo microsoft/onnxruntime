@@ -89,6 +89,7 @@ namespace AttrName
     static constexpr const char* To = "to";
     static constexpr const char* TransA = "transA";
     static constexpr const char* TransB = "transB";
+    static constexpr const char* Upper = "upper";
     static constexpr const char* Value = "value";
     static constexpr const char* WidthScale = "width_scale";
 

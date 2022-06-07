@@ -255,6 +255,7 @@ public:
         // So continue that.
         if (interpolationMode == DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR)
         {
+            // TODO::: 
             std::string nearestMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
             auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
             if (optionalNearestModeValue)
@@ -279,6 +280,11 @@ public:
         // Create the operator description.
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        // TODO::: 
+        // Set operatorDesc.roundingDirection = largest ? DML_AXIS_DIRECTION_DECREASING : DML_AXIS_DIRECTION_INCREASING;
+        //std::string nearestMode = attributes.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
+        // DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
 
         DML_RESAMPLE1_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputDescs.data();
@@ -324,6 +330,9 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
     }
 
     // DML's nearest neighbor mode uses half pixels rounded down.
+
+    // TODO::: 
+    // Set operatorDesc.AxisDirection = largest ? DML_AXIS_DIRECTION_DECREASING : DML_AXIS_DIRECTION_INCREASING;
     std::string nearestMode = attributes.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
     auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
     if (!optionalNearestModeValue)

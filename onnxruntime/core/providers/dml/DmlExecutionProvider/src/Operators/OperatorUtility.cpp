@@ -448,7 +448,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown interpolation mode");
-        return (DML_INTERPOLATION_MODE)0;
+        return static_cast<DML_INTERPOLATION_MODE>(0);
     }
     #pragma warning(pop)
 
@@ -466,7 +466,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown depth/space order");
-        return (DML_DEPTH_SPACE_ORDER)0;
+        return static_cast<DML_DEPTH_SPACE_ORDER>(0);
     }
     #pragma warning(pop)
 

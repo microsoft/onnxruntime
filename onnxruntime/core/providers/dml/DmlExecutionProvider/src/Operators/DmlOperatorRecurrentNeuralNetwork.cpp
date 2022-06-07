@@ -404,6 +404,68 @@ private:
     };
 };
 
+#if 0
+void CALLBACK QueryRecurrentNeuralNetwork(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    // layout=1 is unsupported "Allow recurrent operations to be batchwise" added in opset 14.
+    // https://github.com/onnx/onnx/pull/3217
+    // https://github.com/onnx/onnx/pull/2284
+    // Currently (2022-05-27) the ORT CPU execution provider (lstm_base.h) does not support it either.
+    // and so we lack a testing reference, and no models warrant it. When needed, it can be achieved
+    // by swapping the size and strides in the TensorDesc before filling in the *_OPERATOR_DESC. Where:
+    // 
+    // layout=0: (default, consistent with opset 7)
+    //     X.shape = [seq_length, batch_size, input_size]
+    //     Y.shape = [seq_length, num_directions, batch_size, hidden_size]
+    //     initial_h.shape = Y_h.shape = [num_directions, batch_size, hidden_size]
+    // layout=1:
+    //     X.shape = [batch_size, seq_length, input_size]
+    //     Y.shape = [batch_size, seq_length, num_directions, hidden_size]
+    //     initial_h.shape = Y_h.shape = [batch_size, num_directions, hidden_size]
+
+
+    *isSupported = false;
+
+    MLOperatorAttributes attributes(context);
+
+    // DML does not support cubic.
+    std::string mode = attributes.GetOptionalAttribute<std::string>(AttrName::Mode, "nearest");
+    if (mode == "cubic")
+    {
+        return;
+    }
+
+    // DML clamps the input coordinates to the edges and essentially repeats the last pixel.
+    // So rescaling the input kernel total denominator is not supported.
+    int32_t excludeOutside = attributes.GetOptionalAttribute<int32_t>(AttrName::ExcludeOutside, 0);
+    if (excludeOutside != 0)
+    {
+        return;
+    }
+
+    // DML does not support specifying a specific element value for reading outside the edges.
+    // Note the extrapolation value is only pertinent for "tf_crop_and_resize" mode.
+    float extrapolationValue = attributes.GetOptionalAttribute<float>(AttrName::ExtrapolationValue, 0.0);
+    if (extrapolationValue != 0.0)
+    {
+        return;
+    }
+
+    // DML's nearest neighbor mode uses half pixels rounded down.
+    std::string nearestMode = attributes.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
+    auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
+    if (!optionalNearestModeValue)
+    {
+        return;
+    }
+
+    // Ignore parameter "cubic_coeff_a" since Cubic interpolation unsupported in DML.
+    // Ignore parameter "extrapolation_value" as DML clamps to the input rather than reading black pixels.
+
+    *isSupported = true;
+}
+#endif
+
 DML_OP_DEFINE_CREATION_FUNCTION(RNN,  DmlOperatorRecurrentNeuralNetwork);
 DML_OP_DEFINE_CREATION_FUNCTION(GRU,  DmlOperatorGatedRecurrentUnit);
 DML_OP_DEFINE_CREATION_FUNCTION(LSTM, DmlOperatorLongShortTermUnit);
