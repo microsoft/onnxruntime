@@ -29,7 +29,6 @@ class TestBeamSearchGpt(unittest.TestCase):
     """Test BeamSearch for GPT-2 model"""
 
     def setUp(self):
-    """Setup Test Environment"""
         self.model_name = "gpt2"
         self.gpt2_onnx_path = os.path.join(".", "onnx_models", "gpt2_past_fp32_shape.onnx")
         self.beam_search_onnx_path = os.path.join(".", "onnx_models", "gpt2_beam_search.onnx")
@@ -49,11 +48,9 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.remove_onnx_files()
 
     def tearDown(self):
-    """Clean Test Environment"""
         self.remove_onnx_files()
 
     def remove_onnx_files(self):
-    """Remove generated ONNX files"""
         if os.path.exists(self.gpt2_onnx_path):
             os.remove(self.gpt2_onnx_path)
 
@@ -61,7 +58,6 @@ class TestBeamSearchGpt(unittest.TestCase):
             os.remove(self.beam_search_onnx_path)
 
     def run_beam_search(self, extra_arguments: str, sentences=None):
-    """Run beam search test on CPU and GPU"""
         arguments = " ".join(self.default_arguments + [extra_arguments]).split()
 
         # Test CPU
