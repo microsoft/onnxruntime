@@ -38,7 +38,7 @@ def test_vector_add(size, dtype, func):
   f = getattr(ke, func)
   va = f(x_d, y_d, z_d, size)
   va.Run()
-  z_d.UpdateNumpyArray()
+  z_d.UpdateHostNumpyArray()
 
   z_ref = x + y
   np.testing.assert_allclose(z_ref, z)
@@ -49,7 +49,6 @@ def test_vector_add_all_sizes(size):
   dtypes = ["float16", "float32"]
   for dtype in dtypes:
     for f in dtype_to_funcs(dtype):
-      print(f)
       test_vector_add(size, dtype, f)
 
 

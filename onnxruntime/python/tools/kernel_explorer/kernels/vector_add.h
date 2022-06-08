@@ -7,4 +7,4 @@
 
 namespace py = pybind11;
 
-void init_vector_add(py::module m);
+void InitVectorAdd(py::module m);

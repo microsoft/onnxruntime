@@ -18,7 +18,7 @@ class VectorAdd: public Operator<T> {
     Operator<T>() {}
 
   void Run() {
-    vector_add<T, ThreadsPerBlock, VecSize>(x_, y_, z_, n_);
+    LaunchVectorAdd<T, ThreadsPerBlock, VecSize>(x_, y_, z_, n_);
   }
 
  private:
@@ -52,7 +52,7 @@ class VectorAdd: public Operator<T> {
   REGISTER_OP_VEC_SIZES(name, type, 512)
   
 
-void init_vector_add(py::module m) {
+void InitVectorAdd(py::module m) {
   REGISTER_OP_VEC_SIZES_TYPES(VectorAdd, half);
   REGISTER_OP_VEC_SIZES_TYPES(VectorAdd, float);
 }

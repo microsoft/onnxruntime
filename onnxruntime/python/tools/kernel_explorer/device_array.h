@@ -25,7 +25,7 @@ class DeviceArray {
   DeviceArray(const DeviceArray&) = delete;
   DeviceArray& operator=(DeviceArray&) = delete;
 
-  void UpdateNumpyArray() {
+  void UpdateHostNumpyArray() {
     HIP_ASSERT(hipMemcpy(x_host_, x_device_, size_ * itemsize_, hipMemcpyDeviceToHost));
   }
 

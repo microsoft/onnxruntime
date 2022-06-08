@@ -8,16 +8,16 @@
 
 // aligned vector for vectorized load/store
 template<typename T, int VecSize>
-struct alignas(sizeof(T) * VecSize) aligned_vector {
+struct alignas(sizeof(T) * VecSize) AlignedVector {
   T val[VecSize];
 };
 
 template <typename T, int VecSize>
-__global__ void vector_add_kernel(const T* __restrict__ x,
+__global__ void VectorAddKernel(const T* __restrict__ x,
                                   const T* __restrict__ y,
                                   T* __restrict__ z, int n) {
   int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-  using LoadT = aligned_vector<T, VecSize>;
+  using LoadT = AlignedVector<T, VecSize>;
 
   if (VecSize * i + VecSize - 1 < n) {
     T x_vec[VecSize];
@@ -47,8 +47,8 @@ __global__ void vector_add_kernel(const T* __restrict__ x,
 }
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-void vector_add(const T* x, const T* y, T* z, int n) {
-  hipLaunchKernelGGL((vector_add_kernel<T, VecSize>), 
+void LaunchVectorAdd(const T* x, const T* y, T* z, int n) {
+  hipLaunchKernelGGL((VectorAddKernel<T, VecSize>), 
                   dim3(ceil(float(n)/(float(ThreadsPerBlock)*VecSize))),
                   dim3(ThreadsPerBlock),
                   0, 0,

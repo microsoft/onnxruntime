@@ -11,6 +11,6 @@ namespace py = pybind11;
 PYBIND11_MODULE(kernel_explorer, m) {
   py::class_<DeviceArray>(m, "DeviceArray")
     .def(py::init<py::array>())
-    .def("UpdateNumpyArray", &DeviceArray::UpdateNumpyArray);
-  init_vector_add(m);
+    .def("UpdateHostNumpyArray", &DeviceArray::UpdateHostNumpyArray);
+  InitVectorAdd(m);
 }
