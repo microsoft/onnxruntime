@@ -8,37 +8,36 @@ import os
 import platform
 import sys
 import unittest
-from typing import Dict, Type
+from typing import Dict
 
 import numpy as np
 import onnx
 import onnx.backend.test.case.test_case
 import onnx.backend.test.runner
 
-from onnxruntime import backend
+import onnxruntime.backend as backend
 
 pytest_plugins = ("onnx.backend.test.report",)
 
 
 class OrtBackendTest(onnx.backend.test.runner.Runner):
+    """ONNX test runner with ORT-specific behavior."""
+
+    # pylint: disable=too-few-public-methods
     def __init__(
         self,
-        backend,
-        parent_module: str,
-        rtol_default: float,
-        atol_default: float,
         rtol_overrides: Dict[str, float],
         atol_overrides: Dict[str, float],
     ):
-        self._rtol_overrides = collections.defaultdict(lambda: rtol_default)
-        self._rtol_overrides.update(rtol_overrides)
-        self._atol_overrides = collections.defaultdict(lambda: atol_default)
-        self._atol_overrides.update(atol_overrides)
+        self._rtol_overrides = rtol_overrides
+        self._atol_overrides = atol_overrides
 
-        super().__init__(backend, parent_module=parent_module)
+        super().__init__(backend, parent_module=__name__)
 
     @classmethod
     def assert_similar_outputs(cls, ref_outputs, outputs, rtol, atol):
+        """Asserts ref_outputs and outputs match to within the given tolerances."""
+
         def assert_similar_array(ref_output, output):
             np.testing.assert_equal(ref_output.dtype, output.dtype)
             if ref_output.dtype == object:
@@ -47,27 +46,37 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
                 np.testing.assert_allclose(ref_output, output, rtol=rtol, atol=atol)
 
         np.testing.assert_equal(len(ref_outputs), len(outputs))
-        for i in range(len(outputs)):
+        for i in range(len(outputs)):  # pylint: disable=consider-using-enumerate
             if isinstance(outputs[i], list):
                 for j in range(len(outputs[i])):
                     assert_similar_array(ref_outputs[i][j], outputs[i][j])
             else:
                 assert_similar_array(ref_outputs[i], outputs[i])
 
-    def _add_model_test(self, tc: onnx.backend.test.case.test_case.TestCase, kind: str) -> None:
-        tc.rtol = self._rtol_overrides[tc.name]
-        tc.atol = self._atol_overrides[tc.name]
-        super()._add_model_test(tc, kind)
+    def _add_model_test(self, t_c: onnx.backend.test.case.test_case.TestCase, kind: str) -> None:
+        attrs = {}
+        # TestCase changed from a namedtuple to a dataclass in ONNX 1.12.
+        # We can just modify t_c.rtol and atol directly once ONNX 1.11 is no longer supported.
+        if isinstance(t_c, collections.namedtuple):
+            attrs = t_c._asdict()
+        else:
+            attrs = vars(t_c)
+        attrs["rtol"] = self._rtol_overrides[t_c.name]
+        attrs["atol"] = self._atol_overrides[t_c.name]
+
+        super()._add_model_test(onnx.backend.test.case.test_case.TestCase(**attrs), kind)
 
 
 def load_jsonc(basename: str):
+    """Returns a deserialized object from the JSONC file in testdata/<basename>."""
     with open(
         os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             "testdata",
             basename,
         )
-    ) as f:
+        encoding="utf-8"
+    ) as f: # pylint: disable=invalid-name
         lines = f.readlines()
     lines = [x.split("//")[0] for x in lines]
     return json.loads("\n".join(lines))
@@ -75,14 +84,14 @@ def load_jsonc(basename: str):
 
 def create_backend_test(testname=None):
     overrides = load_jsonc("onnx_backend_test_series_overrides.jsonc")
-    backend_test = OrtBackendTest(
-        backend,
-        __name__,
-        overrides["rtol_default"],
-        overrides["atol_default"],
-        overrides["rtol_overrides"],
-        overrides["atol_overrides"],
-    )
+    rtol_default = overrides["rtol_default"]
+    atol_default = overrides["atol_default"]
+    rtol_overrides = collections.defaultdict(lambda: rtol_default)
+    rtol_overrides.update(overrides["rtol_overrides"])
+    atol_overrides = collections.defaultdict(lambda: atol_default)
+    atol_overrides.update(overrides["atol_overrides"])
+
+    backend_test = OrtBackendTest(rtol_overrides, atol_overrides)
 
     # Type not supported
     backend_test.exclude(r"(FLOAT16)")
@@ -145,7 +154,7 @@ def create_backend_test(testname=None):
             ]
 
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA
-        # EPs are available (Windows GPU CI pipeline has this config) - these test will pass because CUDA has higher precendence than DML
+        # EPs are available (Windows GPU CI pipeline has this config) - these test will pass because CUDA has higher precedence than DML
         # and the nodes are assigned to only the CUDA EP (which supports these tests)
         if backend.supports_device("DML") and not backend.supports_device("GPU"):
             current_failing_tests += [
@@ -194,7 +203,7 @@ def parse_args():
 
     # Add an argument to match a single test name, by adding the name to the 'include' filter.
     # Using -k with python unittest (https://docs.python.org/3/library/unittest.html#command-line-options)
-    # doesn't work as it filters on the test method name (Runner._add_model_test) rather than inidividual
+    # doesn't work as it filters on the test method name (Runner._add_model_test) rather than individual
     # test case names.
     parser.add_argument(
         "-t",
