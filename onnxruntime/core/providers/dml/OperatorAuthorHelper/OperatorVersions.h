@@ -344,12 +344,16 @@ namespace OperatorHelper
     namespace OnnxOperatorSet14
     {
         static const int sc_sinceVer_Add = 14;
+        static const int sc_sinceVer_BatchNormalization = 14;
         static const int sc_sinceVer_CumSum = 14;
         static const int sc_sinceVer_Div = 14;
         static const int sc_sinceVer_Identity = 14;
+        static const int sc_sinceVer_GRU = 14;
+        static const int sc_sinceVer_LSTM = 14;
         static const int sc_sinceVer_Mul = 14;
         static const int sc_sinceVer_Relu = 14;
         static const int sc_sinceVer_Reshape = 14;
+        static const int sc_sinceVer_RNN = 14;
         static const int sc_sinceVer_Sub = 14;
         static const int sc_sinceVer_Trilu = 14;
     } // namespace OnnxOperatorSet14
@@ -357,6 +361,8 @@ namespace OperatorHelper
     namespace OnnxOperatorSet15
     {
         static const int sc_sinceVer_CastLike = 15;
+        static const int sc_sinceVer_BatchNormalization = 15;
+        static const int sc_sinceVer_Pow = 15;
     } // namespace OnnxOperatorSet14
 
     namespace MsftOperatorSet1
