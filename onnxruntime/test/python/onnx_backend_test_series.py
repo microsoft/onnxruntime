@@ -57,7 +57,7 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         attrs = {}
         # TestCase changed from a namedtuple to a dataclass in ONNX 1.12.
         # We can just modify t_c.rtol and atol directly once ONNX 1.11 is no longer supported.
-        if isinstance(t_c, collections.namedtuple):
+        if isinstance(t_c, collections.namedtuple):  # type: ignore
             attrs = t_c._asdict()
         else:
             attrs = vars(t_c)
@@ -82,7 +82,7 @@ def load_jsonc(basename: str):
     return json.loads("\n".join(lines))
 
 
-def create_backend_test(testname=None):
+def create_backend_test(test_name=None):
     overrides = load_jsonc("onnx_backend_test_series_overrides.jsonc")
     rtol_default = overrides["rtol_default"]
     atol_default = overrides["atol_default"]
@@ -96,8 +96,8 @@ def create_backend_test(testname=None):
     # Type not supported
     backend_test.exclude(r"(FLOAT16)")
 
-    if testname:
-        backend_test.include(testname + ".*")
+    if test_name:
+        backend_test.include(test_name + ".*")
     else:
         filters = load_jsonc("onnx_backend_test_series_filters.jsonc")
         current_failing_tests = filters["current_failing_tests"]
@@ -208,7 +208,7 @@ def parse_args():
     parser.add_argument(
         "-t",
         "--test-name",
-        dest="testname",
+        dest="test_name",
         type=str,
         help="Only run tests that match this value. Matching is regex based, and '.*' is automatically appended",
     )
@@ -223,5 +223,5 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    backend_test = create_backend_test(args.testname)
+    backend_test = create_backend_test(args.test_name)
     unittest.main()
