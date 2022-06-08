@@ -86,8 +86,8 @@ export function assertFloatEqual(
   actual: number[] | Float32Array | Float64Array, expected: number[] | Float32Array | Float64Array,
   atol?: number, rtol?: number): void {
 
-  absolute_tol = atol ?? 1.0e-4;
-  relative_tol = 1 + (rtol ?? 1.0e-6);
+  const absolute_tol: number = atol ?? 1.0e-4;
+  const relative_tol: number = 1 + (rtol ?? 1.0e-6);
 
   assert.strictEqual(actual.length, expected.length);
 
