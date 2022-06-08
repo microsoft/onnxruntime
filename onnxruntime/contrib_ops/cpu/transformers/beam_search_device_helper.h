@@ -35,7 +35,7 @@ namespace BeamSearchDeviceHelper {
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
-    void* stream,  // cudaStream_t stream,
+    void* stream,  // cudaStream_t
     onnxruntime::concurrency::ThreadPool* threadpool,
     std::unique_ptr<Tensor>& output_values,
     std::unique_ptr<Tensor>& output_indices)>;
@@ -204,7 +204,6 @@ Status CreateEncoderInputs(
     int num_beams,
     int pad_token_id,
     int start_token_id,
-    // gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr allocator,
     OrtValue& expanded_encoder_input_ids,
     OrtValue& expanded_encoder_attention_mask,

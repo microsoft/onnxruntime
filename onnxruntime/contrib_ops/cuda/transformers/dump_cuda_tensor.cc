@@ -40,6 +40,8 @@ class PinnedHostBuffer {
 
 template <typename T>
 void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool is_gpu_tensor) {
+  // Occasionally, user will need dump CPU tensor in CUDA EP.
+  // In that case, we copy tensor data as well. It is not needed, but it keeps code simple.
   int num_items = dim0 * dim1;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   cudaDeviceSynchronize();

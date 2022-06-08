@@ -62,8 +62,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state,
                                                                         subgraph_output_names[0]);
 
-  // position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
-  // as we skip them when we call FindDevicesForValues, and default them to be in the same device as input_ids
+  // The position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
   feed_names.insert(feed_names.end(), subgraph_input_names.begin(), subgraph_input_names.end());
 
   for (auto& entry : node.ImplicitInputDefs()) {
@@ -74,7 +73,7 @@ Status Subgraph::Setup(const SessionState& session_state,
   feed_locations.resize(feed_names.size());
 
   for (size_t i = 0, end = feed_names.size(); i < end; ++i) {
-    if (i >= subgraph_input_names.size()) {  // implicit inputs
+    if (i >= subgraph_input_names.size()) {  // Implicit inputs
       const auto& location = utils::FindMemoryInfoForValue(session_state, feed_names[i]);
       feed_locations[i] = location.device;
     } else {
@@ -87,11 +86,11 @@ Status Subgraph::Setup(const SessionState& session_state,
                                                   subgraph_session_state.GetOrtValueNameIdxMap(), ffm));
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
-  // setup the locations where we want the subgraph output to end up on
+  // Setup the locations where we want the subgraph output to end up on
   std::vector<const OrtMemoryInfo*> fetch_locations;
   fetch_locations.reserve(num_subgraph_outputs);
 
-  // past state need to be where we can feed them in to the next iteration, so set the location to match the feed.
+  // Past state need to be where we can feed them in to the next iteration, so set the location to match the feed.
   for (int i = 0; i < num_subgraph_outputs; ++i) {
     fetch_locations.push_back(&default_location);
   }

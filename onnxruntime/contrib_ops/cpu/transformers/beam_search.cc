@@ -87,7 +87,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                         gpt_subgraph_->head_size,
                                         gpt_subgraph_->num_layers);
     }
-  } else if (parameters_.model_type == 1) {  // encoder-decoder like T5
+  } else if (parameters_.model_type == 1) {  // T5
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -131,7 +131,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
-  BeamSearchParameters parameters = parameters_;  // make a copy since we will update it based on inputs later
+  // Make a copy of parameters since we will update it based on inputs later
+  BeamSearchParameters parameters = parameters_;
 
   if (parameters_.model_type == 0) {  // GPT-2
     // Subgraph has constraint that the output is either float or float16

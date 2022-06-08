@@ -114,10 +114,10 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     void* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
-  // Allocate subgraph inputs from same device as inputs of encoder subgraph
+  // Allocate subgraph inputs from same device as inputs of encoder subgraph.
   AllocatorPtr allocator = session_state_->GetAllocator(encoder_feeds[0].Get<Tensor>().Location());
 
-  // copy beam next tokens in CPU to input_ids in provider device (CPU for CPU EP, or GPU for CUDA EP).
+  // Copy beam next tokens in CPU to input_ids in provider device (CPU for CPU EP, or GPU for CUDA EP).
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
@@ -129,19 +129,19 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
       stream,
       DeviceCopyDirection::hostToDevice));
 
-  // The ordering is the same as used in Setup
+  // The ordering is the same as used in Setup.
   decoder_feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
   decoder_feeds.push_back(input_ids);
 
-  // encoder_attention_mask is copied from the second input of encoder.
+  // The encoder_attention_mask is copied from the second input of encoder.
   decoder_feeds.push_back(encoder_feeds[1]);
 
-  // encoder_hidden_states and past states are copied from the second output of encoder.
+  // The encoder_hidden_states and past states are copied from the second output of encoder.
   for (size_t j = 1; j < encoder_fetches.size(); j++) {
     decoder_feeds.push_back(encoder_fetches[j]);
   }
 
-  // pass through implicit inputs
+  // Pass through implicit inputs.
   for (const auto* entry : implicit_inputs) {
     decoder_feeds.push_back(*entry);
   }

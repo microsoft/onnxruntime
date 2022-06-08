@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// A class for T5 decoder subgraph inputs and outputs preparation
+// A class for T5 decoder subgraph inputs and outputs preparation.
 class T5DecoderSubgraph : public Subgraph {
  public:
   T5DecoderSubgraph(

@@ -189,7 +189,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manage
   dumper->Print("attention_mask", feeds[2]);
 #endif
 
-  // position ids for all iterations except the first. It uses memory buffer owned by next_positions.
+  // Position ids for all iterations except the first. It uses memory buffer owned by next_positions.
   OrtValue position_ids;
   int64_t dims[] = {parameters->BatchBeamSize(), 1};
   TensorShape shape(&dims[0], 2);

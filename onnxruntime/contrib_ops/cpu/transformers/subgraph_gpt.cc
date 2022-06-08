@@ -77,7 +77,7 @@ Status GptSubgraph::CreateInitialFeeds(
     feeds.push_back(empty_past);
   }
 
-  // pass in implicit inputs
+  // Pass in implicit inputs
   for (const auto* entry : implicit_inputs) {
     feeds.push_back(*entry);
   }

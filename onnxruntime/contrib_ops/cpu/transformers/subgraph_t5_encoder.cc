@@ -111,10 +111,10 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
 
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
-  // The ordering is the same as used in Setup
+  // The ordering is the same as used in Setup.
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
-  // Allocate subgraph inputs to be same device as encoder_input_ids
+  // Allocate subgraph inputs to be same device as encoder_input_ids.
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(encoder_input_ids.Location());
 
   // TODO(tianleiwu): expand the outputs instead of inputs to save computation.

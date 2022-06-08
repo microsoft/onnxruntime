@@ -69,7 +69,7 @@ void BeamHypotheses::Output(
   }
 
   // Since pop get the worst sequence, so output it in the reverse order.
-  // The frist (worst) beam shall be put at the last position among top_k sequences.
+  // The first (worst) beam shall be put at the last position among top_k sequences.
   int index = top_k - 1;
   while (!beams_.empty()) {
     auto item = beams_.top();
@@ -124,7 +124,7 @@ void BeamSearchScorer::Initialize(AllocatorPtr& allocator, int sequence_length) 
   ORT_ENFORCE(next_beam_scores_.empty());  // Make sure this is called only once.
 
   size_t batch_beam_size = batch_size_ * num_beams_;
-  constexpr bool no_fill = false;  // do not fill values after allocation
+  constexpr bool no_fill = false;  // Do not fill values after allocation
 
   done_ = Allocate<bool>(allocator, batch_size_, done_ptr_, no_fill);
   std::fill_n(done_.data(), done_.size(), false);

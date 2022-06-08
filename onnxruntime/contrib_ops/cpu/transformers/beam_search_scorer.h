@@ -61,7 +61,7 @@ class BeamHypotheses {
   bool early_stopping_;
   float worst_score_;
 
-  // min-heap for top k
+  // Min-heap for top k
   std::priority_queue<HypothesisScore, onnxruntime::FastAllocVector<HypothesisScore>, HypothesisScoreCompare> beams_;
 };
 

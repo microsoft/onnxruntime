@@ -33,7 +33,8 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
   batch_size = static_cast<int>(dims[0]);
 
-  sequence_length = this->decoder_start_token_id >= 0 ? 0 : static_cast<int>(dims[1]);
+  // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
+  sequence_length = this->decoder_start_token_id >= 1 ? 0 : static_cast<int>(dims[1]);
 
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;

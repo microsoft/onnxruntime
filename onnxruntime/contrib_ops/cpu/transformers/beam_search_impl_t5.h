@@ -70,10 +70,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   auto status = Status::OK();
 
   const BeamSearchParameters* parameters = this->parameters_;
-  ORT_ENFORCE(parameters->sequence_length == 0);
-
-  // Output sequence shall start with decoder_start_token_id, update sequence length to be 1 as the initial state.
-  this->parameters_->sequence_length = 1;
+  ORT_ENFORCE(parameters->sequence_length == 1);
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->num_return_sequences, parameters->max_length};

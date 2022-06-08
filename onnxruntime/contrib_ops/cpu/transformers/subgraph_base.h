@@ -26,14 +26,14 @@ class Subgraph {
       const GraphViewer& subgraph_in);
   virtual ~Subgraph() {}
 
-  const onnxruntime::Node& node;  // node that contains the subgraph
-  const std::string& attribute;   // attribute of th node that contains the subgraph. Not used yet.
-  const GraphViewer& subgraph;    // the subgraph
+  const onnxruntime::Node& node;  // Node that contains the subgraph
+  const std::string& attribute;   // Attribute of th node that contains the subgraph. Not used yet.
+  const GraphViewer& subgraph;    // The subgraph
 
   int num_implicit_inputs;
 
-  int num_subgraph_inputs;   // same as subgraph_input_names.size(), keep it for convenience.
-  int num_subgraph_outputs;  // same as subgraph_output_names.size()
+  int num_subgraph_inputs;   // Same as subgraph_input_names.size(), keep it for convenience.
+  int num_subgraph_outputs;  // Same as subgraph_output_names.size()
 
   std::vector<std::string> subgraph_input_names;
   std::vector<std::string> subgraph_output_names;

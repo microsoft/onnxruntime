@@ -8,7 +8,7 @@
 #include "core/framework/ort_value.h"
 
 #ifndef NDEBUG
-#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
+//#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
 #endif
 
 namespace onnxruntime {
@@ -92,7 +92,7 @@ struct IBeamSearchParameters {
   float length_penalty;
   float repetition_penalty;
   int batch_size;       // deduce from first dimension of input_ids
-  int sequence_length;  // deduce from second dimension of input_ids
+  int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
