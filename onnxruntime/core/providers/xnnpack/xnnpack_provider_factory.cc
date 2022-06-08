@@ -10,17 +10,12 @@ namespace onnxruntime {
 
 struct XnnpackProviderFactory : IExecutionProviderFactory {
   XnnpackProviderFactory() = default;
-  std::unique_ptr<IExecutionProvider> CreateProvider() override;
   std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options) override;
   XnnpackExecutionProviderInfo info{true, 1};
 };
 
 std::unique_ptr<IExecutionProvider> XnnpackProviderFactory::CreateProvider(const SessionOptions* options) {
   info.xnn_thread_pool_size = options->intra_op_param.thread_pool_size;
-  return CreateProvider();
-}
-
-std::unique_ptr<IExecutionProvider> XnnpackProviderFactory::CreateProvider() {
   return std::make_unique<XnnpackExecutionProvider>(info);
 }
 
