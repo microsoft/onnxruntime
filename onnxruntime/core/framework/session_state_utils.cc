@@ -85,14 +85,14 @@ struct ExtDataValueDeleter {
 // by the OrtValue's deleter
 static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                        OrtValue& ort_value, int id, const logging::Logger& logger)
+                                                        Tensor& tensor, OrtCallback& ext_data_deleter) //, int id, const DataTransferManager& data_transfer_mgr, const logging::Logger& logger)
 {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   ORT_ENFORCE(! proto_path.empty());
 
   void* ext_data_buf = nullptr;
   size_t ext_data_len = 0;
-  OrtCallback ext_data_deleter;
+  // OrtCallback ext_data_deleter;
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
                                                        ext_data_buf, ext_data_len, ext_data_deleter));
 
@@ -103,13 +103,14 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const st
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::vector<int64_t> tensor_shape_vec = utils::GetTensorShapeFromTensorProto(tensor_proto);
   TensorShape tensor_shape {tensor_shape_vec};
-  MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
+  // MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
 
   auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, ext_data_buf, ext_data_alloc);
+  tensor = std::move(*p_tensor);
 
-  ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get(), id, logger };
-
-  ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
+  // ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get(), id, logger };
+  //
+  // ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
   return common::Status::OK();
 }
 
@@ -152,10 +153,24 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
   if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
-    // LOGS(logger, INFO) << "deserialize directly to CPU tensor";
+    LOGS(logger, INFO) << "deserialize directly to CPU tensor";
+    if (utils::HasExternalData(tensor_proto)) {
+      // Status st = ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, ort_value,
+      //         [>TODO for debugging, delete later<] 0, data_transfer_mgr, logger);
+      LOGS(logger, INFO) << "deserialize directly to CPU tensor from external data";
+      OrtCallback ext_data_deleter;
+      Status st = ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor, ext_data_deleter); //,
+              // TODO for debugging, delete later 0, data_transfer_mgr, logger);
+
+      ExtDataValueDeleter deleter { ext_data_deleter, p_tensor.get(), 0, logger };
+
+      MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
+      ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
+      return common::Status::OK();
+    }
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
   } else {  // non-cpu tensor
-    // LOGS(logger, INFO) << "deserialize to non-CPU tensor";
+    LOGS(logger, INFO) << "deserialize to non-CPU tensor";
     if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
     }
@@ -174,7 +189,14 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
     }
 
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
+    OrtCallback ext_data_deleter;
+    if (utils::HasExternalData(tensor_proto)) {
+      //
+      Status st = ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor, ext_data_deleter); //,
+      if (! st.IsOK()) { return st; }
+    } else {
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
+    }
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
     // LOGS(logger, INFO) << "copying temp tensor to final destination";
@@ -258,8 +280,9 @@ common::Status SaveInitializedTensors(
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
-    auto location = exec_plan.GetLocation(ort_value_index).name;
-    if (utils::HasExternalData(*entry->second) && (strcmp(location, CPU) == 0)) {
+    // auto location = exec_plan.GetLocation(ort_value_index).name;
+    // if (utils::HasExternalData(*entry->second) && (strcmp(location, CPU) == 0)) {
+    if (utils::HasExternalData(*entry->second)) {
       // exernal data will be memory mapped, no need to plan for its allocation
       continue;
     } else {
@@ -271,12 +294,13 @@ common::Status SaveInitializedTensors(
   }
 
   for (const auto& entry : initialized_tensors_to_allocate) {
-    auto location = exec_plan.GetLocation(entry.first).name;
+    // auto location = exec_plan.GetLocation(entry.first).name;
     // We don't want to trace shared initializers since their memory is provided by the user
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       continue;
     }
-    if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
+    // if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
+    if (utils::HasExternalData(*entry.second) ) {
       // exernal data will be memory mapped, no need to plan for its allocation
       continue;
     }
@@ -312,21 +336,26 @@ common::Status SaveInitializedTensors(
     const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
     OrtValue ort_value;
 
-    auto location = exec_plan.GetLocation(ort_value_index).name;
+    // auto location = exec_plan.GetLocation(ort_value_index).name;
     // LOGS(logger, INFO) << "XXX location " << location;
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       ort_value = *(session_options.initializers_to_share_map.at(name));
       // LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
     }
-    else if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
-      const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
-      Status st = ExtDataTensorProtoToTensor(env, graph_loc, tensor_proto, ort_value, entry.first, logger);
-      if (! st.IsOK()) {
-        std::ostringstream oss;
-        oss << "Load of external data tensor " << name << " failed." << st.ErrorMessage();
-        return Status(st.Category(), st.Code(), oss.str());
-      }
-    }
+    // else if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
+    // else if (utils::HasExternalData(*entry.second)) {
+    //   const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
+    //   Status st = ExtDataTensorProtoToTensor(env, graph_loc, tensor_proto, ort_value, entry.first, data_transfer_mgr, logger);
+    //   if (! st.IsOK()) {
+    //     std::ostringstream oss;
+    //     oss << "Load of external data tensor " << name << " failed." << st.ErrorMessage();
+    //     return Status(st.Category(), st.Code(), oss.str());
+    //   }
+    //   if (strcmp(location, CPU) == 0) {
+    //     // destination is not on cpu, gotta copy
+    //     // TODO
+    //   }
+    // }
     else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
