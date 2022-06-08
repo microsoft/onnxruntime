@@ -57,7 +57,7 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         attrs = {}
         # TestCase changed from a namedtuple to a dataclass in ONNX 1.12.
         # We can just modify t_c.rtol and atol directly once ONNX 1.11 is no longer supported.
-        if isinstance(t_c, collections.namedtuple):  # type: ignore
+        if hasattr(t_c, "_asdict"):
             attrs = t_c._asdict()
         else:
             attrs = vars(t_c)
@@ -74,9 +74,9 @@ def load_jsonc(basename: str):
             os.path.dirname(os.path.realpath(__file__)),
             "testdata",
             basename,
-        )
-        encoding="utf-8"
-    ) as f: # pylint: disable=invalid-name
+        ),
+        encoding="utf-8",
+    ) as f:  # pylint: disable=invalid-name
         lines = f.readlines()
     lines = [x.split("//")[0] for x in lines]
     return json.loads("\n".join(lines))
