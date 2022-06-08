@@ -28,14 +28,12 @@ union ActivationOperatorDescUnion
     DML_ACTIVATION_TANH_OPERATOR_DESC tanh;
     DML_ACTIVATION_THRESHOLDED_RELU_OPERATOR_DESC thresholdedRelu;
     DML_ACTIVATION_SHRINK_OPERATOR_DESC shrink;
-    char alignment[sizeof(hardmax)];
 };
 
 struct ActivationOperatorDesc
 {
     ActivationOperatorDescUnion params;
     DML_OPERATOR_TYPE activationType;
-    uint32_t padding;
 
     #pragma warning(push)
     #pragma warning(disable:4702)
