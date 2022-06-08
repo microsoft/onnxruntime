@@ -28,7 +28,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import onnx
@@ -36,6 +36,8 @@ import torch
 from benchmark_helper import Precision
 from onnx import onnx_pb as onnx_proto
 from transformers import GPT2Config, GPT2LMHeadModel, GPT2Tokenizer, T5Config, T5ForConditionalGeneration, T5Tokenizer
+
+from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
 from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
@@ -47,7 +49,15 @@ from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_model
 logger = logging.getLogger("")
 
 
-def parse_arguments(argv=None):
+def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """Parse arguments
+
+    Args:
+        argv (Optional[List[str]], optional): _description_. Defaults to None.
+
+    Returns:
+        argparse.Namespace: Parsed arguments.
+    """
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -234,7 +244,12 @@ def parse_arguments(argv=None):
     return args
 
 
-def gpt2_to_onnx(args):
+def gpt2_to_onnx(args: argparse.Namespace):
+    """Convert GPT-2 model to onnx
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+    """
     model_name = args.model_name_or_path
 
     arguments = [
@@ -269,7 +284,12 @@ def gpt2_to_onnx(args):
     convert_gpt2_to_onnx(argv=arguments)
 
 
-def t5_to_onnx(args):
+def t5_to_onnx(args: argparse.Namespace):
+    """Convert T5 model to onnx
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+    """
     paths = export_t5_onnx_models(
         args.model_name_or_path,
         args.cache_dir,
@@ -289,21 +309,36 @@ def t5_to_onnx(args):
     args.decoder_onnx = paths[1]
 
 
-def shape_inference(decoder_onnx_path):
+def shape_inference(onnx_path: str):
+    """Shape inference on an onnx file, which will be overwritten.
+
+    Args:
+        onnx_path (str): Path of onnx model
+    """
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-    out = SymbolicShapeInference.infer_shapes(onnx.load(decoder_onnx_path), auto_merge=True, guess_output_rank=False)
+    out = SymbolicShapeInference.infer_shapes(onnx.load(onnx_path), auto_merge=True, guess_output_rank=False)
     if out:
         # TODO(tianleiwu): Use external format if input has extra data.
-        onnx.save(out, decoder_onnx_path)
+        onnx.save(out, onnx_path)
     else:
         print("Failed to run symbolic shape inference on the model.")
 
 
-def create_ort_session(model_path, use_gpu):
-    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
+def create_ort_session(model_path: str, use_gpu: bool) -> InferenceSession:
+    """Create OnnxRuntime session.
 
+    Args:
+        model_path (str): onnx model path
+        use_gpu (bool): use GPU or not
+
+    Raises:
+        RuntimeError: CUDAExecutionProvider is not available when --use_gpu is specified.
+
+    Returns:
+        onnxruntime.InferenceSession: The created session.
+    """
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
     execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"]
@@ -317,7 +352,21 @@ def create_ort_session(model_path, use_gpu):
     return ort_session
 
 
-def verify_gpt2_subgraph(graph, precision):
+def verify_gpt2_subgraph(graph: onnx.GraphProto, precision: Precision):
+    """Verify GPT-2 subgraph
+
+    Args:
+        graph (onnx.GraphProto): onnx graph of GPT-2
+        precision (Precision): Precision (FLOAT16 or FLOAT32) of the model.
+
+    Raises:
+        ValueError: Number of inputs not expected.
+        ValueError: Input name is not expected.
+        ValueError: Input data type is not expected.
+        ValueError: Number of outputs not expected.
+        ValueError: Output name is not expected.
+        ValueError: Output data type is not expected.
+    """
     is_float16 = Precision.FLOAT16 == precision
 
     input_count = len(graph.input)
@@ -359,7 +408,21 @@ def verify_gpt2_subgraph(graph, precision):
     return
 
 
-def verify_t5_decoder_subgraph(graph, precision):
+def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
+    """Verify T5 decoder subgraph
+
+    Args:
+        graph (onnx.GraphProto): onnx graph of T5 decoder
+        precision (Precision): Precision (FLOAT16 or FLOAT32) of the model.
+
+    Raises:
+        ValueError: Number of inputs not expected.
+        ValueError: Input name is not expected.
+        ValueError: Input data type is not expected.
+        ValueError: Number of outputs not expected.
+        ValueError: Output name is not expected.
+        ValueError: Output data type is not expected.
+    """
     is_float16 = Precision.FLOAT16 == precision
     float_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
 
@@ -420,7 +483,21 @@ def verify_t5_decoder_subgraph(graph, precision):
             raise ValueError(f"Output {i} is expected to have onnx data type {float_type}. Got {output_type}")
 
 
-def verify_t5_encoder_decoder_init_subgraph(graph, precision):
+def verify_t5_encoder_decoder_init_subgraph(graph: onnx.GraphProto, precision: Precision):
+    """Verify T5 decoder subgraph
+
+    Args:
+        graph (onnx.GraphProto): onnx graph of T5 decoder
+        precision (Precision): Precision (FLOAT16 or FLOAT32) of the model.
+
+    Raises:
+        ValueError: Number of inputs not expected.
+        ValueError: Input name is not expected.
+        ValueError: Input data type is not expected.
+        ValueError: Number of outputs not expected.
+        ValueError: Output name is not expected.
+        ValueError: Output data type is not expected.
+    """
     is_float16 = Precision.FLOAT16 == precision
     layer_count = (len(graph.output) - 2) // 4
     assert layer_count >= 1
@@ -459,6 +536,9 @@ def verify_t5_encoder_decoder_init_subgraph(graph, precision):
         expected_outputs.append(f"present_key_cross_{i}")
         expected_outputs.append(f"present_value_cross_{i}")
 
+    if len(graph.output) != len(expected_outputs):
+        raise ValueError(f"Number of outputs expected to be {len(expected_outputs)}. Got {len(graph.output)}")
+
     for i, expected_output in enumerate(expected_outputs):
         if graph.output[i].name != expected_output:
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
@@ -466,12 +546,18 @@ def verify_t5_encoder_decoder_init_subgraph(graph, precision):
         expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
         output_type = graph.output[i].type.tensor_type.elem_type
         if output_type != expected_type:
-            raise ValueError(f"Input {i} is expected to have onnx data type {expected_type}. Got {output_type}")
+            raise ValueError(f"Output {i} is expected to have onnx data type {expected_type}. Got {output_type}")
 
     print("T5 encoder graph verified: name and data type of inputs and outputs are good.")
 
 
-def convert_model(args):
+def convert_model(args: argparse.Namespace):
+    """Convert model according to command line arguments.
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+    """
+
     if args.model_type == "gpt2":
         if os.path.exists(args.decoder_onnx):
             print(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
@@ -651,7 +737,29 @@ def convert_model(args):
     onnx.save(new_model, args.output)
 
 
-def test_torch_performance(args, model, input_ids, attention_mask, eos_token_id, pad_token_id, bad_words_ids):
+def test_torch_performance(
+    args: argparse.Namespace,
+    model: Union[GPT2LMHeadModel, T5ForConditionalGeneration],
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+    eos_token_id: int,
+    pad_token_id: int,
+    bad_words_ids: List[List[int]],
+) -> Dict[str, Any]:
+    """Test PyTorch performance of text generation.
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+        model (Union[GPT2LMHeadModel, T5ForConditionalGeneration]): PyTorch model
+        input_ids (torch.Tensor): input_ids
+        attention_mask (torch.Tensor): Attention mask
+        eos_token_id (int): EOS token ID
+        pad_token_id (int): Padding token ID
+        bad_words_ids (List[List[int]]): Words shall not be generated.
+
+    Returns:
+        Dict[str, Any]: A dictionary with string with metric name, and value can be integer or string.
+    """
     if args.use_gpu and not torch.cuda.is_available():
         logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
         return None
@@ -694,17 +802,27 @@ def test_torch_performance(args, model, input_ids, attention_mask, eos_token_id,
     return get_latency_result(torch_latency, batch_size)
 
 
-def test_gpt_model(args, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
+def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
+    """Test GPT-2 model
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+        use_vocab_mask (bool, optional): use vocabulary mask. Defaults to False.
+        sentences (Optional[List[str]], optional): input text. Defaults to None.
+
+    Returns:
+        Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
+    """
     assert args.model_type == "gpt2"
 
     if args.temperature != 1.0:
         # TODO(tianleiwu): implement temperature in BeamSearch operator.
         print("Skipping parity test as temperature is not implemented in BeamSearch operator")
-        return True
+        return None
 
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
-        return True
+        return None
 
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
@@ -870,17 +988,27 @@ def test_gpt_model(args, use_vocab_mask: bool = False, sentences: Optional[List[
     return output
 
 
-def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
+def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, sentences: Optional[List[str]] = None):
+    """Test T5 model
+
+    Args:
+        args (argparse.Namespace): arguments parsed from command line
+        use_vocab_mask (bool, optional): use vocabulary mask. Defaults to False.
+        sentences (Optional[List[str]], optional): input text. Defaults to None.
+
+    Returns:
+        Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
+    """
     assert args.model_type == "t5"
 
     if args.temperature != 1.0:
         # TODO(tianleiwu): implement temperature in BeamSearch operator.
         print("Skipping parity test as temperature is not implemented in BeamSearch operator")
-        return True
+        return None
 
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
-        return True
+        return None
 
     tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
@@ -1046,7 +1174,23 @@ def test_t5_model(args, use_vocab_mask: bool = False, sentences: Optional[List[s
     return output
 
 
-def main(argv=None, sentences=None):
+def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None):
+    """Main entry function
+
+    Args:
+        argv (Optional[List[str]], optional): _description_. Defaults to None.
+        sentences (Optional[List[str]], optional): input text. Defaults to None.
+
+    Raises:
+        ValueError: --decoder_onnx is not specified for GPT2 model
+        ValueError: Path does not exist: --encoder_decoder_init_onnx
+        ValueError: Path does not exist: --decoder_onnx
+        ValueError: --decoder_onnx and --encoder_decoder_init_onnx are not used together for T5
+
+    Returns:
+        Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
+    """
+
     args = parse_arguments(argv)
 
     if args.model_type == "gpt2":
