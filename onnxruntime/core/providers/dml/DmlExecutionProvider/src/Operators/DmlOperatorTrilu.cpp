@@ -15,7 +15,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 1, "Trilu expects 1-2 inputs.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "Trilu expects 1 output.");
 
-        // todo::: Handle optional input.
         std::vector<std::optional<uint32_t>> inputIndices = {0}; // Use only the first tensor. The second tensor is CPU-based (k).
         std::vector<std::optional<uint32_t>> outputIndices = {0};
         DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
@@ -25,7 +24,7 @@ public:
         assert(inputDescs.size() == 1);
         assert(outputDescs.size() == 1);
 
-        // Read the diagonal offset from the 2nd tensor (optional tensor defaults to 0).
+        // Read the diagonal offset from the 2nd tensor (defaults to 0 if absent).
         int32_t k = 0;
         if (kernelCreationContext.IsInputValid(1))
         {
