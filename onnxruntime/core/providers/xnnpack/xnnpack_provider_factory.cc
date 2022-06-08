@@ -24,7 +24,8 @@ std::unique_ptr<IExecutionProvider> XnnpackProviderFactory::CreateProvider() {
   return std::make_unique<XnnpackExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Xnnpack(OrtXnnpackProviderOptions* /*ep_options*/) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Xnnpack(
+	const OrtXnnpackProviderOptions* /*ep_options*/) {
   auto factory = std::make_shared<XnnpackProviderFactory>();
   // factory->info.options = ep_options == 0 ? OrtXnnpackProviderOptions() : ep_options;
   return factory;

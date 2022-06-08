@@ -14,7 +14,7 @@ namespace onnxruntime {
 struct XnnpackExecutionProviderInfo {
   bool create_arena{true};
   int64_t xnn_thread_pool_size{0};
-  explicit XnnpackExecutionProviderInfo(bool use_arena = true, int64_t thread_pool_size=1)
+  explicit XnnpackExecutionProviderInfo(bool use_arena = true, int64_t thread_pool_size = 1)
       : create_arena{use_arena}, xnn_thread_pool_size(thread_pool_size) {}
 
   XnnpackExecutionProviderInfo() = delete;
@@ -22,7 +22,7 @@ struct XnnpackExecutionProviderInfo {
 
 class XnnpackThreadPool {
  public:
-  explicit XnnpackThreadPool()=default;
+  XnnpackThreadPool() = default;
 
   void InitializeWithPoolSize(int64_t num_threads) {
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
@@ -30,6 +30,7 @@ class XnnpackThreadPool {
       threadpool_.reset(
           pthreadpool_create(static_cast<size_t>(num_threads)));
     }
+    printf("%zd\n", pthreadpool_get_threads_count(threadpool_.get()));
 #endif
   }
   pthreadpool_t Get() {
@@ -68,9 +69,9 @@ class XnnpackExecutionProvider : public IExecutionProvider {
     return xnnpack_thread_pool_->Get();
 #endif
   }
+
  private:
   std::unique_ptr<XnnpackThreadPool> xnnpack_thread_pool_;
-
 };
 
 }  // namespace onnxruntime

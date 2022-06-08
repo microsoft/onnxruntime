@@ -4,7 +4,7 @@
 #pragma once
 
 #include "core/framework/allocator.h"
-#include "core\providers\xnnpack\xnnpack_kernel.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/xnnpack/detail/utils.h"
 

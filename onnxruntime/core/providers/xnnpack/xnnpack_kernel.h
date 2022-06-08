@@ -14,13 +14,15 @@ class XnnpackKernel : public OpKernel {
   explicit XnnpackKernel(const OpKernelInfo& info)
       : OpKernel(info),
         // Is this OK to have a non-const execution provider?
-        provider_(const_cast<XnnpackExecutionProvider*>(static_cast<const XnnpackExecutionProvider*>(info.GetExecutionProvider()))),
+        provider_(const_cast<XnnpackExecutionProvider*>(
+            static_cast<const XnnpackExecutionProvider*>(info.GetExecutionProvider()))),
         xnnpack_threadpool_(provider_->GetPrivateThreadPool()) {
   }
   pthreadpool_t GetThreadPool() const {
     return xnnpack_threadpool_;
   }
-protected :
+
+ protected:
   mutable bool is_op0_initilized{false};
 
  private:
