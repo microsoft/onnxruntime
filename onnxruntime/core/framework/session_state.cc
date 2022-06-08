@@ -1544,14 +1544,15 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this, provider_stream_map, read_op_map_from_str(session_options.grouped_ops));
 
+  ParalllelPlannerContext para_context;
   std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(p_para_exec_plan_.get());
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, context, tmp_para_exec_plan_wrapper));
+                                                    ort_value_name_idx_map_, para_context, tmp_para_exec_plan_wrapper));
   tmp_para_exec_plan_wrapper.release();
-
+  p_para_exec_plan_->GenerateReusePlan();
   LOGS(logger_, INFO) << "p_para_exec_plan initialized";
 
   // Record the allocation plan
