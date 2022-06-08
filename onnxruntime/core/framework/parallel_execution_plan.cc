@@ -112,7 +112,7 @@ struct ExecutionContext {
             auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
             auto* stream_aware_alloc = static_cast<StreamAwareArena*>(arena_alloc);
             if (stream_aware_alloc) {
-              stream_aware_alloc->ReleaseStreamBuffers(static_cast<BFCArena::StreamId>(stream));
+              stream_aware_alloc->ReleaseStreamBuffers(stream);
             }
           }
         }
@@ -323,6 +323,8 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           const std::string& upstream_node_name = it->Name();
           logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](ExecutionContext& ctx) {
             wait_handle(*ctx.device_streams[cur_stream_idx], *ctx.notifications[notification_index]);
+            // update streams clock status
+            ctx.device_streams[cur_stream_idx]->UpdateStreamClock(ctx.notifications[notification_index]->stream, ctx.notifications[notification_index]->timestamp);
             LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
           });
         }

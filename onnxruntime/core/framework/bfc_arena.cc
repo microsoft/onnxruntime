@@ -215,7 +215,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   c->prev = kInvalidChunkHandle;
   c->next = kInvalidChunkHandle;
   // assign the new created chunk to default stream, so it can be pick up by any stream
-  c->stream_id = nullptr;
+  c->stream = nullptr;
 
   region_manager_.set_handle(c->ptr, h);
 
@@ -299,7 +299,7 @@ size_t BFCArena::AllocatedSize(const void* ptr) {
 
 BFCArena::Chunk* BFCArena::AllocateRawInternal(size_t num_bytes,
                                     bool dump_log_on_failure, 
-                                    StreamId stream_id, 
+                                    Stream* stream,
                                     bool enable_cross_stream_reusing) {
   if (num_bytes == 0) {
     LOGS_DEFAULT(VERBOSE) << "tried to allocate 0 bytes";
@@ -314,11 +314,17 @@ BFCArena::Chunk* BFCArena::AllocateRawInternal(size_t num_bytes,
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
   std::lock_guard<OrtMutex> lock(lock_);
-  auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream_id, enable_cross_stream_reusing);
+  // search without dynamic cross stream reusing first
+  auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, false);
+  // if not found, and dynamic cross stream reusing is enabled, try again
+  if (!chunk && enable_cross_stream_reusing)
+    auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, true);
   if (chunk != nullptr) {
     // if it is on default stream (the new allocate chunk), assign to current stream
-    if (chunk->stream_id == nullptr)
-      chunk->stream_id = stream_id;
+    if (chunk->stream == nullptr && stream) {
+      chunk->stream = stream;
+      chunk->stream_timestamp = stream->timestamp;
+    }
     return chunk;
   }
 
@@ -328,11 +334,13 @@ BFCArena::Chunk* BFCArena::AllocateRawInternal(size_t num_bytes,
   // Try to extend
   auto status = Extend(rounded_bytes);
   if (status.IsOK()) {
-    chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream_id, enable_cross_stream_reusing);
+    chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, false);
     if (chunk != nullptr) {
       // if it is on default stream (the new allocate chunk), assign to current stream
-      if (chunk->stream_id == nullptr)
-        chunk->stream_id = stream_id;
+      if (chunk->stream == nullptr && stream) {
+        chunk->stream = stream;
+        chunk->stream->timestamp = stream->timestamp;
+      }
       return chunk;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -359,7 +367,7 @@ void BFCArena::GetStats(AllocatorStats* stats) {
 }
 
 BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                             size_t num_bytes, StreamId stream_id, 
+                             size_t num_bytes, Stream* stream, 
                              bool enable_cross_stream_reusing) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
@@ -373,8 +381,12 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
       ORT_ENFORCE(!chunk->in_use());
       // check whether it is belong to the same stream
       // if chunk is on default stream (nullptr) it can be used by any stream.
-      if (!enable_cross_stream_reusing && chunk->stream_id != stream_id && chunk->stream_id != nullptr) {
-        continue;
+      if (!enable_cross_stream_reusing && chunk->stream != stream && chunk->stream != nullptr) {
+        if (!stream)
+          continue;
+        auto it = stream->other_stream_clock.find(chunk->stream);
+        if (it == stream->other_stream_clock.end() || chunk->stream_timestamp >= it->second)
+          continue;
       }
 
       if (chunk->size >= rounded_bytes) {
@@ -543,7 +555,7 @@ void BFCArena::Merge(BFCArena::ChunkHandle h1,
   Chunk* c1 = ChunkFromHandle(h1);
   Chunk* c2 = ChunkFromHandle(h2);
   // We can only merge chunks that are not in use.
-  ORT_ENFORCE(!c1->in_use() && !c2->in_use() && c1->stream_id == c2->stream_id);
+  ORT_ENFORCE(!c1->in_use() && !c2->in_use() && c1->stream == c2->stream);
 
   // c1's prev doesn't change, still points to the same ptr, and is
   // still not in use.
@@ -563,6 +575,7 @@ void BFCArena::Merge(BFCArena::ChunkHandle h1,
 
   // Set the new size
   c1->size += c2->size;
+  c1->stream_timestamp = std::max(c1->stream_timestamp, c2->stream_timestamp);
 
   DeleteChunk(h2);
 }
@@ -630,7 +643,7 @@ BFCArena::ChunkHandle BFCArena::Coalesce(ChunkHandle h) {
     Chunk* cnext = ChunkFromHandle(c->next);
     if (!cnext->in_use() &&
         // only merge the chunks belong to the same stream
-        cnext->stream_id == c->stream_id) {
+        cnext->stream == c->stream) {
       //      VLOG(8) << "Chunk at " << cnext->ptr << " merging with c " <<
       //      c->ptr;
 
@@ -648,7 +661,7 @@ BFCArena::ChunkHandle BFCArena::Coalesce(ChunkHandle h) {
     Chunk* cprev = ChunkFromHandle(c->prev);
     if (!cprev->in_use() &&
         // only merge the chunks belong to the same stream
-        cprev->stream_id == c->stream_id) {
+        cprev->stream == c->stream) {
       //      VLOG(8) << "Chunk at " << c->ptr << " merging into c->prev "
       //       << cprev->ptr;
 
@@ -775,11 +788,11 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
 
 }
 
-BFCArena::Chunk* StreamAwareArena::AllocOnStream(size_t size, StreamId stream_id) {
-  return AllocateRawInternal(size, false, stream_id, enable_cross_stream_reusing_);
+BFCArena::Chunk* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream) {
+  return AllocateRawInternal(size, false, current_stream, enable_cross_stream_reusing_);
 }
 
-void StreamAwareArena::ReleaseStreamBuffers(StreamId stream_id) {
+void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
   std::lock_guard<OrtMutex> lock(lock_);
 
   for (const auto& region : region_manager_.regions()) {
@@ -787,8 +800,9 @@ void StreamAwareArena::ReleaseStreamBuffers(StreamId stream_id) {
     ChunkHandle h = region_begin_chunk;
     while (h != kInvalidChunkHandle) {
       Chunk* c = ChunkFromHandle(h);
-      if (c->stream_id == stream_id) {
-        c->stream_id = nullptr;
+      if (c->stream == stream) {
+        c->stream = nullptr;
+        c->stream_timestamp = 0;
       }
       h = c->next;
     }
@@ -806,7 +820,7 @@ void StreamAwareArena::ReleaseStreamBuffers(StreamId stream_id) {
         ChunkHandle h_next = c->next;
         Chunk* c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
         // merge untill next chunk is different stream
-        while (c_next && !c_next->in_use() && c_next->stream_id == c->stream_id) {
+        while (c_next && !c_next->in_use() && c_next->stream == c->stream) {
           Coalesce(h);
           h_next = c->next;
           c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;

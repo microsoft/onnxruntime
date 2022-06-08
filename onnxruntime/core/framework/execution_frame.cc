@@ -567,17 +567,20 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   auto create_fn = [this, alloc, current_stream](size_t len) {
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
     if (stream_aware_alloc && current_stream) {
-      auto* chunk = stream_aware_alloc->AllocOnStream(len, static_cast<BFCArena::StreamId>(current_stream));
-      Stream* chunk_stream = static_cast<Stream*>(chunk->stream_id);
+      auto* chunk = stream_aware_alloc->AllocOnStream(len, current_stream);
+      Stream* chunk_stream = static_cast<Stream*>(chunk->stream);
       if (chunk_stream != current_stream) {
-        //TODO: sync
-        ORT_ENFORCE(chunk_stream);
-        auto notificaiton = chunk_stream->CreateNotification(/*TODO*/ 0);
-        notificaiton->Activate();
-        auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-            chunk_stream->provider->Type(), current_stream->provider->Type());
-        wait_handle(*current_stream, *notificaiton);
-        // it should be ok to release the notification now, as the wait is already launch to stream.
+        auto it = current_stream->other_stream_clock.find(chunk_stream);
+        if (it == current_stream->other_stream_clock.end() || chunk->stream_timestamp >= it->second) {
+          //TODO: sync
+          ORT_ENFORCE(chunk_stream);
+          auto notificaiton = chunk_stream->CreateNotification(/*TODO*/ 1);
+          notificaiton->ActivateAndUpdate();
+          auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
+              chunk_stream->provider->Type(), current_stream->provider->Type());
+          wait_handle(*current_stream, *notificaiton);
+          // it should be ok to release the notification now, as the wait is already launch to stream. 
+        }
       }
       return chunk->ptr;
     } else {

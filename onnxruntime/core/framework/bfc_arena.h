@@ -31,6 +31,8 @@ limitations under the License.
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/allocator.h"
 
+#include "core/framework/stream_handles.h"
+
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>
 #endif
@@ -97,8 +99,6 @@ class BFCArena : public IAllocator {
 
   size_t AllocatedSize(const void* ptr);
 
-  using StreamId = void*;
-
   virtual StreamAwareArena* AsStreamAwareAreana() {
     return nullptr;
   }
@@ -149,7 +149,9 @@ class BFCArena : public IAllocator {
     // What bin are we in?
     BinNum bin_num = kInvalidBinNum;
 
-    StreamId stream_id = nullptr;
+    Stream* stream = nullptr;
+
+    uint64_t stream_timestamp = 0;
 
     bool in_use() const { return allocation_id != -1; }
 
@@ -201,7 +203,7 @@ class BFCArena : public IAllocator {
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
 
-  BFCArena::Chunk* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure, StreamId stream_id, bool enable_cross_stream_reusing);
+  BFCArena::Chunk* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure, Stream* stream, bool enable_cross_stream_reusing);
 
   static const size_t kMinAllocationBits = 8;
   static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
@@ -354,7 +356,7 @@ class BFCArena : public IAllocator {
 
   // Returns an underlying allocated chunk of size
   // 'rounded_bytes'.
-  BFCArena::Chunk* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes, StreamId stream_id, bool enable_cross_stream_reusing);
+  BFCArena::Chunk* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes, Stream* stream, bool enable_cross_stream_reusing);
 
   // Splits the chunk specified by 'h' into two chunks, one at least
   // of size 'num_bytes'.
@@ -493,7 +495,7 @@ class StreamAwareArena : public BFCArena {
 public:
   StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
-                   bool enable_cross_stream_sharing,
+                   bool enable_dynamic_cross_stream_sharing,
                    ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
                    int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
                    int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
@@ -502,9 +504,9 @@ public:
   //If size is 0, then this function returns either NULL,
   //or a unique pointer value that can later be successfully
   //passed to free(). Whatever, do not dereference that pointer
-  BFCArena::Chunk* AllocOnStream(size_t size, StreamId stream_id);
+  BFCArena::Chunk* AllocOnStream(size_t size, Stream* current_stream_id);
 
-  void ReleaseStreamBuffers(StreamId stream_id);
+  void ReleaseStreamBuffers(Stream* stream);
 
   StreamAwareArena* AsStreamAwareAreana() override;
 
