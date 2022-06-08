@@ -130,7 +130,9 @@ const readBufferDataImpl = (indicesHelper: readonly IndicesHelper[], tensorRank:
   const codeLines: string[] = [];
   for (let i = 0; i < numberOfTensors; ++i) {
     const returnSnippet = `return input${i}[${indicesHelper[i].i2oExpression('indices', true)}];`;
-    if (i === 0) {
+    if (numberOfTensors === 1) {
+      codeLines.push(returnSnippet);
+    } else if (i === 0) {
       codeLines.push(`if (textureIndex == ${i}u) { ${returnSnippet} }`);
     } else if (i === numberOfTensors - 1) {
       codeLines.push(`else { ${returnSnippet} }`);
