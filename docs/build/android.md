@@ -131,4 +131,4 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
 ## Test Android changes using emulator
 
-If you want to test your changes in an Android build using the emulator, see [Testing Android Changes using the Emulator](https://github.com/microsoft/onnxruntime/blob/master/docs/Android_testing.md).
+See [Testing Android Changes using the Emulator](https://github.com/microsoft/onnxruntime/blob/master/docs/Android_testing.md).
