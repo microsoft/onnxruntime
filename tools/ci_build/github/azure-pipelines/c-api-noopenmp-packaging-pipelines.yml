@@ -49,19 +49,14 @@ jobs:
     - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
-        Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvidia/cuda:11.4.0-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda11build
-    - task: CmdLine@2
-      inputs:
-        script: |
-          mkdir -p $HOME/.onnx
-          docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda11build \
-          /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_java --build_dir /build --config Release \
-          --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION) --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
-        workingDirectory: $(Build.SourcesDirectory)
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/default/cpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x64/default/cpu
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=nvidia/cuda:11.4.3-cudnn8-devel-centos7"
+        Repository: onnxruntimecuda11centosbuild
+
+    - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
+      workingDirectory: $(Build.SourcesDirectory)
+      displayName: 'Build and Test'
 
     - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
@@ -221,8 +216,8 @@ jobs:
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
-        java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -OutFile protobuf-java-3.20.1.jar"
+        java -DUSE_CUDA=1 -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.20.1.jar;onnxruntime_gpu-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
   - template: templates/component-governance-component-detection-steps.yml

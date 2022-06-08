@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <map>
+#include <utility>
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
@@ -29,7 +30,7 @@ struct TVMFuncState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  std::shared_ptr<tvm::TVMCompiler> compiler = nullptr;
+  std::shared_ptr<TVMCompilerBase> compiler = nullptr;
 };
 
 TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
@@ -45,7 +46,7 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
   // Get environment variables
   const Env& env_instance = Env::Default();
 
-  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(tvm::env_vars::kDumpSubgraphs);
+  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
     dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
   }
@@ -55,7 +56,7 @@ TvmExecutionProvider::~TvmExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                     const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -113,7 +114,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
                 IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    //TVM EP is using static lib approach, so invoke serializer directly.
+    // TVM EP is using static lib approach, so invoke serializer directly.
     GraphViewerToProto(graph_body_viewer, *model_proto.mutable_graph(), true, true);
     auto opset = model_proto.add_opset_import();
     opset->set_domain(kOnnxDomain);
@@ -121,7 +122,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
 
     std::string onnx_model_str;
     model_proto.SerializeToString(&onnx_model_str);
-    compilers_[func_name] = std::make_shared<Compiler>(std::move(onnx_model_str),
+    compilers_[func_name] = std::make_shared<TVMCompiler>(std::move(onnx_model_str),
                               fused_node.ModelPath().ToPathString(),
                               int(opset->version()));
     InputsInfoMap all_input_shapes;
@@ -241,7 +242,7 @@ TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProt
   return shape;
 }
 
-void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod,
+void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
                                                 std::vector<DLTensor>& output_tensors,
                                                 size_t num) {
   ORT_ENFORCE(mod != nullptr, "TVM module is not compiled");
@@ -250,7 +251,7 @@ void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::TvmMo
   options_.output_shapes.resize(num);
 
   if (options_.executor != "vm") {
-    tvm::TVMGetOutputShapes(*mod, options_.output_shapes);
+    TVMGetOutputShapes(*mod, options_.output_shapes);
   }
 
   for (auto& output_shape : options_.output_shapes) {

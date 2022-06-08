@@ -22,14 +22,10 @@ namespace onnxruntime {
   class NodeArg;
 namespace tvm {
 
-namespace env_vars {
-   static const std::string kDumpSubgraphs = "ORT_TVM_DUMP_SUBGRAPHS";
-}  // namespace env_vars
-
 class TvmExecutionProvider : public IExecutionProvider {
-  using Compiler = tvm::TVMCompiler;
+  using Compiler = TVMCompilerBase;
   using Compilers = std::unordered_map<std::string, std::shared_ptr<Compiler>>;
-  using Runner = tvm::TVMRunner;
+  using Runner = TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
 
  public:
@@ -47,22 +43,27 @@ class TvmExecutionProvider : public IExecutionProvider {
 
  private:
   void printOptions();
-  std::shared_ptr<tvm::TvmModule> compileModel(const std::string& func_name,
-                                               const GraphViewer& graph_viewer,
-                                               InputsInfoMap& inputs_info);
-  void setInputShapesForFreezedNN(const GraphViewer& graph_viewer, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
-  void setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
+  std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
+                                          const GraphViewer& graph_viewer,
+                                          InputsInfoMap& inputs_info);    // NOLINT
+  void setInputShapesForFreezedNN(const GraphViewer& graph_viewer,
+                                  TVMTensorShapes& input_shapes,          // NOLINT
+                                  InputsInfoMap& all_input_shapes);       // NOLINT
+  void setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer,
+                                    TVMTensorShapes& input_shapes,        // NOLINT
+                                    InputsInfoMap& all_input_shapes);     // NOLINT
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
-  void prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod, std::vector<DLTensor>& output_tensors, size_t num);
+  void prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
+                            std::vector<DLTensor>& output_tensors, size_t num);  // NOLINT
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
+
  private:
   TvmEPOptions options_;
   Compilers compilers_;
   Runners runners_;
   bool dump_subgraphs_ = false;
-  OrtMutex tvm_mu_;
   AllocatorPtr allocator_;
 };
 

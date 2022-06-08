@@ -1028,7 +1028,7 @@ struct SparseTensor final {
 };
 #endif
 
-//TensorSeq
+// TensorSeq
 struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }

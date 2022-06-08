@@ -6,6 +6,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
+#include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
@@ -210,7 +211,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, IOKind::Input));
+          initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:

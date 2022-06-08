@@ -109,14 +109,16 @@ struct Node__EdgeIterator {
   virtual int GetDstArgIndex() const = 0;
 };
 
-// There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to member function)
-// The function pointers are nicer in that they directly call the target function, but they cannot be used in cases where we're calling
-// a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
-// calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
-// function pointer implementation in this case.
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
-//Please do not new or delete this type(and subtypes).
+// There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to
+// member function).
+// The function pointers are nicer in that they directly call the target function, but they cannot be used in cases
+// where we're calling a specific implementation of a virtual class member. Trying to get a pointer to member of a
+// virtual function will return a thunk that calls the virtual function (which will lead to infinite recursion in the
+// bridge). There is no known way to get the non virtual member function pointer implementation in this case.
+// The suppressed warning is:
+//  "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
+// Please do not new or delete this type(and subtypes).
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)

@@ -105,11 +105,6 @@ enum class ConvType : uint8_t {
   Grouped,
 };
 
-enum class IOKind : uint8_t {
-  Input,
-  Output,
-};
-
 QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
 
 // Return the type of the conv ops,
@@ -138,7 +133,7 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, IOKind io_kind = IOKind::Input);
+    float& scale, int32_t& zero_point, ArgType arg_type = ArgType::kInput);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils
