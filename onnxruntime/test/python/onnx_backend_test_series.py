@@ -15,7 +15,7 @@ import onnx
 import onnx.backend.test.case.test_case
 import onnx.backend.test.runner
 
-import onnxruntime.backend as backend
+from onnxruntime import backend
 
 pytest_plugins = ("onnx.backend.test.report",)
 
@@ -53,16 +53,16 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
             else:
                 assert_similar_array(ref_outputs[i], outputs[i])
 
-    def _add_model_test(self, t_c: onnx.backend.test.case.test_case.TestCase, kind: str) -> None:
+    def _add_model_test(self, model_test: onnx.backend.test.case.test_case.TestCase, kind: str) -> None:
         attrs = {}
         # TestCase changed from a namedtuple to a dataclass in ONNX 1.12.
         # We can just modify t_c.rtol and atol directly once ONNX 1.11 is no longer supported.
-        if hasattr(t_c, "_asdict"):
-            attrs = t_c._asdict()
+        if hasattr(model_test, "_asdict"):
+            attrs = model_test._asdict()
         else:
-            attrs = vars(t_c)
-        attrs["rtol"] = self._rtol_overrides[t_c.name]
-        attrs["atol"] = self._atol_overrides[t_c.name]
+            attrs = vars(model_test)
+        attrs["rtol"] = self._rtol_overrides[model_test.name]
+        attrs["atol"] = self._atol_overrides[model_test.name]
 
         super()._add_model_test(onnx.backend.test.case.test_case.TestCase(**attrs), kind)
 
@@ -83,6 +83,8 @@ def load_jsonc(basename: str):
 
 
 def create_backend_test(test_name=None):
+    """Creates an OrtBackendTest and adds its TestCase's to global scope so unittest will find them."""
+
     overrides = load_jsonc("onnx_backend_test_series_overrides.jsonc")
     rtol_default = overrides["rtol_default"]
     atol_default = overrides["atol_default"]
@@ -192,8 +194,6 @@ def create_backend_test(test_name=None):
     # them visible to python.unittest.
     globals().update(backend_test.enable_report().test_cases)
 
-    return backend_test
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -214,14 +214,14 @@ def parse_args():
     )
 
     # parse just our args. python unittest has its own args and arg parsing, and that runs inside unittest.main()
-    args, left = parser.parse_known_args()
-    sys.argv = sys.argv[:1] + left
+    parsed, unknown = parser.parse_known_args()
+    sys.argv = sys.argv[:1] + unknown
 
-    return args
+    return parsed
 
 
 if __name__ == "__main__":
     args = parse_args()
 
-    backend_test = create_backend_test(args.test_name)
+    create_backend_test(args.test_name)
     unittest.main()
