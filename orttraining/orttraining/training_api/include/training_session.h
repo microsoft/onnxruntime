@@ -43,6 +43,8 @@ class TrainingSession {
 
    Status OptimizerStep(const RunOptions& run_options);
 
+   Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state);
+
  private:
    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TrainingSession);
 

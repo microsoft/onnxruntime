@@ -201,12 +201,13 @@ ORT_API_STATUS_IMPL(OrtApis::LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_pa
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _In_opt_ OrtCheckpointState* checkpoint_state,
-                  bool ) {
+ORT_API_STATUS_IMPL(OrtApis::SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Inout_ OrtTrainingSession* sess,
+                  bool save_optimizer_state) {
   API_IMPL_BEGIN
-
-  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::SaveCheckpoint(*chkpt_state, checkpoint_path));
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  onnxruntime::training::api::CheckpointState chkpt_state;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CreateCheckpointState(chkpt_state, save_optimizer_state));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::SaveCheckpoint(chkpt_state, checkpoint_path));
 
   return nullptr;
   API_IMPL_END
