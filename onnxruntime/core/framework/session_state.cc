@@ -25,32 +25,35 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 void SessionState::SetupAllocators() {
-  for (const auto& provider : execution_providers_) {
-    for (const auto& allocator : provider->GetAllocators()) {
-      const OrtMemoryInfo& memory_info = allocator->Info();
-      auto iter = allocators_.find(memory_info);
-      // TODO: This might need a dirty hack to guarantee an EP that overrides GetAllocator and returns a per-thread
-      // allocator is always preferred over another EP that provides an allocator for the same device.
-      // Currently that would be CUDA EP wins over TRT EP, and ROCM EP wins over MIGraphX EP.
-      //
-      // Ideally we could push the per-thread logic into a wrapper IAllocator implementation so that an EP could
-      // simply wrap its allocator with that if needed.
-      if (iter != allocators_.end()) {
-        // EPs could be sharing allocators so no info message unless this is a different instance
-        if (iter->second(memory_info.id, memory_info.mem_type) != allocator) {
-          // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
-          LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
-                              << ". Ignoring allocator from " << provider->Type();
-        }
-      } else {
-        // slightly weird indirection to go back to the provider to get the allocator each time it's needed
-        // in order to support scenarios such as the CUDA EP's per-thread allocator.
-        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
-          return provider->GetAllocator(id, mem_type);
-        };
-      }
-    }
-  }
+  // register allocators in reverse order. one per OrtMemType+OrtDevice combination.
+  // this order prefers allocators from the core EPs (CPU EP, CUDA EP, ROCM EP) and ensures the CUDA/ROCM EP's
+  // per-thread allocators will be preferred over the TensorRT/MIGraphX EP non-per-thread allocators.
+  // TODO: Refactor the EP/allocator relationship so that we can be explicit about which allocator is preferred and
+  //       avoid creating unnecessary allocators.
+  std::for_each(std::make_reverse_iterator(execution_providers_.end()),
+                std::make_reverse_iterator(execution_providers_.begin()),
+                [this](const auto& provider_iter) {
+                  IExecutionProvider& provider = *provider_iter;
+                  for (const auto& allocator : provider.GetAllocators()) {
+                    const OrtMemoryInfo& memory_info = allocator->Info();
+                    auto iter = allocators_.find(memory_info);
+                    if (iter != allocators_.end()) {
+                      // EPs could be sharing allocators so no info message unless this is a different instance.
+                      // This is an expected scenario as multiple EPs may have allocators for the same device.
+                      // e.g. xnnpack and CPU EP are both CPU based.
+                      if (iter->second(memory_info.id, memory_info.mem_type) != allocator) {
+                        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+                                            << ". Ignoring allocator from " << provider.Type();
+                      }
+                    } else {
+                      // slightly weird indirection to go back to the provider to get the allocator each time
+                      // it's needed in order to support scenarios such as the CUDA EP's per-thread allocator.
+                      allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
+                        return provider.GetAllocator(id, mem_type);
+                      };
+                    }
+                  }
+                });
 }
 
 AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {
