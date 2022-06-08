@@ -31,6 +31,7 @@ from perf_utils import (
     disable,
     enable_all,
     extended,
+    find_files,
     get_output,
     get_profile_metrics,
     is_standalone,
@@ -150,7 +151,8 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
         command.extend(["--fp16"])
 
     # save engine
-    engine_name = model_name + ".engine"
+    engine_suffix = "_trtexec_fp16.engine" if fp16 else "_trtexec.engine"
+    engine_name = model_name + engine_suffix
     save_command = command + ["--saveEngine=" + engine_name]
     logger.info(save_command)
     out = get_output(save_command)
@@ -170,6 +172,7 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
             mem_usage = end_memory_tracking(p, success)
         except Exception as e:
             end_memory_tracking(p, success)
+            subprocess.run(["rm", "-f", engine_name])
             raise (e)
     else:
         out = get_output(load_command)
@@ -195,6 +198,10 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
         result["memory"] = mem_usage
 
     logger.info(result)
+
+    # Clean up engine
+    subprocess.run(["rm", "-f", engine_name])
+
     return result
 
 
@@ -624,13 +631,18 @@ def cleanup_files():
 
 def remove_files(running_mode, path):
     files = []
-    out = ""
     if running_mode == "validate":
-        out = get_output(["find", path, "-name", "onnxruntime_profile*"])
-    if running_mode == "benchmark":
-        logger.info(running_mode)
-        out = get_output(["find", path, "-name", "*.engine"])
+        files = find_files(path, "ort_profile_*.json")  # Session profiles
+        files += find_files(path, "TensorrtExecutionProvider_*.onnx")  # TRT subgraphs
+        files += find_files(path, "TensorrtExecutionProvider_*.engine")  # TRT subgraph engines
+    elif running_mode == "benchmark":
+        files = find_files(path, "*.engine")  # TRT engine files
 
+    if files:
+        print("^^^^^^^^ removing files:")
+        print(files)
+        sys.stdout.flush()
+        subprocess.run(["rm", "-rf"] + files)
 
 def update_fail_report(fail_results, model, ep, e_type, e):
     result = {}
@@ -802,10 +814,13 @@ def get_cpu_info():
 
 
 def get_gpu_info():
-    info = get_output(["lspci", "-v"])
-    infos = re.findall("NVIDIA.*", info)
-    return infos
+    try:
+        info = get_output(["lspci", "-v"])
+        infos = re.findall("NVIDIA.*", info)
+    except FileNotFoundError as e:
+        infos = str(e)
 
+    return infos
 
 def get_cudnn_version(workspace):
     cudnn_path = get_output(["whereis", "cudnn_version.h"])
@@ -1276,8 +1291,8 @@ def run_onnxruntime(args, models):
                 # enable profiling to generate profiling file for analysis
                 options = onnxruntime.SessionOptions()
                 options.enable_profiling = True
+                options.profile_file_prefix = "ort_profile_{}_{}".format(name, ep)
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-                time.sleep(1)  # avoid to generate same profile file name
 
                 if "ORT-TRT" in ep:
                     trt_ep_options["trt_dump_subgraphs"] = "True"
@@ -1351,7 +1366,7 @@ def run_onnxruntime(args, models):
                 sess.end_profiling()
 
                 # get metrics from profiling file
-                metrics = get_profile_metrics(path, profile_already_parsed, logger)
+                metrics = get_profile_metrics(path, profile_already_parsed, options.profile_file_prefix, logger)
                 if metrics:
                     if "ORT-TRT" in ep:
                         pass # Parse subgraphs

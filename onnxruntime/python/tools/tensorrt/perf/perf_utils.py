@@ -91,6 +91,19 @@ def get_output(command):
     return output
 
 
+def find_files(path, name_pattern, are_dirs=False):
+    files = []
+
+    cmd = ["find", path, "-name", name_pattern]
+    if are_dirs:
+        cmd += ["-type", "d"]
+
+    files_str = get_output(cmd)
+    if files_str:
+        files = files_str.split("\n")
+
+    return files
+
 def find(regex_string):
     import glob
 
@@ -225,10 +238,10 @@ def parse_session_profile(profile):
     return op_maps
 
 
-def get_profile_metrics(path, profile_already_parsed, logger=None):
+def get_profile_metrics(path, profile_already_parsed, profile_file_prefix, logger=None):
     logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
     p1 = subprocess.Popen(
-        ["find", path, "-name", "onnxruntime_profile*", "-printf", "%T+\t%p\n"],
+        ["find", path, "-name", f"{profile_file_prefix}*", "-printf", "%T+\t%p\n"],
         stdout=subprocess.PIPE,
     )
     p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
