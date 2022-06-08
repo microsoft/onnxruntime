@@ -7,7 +7,7 @@ This converts GPT2 or T5 model to onnx with beam search operator.
 
 Example 1: convert gpt2 model with beam search:
    python convert_beam_search.py -m gpt2 --decoder_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
-   
+
 Example 2: convert T5 model with beam search:
    python ./models/t5/convert_to_onnx.py -m t5-small -s
    python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./onnx_models/t5-small_decoder.onnx --encoder_decoder_init_onnx ./onnx_models/t5-small_encoder_decoder_init.onnx --output ./onnx_models/t5_small_beam_search.onnx
@@ -212,6 +212,14 @@ def parse_arguments(argv=None):
     )
     beam_search_group.set_defaults(prefix_vocab_mask=False)
 
+    beam_search_group.add_argument(
+        "--custom_model",
+        required=False,
+        action="store_true",
+        help="Is this to target a beam search custom kernel, test would be skipped"
+    )
+    beam_search_group.set_defaults(custom_model=False)
+
     args = parser.parse_args(argv)
 
     return args
@@ -301,9 +309,11 @@ def verify_gpt2_subgraph(graph, precision):
             expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
 
         if graph.input[i].type.tensor_type.elem_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}"
-            )
+            print(f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}")
+            # TODO Take out the cast nodes to int32 -> directly making them INT32
+            if i < 3:
+                graph.input[i].type.tensor_type.elem_type = onnx_proto.TensorProto.INT32
+
     print("Verifying GPT-2 graph inputs: name and data type are good.")
 
     expected_outputs = ["logits"] + [f"present_{i}" for i in range(layer_count)]
@@ -350,15 +360,21 @@ def convert_model(args):
         shape_inference(args.decoder_onnx)
 
     global config
-    if args.model_type == "gpt2":
-        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-    else:
-        config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-    print(config)
+    if not args.custom_model:
+        if args.model_type == "gpt2":
+            config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+        else:
+            config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
-    eos_token_id = config.eos_token_id
-    pad_token_id = config.eos_token_id
-    vocab_size = config.vocab_size
+            eos_token_id = config.eos_token_id
+            pad_token_id = config.eos_token_id
+            vocab_size = config.vocab_size
+    else:
+        # TODO Make them configurable
+        eos_token_id = 50256
+        pad_token_id = 50262
+
+    print(config)
 
     # if vocab_size is given in parameters use that.
     if args.vocab_size != -1:
@@ -394,23 +410,43 @@ def convert_model(args):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = helper.make_node(
-        "BeamSearch",
-        inputs=inputs,
-        outputs=outputs,
-        name=f"BeamSearch_{args.model_type}",
-    )
-    node.domain = "com.microsoft"
+    node = None
+    if args.custom_model:
+        '''TODO pass name of the OP as an argument'''
+        node = helper.make_node(
+            "CustomBeamsearchOp",
+            inputs=inputs,
+            outputs=outputs,
+            name=f"DeepwriteBeamSearch_{args.model_type}",
+        )
+    else:
+        node = helper.make_node(
+            "BeamSearch",
+            inputs=inputs,
+            outputs=outputs,
+            name=f"BeamSearch_{args.model_type}",
+        )
+
     node.attribute.extend(
         [
             helper.make_attribute("eos_token_id", eos_token_id),
             helper.make_attribute("pad_token_id", pad_token_id),
             helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
-            helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
-            helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
-            helper.make_attribute("decoder", model.graph),
+            helper.make_attribute("early_stopping", 1 if args.early_stopping else 0)
         ]
     )
+
+    if args.custom_model:
+        node.domain = "test.beamsearchop"
+        node.attribute.append(helper.make_attribute("model_path", args.decoder_onnx))
+    else:
+        node.domain = "com.microsoft"
+        node.attribute.extend(
+            [
+                helper.make_attribute("decoder", model.graph),
+                helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1)
+            ]
+        )
 
     if args.model_type == "t5":
         if enable_shape_inference:
@@ -733,6 +769,9 @@ def main(argv=None, sentences=None):
         print(f"skip conversion since path existed: {args.output}")
     else:
         convert_model(args)
+
+    if args.custom_model:
+        return
 
     return test_model(args, use_vocab_mask=True, sentences=sentences)
 
