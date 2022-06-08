@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 import {Guid} from 'guid-typescript';
+
+import {Logger} from '../../instrument';
+
 import {sizeof, Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {GpuData, GpuDataId, GpuDataType} from './types';
@@ -63,6 +66,8 @@ class GpuDataManagerImpl implements GpuDataManager {
     if (gpuDataType !== GpuDataType.default) {
       throw new Error('we only support default GPU data type now');
     }
+
+    Logger.verbose('GpuData', `Uploading data to GPU: {${data.length}}`);
 
     const srcArrayBuffer = data.buffer;
     const srcOffset = data.byteOffset;
@@ -138,6 +143,8 @@ class GpuDataManagerImpl implements GpuDataManager {
     if (!cachedData) {
       throw new Error('data does not exist');
     }
+
+    Logger.verbose('GpuData', `Downloading data from GPU: {${id}}`);
 
     const commandEncoder = this.device.createCommandEncoder();
     const gpuReadBuffer =
