@@ -163,7 +163,7 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
   auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
-  auto optim = std::make_unique<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+  auto optim = std::make_shared<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -193,7 +193,7 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
 
   // KNOWN ISSUE: LinearLRScheduler by default use optim's states to calculate the first step's learning rate.
   // If we restored it after creation, it will only affect the learning rate from the second step.
-  auto scheduler = std::make_unique<LinearLRScheduler>(*optim, warmup_step_count, total_step_count);
+  auto scheduler = std::make_unique<LinearLRScheduler>(optim, warmup_step_count, total_step_count);
 
   for (auto it = test_data.begin(); it != test_data.end(); ++it) {
     OptimizerCheckpointState optimizer_states;

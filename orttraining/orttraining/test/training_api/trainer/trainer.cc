@@ -176,11 +176,11 @@ Status RunTraining(const TestRunnerParameters& params) {
                 state.module_checkpoint_state.named_parameters,
                 params.model_evaluation_graph_path);
 
-  Optimizer optimizer(params.optimizer_training_graph_path,
-                      state.module_checkpoint_state.named_parameters);
+  auto optimizer = std::make_shared<Optimizer>(params.optimizer_training_graph_path,
+                                               state.module_checkpoint_state.named_parameters);
 
 #ifdef USE_CUDA
-  api::SetExecutionProvider(module, optimizer, params.provider.get());
+  api::SetExecutionProvider(module, *optimizer, params.provider.get());
 #endif
 
   size_t sample_batch_count_per_epoch = 4;
@@ -215,7 +215,7 @@ Status RunTraining(const TestRunnerParameters& params) {
 
       if (batch_idx % GRAD_ACC_STEPS == 0) {
         // gradient accumulation steps completed
-        ORT_ENFORCE(optimizer.Step().IsOK());
+        ORT_ENFORCE(optimizer->Step().IsOK());
         // modify learning rate
         ORT_ENFORCE(scheduler->Step().IsOK());
         ORT_ENFORCE(module.ResetGrad().IsOK());
@@ -230,7 +230,7 @@ Status RunTraining(const TestRunnerParameters& params) {
         // save trained weights
         CheckpointState state_to_save;
         ORT_ENFORCE(module.GetStateDict(state_to_save.module_checkpoint_state).IsOK());
-        ORT_ENFORCE(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
+        ORT_ENFORCE(optimizer->GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
         state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
         ORT_ENFORCE(SaveCheckpoint(state_to_save, ckpt_file).IsOK());

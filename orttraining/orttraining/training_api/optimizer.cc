@@ -12,10 +12,17 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
+namespace {
+
+// Currently all parameters are in a single group, so we hardcode group0 here.
+const std::string GROUP_ZERO_NAME = "group0";
+
 // TODO: don't hard code the state names, should get the state names according to the optimizer types.
 // TODO: Conolidate with frontend tooling
 const std::vector<std::string> MOMENT_SUFFIXES{".exp_avg", ".exp_avg_sq"};
 const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
+
+}  // namespace
 
 Status Optimizer::GenerateMomentumNamedStates() {
   auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
@@ -116,7 +123,7 @@ Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_st
   auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
 
   // To support multiple groups, Optimizer constructor need accept informations for groupping.
-  grouped_optimizer_states.insert({group_zero_name_, std::make_shared<GroupOptimizerState>(optimizer_state_)});
+  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(optimizer_state_)});
 
   // Pass the optimizer session data transfer manager for data copying when saving.
   // An alternative is, we can do copy at this stage.
@@ -128,7 +135,7 @@ Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_st
 
 Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states) {
   auto& group_optimizer_state =
-      optimizer_checkpoint_states.group_named_optimizer_states[group_zero_name_];
+      optimizer_checkpoint_states.group_named_optimizer_states[GROUP_ZERO_NAME];
   optimizer_state_.initial_lr = group_optimizer_state->initial_lr;
   optimizer_state_.step = group_optimizer_state->step;
 

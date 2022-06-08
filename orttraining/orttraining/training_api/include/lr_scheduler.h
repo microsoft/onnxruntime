@@ -14,7 +14,7 @@ namespace api {
  */
 struct LRSchedulerBase {
  public:
-  LRSchedulerBase(Optimizer& optimizer) : optim_(optimizer) {}
+  LRSchedulerBase(std::shared_ptr<Optimizer> optimizer) : optim_(optimizer) {}
   virtual ~LRSchedulerBase() = default;
 
   /**
@@ -25,21 +25,21 @@ struct LRSchedulerBase {
    * for example, initial learning and step.
    */
   Status Step() {
-    return optim_.SetLearningRate(ComputeLearningRateInternal());
+    return optim_->SetLearningRate(ComputeLearningRateInternal());
   }
 
  protected:
   int64_t GetStepInternal() {
-    return optim_.optimizer_state_.step;
+    return optim_->optimizer_state_.step;
   }
 
   float GetInitialLRInternal() {
-    return optim_.optimizer_state_.initial_lr;
+    return optim_->optimizer_state_.initial_lr;
   }
 
  private:
   virtual float ComputeLearningRateInternal() = 0;
-  Optimizer& optim_;
+  std::shared_ptr<Optimizer> optim_;
 };
 
 /**
@@ -51,7 +51,7 @@ struct LRSchedulerBase {
  */
 struct MultiplicativeLRSchedulerBase : public LRSchedulerBase {
  public:
-  MultiplicativeLRSchedulerBase(Optimizer& optimizer)
+  MultiplicativeLRSchedulerBase(std::shared_ptr<Optimizer> optimizer)
       : LRSchedulerBase(optimizer) {
   }
 
@@ -73,7 +73,7 @@ struct MultiplicativeLRSchedulerBase : public LRSchedulerBase {
  */
 struct LinearLRScheduler : public MultiplicativeLRSchedulerBase {
  public:
-  explicit LinearLRScheduler(Optimizer& optimizer, int64_t warmup_step_count, int64_t total_step_count)
+  explicit LinearLRScheduler(std::shared_ptr<Optimizer> optimizer, int64_t warmup_step_count, int64_t total_step_count)
       : MultiplicativeLRSchedulerBase(optimizer),
         warmup_step_count_(warmup_step_count),
         total_step_count_(total_step_count) {

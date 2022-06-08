@@ -59,13 +59,13 @@ struct Optimizer {
   Optimizer(const std::string& optim_path_or_bytes,
             const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters);
 
-  // Optimizer Step.
   Status Step();
 
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
   Status LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
+ private:
   int64_t GetStep() const {
     return optimizer_state_.step;
   }
@@ -75,7 +75,6 @@ struct Optimizer {
     return Status::OK();
   }
 
- private:
   // Generates optimizer momentum states for applicable optimizer types
   Status GenerateMomentumNamedStates();
   // Constructs the ortvalue inputs to be fed to the graph
@@ -90,9 +89,6 @@ struct Optimizer {
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::vector<OrtValue> inputs_;
-
-  // Currently all parameters are in a single group, so we hardcode group0 here.
-  const std::string group_zero_name_ = "group0";
 };
 
 }  // namespace api
