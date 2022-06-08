@@ -196,6 +196,7 @@ def create_backend_test(test_name=None):
 
 
 def parse_args():
+    """Returns args parsed from sys.argv."""
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
         description="Run the ONNX backend tests using ONNXRuntime.",
