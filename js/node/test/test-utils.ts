@@ -86,8 +86,8 @@ export function assertFloatEqual(
   actual: number[] | Float32Array | Float64Array, expected: number[] | Float32Array | Float64Array,
   atol?: number, rtol?: number): void {
 
-  atol = atol ?? 1.0e-4;
-  rtol = rtol ?? 1.0e-6;
+  absolute_tol = atol ?? 1.0e-4;
+  relative_tol = 1 + (rtol ?? 1.0e-6);
 
   assert.strictEqual(actual.length, expected.length);
 
@@ -116,10 +116,10 @@ export function assertFloatEqual(
     //   test fail
     // endif
     //
-    if (Math.abs(a - b) < atol) {
+    if (Math.abs(a - b) < absolute_tol) {
       continue;  // absolute error check pass
     }
-    if (a !== 0 && b !== 0 && a * b > 0 && a / b < (1 + rtol) && b / a < (1 + rtol)) {
+    if (a !== 0 && b !== 0 && a * b > 0 && a / b < relative_tol && b / a < relative_tol) {
       continue;  // relative error check pass
     }
 
@@ -283,15 +283,15 @@ export function shouldSkipModel(model: string, eps: string[]): boolean {
 const OVERRIDES: { [key: string]: (number | { [name: string]: number }) } =
   jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc'));
 
-const ATOL_DEFAULT = OVERRIDES["atol_default"] as number;
-const RTOL_DEFAULT = OVERRIDES["rtol_default"] as number;
+const ATOL_DEFAULT = OVERRIDES.atol_default as number;
+const RTOL_DEFAULT = OVERRIDES.rtol_default as number;
 
 export function atol(model: string): number {
-  const override = OVERRIDES["atol_overrides"] as { [name: string]: number };
+  const override = OVERRIDES.atol_overrides as { [name: string]: number };
   return override[model] ?? ATOL_DEFAULT;
 }
 
 export function rtol(model: string): number {
-  const override = OVERRIDES["rtol_overrides"] as { [name: string]: number };
+  const override = OVERRIDES.rtol_overrides as { [name: string]: number };
   return override[model] ?? RTOL_DEFAULT;
 }
