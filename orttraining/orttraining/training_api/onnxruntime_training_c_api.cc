@@ -61,7 +61,11 @@ ORT_API_STATUS_IMPL(OrtApis::InitializeTrainingSession, _Inout_ OrtTrainingSessi
   auto train_sess = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
   auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
   ORT_API_RETURN_IF_STATUS_NOT_OK(train_sess->Initialize(chkpt_state->module_checkpoint_state.named_parameters,
-                                                         train_model_path, eval_model_path, optimizer_model_path));
+                                                         train_model_path,
+                                                         eval_model_path ? std::optional<std::string>{eval_model_path}
+                                                                         : std::nullopt,
+                                                         optimizer_model_path ? std::optional<std::string>{optimizer_model_path}
+                                                                              : std::nullopt));
 
   return nullptr;
   API_IMPL_END
