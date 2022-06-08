@@ -8,15 +8,18 @@ import {WebGpuSessionHandler} from './session-handler';
 import {createTensorDataManager, TensorDataManager} from './tensor-data-manager';
 import {GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './types';
 
-const getProgramInfoUniqueKey = (programInfo: ProgramInfo|ProgramInfoLoader, inputGpuDatas: GpuData[]): string => {
-  const inputs = inputGpuDatas.map(data => `${data.id}`).join('_');
-  let key = programInfo.name;
-  if (programInfo.cacheHint) {
-    key += '[' + programInfo.cacheHint + ']';
-  }
-  key += ':' + inputs;
-  return key;
-};
+const getProgramInfoUniqueKey =
+    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensors: readonly Tensor[], inputGpuDatas: readonly GpuData[]):
+        string => {
+          const inputGpuDataTypes = inputGpuDatas.map(data => `${data.type}`).join('_');
+          const inputTensorShapes = inputTensors.map(t => `${t.dims.join(',')}`).join('_');
+          let key = programInfo.name;
+          if (programInfo.cacheHint) {
+            key += '[' + programInfo.cacheHint + ']';
+          }
+          key += ':' + inputTensorShapes + ';' + inputGpuDataTypes;
+          return key;
+        };
 
 export class WebGpuInferenceHandler implements InferenceHandler {
   // per inference context
@@ -49,7 +52,7 @@ export class WebGpuInferenceHandler implements InferenceHandler {
       inputDatas[i] = await this.uploadGpuData(inputs[i], program.inputTypes[i]);
     }
 
-    const key = getProgramInfoUniqueKey(program, inputDatas);
+    const key = getProgramInfoUniqueKey(program, inputs, inputDatas);
     let artifact = this.session.programManager.getArtifact(key);
     const programInfo = artifact ?
         artifact.programInfo :
