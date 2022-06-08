@@ -134,7 +134,7 @@ OrtCUDAProviderOptions options;
 options.device_id = 0;
 options.arena_extend_strategy = 0;
 options.gpu_mem_limit = 2 * 1024 * 1024 * 1024;
-options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 options.do_copy_in_default_stream = 1;
 
 SessionOptionsAppendExecutionProvider_CUDA(session_options, &options);
