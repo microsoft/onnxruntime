@@ -41,7 +41,7 @@ class VectorAdd: public Operator<T> {
   REGISTER_OP(name, type, threads_per_block, 4)               \
   REGISTER_OP(name, type, threads_per_block, 8)
 
-#define REGISTER_OP_VEC_SIZES_TYPES(name, type)  \
+#define REGISTER_OP_THRADS_PER_BLOCK(name, type)  \
   REGISTER_OP_VEC_SIZES(name, type, 64)          \
   REGISTER_OP_VEC_SIZES(name, type, 128)         \
   REGISTER_OP_VEC_SIZES(name, type, 192)         \
@@ -53,6 +53,6 @@ class VectorAdd: public Operator<T> {
   
 
 void InitVectorAdd(py::module m) {
-  REGISTER_OP_VEC_SIZES_TYPES(VectorAdd, half);
-  REGISTER_OP_VEC_SIZES_TYPES(VectorAdd, float);
+  REGISTER_OP_THRADS_PER_BLOCK(VectorAdd, half);
+  REGISTER_OP_THRADS_PER_BLOCK(VectorAdd, float);
 }
