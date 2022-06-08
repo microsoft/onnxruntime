@@ -51,9 +51,7 @@ class _BinaryOp(Block):
 
         # create the graph node for sub
         node_input_names = [input_name1, input_name2]
-        node_output_name = graph_utils.generate_random_graph_name(
-            f"{self._op_name.lower()}_output"
-        )
+        node_output_name = graph_utils.generate_random_graph_name(f"{self._op_name.lower()}_output")
         node_output_names = [node_output_name]
         node = onnx.helper.make_node(
             self._op_name,
@@ -102,9 +100,7 @@ class Pow(Block):
         # create the graph initializer for the exponent
         pow_node_exponent_name = graph_utils.generate_random_graph_name("pow_exponent")
         onnx_model.graph.initializer.append(
-            onnx.helper.make_tensor(
-                pow_node_exponent_name, onnx.TensorProto.FLOAT, [1], [self._exponent]
-            )
+            onnx.helper.make_tensor(pow_node_exponent_name, onnx.TensorProto.FLOAT, [1], [self._exponent])
         )
 
         # create the graph node for pow
@@ -137,9 +133,7 @@ class _UnaryOp(Block):
 
         # create the graph node for this unary op
         node_input_names = [input_name]
-        node_output_name = graph_utils.generate_random_graph_name(
-            f"{self._op_name.lower()}_output"
-        )
+        node_output_name = graph_utils.generate_random_graph_name(f"{self._op_name.lower()}_output")
         node_output_names = [node_output_name]
         node = onnx.helper.make_node(
             self._op_name,
@@ -181,17 +175,16 @@ class Neg(_UnaryOp):
         super(Neg, self).__init__("Neg")
 
 
-class Value(Block):
+class Constant(Block):
     """Creates an initializer and adds it to the onnx model."""
-    def __init__(self, value):
-        self._value = value
+
+    def __init__(self, value_float):
+        self._value = value_float
 
     def build(self):
         # create the graph initializer for the exponent
         initializer_name = graph_utils.generate_random_graph_name("initializer")
         accessor.global_accessor.model.graph.initializer.append(
-            onnx.helper.make_tensor(
-                initializer_name, onnx.TensorProto.FLOAT, [1], [self._value]
-            )
+            onnx.helper.make_tensor(initializer_name, onnx.TensorProto.FLOAT, [1], [self._value])
         )
         return initializer_name

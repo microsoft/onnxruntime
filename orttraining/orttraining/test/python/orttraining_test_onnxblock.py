@@ -620,8 +620,8 @@ def test_weighted_average_model_composition(model_type):
 
             self.loss1 = onnxblock.loss.CrossEntropyLoss()
             self.loss2 = onnxblock.loss.CrossEntropyLoss()
-            self.w1 = onnxblock.building_blocks.Value(w1)
-            self.w2 = onnxblock.building_blocks.Value(w2)
+            self.w1 = onnxblock.building_blocks.Constant(w1)
+            self.w2 = onnxblock.building_blocks.Constant(w2)
             self.mul = onnxblock.building_blocks.Mul()
             self.add = onnxblock.building_blocks.Add()
 
@@ -641,4 +641,4 @@ def test_weighted_average_model_composition(model_type):
     # When / Then no error occurs
     weighted_model = WeightedAvg(random.random(), random.random())
     with onnxblock.onnx_model(onnx_model):
-        output_name = weighted_model(onnx_model.graph.output[0].name, onnx_model.graph.output[1].name)
+        _ = weighted_model(onnx_model.graph.output[0].name, onnx_model.graph.output[1].name)
