@@ -88,7 +88,6 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env, const st
 
   void* ext_data_buf = nullptr;
   size_t ext_data_len = 0;
-  // OrtCallback ext_data_deleter;
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
                                                        ext_data_buf, ext_data_len, ext_data_deleter));
 
