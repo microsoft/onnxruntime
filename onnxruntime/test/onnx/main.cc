@@ -14,6 +14,7 @@
 #include "TestCase.h"
 #include "testenv.h"
 #include "providers.h"
+
 #include <google/protobuf/stubs/common.h>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -36,7 +37,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi', 'snpe' or 'coreml'. "
+      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -111,6 +112,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_armnn = false;
   bool enable_rocm = false;
   bool enable_migraphx = false;
+  bool enable_xnnpack = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
@@ -189,6 +191,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("xnnpack"))) {
+            enable_xnnpack = true;
           } else {
             usage();
             return -1;
@@ -336,7 +340,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      //Setting default optimization level for OpenVINO can be overriden with -o option
+      // Setting default optimization level for OpenVINO can be overriden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
 #else
@@ -396,10 +400,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
       std::istringstream ss(option_string);
       std::string token;
-
-      std::vector<const char*> snpe_option_keys;
-      std::vector<const char*> snpe_option_values;
-      std::vector<std::string> values;
+      std::unordered_map<std::string, std::string> snpe_options;
 
       while (ss >> token) {
         if (token == "") {
@@ -416,33 +417,26 @@ the run-time option you are trying to use.\n)");
 
         if (key == "runtime") {
           std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
-          if (supported_runtime.find(value) != supported_runtime.end()) {
-            snpe_option_keys.push_back("runtime");
-            values.push_back(value);
-          } else {
+          if (supported_runtime.find(value) == supported_runtime.end()) {
             ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
 select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
           }
         } else if (key == "priority") {
-          snpe_option_keys.push_back("priority");
-          values.push_back(value);
+          // no validation
         } else if (key == "buffer_type") {
           std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
-          if (supported_buffer_type.find(value) != supported_buffer_type.end()) {
-            snpe_option_keys.push_back("buffer_type");
-            values.push_back(value);
-          } else {
+          if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
             ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
         } else {
           ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
         }
+
+        snpe_options[key] = value;
       }
-      for (auto &it : values) {
-        snpe_option_values.push_back(it.c_str());
-      }
-      sf.AppendExecutionProvider_SNPE(snpe_option_keys.data(), snpe_option_values.data(), snpe_option_keys.size());
+
+      sf.AppendExecutionProvider("SNPE", snpe_options);
 #else
       fprintf(stderr, "SNPE is not supported in this build");
       return -1;
@@ -493,6 +487,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(sf, device_id));
 #else
       fprintf(stderr, "MIGRAPHX is not supported in this build");
+      return -1;
+#endif
+    }
+
+    if (enable_xnnpack) {
+#ifdef USE_XNNPACK
+      sf.AppendExecutionProvider("XNNPACK", {});
+#else
+      fprintf(stderr, "XNNPACK is not supported in this build");
       return -1;
 #endif
     }
@@ -565,7 +568,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
 #if !defined(__amd64__) && !defined(_M_AMD64)
-    //out of memory
+    // out of memory
     static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19"), ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
@@ -895,7 +898,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
-    broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
+    broken_tests.insert({"tf_inception_v1", "flaky test"});  // TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
   }

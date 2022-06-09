@@ -4,14 +4,14 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <string>
 
 #include "core/providers/providers.h"
 
-struct OrtROCMProviderOptions;
-
 namespace onnxruntime {
-// defined in provider_bridge_ort.cc
-struct RocmProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const OrtROCMProviderOptions* provider_options);
+struct NnapiProviderFactoryCreator {
+  static std::shared_ptr<IExecutionProviderFactory> Create(
+      uint32_t nnapi_flags, const optional<std::string>& partitioning_stop_ops_list);
 };
 }  // namespace onnxruntime

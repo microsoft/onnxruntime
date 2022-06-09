@@ -13,6 +13,7 @@ using Microsoft::WRL::ComPtr;
 #include <wil/result.h>
 
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/dml_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
@@ -56,7 +57,7 @@ void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
   metacommands_enabled_ = metacommands_enabled;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(IDMLDevice* dml_device,
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(IDMLDevice* dml_device,
                                                                               ID3D12CommandQueue* cmd_queue) {
 #ifndef _GAMING_XBOX
   // Validate that the D3D12 devices match between DML and the command queue. This specifically asks for IUnknown in
@@ -103,7 +104,7 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id) {
 #ifdef _GAMING_XBOX
     ComPtr<ID3D12Device> d3d12_device;
     D3D12XBOX_CREATE_DEVICE_PARAMETERS params = {};
@@ -152,7 +153,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
                                    DML_FEATURE_LEVEL_2_0,
                                    IID_PPV_ARGS(&dml_device)));
 
-  return CreateExecutionProviderFactory_DML(dml_device.Get(), cmd_queue.Get());
+  return DMLProviderFactoryCreator::Create(dml_device.Get(), cmd_queue.Get());
 }
 
 }  // namespace onnxruntime
@@ -162,7 +163,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
 // The OrtSessionOptionsAppendExecutionProvider_DML export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
 API_IMPL_BEGIN
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(device_id));
+  options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id));
 API_IMPL_END
   return nullptr;
 }
@@ -173,7 +174,7 @@ API_IMPL_END
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options,
                     _In_ IDMLDevice* dml_device, _In_ ID3D12CommandQueue* cmd_queue) {
 API_IMPL_BEGIN
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(dml_device,
+  options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(dml_device,
                                                                                         cmd_queue));
 API_IMPL_END
   return nullptr;

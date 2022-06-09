@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "migraphx_execution_provider.h"
+#include "migraphx_provider_factory_creator.h"
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
@@ -12,7 +13,6 @@
 #include "core/session/onnxruntime_c_api.h"
 
 using namespace onnxruntime;
-
 
 namespace onnxruntime {
 
@@ -33,7 +33,7 @@ std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
   return std::make_unique<MIGraphXExecutionProvider>(info_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const MIGraphXExecutionProviderInfo& info) {
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const MIGraphXExecutionProviderInfo& info) {
   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
 }
 
@@ -85,5 +85,4 @@ extern "C" {
 ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
-
 }
