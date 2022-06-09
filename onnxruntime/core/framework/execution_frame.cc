@@ -579,6 +579,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
           auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
               chunk_stream->provider->Type(), current_stream->provider->Type());
           wait_handle(*current_stream, *notificaiton);
+          current_stream->UpdateStreamClock(chunk_stream, notificaiton->timestamp); 
           // it should be ok to release the notification now, as the wait is already launch to stream. 
         }
       }
