@@ -312,7 +312,6 @@ common::Status SaveInitializedTensors(
     const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
     OrtValue ort_value;
 
-    // auto location = exec_plan.GetLocation(ort_value_index).name;
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       ort_value = *(session_options.initializers_to_share_map.at(name));
     } else {
