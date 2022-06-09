@@ -64,18 +64,10 @@ struct Exception : std::exception {
   throw Ort::Exception(string, code)
 #endif
 
-// This is used internally by the C++ API. This class holds the global variable that points to the OrtApi, it's in a template so that we can define a global variable in a header and make
-// it transparent to the users of the API.
-template <typename T>
-struct Global {
-  static const OrtApi* api_;
-};
-
 // If macro ORT_API_MANUAL_INIT is defined, no static initialization will be performed. Instead, user must call InitApi() before using it.
-template <typename T>
 #ifdef ORT_API_MANUAL_INIT
-const OrtApi* Global<T>::api_{};
-inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
+inline const OrtApi* api{};
+inline void InitApi() { api = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 #else
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -83,14 +75,14 @@ inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VER
 // Please define ORT_API_MANUAL_INIT if it conerns you.
 #pragma warning(disable : 26426)
 #endif
-const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+inline const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
 #endif
 
 /// This returns a reference to the OrtApi interface in use
-inline const OrtApi& GetApi() { return *Global<void>::api_; }
+inline const OrtApi& GetApi() { return *api; }
 
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and returns a vector of strings representing the available execution providers.
 std::vector<std::string> GetAvailableProviders();
