@@ -77,12 +77,13 @@ __global__ void SkipLayerNormKernel(
 
 template <unsigned TPB>
 __global__ void SkipLayerNormKernelSmall2(
-  const int ld, const half2* input, const half2* skip, const half2* beta, const half2* gamma, const half2* bias, const half epsilon, half2* output, bool hasBias) {
+    const int ld, const half2* input, const half2* skip, const half2* beta, const half2* gamma,
+    const half2* bias, const half epsilon, half2* output, bool hasBias) {
   const int idx = (ld / 2) * blockIdx.x + threadIdx.x;
   using BlockReduce = cub::BlockReduce<cub::KeyValuePair<half, half>, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
-  __shared__ half mu;     // mean
-  __shared__ half rsigma; // 1 / std.dev.
+  __shared__ half mu;      // mean
+  __shared__ half rsigma;  // 1 / std.dev.
   KeyValuePairSum pair_sum;
   half2 input_vec;
   half2 beta_vec;
@@ -109,19 +110,20 @@ __global__ void SkipLayerNormKernelSmall2(
   const cub::KeyValuePair<half, half> sumKV = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
   if (threadIdx.x == 0) {
     mu = sumKV.key;
-    rsigma = Rsqrt(sumKV.value - mu * mu + epsilon); // half --> sumKV.value.x + sumKV.value.y - mu * mu + epsilon
+    rsigma = Rsqrt(sumKV.value - mu * mu + epsilon);
   }
   __syncthreads();
   if (2 * threadIdx.x < ld) {
     half output_low = __low2half(gamma_vec) * (__low2half(input_vec) - mu) * rsigma + __low2half(beta_vec);
     half output_high = __high2half(gamma_vec) * (__high2half(input_vec) - mu) * rsigma + __high2half(beta_vec);
-    output[idx] = __halves2half2(output_low, output_high); // For debugging purpose
+    output[idx] = __halves2half2(output_low, output_high);
   }
 }
 
 template <unsigned TPB>
 __global__ void SkipLayerNormKernelVec2(
-  const int ld, const half2* input, const half2* skip, const half2* beta, const half2* gamma, const half2* bias, const half epsilon, half2* output, bool hasBias) {
+    const int ld, const half2* input, const half2* skip, const half2* beta, const half2* gamma, const half2* bias,
+    const half epsilon, half2* output, bool hasBias) {
   const int idx = TPB * blockIdx.x + threadIdx.x;
   half2 input_vec = input[idx];
   const half2 skip_vec = skip[idx];
@@ -159,7 +161,8 @@ __global__ void SkipLayerNormKernelVec2(
 /* float32 */
 bool ComputeSkipLayerNorm(
     const cudaDeviceProp& prop, cudaStream_t stream, const int ld, const int n, const float* input,
-    const float* skip, const float* beta, const float* gamma, const float* bias, const float epsilon, float* output, bool use_half2) {
+    const float* skip, const float* beta, const float* gamma, const float* bias, const float epsilon,
+    float* output, bool use_half2) {
   // this must be true because n is the total size of the tensor
   assert(n % ld == 0);
   const int grid_size = n / ld;
@@ -198,31 +201,29 @@ bool ComputeSkipLayerNorm(
     const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
     const half2 epsilon2 = __half2half2(epsilon);
-    constexpr int VPT = 32 / sizeof(half); // 16 (og)
-    bool hasBias = (bias == nullptr) ? false : true; // TODO: template args (define in .cc file)
+    bool hasBias = (bias == nullptr) ? false : true;
 
     if (ld <= 32) {
-      constexpr int block_size = 32; // for testing
+      constexpr int block_size = 32;
       SkipLayerNormKernelSmall2<block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
     } else if (ld == 128) {
-      constexpr int block_size = 128 / 2; // for testing
+      constexpr int block_size = 128 / 2;
       SkipLayerNormKernelVec2<block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
     } else if (ld == 384) {
-      constexpr int block_size = 384 / 2; // for testing
+      constexpr int block_size = 384 / 2;
       SkipLayerNormKernelVec2<block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
     } else if (ld == 768) {
-      constexpr int block_size = 768 / 2; // for testing
+      constexpr int block_size = 768 / 2;
       SkipLayerNormKernelVec2<block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
     } else if (ld == 1024) {
-      constexpr int block_size = 1024 / 2; // for testing
+      constexpr int block_size = 1024 / 2;
       SkipLayerNormKernelVec2<block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
     } else {
-      // TODO: check if half2 also works for this function or not
       constexpr int block_size = 256;
       SkipLayerNormKernel<half, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);

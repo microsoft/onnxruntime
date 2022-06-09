@@ -57,7 +57,7 @@ __device__ inline half2 Rsqrt(const half2& x) {
 #if __CUDA_ARCH__ >= 530 || !defined(__CUDA_ARCH__)
   return h2rsqrt(x);
 #else
-  return half2{half(rsqrtf(float(x.x))), half(rsqrtf(float(x.y)))} // TODO: might need to be refactored!
+  return half2{half(rsqrtf(float(x.x))), half(rsqrtf(float(x.y)))};
 #endif
 }
 
