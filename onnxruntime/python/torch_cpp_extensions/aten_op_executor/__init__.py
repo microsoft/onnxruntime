@@ -1,7 +1,7 @@
-from onnxruntime.capi import _pybind_state as C
-
 import threading
 from functools import wraps
+
+from onnxruntime.capi import _pybind_state as _C
 
 
 def run_once_aten_op_executor(f):
@@ -28,6 +28,6 @@ def run_once_aten_op_executor(f):
 def load_aten_op_executor_cpp_extension():
     from onnxruntime.training.ortmodule.torch_cpp_extensions import aten_op_executor
 
-    C.register_aten_op_executor(
+    _C.register_aten_op_executor(
         str(aten_op_executor.is_tensor_argument_address()), str(aten_op_executor.execute_aten_operator_address())
     )
