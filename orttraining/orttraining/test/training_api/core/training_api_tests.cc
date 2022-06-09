@@ -136,7 +136,7 @@ TEST(TrainingApiTest, OptimStep) {
 
   // before training, check if optim state is initialized to 0
   OptimizerCheckpointState optimizer_states;
-  ORT_ENFORCE(optim_sess->GetStateDict(optimizer_states).IsOK());
+  ORT_ENFORCE(optim->GetStateDict(optimizer_states).IsOK());
   ParameterOptimizerState& param_state =
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
@@ -179,8 +179,19 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
-  auto optim = std::make_shared<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  auto module_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
+  auto optim_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
+  ORT_THROW_IF_ERROR(module_sess->Load(model_uri));
+  ORT_THROW_IF_ERROR(module_sess->Initialize());
+  ORT_THROW_IF_ERROR(optim_sess->Load(optim_uri));
+  ORT_THROW_IF_ERROR(optim_sess->Initialize());
+
+  auto model = std::make_unique<Module>(state.module_checkpoint_state.named_parameters, module_sess.get());
+  auto optim = std::make_shared<Optimizer>(state.module_checkpoint_state.named_parameters, optim_sess.get());
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);

@@ -19,6 +19,8 @@ namespace {
 // TODO: consolidate with frontend tooling
 const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
 
+}  // namespace
+
 Status Parameter::AllocateGrad(const std::string& gradient_name, const OrtValue& param_grad) {
   // assert param is allocated
   ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");

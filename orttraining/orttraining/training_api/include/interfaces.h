@@ -149,7 +149,7 @@ struct OrtOptimizer {
                const std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>>& parameters)
       : ort_api_(ort_api) {
     ORT_ENFORCE(ort_api.CreateSession(env, optim_path_or_bytes.c_str(), session_options, &optim_ort_session_) == nullptr);
-    optimizer_ = std::make_unique<onnxruntime::training::api::Optimizer>(
+    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
         parameters,
         reinterpret_cast<::onnxruntime::InferenceSession*>(optim_ort_session_));
   }
@@ -168,14 +168,14 @@ struct OrtOptimizer {
 
  private:
   OrtSession* optim_ort_session_{nullptr};
-  std::unique_ptr<onnxruntime::training::api::Optimizer> optimizer_;
+  std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
   const OrtApi& ort_api_;
 };
 
 struct OrtLinearLRScheduler {
   OrtLinearLRScheduler(OrtOptimizer& optimizer, int64_t warmup_step_count, int64_t total_step_count)
-      : optim_(optimizer.optimizer_.get()) {
-    linear_lr_scheduler_ = std::make_unique<LinearLRScheduler>(*optim_, warmup_step_count, total_step_count);
+      : optim_(optimizer.optimizer_) {
+    linear_lr_scheduler_ = std::make_unique<LinearLRScheduler>(optim_, warmup_step_count, total_step_count);
   }
 
   bool Step() {
@@ -184,7 +184,7 @@ struct OrtLinearLRScheduler {
 
  private:
   std::unique_ptr<onnxruntime::training::api::LinearLRScheduler> linear_lr_scheduler_;
-  Optimizer* optim_;
+  std::shared_ptr<onnxruntime::training::api::Optimizer> optim_;
 };
 
 }  // namespace Ort
