@@ -257,7 +257,6 @@ common::Status SaveInitializedTensors(
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
     auto location = exec_plan.GetLocation(ort_value_index).name;
     if (utils::HasExternalData(*entry->second) && (strcmp(location, CPU) == 0)) {
-    // if (utils::HasExternalData(*entry->second)) {
       // exernal data will be memory mapped, no need to plan for its allocation
       continue;
     } else {
@@ -275,7 +274,6 @@ common::Status SaveInitializedTensors(
       continue;
     }
     if (utils::HasExternalData(*entry.second) && (strcmp(location, CPU) == 0)) {
-    // if (utils::HasExternalData(*entry.second) ) {
       // exernal data will be memory mapped, no need to plan for its allocation
       continue;
     }
