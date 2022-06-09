@@ -231,13 +231,8 @@ class ExecutionFrame final : public IExecutionFrame {
   // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed
   // by i, if the key i exists.
   // inferred_shapes_ is generated together with mem_patterns_.
-#ifdef ENABLE_TRAINING
-  // In training we made a copy under lock
-  InlinedHashMap<int, TensorShape> inferred_shapes_;
-#else
-  // in inference these are not mutable
+  // It is never updated after creation
   const InlinedHashMap<int, TensorShape>* inferred_shapes_{nullptr};
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

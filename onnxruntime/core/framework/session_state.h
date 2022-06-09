@@ -208,21 +208,14 @@ class SessionState {
   Must be called only when all values contain tensors
   In training scenarios, the cache may be updated so
   the callers would receive a copy of inferred shapes
-  made under mutes being held. In inference scenarios,
+  made under mutex being held. In inference scenarios,
   it is not mutable, we do not obtain a lock and simply get a pointer
   w/o copying a hashtable
   */
-#ifdef ENABLE_TRAINING
-  const MemoryPatternGroup* GetMemoryPatternGroup(
-      gsl::span<const OrtValue> tensor_inputs,
-      gsl::span<const int> feed_mlvalue_idxs,
-      InlinedHashMap<int, TensorShape>& inferred_shapes) const;
-#else
   const MemoryPatternGroup* GetMemoryPatternGroup(
       gsl::span<const OrtValue> tensor_inputs,
       gsl::span<const int> feed_mlvalue_idxs,
       const InlinedHashMap<int, TensorShape>*& inferred_shapes) const;
-#endif
 
   /**
   Set generated memory pattern with a given input shapes.
@@ -495,15 +488,9 @@ class SessionState {
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   // must be a node based container as a pointer is cached.
   mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
-#ifdef ENABLE_TRAINING
   // This is mutable under mutex in training scenarios so execution frame would make a copy
   // of the value when created.
-  mutable InlinedHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
-#else
-  // In inference we take a pointer to the value and cache it in execution frame since this is not
-  // mutable. We want to avoid copying and extra memory allocations
-  InlinedHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
-#endif
+  mutable NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
 
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;

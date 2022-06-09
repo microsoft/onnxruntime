@@ -671,63 +671,43 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
   return Status::OK();
 }
 
-// XXX: it is not clear how the mutex protects MemoryPatternGroup
-// since the pointer is returned. Execution frame is reading it during construction
-// but other inference/training Run() update it via UpdateMemoryPatternGroupCache() calls
+#endif
+
+// MemoryPatternGroup pointer is cached. It only inserted upon creation
+// and is not updated if already present.
 const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
     gsl::span<const OrtValue> tensor_inputs,
     gsl::span<const int> feed_mlvalue_idxs,
-    InlinedHashMap<int, TensorShape>& out_inferred_shapes) const {
-  int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
+    const InlinedHashMap<int, TensorShape>*& out_inferred_shapes) const {
 
+  out_inferred_shapes = nullptr;
+  int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
+#ifdef ENABLE_TRAINING
     MemoryPatternGroup mem_patterns;
     InlinedHashMap<int, TensorShape> inferred_shapes;
     if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns, inferred_shapes).IsOK()) {
       auto patt_insert = mem_patterns_.insert_or_assign(key, std::move(mem_patterns));
       auto ptr = &patt_insert.first->second;
       auto shape_insert = shape_patterns_.insert_or_assign(key, std::move(inferred_shapes));
-      out_inferred_shapes = shape_insert.first->second;
+      out_inferred_shapes = &shape_insert.first->second;
       return ptr;
     }
+#else
+    ORT_UNUSED_PARAMETER(feed_mlvalue_idxs);
+#endif
     return nullptr;
   }
 
   auto patt_hit = shape_patterns_.find(key);
   if (patt_hit != shape_patterns_.cend()) {
-    out_inferred_shapes = patt_hit->second;
+    out_inferred_shapes = &patt_hit->second;
   }
   return &it->second;
 }
 
-#else
-
-// Inference version of the function
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(gsl::span<const OrtValue> tensor_inputs,
-                                                              gsl::span<const int> /* feed_mlvalue_idxs */,
-                                                              const InlinedHashMap<int, TensorShape>*& out_inferred_shapes) const {
-  int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
-  out_inferred_shapes = nullptr;
-  std::unique_lock<OrtMutex> lock(mem_patterns_lock_);
-  auto patt_hit = mem_patterns_.find(key);
-  if (patt_hit == mem_patterns_.end()) {
-    return nullptr;
-  }
-  lock.unlock();
-
-  // In inference, shape_patterns_ are immutable
-  // so we simply return a pointer to the execution frame when being constructed and
-  // do not copy the structure to avoid memory allocations.
-  auto shape_hit = shape_patterns_.find(key);
-  if (shape_hit != shape_patterns_.end()) {
-    out_inferred_shapes = &shape_hit->second;
-  }
-  return &patt_hit->second;
-}
-
-#endif  // ENABLE_TRAINING
 
 void SessionState::ResolveMemoryPatternFlag() {
   if (enable_mem_pattern_) {

@@ -888,21 +888,14 @@ bool ExecutionFrame::TryGetInferredShape(int index, TensorShape& shape) const {
     return false;
   }
 
-#ifdef ENABLE_TRAINING
-  const auto& inferred_shapes = inferred_shapes_;
-#else
-  if (inferred_shapes_ == nullptr) {
-    return false;
-  }
-  const auto& inferred_shapes = *inferred_shapes_;
-#endif
-
   // Search for inferred shape.
   // If inferred shape is found, it's assigned to "shape" so that caller can use it.
-  auto it = inferred_shapes.find(ort_value_idx);
-  if (it != inferred_shapes.end()) {
-    shape = it->second;
-    return true;
+  if (inferred_shapes_ != nullptr) {
+    auto it = inferred_shapes_->find(ort_value_idx);
+    if (it != inferred_shapes_->end()) {
+      shape = it->second;
+      return true;
+    }
   }
 
   // Tell the caller if the search is successful or not.
