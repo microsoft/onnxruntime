@@ -6,8 +6,6 @@
 
 #include <functional>
 #include <limits>
-#include <ostream>
-#include <typeinfo>
 #include <core/common/status.h>
 
 #include "core/common/common.h"
@@ -314,6 +312,7 @@ common::Status SaveInitializedTensors(
 
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       ort_value = *(session_options.initializers_to_share_map.at(name));
+      LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
@@ -418,6 +417,7 @@ common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer&
       // is consumed in the subgraph if there is an explicit consumer.
       // If the only consumer(s) are implicit consumers (i.e.) other control flow nodes, its
       // location is the location of the value in the enclosing outer scope.
+
       // All this is setup in the planner, we just use the location from the plan here.
       for (const auto& input_def : node_implicit_inputs) {
         int arg_index;
