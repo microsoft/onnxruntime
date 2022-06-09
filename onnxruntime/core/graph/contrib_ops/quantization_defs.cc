@@ -168,7 +168,7 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
       .Input(
           2,
           "y_zero_point",
-          "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor"
+          "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a per-tensor "
           "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
           "T2")
       .Output(

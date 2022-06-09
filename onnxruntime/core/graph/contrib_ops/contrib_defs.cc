@@ -1846,7 +1846,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Unique, 1,
                                         "in the output 'uniques'",
                                         "tensor(int64)")
                                 .Output(2, "counts",
-                                        "A 1-D INT64 tensor containing the "
+                                        "A 1-D INT64 tensor containing "
                                         "the count of each element "
                                         "of 'uniques' in the input 'x'",
                                         "tensor(int64)")

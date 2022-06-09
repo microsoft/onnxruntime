@@ -150,7 +150,7 @@ equal to the spatial dimension of input tensor. Input is of type uint8_t or int8
                                 .Output(0, "Y",
                                         "Output data tensor from pooling across the input "
                                         "tensor. The output tensor has the same rank as the input. "
-                                        "with the N and C value keep it value, while the other"
+                                        "with the N and C value keep it value, while the other "
                                         "dimensions are all 1.",
                                         "T")
                                 .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"},
@@ -465,4 +465,3 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema().FillUsing(ConvOpSchemaGenerator()));
 }  // namespace contrib
 }  // namespace onnxruntime
-
