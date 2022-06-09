@@ -14,6 +14,8 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
+namespace {
+
 // TODO: consolidate with frontend tooling
 const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
 
@@ -144,9 +146,9 @@ Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& name
         param_input_names.emplace_back(input_name);
         continue;
       } else {
-        // It is a user input. We handle user inputs separately in eval 
-        // because eval graph might have different user inputs. 
-        // Eg if loss is not a part of eval graph, it won't have 
+        // It is a user input. We handle user inputs separately in eval
+        // because eval graph might have different user inputs.
+        // Eg if loss is not a part of eval graph, it won't have
         // certain inputs like targets
         eval_user_input_names.emplace_back(input_name);
       }

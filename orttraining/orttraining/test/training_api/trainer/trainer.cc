@@ -181,9 +181,9 @@ void RunTraining(const TestRunnerParameters& params) {
   bool do_eval = params.model_evaluation_graph_path.has_value();
 
   // TODO: update using public API's calling pattern, e.g. api.CreateOptimizer().
-  Ort::OrtOptimizer optimizer(api, env, session_options,
-                              params.optimizer_training_graph_path,
-                              module.NamedParameters());
+  auto optimizer = std::make_shared<Optimizer>(api, env, session_options,
+                                               params.optimizer_training_graph_path,
+                                               module.NamedParameters());
 
   int64_t sample_batch_count_per_epoch = 4;
   if (sample_batch_count_per_epoch < params.train_batch_size || sample_batch_count_per_epoch % params.train_batch_size != 0) {
@@ -238,7 +238,7 @@ void RunTraining(const TestRunnerParameters& params) {
             onnxruntime::profile::Color::Blue);
         opt_step_range.Begin();
 #endif
-        EnforceCheck(optimizer.Step(), "Failed during optimizer.Step().");
+        EnforceCheck(optimizer->Step(), "Failed during optimizer.Step().");
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         opt_step_range.End();
@@ -270,7 +270,7 @@ void RunTraining(const TestRunnerParameters& params) {
         // Save trained weights
         CheckpointState state_to_save;
         EnforceCheck(module.GetStateDict(state_to_save.module_checkpoint_state), "Failed to load module states.");
-        EnforceCheck(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state), "Failed to load optimizer states.");
+        EnforceCheck(optimizer->GetStateDict(state_to_save.optimizer_checkpoint_state), "Failed to load optimizer states.");
         state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
 

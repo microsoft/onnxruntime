@@ -14,25 +14,32 @@ namespace api {
  */
 struct LRSchedulerBase {
  public:
-  LRSchedulerBase(Optimizer& optimizer) : optim_(optimizer) {}
+  LRSchedulerBase(std::shared_ptr<Optimizer> optimizer) : optim_(optimizer) {}
   virtual ~LRSchedulerBase() = default;
 
+  /**
+   * @brief Compute learning rate taking step and initial learning rate as inputs, then update
+   * the adapted learning rate into optimizer.
+   *
+   * This should be called every time optimizer update states related to learning rate calculations,
+   * for example, initial learning and step.
+   */
   Status Step() {
-    return optim_.SetLearningRate(ComputeLearningRateInternal());
+    return optim_->SetLearningRate(ComputeLearningRateInternal());
   }
 
  protected:
   int64_t GetStepInternal() {
-    return optim_.optimizer_state_.step;
+    return optim_->optimizer_state_.step;
   }
 
   float GetInitialLRInternal() {
-    return optim_.optimizer_state_.learning_rate;
+    return optim_->optimizer_state_.initial_lr;
   }
 
  private:
   virtual float ComputeLearningRateInternal() = 0;
-  Optimizer& optim_;
+  std::shared_ptr<Optimizer> optim_;
 };
 
 /**
@@ -44,7 +51,7 @@ struct LRSchedulerBase {
  */
 struct MultiplicativeLRSchedulerBase : public LRSchedulerBase {
  public:
-  MultiplicativeLRSchedulerBase(Optimizer& optimizer)
+  MultiplicativeLRSchedulerBase(std::shared_ptr<Optimizer> optimizer)
       : LRSchedulerBase(optimizer) {
   }
 
@@ -66,17 +73,18 @@ struct MultiplicativeLRSchedulerBase : public LRSchedulerBase {
  */
 struct LinearLRScheduler : public MultiplicativeLRSchedulerBase {
  public:
-  explicit LinearLRScheduler(Optimizer& optimizer, int64_t warmup_step_count, int64_t total_step_count)
+  explicit LinearLRScheduler(std::shared_ptr<Optimizer> optimizer, int64_t warmup_step_count, int64_t total_step_count)
       : MultiplicativeLRSchedulerBase(optimizer),
-        warmup_step_count_flt_(static_cast<float>(warmup_step_count)),
-        total_step_count_flt_(static_cast<float>(total_step_count)) {
+        warmup_step_count_(warmup_step_count),
+        total_step_count_(total_step_count) {
+    ORT_THROW_IF_ERROR(Step());
   }
 
  private:
   float ComputeLRMultiplicativeFactorInternal(int64_t step) override;
 
-  float warmup_step_count_flt_;
-  float total_step_count_flt_;
+  int64_t warmup_step_count_;
+  int64_t total_step_count_;
 };
 
 }  // namespace api

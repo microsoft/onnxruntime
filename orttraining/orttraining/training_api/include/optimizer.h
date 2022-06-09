@@ -13,13 +13,10 @@ namespace training {
 namespace api {
 
 /**
- * @brief States belong to one specific trainable Parameter.
+ * @brief States belonging to one specific trainable Parameter.
  *   Momentum states for each Parameter.
  *   For Adam optimizer, it looks like:
- *     {
- *       "moment_0": shared_ptr<OrtValue>,
- *       "moment_1": shared_ptr<OrtValue>,
- *     }.
+ *     { "moment_0": OrtValue, "moment_1": OrtValue,}.
  */
 struct ParameterOptimizerState {
   std::unordered_map<std::string, OrtValue> momentum_named_states;
@@ -30,7 +27,7 @@ struct ParameterOptimizerState {
  */
 struct GroupOptimizerState {
   int64_t step = 0;
-  float initial_lr = 0.001;         // default value used in torch AdamW
+  float initial_lr = 0.001;         // Default value used in torch AdamW
   float learning_rate{initial_lr};  // Adaptive learning rate as training proceeds.
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
@@ -62,11 +59,13 @@ struct Optimizer {
   Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
             InferenceSession* optim_session);
 
-  // Optimizer Step.
   Status Step();
 
   Status GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
 
+  Status LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states);
+
+ private:
   int64_t GetStep() const {
     return optimizer_state_.step;
   }
@@ -76,7 +75,6 @@ struct Optimizer {
     return Status::OK();
   }
 
- private:
   // Generates optimizer momentum states for applicable optimizer types
   Status GenerateMomentumNamedStates();
   // Constructs the ortvalue inputs to be fed to the graph
