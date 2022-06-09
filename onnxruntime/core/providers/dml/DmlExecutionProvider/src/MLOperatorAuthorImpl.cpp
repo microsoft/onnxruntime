@@ -1060,7 +1060,8 @@ HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::SetDmlOperator(
       SetDmlProperties(dmlProperties);
 
       m_graphNodeCreateInfo->op = op;
-      m_graphNodeCreateInfo->desc = std::make_unique<AbstractOperatorDesc>(SchemaHelpers::ConvertOperatorDesc(*desc));
+      AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*desc);
+      m_graphNodeCreateInfo->desc = std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc));
 
       return S_OK;
     }
