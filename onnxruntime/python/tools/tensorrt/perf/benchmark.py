@@ -12,7 +12,7 @@ import pprint
 import re
 import subprocess
 import sys
-import time
+import tempfile
 import timeit
 from datetime import datetime
 
@@ -84,6 +84,8 @@ OP_METRICS_FILE = ".op_metrics_map"
 SESSION_FILE = ".session_map"
 MEMORY_FILE = "./temp_memory.csv"
 
+TRT_ENGINE_CACHE_DIR_NAME = "engine_cache"
+
 
 def split_and_sort_output(string_list):
     string_list = string_list.split("\n")
@@ -106,8 +108,8 @@ def get_model_inputs(model):
     return inputs
 
 
-def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, track_memory):
-    logger.info("running standalone trt")
+def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_inputs_shape, fp16, track_memory):
+    logger.debug("running standalone trt")
     onnx_model_path = "--onnx=" + model_path
 
     # load inputs
@@ -117,13 +119,13 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
     model = onnx.load(model_path)
     ort_inputs = get_model_inputs(model)
 
-    output = get_output(["find", "-L", os.getcwd(), "-name", "test_data*", "-type", "d"])
-    test_data_dir = split_and_sort_output(output)[0]
+    output = get_output(["find", "-L", test_data_dir, "-name", "test_data*", "-type", "d"])
+    test_data_dir_0 = split_and_sort_output(output)[0]
 
     for i in range(len(ort_inputs)):
         name = ort_inputs[i]
-        loaded_input = name + ":" + test_data_dir + "/" + str(i) + ".bin"
-        logger.info(loaded_input)
+        loaded_input = name + ":" + test_data_dir_0 + "/" + str(i) + ".bin"
+        logger.debug(loaded_input)
         shape = []
         for j in all_inputs_shape[i]:
             shape.append(str(j))
@@ -154,12 +156,12 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
     engine_suffix = "_trtexec_fp16.engine" if fp16 else "_trtexec.engine"
     engine_name = model_name + engine_suffix
     save_command = command + ["--saveEngine=" + engine_name]
-    logger.info(save_command)
+    logger.debug(save_command)
     out = get_output(save_command)
 
     # load engine and inference
     load_command = command + ["--loadEngine=" + engine_name]
-    logger.info(load_command)
+    logger.debug(load_command)
 
     mem_usage = None
     p = None
@@ -172,7 +174,6 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
             mem_usage = end_memory_tracking(p, success)
         except Exception as e:
             end_memory_tracking(p, success)
-            subprocess.run(["rm", "-f", engine_name])
             raise (e)
     else:
         out = get_output(load_command)
@@ -197,10 +198,7 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
     if mem_usage:
         result["memory"] = mem_usage
 
-    logger.info(result)
-
-    # Clean up engine
-    subprocess.run(["rm", "-f", engine_name])
+    logger.debug(result)
 
     return result
 
@@ -283,7 +281,7 @@ def get_max_memory():
 
 
 def start_memory_tracking():
-    logger.info("starting memory tracking process")
+    logger.debug("starting memory tracking process")
     p = subprocess.Popen(
         [
             "nvidia-smi",
@@ -299,7 +297,7 @@ def start_memory_tracking():
 
 
 def end_memory_tracking(p, success):
-    logger.info("terminating memory tracking process")
+    logger.debug("terminating memory tracking process")
     p.terminate()
     p.wait()
     p.kill()
@@ -355,10 +353,10 @@ def inference_ort(
         io_binding = session.io_binding()
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
-            logger.info("ORT session inputs:")
-            logger.info(sess_inputs)
-            logger.info("ORT session outputs:")
-            logger.info(sess_outputs)
+            logger.debug("ORT session inputs:")
+            logger.debug(sess_inputs)
+            logger.debug("ORT session outputs:")
+            logger.debug(sess_outputs)
         if args.io_binding:
             for name, inp in sess_inputs.items():
                 io_binding.bind_cpu_input(name, inp)
@@ -416,16 +414,16 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
         if debug:
-            logger.info("ORT session inputs:")
-            logger.info(sess_inputs)
-            logger.info("ORT session outputs:")
-            logger.info(sess_outputs)
+            logger.debug("ORT session inputs:")
+            logger.debug(sess_inputs)
+            logger.debug("ORT session outputs:")
+            logger.debug(sess_outputs)
 
         result = session.run(sess_outputs, sess_inputs)
 
         if debug:
-            logger.info("ORT session output results:")
-            logger.info(result)
+            logger.debug("ORT session output results:")
+            logger.debug(result)
 
         # handle shape of output differently
         if "bert_squad" in name.lower():
@@ -461,10 +459,10 @@ def get_acl_version():
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
-    logger.info("Parsing test data in {} ...".format(path))
+    logger.debug("Parsing test data in {} ...".format(path))
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = split_and_sort_output(output)
-    logger.info(test_data_set_dir)
+    logger.debug(test_data_set_dir)
 
     inputs = []
     outputs = []
@@ -482,7 +480,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
         # load inputs and create bindings
         output = get_output(["find", ".", "-name", "input*"])
         input_data = split_and_sort_output(output)
-        logger.info(input_data)
+        logger.debug(input_data)
 
         input_data_pb = []
         i = 0
@@ -497,16 +495,16 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                 input_data_pb.append(tensor_to_array)
                 if not shape_flag:
                     all_inputs_shape.append(input_data_pb[-1].shape)
-                logger.info(all_inputs_shape[-1])
+                logger.debug(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        logger.info("Loaded {} inputs successfully.".format(len(inputs)))
+        logger.debug("Loaded {} inputs successfully.".format(len(inputs)))
 
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
         output_data = split_and_sort_output(output)
 
         if len(output_data) > 0 and output_data[0] != "":
-            logger.info(output_data)
+            logger.debug(output_data)
             output_data_pb = []
             for data in output_data:
                 tensor = onnx.TensorProto()
@@ -519,9 +517,9 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                         tensor_to_array = tensor_to_array.astype(np.float16)
                     output_data_pb.append(tensor_to_array)
 
-                    logger.info(np.array(output_data_pb[-1]).shape)
+                    logger.debug(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            logger.info("Loaded {} outputs successfully.".format(len(outputs)))
+            logger.debug("Loaded {} outputs successfully.".format(len(outputs)))
 
         os.chdir(pwd)
     return inputs, outputs
@@ -551,11 +549,11 @@ def generate_onnx_model_random_input(test_times, ref_input):
                 new_tensor = np.random.random_sample(shape).astype(dtype)
 
             if debug:
-                logger.info("original tensor:")
-                logger.info(tensor)
-                logger.info("new random tensor:")
-                logger.info(new_tensor)
-                logger.info("\n")
+                logger.debug("original tensor:")
+                logger.debug(tensor)
+                logger.debug("new random tensor:")
+                logger.debug(new_tensor)
+                logger.debug("\n")
 
             input_data.append(new_tensor)
         inputs.append(input_data)
@@ -574,12 +572,12 @@ def percentage_in_allowed_threshold(e, percent_mismatch):
 
 def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
     if len(all_ref_outputs) == 0:
-        logger.info("No reference output provided.")
+        logger.debug("No reference output provided.")
         return True, None
 
-    logger.info("Reference {} results.".format(len(all_ref_outputs)))
-    logger.info("Predicted {} results.".format(len(all_outputs)))
-    logger.info("rtol: {}, atol: {}".format(rtol, atol))
+    logger.debug("Reference {} results.".format(len(all_ref_outputs)))
+    logger.debug("Predicted {} results.".format(len(all_outputs)))
+    logger.debug("rtol: {}, atol: {}".format(rtol, atol))
 
     for i in range(len(all_outputs)):
         ref_outputs = all_ref_outputs[i]
@@ -600,7 +598,7 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
                     logger.error(e)
                     return False, e
 
-    logger.info("ONNX Runtime outputs are similar to reference outputs!")
+    logger.debug("ONNX Runtime outputs are similar to reference outputs!")
     return True, None
 
 
@@ -634,12 +632,14 @@ def remove_files(running_mode, path):
     if running_mode == "validate":
         files = find_files(path, "ort_profile_*.json")  # Session profiles
         files += find_files(path, "TensorrtExecutionProvider_*.onnx")  # TRT subgraphs
-        files += find_files(path, "TensorrtExecutionProvider_*.engine")  # TRT subgraph engines
+        #files += find_files(path, "TensorrtExecutionProvider_*.engine")  # TRT subgraph engines
     elif running_mode == "benchmark":
-        files = find_files(path, "*.engine")  # TRT engine files
+        #files = find_files(path, "TensorrtExecutionProvider_*.engine")  # TRT subgraph engines
+        #files += find_files(path, "TensorrtExecutionProvider_*.profile")  # TRT subgraph engines
+        pass
 
     if files:
-        print("^^^^^^^^ removing files:")
+        print("^^^^^^^^ removing {} files:".format(len(files)))
         print(files)
         sys.stdout.flush()
         subprocess.run(["rm", "-rf"] + files)
@@ -735,7 +735,7 @@ def skip_ep(model_name, ep, model_to_fail_ep):
 
     # if ep in fail_ep_list and fail_ep_list[ep] == "runtime error":
     if ep in fail_ep_list:
-        logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")
+        logger.debug("|||||||----|||||||||Skip testing " + model_name + " using " + ep + " since it has some issues.")
         return True
 
     return False
@@ -853,7 +853,7 @@ def get_system_info(args):
 def find_model_path(path):
     output = get_output(["find", "-L", path, "-name", "*.onnx"])
     model_path = split_and_sort_output(output)
-    logger.info(model_path)
+    logger.debug(model_path)
 
     if model_path == [""]:
         return None
@@ -864,7 +864,7 @@ def find_model_path(path):
             continue
         target_model_path.append(m)
 
-    logger.info(target_model_path)
+    logger.debug(target_model_path)
     if len(target_model_path) > 1:
         logger.error("We expect to find only one model in " + path)
         raise
@@ -898,7 +898,7 @@ def find_model_directory(path):
 def find_test_data_directory(path):
     output = get_output(["find", "-L", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"])
     test_data_dir = split_and_sort_output(output)
-    logger.info(test_data_dir)
+    logger.debug(test_data_dir)
 
     if test_data_dir == [""]:
         return None
@@ -923,7 +923,7 @@ def parse_models_info_from_directory(path, models):
 
         models[model_name] = model
 
-        logger.info(model)
+        logger.debug(model)
         return
 
     model_dir = find_model_directory(path)
@@ -983,15 +983,16 @@ def parse_models_info_from_file(root_dir, path, models):
                 model["test_data_path_fp16"] = row["test_data_path_fp16"]
 
 
-def convert_model_from_float_to_float16(model_path):
+def convert_model_from_float_to_float16(model_path, new_model_dir):
     from float16 import convert_float_to_float16
     from onnxmltools.utils import load_model, save_model
 
-    new_model_path = os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
+    new_model_path = os.path.join(new_model_dir, "new_fp16_model_by_trt_perf.onnx")
+
     if not os.path.exists(new_model_path):
         onnx_model = load_model(model_path)
         new_onnx_model = convert_float_to_float16(onnx_model)
-        save_model(new_onnx_model, "new_fp16_model_by_trt_perf.onnx")
+        save_model(new_onnx_model, new_model_path)
 
     return new_model_path
 
@@ -1006,7 +1007,7 @@ def get_test_data(fp16, test_data_dir, all_inputs_shape):
 def run_symbolic_shape_inference(model_path, new_model_path):
     import onnxruntime.tools.symbolic_shape_infer as symbolic_shape_infer
 
-    logger.info("run symbolic shape inference")
+    logger.debug("run symbolic shape inference")
     try:
         out = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(onnx.load(model_path), auto_merge=True)
         onnx.save(out, new_model_path)
@@ -1044,14 +1045,14 @@ def time_and_create_session(model_path, providers, provider_options, session_opt
 
 
 def create_session(model_path, providers, provider_options, session_options):
-    logger.info(model_path)
+    logger.debug(model_path)
 
     try:
         return time_and_create_session(model_path, providers, provider_options, session_options)
     except Exception as e:
         # shape inference required on model
         if "shape inference" in str(e):
-            logger.info("Using model from symbolic_shape_infer.py")
+            logger.debug("Using model from symbolic_shape_infer.py")
             new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
             if not os.path.exists(new_model_path):
                 status = run_symbolic_shape_inference(model_path, new_model_path)
@@ -1063,6 +1064,266 @@ def create_session(model_path, providers, provider_options, session_options):
             raise Exception(e)
 
 
+def run_model_ep(args, model_name, model_info, ep, success_results, ep_to_latency, ep_to_op_metrics,
+                 model_to_fail_ep, ep_to_session, tmp_work_dir):
+
+    all_inputs_shape = []  # use for standalone trt
+    model_work_dir = os.path.normpath(model_info["working_directory"])
+    model_path = os.path.normpath(os.path.join(model_work_dir, model_info["model_path"]))
+    test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path"]))
+
+    os.chdir(tmp_work_dir)
+
+    logger.info(f"Starting mode '{args.running_mode}' for {model_name} on {ep} ...")
+
+    # Set environment variables for ort-trt benchmarking
+    trt_ep_options = copy.deepcopy(args.trt_ep_options)
+    if "ORT-TRT" in ep:
+        trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
+
+        # Create/set a directory to store TRT engine caches.
+        engine_cache_path = os.path.normpath(os.path.join(tmp_work_dir, TRT_ENGINE_CACHE_DIR_NAME))
+        if not os.path.exists(engine_cache_path):
+            os.makedirs(engine_cache_path)
+
+        trt_ep_options["trt_engine_cache_path"] = engine_cache_path
+
+    fp16 = False
+
+    # use float16.py for cuda fp16 only
+    if cuda_fp16 == ep:
+
+        # handle model
+        if "model_path_fp16" in model_info:
+            model_path = os.path.normpath(os.path.join(model_work_dir, model_info["model_path_fp16"]))
+
+        else:
+            try:
+                model_path = convert_model_from_float_to_float16(model_path, tmp_work_dir)
+                fp16 = True
+            except Exception as e:
+                logger.error(e)
+                update_fail_model_map(model_to_fail_ep, model_name, ep, "script error", e)
+                return
+
+        # handle test data
+        if "test_data_path_fp16" in model_info:
+            test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path_fp16"]))
+            fp16 = False
+
+    if standalone_trt_fp16 == ep:
+        fp16 = True
+
+    inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
+    # generate random input data
+    if args.input_data == "random":
+        inputs = generate_onnx_model_random_input(args.test_times, inputs[0])
+
+    #######################################
+    # benchmark or validation
+    #######################################
+    if args.running_mode == "benchmark":
+
+        # memory tracking variables
+        mem_usage = None
+        result = None
+
+        # get standalone TensorRT perf
+        if is_standalone(ep) and args.trtexec:
+            try:
+                result = run_trt_standalone(
+                    args.trtexec,
+                    model_name,
+                    model_path,
+                    test_data_dir,
+                    all_inputs_shape,
+                    fp16,
+                    args.track_memory,
+                )
+            except Exception as e:
+                logger.error(e)
+                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+                return
+
+        # inference with onnxruntime ep
+        else:
+            # resolve providers to create session
+            providers = ep_to_provider_list[ep]
+            provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
+            options = onnxruntime.SessionOptions()
+
+            enablement = args.graph_enablement
+            if enablement == enable_all:
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+            elif enablement == extended:
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+            elif enablement == basic:
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+            else:  # disable
+                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+
+            # create onnxruntime inference session
+            try:
+                sess, second_creation_time = create_session(model_path, providers, provider_options, options)
+
+            except Exception as e:
+                logger.error(e)
+                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+                return
+
+            if second_creation_time:
+                ep_to_session[ep + second] = second_creation_time
+
+            logger.debug("start to inference {} with {} ...".format(model_name, ep))
+            logger.debug(sess.get_providers())
+            logger.debug(sess.get_provider_options())
+
+            if sess:
+                logger.debug("Model inputs nodes:")
+                for input_meta in sess.get_inputs():
+                    logger.debug(input_meta)
+                logger.debug("Model outputs nodes:")
+                for output_meta in sess.get_outputs():
+                    logger.debug(output_meta)
+
+            batch_size = 1
+            result_template = {
+                "engine": "onnxruntime",
+                "version": onnxruntime.__version__,
+                "device": ep,
+                "fp16": fp16,
+                "io_binding": args.io_binding,
+                "graph_optimizations": args.graph_enablement,
+                "enable_cache": args.trt_ep_options.get("trt_engine_cache_enable", "False"),
+                "model_name": model_name,
+                "inputs": len(sess.get_inputs()),
+                "batch_size": batch_size,
+                "sequence_length": 1,
+                "datetime": str(datetime.now()),
+            }
+
+            # run cpu fewer times
+            repeat_times = 100 if ep == cpu else args.test_times
+            track_memory = False if ep == cpu else args.track_memory
+
+            # inference with ort
+            try:
+                result, mem_usage = inference_ort(
+                    args,
+                    model_name,
+                    sess,
+                    ep,
+                    inputs,
+                    result_template,
+                    repeat_times,
+                    batch_size,
+                    track_memory,
+                )
+            except Exception as e:
+                logger.error(e)
+                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+                return
+
+        if result:
+
+            ep_to_latency[ep] = {}
+            ep_to_latency[ep]["average_latency_ms"] = result["average_latency_ms"]
+            ep_to_latency[ep]["latency_90_percentile"] = result["latency_90_percentile"]
+            if "memory" in result:
+                mem_usage = result["memory"]
+            if mem_usage:
+                ep_to_latency[ep]["memory"] = mem_usage
+            if not args.trtexec:  # skip standalone
+                success_results.append(result)
+
+    elif args.running_mode == "validate":
+        validation_exemption = [trt_fp16]
+
+        # enable profiling to generate profiling file for analysis
+        options = onnxruntime.SessionOptions()
+        options.enable_profiling = True
+        options.profile_file_prefix = "ort_profile_{}_{}".format(model_name, ep)
+        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+
+        if "ORT-TRT" in ep:
+            trt_ep_options["trt_dump_subgraphs"] = "True"
+
+        providers = ep_to_provider_list[ep]
+        provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
+
+        # create onnxruntime inference session
+        try:
+            sess, creation_time = create_session(model_path, providers, provider_options, options)
+
+        except Exception as e:
+            logger.error(e)
+            update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+            return
+
+        if creation_time:
+            ep_to_session[ep] = creation_time
+
+        sess.disable_fallback()
+
+        logger.debug("start to inference {} with {} ...".format(model_name, ep))
+        logger.debug(sess.get_providers())
+        logger.debug(sess.get_provider_options())
+
+        if sess:
+            logger.debug("Model inputs nodes:")
+            for input_meta in sess.get_inputs():
+                logger.debug(input_meta)
+            logger.debug("Model outputs nodes:")
+            for output_meta in sess.get_outputs():
+                logger.debug(output_meta)
+
+        # run inference and validate the result
+        #
+        # currently skip TensorRT float16 validation intentionally
+        if ep not in validation_exemption:
+            try:
+                ort_outputs = inference_ort_and_get_prediction(model_name, sess, inputs)
+
+                status = validate(
+                    ref_outputs,
+                    ort_outputs,
+                    args.rtol,
+                    args.atol,
+                    args.percent_mismatch,
+                )
+                if not status[0]:
+                    update_fail_model_map(
+                        model_to_fail_ep,
+                        model_name,
+                        ep,
+                        "result accuracy issue",
+                        status[1],
+                    )
+                    return
+            except Exception as e:
+                logger.error(e)
+                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+                return
+
+            # Run inference again. the reason is that some ep like tensorrt
+            # it takes much longer time to generate graph on first run and
+            # we need to skip the perf result of that expensive run.
+            inference_ort_and_get_prediction(model_name, sess, inputs)
+        else:
+            inference_ort_and_get_prediction(model_name, sess, inputs)
+            inference_ort_and_get_prediction(model_name, sess, inputs)
+
+        sess.end_profiling()
+
+        # get metrics from profiling file
+        metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix, logger)
+        if metrics:
+            if "ORT-TRT" in ep:
+                pass # Parse subgraphs
+
+            ep_to_op_metrics[ep] = metrics
+
+
 def run_onnxruntime(args, models):
 
     success_results = []
@@ -1071,7 +1332,7 @@ def run_onnxruntime(args, models):
     model_to_fail_ep = {}  # model -> failing ep
     model_to_session = {}  # models -> session creation time
 
-    if args.running_mode == "benchmark":
+    if args.running_mode == "benchmark" and os.path.exists(SESSION_FILE):
         model_to_session = read_map_from_file(SESSION_FILE)
 
     ep_list = []
@@ -1083,29 +1344,18 @@ def run_onnxruntime(args, models):
         else:
             ep_list = [cpu, cuda, trt]
 
-    validation_exemption = [trt_fp16]
-
     if os.path.exists(FAIL_MODEL_FILE):
         model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
+
+    pwd = os.getcwd()
 
     #######################
     # iterate model
     #######################
     for name, model_info in models.items():
-        latency_result = {}
-        path = model_info["working_directory"]
-
-        pwd = os.getcwd()
-        if not os.path.exists(path):
-            os.mkdir(path)
-        os.chdir(path)
-        path = os.getcwd()
-
-        inputs = []
-        ref_outputs = []
-        all_inputs_shape = []  # use for standalone trt
-        ep_to_operator = {}  # ep -> { operator -> count }
-        profile_already_parsed = set()
+        ep_to_latency = {}
+        ep_to_op_metrics = {}  # ep -> { operator -> count }
+        ep_to_session = {}
 
         #######################
         # iterate ep
@@ -1120,273 +1370,16 @@ def run_onnxruntime(args, models):
                     logger.error("No {} support".format(ep_))
                     continue
 
-            model_path = model_info["model_path"]
-            test_data_dir = model_info["test_data_path"]
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # TODO: Do not pass in all model_to_* dicts. Pass int ep_to_* dicts instead.
+                run_model_ep(args, name, model_info, ep, success_results, ep_to_latency, ep_to_op_metrics,
+                             model_to_fail_ep, ep_to_session, temp_dir)
 
-            logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
+        model_to_latency[name] = ep_to_latency
+        model_to_session[name] = ep_to_session
+        update_op_metrics_map(model_to_metrics, name, ep_to_op_metrics)
 
-            # Set environment variables for ort-trt benchmarking
-            trt_ep_options = copy.deepcopy(args.trt_ep_options)
-            if "ORT-TRT" in ep:
-                trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
-
-            fp16 = False
-
-            # use float16.py for cuda fp16 only
-            if cuda_fp16 == ep:
-
-                # handle model
-                if "model_path_fp16" in model_info:
-                    model_path = model_info["model_path_fp16"]
-
-                else:
-                    try:
-                        model_path = convert_model_from_float_to_float16(model_path)
-                        fp16 = True
-                    except Exception as e:
-                        logger.error(e)
-                        update_fail_model_map(model_to_fail_ep, name, ep, "script error", e)
-                        continue
-
-                # handle test data
-                if "test_data_path_fp16" in model_info:
-                    test_data_dir = model_info["test_data_path_fp16"]
-                    fp16 = False
-
-            if standalone_trt_fp16 == ep:
-                fp16 = True
-
-            inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
-            # generate random input data
-            if args.input_data == "random":
-                inputs = generate_onnx_model_random_input(args.test_times, inputs[0])
-
-            #######################################
-            # benchmark or validation
-            #######################################
-            if args.running_mode == "benchmark":
-                logger.info("\n----------------------------- benchmark -------------------------------------")
-
-                # memory tracking variables
-                mem_usage = None
-                result = None
-
-                # get standalone TensorRT perf
-                if is_standalone(ep) and args.trtexec:
-                    try:
-                        result = run_trt_standalone(
-                            args.trtexec,
-                            name,
-                            model_path,
-                            all_inputs_shape,
-                            fp16,
-                            args.track_memory,
-                        )
-                    except Exception as e:
-                        logger.error(e)
-                        update_fail_model_map(model_to_fail_ep, name, ep, "runtime error", e)
-                        continue
-
-                # inference with onnxruntime ep
-                else:
-                    # resolve providers to create session
-                    providers = ep_to_provider_list[ep]
-                    provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
-                    options = onnxruntime.SessionOptions()
-
-                    enablement = args.graph_enablement
-                    if enablement == enable_all:
-                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-                    elif enablement == extended:
-                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-                    elif enablement == basic:
-                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-                    else:  # disable
-                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-
-                    # create onnxruntime inference session
-                    try:
-                        sess, second_creation_time = create_session(model_path, providers, provider_options, options)
-
-                    except Exception as e:
-                        logger.error(e)
-                        update_fail_model_map(model_to_fail_ep, name, ep, "runtime error", e)
-                        continue
-
-                    if second_creation_time:
-                        model_to_session[name] = copy.deepcopy({ep + second: second_creation_time})
-
-                    logger.info("start to inference {} with {} ...".format(name, ep))
-                    logger.info(sess.get_providers())
-                    logger.info(sess.get_provider_options())
-
-                    if sess:
-                        logger.info("Model inputs nodes:")
-                        for input_meta in sess.get_inputs():
-                            logger.info(input_meta)
-                        logger.info("Model outputs nodes:")
-                        for output_meta in sess.get_outputs():
-                            logger.info(output_meta)
-
-                    batch_size = 1
-                    result_template = {
-                        "engine": "onnxruntime",
-                        "version": onnxruntime.__version__,
-                        "device": ep,
-                        "fp16": fp16,
-                        "io_binding": args.io_binding,
-                        "graph_optimizations": args.graph_enablement,
-                        "enable_cache": args.trt_ep_options.get("trt_engine_cache_enable", "False"),
-                        "model_name": name,
-                        "inputs": len(sess.get_inputs()),
-                        "batch_size": batch_size,
-                        "sequence_length": 1,
-                        "datetime": str(datetime.now()),
-                    }
-
-                    # run cpu fewer times
-                    repeat_times = 100 if ep == cpu else args.test_times
-                    track_memory = False if ep == cpu else args.track_memory
-
-                    # inference with ort
-                    try:
-                        result, mem_usage = inference_ort(
-                            args,
-                            name,
-                            sess,
-                            ep,
-                            inputs,
-                            result_template,
-                            repeat_times,
-                            batch_size,
-                            track_memory,
-                        )
-                    except Exception as e:
-                        logger.error(e)
-                        update_fail_model_map(model_to_fail_ep, name, ep, "runtime error", e)
-                        continue
-
-                if result:
-
-                    latency_result[ep] = {}
-                    latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
-                    latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
-                    if "memory" in result:
-                        mem_usage = result["memory"]
-                    if mem_usage:
-                        latency_result[ep]["memory"] = mem_usage
-                    if not args.trtexec:  # skip standalone
-                        success_results.append(result)
-
-                    model_to_latency[name] = copy.deepcopy(latency_result)
-
-                    if ep == trt_fp16:  # delete engine
-                        remove_files(args.running_mode, model_info["working_directory"])
-
-                logger.info("---------------------------- benchmark [end] ----------------------------------\n")
-
-            elif args.running_mode == "validate":
-                logger.info("\n----------------------------- validate -------------------------------------")
-
-                # enable profiling to generate profiling file for analysis
-                options = onnxruntime.SessionOptions()
-                options.enable_profiling = True
-                options.profile_file_prefix = "ort_profile_{}_{}".format(name, ep)
-                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-                if "ORT-TRT" in ep:
-                    trt_ep_options["trt_dump_subgraphs"] = "True"
-
-                providers = ep_to_provider_list[ep]
-                provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
-
-                # create onnxruntime inference session
-                try:
-                    sess, creation_time = create_session(model_path, providers, provider_options, options)
-
-                except Exception as e:
-                    logger.error(e)
-                    update_fail_model_map(model_to_fail_ep, name, ep, "runtime error", e)
-                    continue
-
-                if creation_time:
-                    model_to_session[name] = copy.deepcopy({ep: creation_time})
-
-                sess.disable_fallback()
-
-                logger.info("start to inference {} with {} ...".format(name, ep))
-                logger.info(sess.get_providers())
-                logger.info(sess.get_provider_options())
-
-                if sess:
-                    logger.info("Model inputs nodes:")
-                    for input_meta in sess.get_inputs():
-                        logger.info(input_meta)
-                    logger.info("Model outputs nodes:")
-                    for output_meta in sess.get_outputs():
-                        logger.info(output_meta)
-
-                # run inference and validate the result
-                #
-                # currently skip TensorRT float16 validation intentionally
-                if ep not in validation_exemption:
-                    try:
-                        ort_outputs = inference_ort_and_get_prediction(name, sess, inputs)
-
-                        status = validate(
-                            ref_outputs,
-                            ort_outputs,
-                            args.rtol,
-                            args.atol,
-                            args.percent_mismatch,
-                        )
-                        if not status[0]:
-                            remove_files(args.running_mode, model_info["working_directory"])
-                            update_fail_model_map(
-                                model_to_fail_ep,
-                                name,
-                                ep,
-                                "result accuracy issue",
-                                status[1],
-                            )
-                            continue
-                    except Exception as e:
-                        logger.error(e)
-                        update_fail_model_map(model_to_fail_ep, name, ep, "runtime error", e)
-                        continue
-
-                    # Run inference again. the reason is that some ep like tensorrt
-                    # it takes much longer time to generate graph on first run and
-                    # we need to skip the perf result of that expensive run.
-                    inference_ort_and_get_prediction(name, sess, inputs)
-                else:
-                    inference_ort_and_get_prediction(name, sess, inputs)
-                    inference_ort_and_get_prediction(name, sess, inputs)
-
-                sess.end_profiling()
-
-                # get metrics from profiling file
-                metrics = get_profile_metrics(path, profile_already_parsed, options.profile_file_prefix, logger)
-                if metrics:
-                    if "ORT-TRT" in ep:
-                        pass # Parse subgraphs
-
-                    ep_to_operator[ep] = metrics
-
-                remove_files(args.running_mode, model_info["working_directory"])
-                logger.info("---------------------------- validate [end] ----------------------------------\n")
-
-        ####################
-        # end of iterate ep
-        ####################
-
-        # get percentage of execution time and operators in TRT
-        update_op_metrics_map(model_to_metrics, name, ep_to_operator)
-
-        # cleanup_files()
-        os.chdir(pwd)
-
-        # end of model
+    os.chdir(pwd)
 
     return (
         success_results,
@@ -2103,10 +2096,10 @@ def setup_logger(verbose):
 def parse_models_helper(args, models):
     model_source = os.path.join(args.workspace, args.model_source)
     if ".json" in model_source:
-        logger.info("Parsing model information from file ...")
+        logger.debug("Parsing model information from file ...")
         parse_models_info_from_file(args.workspace, model_source, models)
     else:
-        logger.info("Parsing model information from directory ...")
+        logger.debug("Parsing model information from directory ...")
         parse_models_info_from_directory(model_source, models)
 
 
@@ -2132,8 +2125,6 @@ def main():
 
     logger.info("Done running the perf.")
     logger.info("\nTotal time for benchmarking all models: {}".format(perf_end_time - perf_start_time))
-    logger.info(list(models.keys()))
-
     logger.info("\nTotal models: {}".format(len(models)))
 
     fail_model_cnt = 0

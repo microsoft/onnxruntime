@@ -238,7 +238,7 @@ def parse_session_profile(profile):
     return op_maps
 
 
-def get_profile_metrics(path, profile_already_parsed, profile_file_prefix, logger=None):
+def get_profile_metrics(path, profile_file_prefix, logger=None):
     logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
     p1 = subprocess.Popen(
         ["find", path, "-name", f"{profile_file_prefix}*", "-printf", "%T+\t%p\n"],
@@ -253,9 +253,6 @@ def get_profile_metrics(path, profile_already_parsed, profile_file_prefix, logge
     data = []
     for profile in profiling_files:
         profile = profile.split("\t")[1]
-        if profile in profile_already_parsed:
-            continue
-        profile_already_parsed.add(profile)
 
         logger.info("start to parse {} ...".format(profile))
         with open(profile) as f:
