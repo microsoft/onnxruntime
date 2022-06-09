@@ -59,7 +59,6 @@ Status Optimizer::ConstructInputs() {
     // that accepts tensor seq as input for gradients is complete.
     std::vector<OrtValue> grads;
 
-    // Collect all the params, grads, and moments based on grad names
     // Input names 0-4 are reserved for lr, step, params, first order moments, second order moments
     // input names 5 onwards are all the gradient names.
     // Collect all the inputs based on the gradient names order.
@@ -70,16 +69,16 @@ Status Optimizer::ConstructInputs() {
         ORT_ENFORCE(named_parameter_it != named_parameters_.end(),
                     "Unknown param: ", param_name, " for field: ", input_names_[i]);
 
-        // collect the gradients as ortvalues
+        // Collect the gradients as ortvalues
         grads.push_back(named_parameter_it->second->Gradient());
 
-        // collect parameters and prepare for tensorseq creation
+        // Collect parameters and prepare for tensorseq creation
         auto* param_tensor = named_parameter_it->second->Data().GetMutable<Tensor>();
         params.emplace_back(
             Tensor(param_tensor->DataType(), param_tensor->Shape(),
                    param_tensor->MutableDataRaw(), param_tensor->Location()));
 
-        // collect first order moments and prepare for tensorseq creation
+        // Collect first order moments and prepare for tensorseq creation
         auto* first_order_moment_tensor = param_named_optimizer_states.at(param_name)
                                               .momentum_named_states.at(MOMENT_STATE_NAMES[0])
                                               .GetMutable<Tensor>();
@@ -87,7 +86,7 @@ Status Optimizer::ConstructInputs() {
             Tensor(first_order_moment_tensor->DataType(), first_order_moment_tensor->Shape(),
                    first_order_moment_tensor->MutableDataRaw(), first_order_moment_tensor->Location()));
 
-        // collect second order moments and prepare for tensorseq creation
+        // Collect second order moments and prepare for tensorseq creation
         auto* second_order_moment_tensor = param_named_optimizer_states.at(param_name)
                                                .momentum_named_states.at(MOMENT_STATE_NAMES[1])
                                                .GetMutable<Tensor>();
@@ -111,12 +110,12 @@ Status Optimizer::ConstructInputs() {
                    DataTypeImpl::GetType<TensorSeq>()->GetDeleteFunc()));
     };
 
-    // add the params and moments as tensorseq ortvalues to inputs
+    // Add the params and moments as tensorseq ortvalues to inputs
     tensorseq_inserter(params, &inputs_);
     tensorseq_inserter(first_order_moments, &inputs_);
     tensorseq_inserter(second_order_moments, &inputs_);
 
-    // add the gradients as ortvalues to inputs
+    // Add the gradients as ortvalues to inputs
     inputs_.insert(inputs_.end(),
                    std::make_move_iterator(grads.begin()),
                    std::make_move_iterator(grads.end()));
