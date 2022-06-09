@@ -8,7 +8,7 @@
                "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
             }
          }
-      },   
+      },
       {
         "component": {
           "Type": "maven",
@@ -46,7 +46,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "ffd5f70370642c909222f9a4cae8400023dacbdc",
+               "commitHash": "bc492acd7677dd7875b14f9ee46beef658955441",
                "repositoryUrl": "https://github.com/apache/tvm.git"
             },
             "comments": "needed for TVM EP"

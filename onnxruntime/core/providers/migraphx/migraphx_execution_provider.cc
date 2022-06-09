@@ -1007,14 +1007,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     model_proto->SerializeToString(onnx_string_buffer);
 
     if (dump_model_ops_) {
-      std::string onnx_name = fused_node->Name() + ".onnx";
+      std::string onnx_name = fused_node.Name() + ".onnx";
       std::ofstream ofs(onnx_name);
       ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
       ofs.close();
     }
 
     std::vector<std::string> input_names, output_names;
-    no_input_shape = no_input_shape or get_input_output_names(*graph_body_viewer, input_names, output_names);
+    no_input_shape = no_input_shape or get_input_output_names(graph_body_viewer, input_names, output_names);
 
     // by parsing the model_proto, create a program corresponding to
     // the input fused_node
