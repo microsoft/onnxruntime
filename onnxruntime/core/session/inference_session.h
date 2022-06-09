@@ -22,7 +22,6 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
-#include "core/framework/allocatormgr.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -450,10 +449,6 @@ class InferenceSession {
    */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
-  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
-    return allocator_manager_;
-  }
-
   /**
    *Get InferenceSession logger.
    */
@@ -780,8 +775,6 @@ class InferenceSession {
   // specifies that ORT should use the model bytes directly by setting the session config option
   // "session.use_ort_model_bytes_directly" to "1", this will be empty
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
-
-  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 
   // Container to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
