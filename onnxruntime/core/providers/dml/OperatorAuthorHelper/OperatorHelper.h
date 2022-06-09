@@ -1361,6 +1361,7 @@ using ShapeInferenceHelper_Unsqueeze7 = VersionedOpsetHelper<UnsqueezeHelper, 7>
 using ShapeInferenceHelper_Unsqueeze11 = VersionedOpsetHelper<UnsqueezeHelper, 11>;
 using ShapeInferenceHelper_Unsqueeze13 = VersionedOpsetHelper<UnsqueezeHelper, 13>;
 using ShapeInferenceHelper_EyeLike = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Trilu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;

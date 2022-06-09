@@ -63,6 +63,15 @@ public:
     }
 };
 
+void CALLBACK QueryBatchNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
+{
+    // training_mode=1 is unsupported as it isn't needed for inference (https://github.com/onnx/onnx/pull/3333).
+
+    MLOperatorAttributes attributes(context);
+    int32_t trainingMode = attributes.GetOptionalAttribute<int32_t>(AttrName::TrainingMode, 0);
+    *isSupported = (trainingMode == 0);
+}
+
 DML_OP_DEFINE_CREATION_FUNCTION(BatchNormalization, DmlOperatorBatchNormalization);
 DML_OP_DEFINE_CREATION_FUNCTION(FusedBatchNormalization, DmlOperatorBatchNormalization);
 

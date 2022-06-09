@@ -148,6 +148,7 @@ namespace Dml
             OperatorInfo{ "ConvTranspose",             onnxruntime::kOnnxDomain, OnnxOperatorSet11::sc_sinceVer_ConvTranspose },
             OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_BatchNormalization },
             OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_BatchNormalization },
+            OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_BatchNormalization },
             OperatorInfo{ "InstanceNormalization",     onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_InstanceNormalization },
             OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_MeanVarianceNormalization },
             OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_MeanVarianceNormalization },
@@ -448,7 +449,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown interpolation mode");
-        return (DML_INTERPOLATION_MODE)0;
+        return static_cast<DML_INTERPOLATION_MODE>(0);
     }
     #pragma warning(pop)
 
@@ -466,7 +467,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown depth/space order");
-        return (DML_DEPTH_SPACE_ORDER)0;
+        return static_cast<DML_DEPTH_SPACE_ORDER>(0);
     }
     #pragma warning(pop)
 
