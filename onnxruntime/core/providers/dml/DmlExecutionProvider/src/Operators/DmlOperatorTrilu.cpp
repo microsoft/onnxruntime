@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "precomp.h"
+#include "./precomp.h"
 
 namespace Dml
 {
@@ -9,13 +9,13 @@ namespace Dml
 class DmlOperatorTrilu : public DmlOperator
 {
 public:
-    DmlOperatorTrilu(const MLOperatorKernelCreationContext& kernelCreationContext)
+    explicit DmlOperatorTrilu(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 1, "Trilu expects 1-2 inputs.");
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "Trilu expects 1 output.");
 
-        std::vector<std::optional<uint32_t>> inputIndices = {0}; // Use only the first tensor. The second tensor is CPU-based (k).
+        std::vector<std::optional<uint32_t>> inputIndices = {0};  // Use only the first tensor. The second tensor is CPU-based (k).
         std::vector<std::optional<uint32_t>> outputIndices = {0};
         DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
 
@@ -53,4 +53,4 @@ public:
 
 DML_OP_DEFINE_CREATION_FUNCTION(Trilu, DmlOperatorTrilu);
 
-} // namespace Dml
+}  // namespace Dml
