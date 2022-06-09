@@ -30,7 +30,7 @@ constexpr const char* k_optimizer_root_prefix = "optim";
 constexpr const char* k_property_root_prefix = "custom";
 constexpr const char* k_name_seperator = "_";
 
-const std::string builtin_lr_property_name("builtin.learning_rate");
+const std::string builtin_lr_property_name("builtin.initial_learning_rate");
 const std::string builtin_step_property_name("builtin.step");
 
 /**
@@ -309,7 +309,7 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
     // Storing group-wise properties.
     PropertyBag properties;
-    properties.AddProperty<float>(builtin_lr_property_name, group_optimizer_state_ptr->learning_rate);
+    properties.AddProperty<float>(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
     properties.AddProperty<int64_t>(builtin_step_property_name, group_optimizer_state_ptr->step);
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
     properties.ToTensorProtos(group_wise_properties_tensor_protos);
@@ -473,7 +473,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
       properties.AddProperty(property_proto);
     }
 
-    group_optimizer_state->learning_rate = properties.GetProperty<float>(builtin_lr_property_name);
+    group_optimizer_state->initial_lr = properties.GetProperty<float>(builtin_lr_property_name);
     group_optimizer_state->step = properties.GetProperty<int64_t>(builtin_step_property_name);
     grouped_optimizer_states.insert({group_name, group_optimizer_state});
   }
