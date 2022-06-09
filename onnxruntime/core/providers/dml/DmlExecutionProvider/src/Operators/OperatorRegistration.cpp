@@ -368,7 +368,6 @@ constexpr auto requiredConstantCpuInputs(Args... args)
 #define REG_INFO_MSDML(version, operatorName, ...) \
     #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
 
-//NOLINT(whitespace/parens) # cpplint doesn't understand that readability is *improved* by adding whitespace between the macro and first parameter.
 constexpr static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
 ///  Domain/Type, Ver,  Name,                               TypeNames,                       Types,                                 Graph Support,                  Required const CPU inputs, 
