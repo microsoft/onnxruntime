@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# _building_blocks.py
+# building_blocks.py
 
 from abc import ABC, abstractmethod
 
@@ -38,7 +38,7 @@ class Block(ABC):
 
 class _BinaryOp(Block):
     def __init__(self, op_name):
-        super(_BinaryOp, self).__init__()
+        super().__init__()
         self._op_name = op_name
 
     def build(self, input_name1, input_name2):
@@ -68,35 +68,35 @@ class Add(_BinaryOp):
     """Adds Add node to an onnx model."""
 
     def __init__(self):
-        super(Add, self).__init__("Add")
+        super().__init__("Add")
 
 
 class Sub(_BinaryOp):
     """Adds Sub node to an onnx model."""
 
     def __init__(self):
-        super(Sub, self).__init__("Sub")
+        super().__init__("Sub")
 
 
 class Mul(_BinaryOp):
     """Adds Mul node to an onnx model."""
 
     def __init__(self):
-        super(Mul, self).__init__("Mul")
+        super().__init__("Mul")
 
 
 class Div(_BinaryOp):
     """Adds Div node to an onnx model."""
 
     def __init__(self):
-        super(Div, self).__init__("Div")
+        super().__init__("Div")
 
 
 class Pow(Block):
     """Adds Pow node to the onnx model."""
 
     def __init__(self, exponent):
-        super(Pow, self).__init__()
+        super().__init__()
 
         self._exponent = exponent
 
@@ -129,7 +129,7 @@ class _UnaryOp(Block):
     """Base class for all nodes that take in a single argument."""
 
     def __init__(self, op_name):
-        super(_UnaryOp, self).__init__()
+        super().__init__()
         self._op_name = op_name
 
     def build(self, input_name):
@@ -159,35 +159,35 @@ class ReduceMean(_UnaryOp):
     """Adds ReduceMean node to the onnx model."""
 
     def __init__(self):
-        super(ReduceMean, self).__init__("ReduceMean")
+        super().__init__("ReduceMean")
 
 
 class ReduceSum(_UnaryOp):
     """Adds ReduceSum node to the onnx model."""
 
     def __init__(self):
-        super(ReduceSum, self).__init__("ReduceSum")
+        super().__init__("ReduceSum")
 
 
 class Sigmoid(_UnaryOp):
     """Adds Sigmoid node to the onnx model."""
 
     def __init__(self):
-        super(Sigmoid, self).__init__("Sigmoid")
+        super().__init__("Sigmoid")
 
 
 class Log(_UnaryOp):
     """Adds Log node to the onnx model."""
 
     def __init__(self):
-        super(Log, self).__init__("Log")
+        super().__init__("Log")
 
 
 class Neg(_UnaryOp):
     """Adds Neg node to the onnx model."""
 
     def __init__(self):
-        super(Neg, self).__init__("Neg")
+        super().__init__("Neg")
 
 
 class Constant(Block):
@@ -213,7 +213,7 @@ class SequenceConstruct(Block):
     """Adds SequenceConstruct node to the onnx model."""
 
     def __init__(self):
-        super(SequenceConstruct, self).__init__()
+        super().__init__()
 
     def build(self, *sequence_input_names):
         # get the model to manipulate
@@ -241,7 +241,7 @@ class ReduceAllL2(Block):
     """
 
     def __init__(self):
-        super(ReduceAllL2, self).__init__()
+        super().__init__()
 
     def build(self, *reduce_node_input_names):
         # get the model to manipulate
@@ -271,7 +271,7 @@ class Clip(Block):
     """Adds Clip node to the onnx model."""
 
     def __init__(self, clip_min=None, clip_max=None):
-        super(Clip, self).__init__()
+        super().__init__()
 
         self._min = clip_min
         self._max = clip_max

@@ -18,14 +18,14 @@ class AdamWOptimizer(building_blocks.Block):
     """Adds an AdamWOptimizer node to the onnx model."""
 
     def __init__(self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0):
-        super(AdamWOptimizer, self).__init__()
+        super().__init__()
 
         self._bias_correction = bias_correction
         self._betas = betas
         self._eps = eps
         self._weight_decay = weight_decay
 
-    def build(
+    def build(  # pylint: disable=too-many-arguments
         self,
         learning_rate_name,
         step_name,
@@ -34,6 +34,7 @@ class AdamWOptimizer(building_blocks.Block):
         first_order_moment_sequence_name,
         second_order_moment_sequence_name,
     ):
+        """Adds the AdamWOptimizer node to the model."""
 
         # get the model to manipulate
         onnx_model = accessor.global_accessor.model
@@ -86,7 +87,7 @@ class ClipGradNorm(building_blocks.Block):
     """
 
     def __init__(self, max_norm):
-        super(ClipGradNorm, self).__init__()
+        super().__init__()
 
         self._max_norm = max_norm
 
@@ -97,6 +98,7 @@ class ClipGradNorm(building_blocks.Block):
         self._clip = building_blocks.Clip(clip_max=1.0)
 
     def build(self, *gradient_names):
+        """Adds a clip grad norm sub graph to the onnx model."""
 
         # get the model to manipulate
         onnx_model = accessor.global_accessor.model
@@ -136,8 +138,10 @@ class AdamW(model.Model):
         Returns a string of the output names from this optimizer node.
     """
 
-    def __init__(self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0, clip_grad=None):
-        super(AdamW, self).__init__()
+    def __init__(
+        self, bias_correction=True, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0, clip_grad=None
+    ):  # pylint: disable=too-many-arguments
+        super().__init__()
 
         self._adamw = AdamWOptimizer(
             bias_correction=bias_correction,

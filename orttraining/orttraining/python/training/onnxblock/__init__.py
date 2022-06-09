@@ -2,8 +2,6 @@
 # Licensed under the MIT License.
 # __init__.py
 
-import onnx
-
 from . import loss, optim
 from .building_blocks import Block
 from .checkpoint_utils import save_checkpoint
