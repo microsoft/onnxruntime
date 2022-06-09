@@ -126,11 +126,15 @@ if (WIN32)
   set_target_properties(onnxruntime_graph PROPERTIES
       STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
 
-  if (NOT onnxruntime_DISABLE_EXCEPTIONS)  
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
-  endif()  
+  endif()
+endif()
+
+if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_graph PRIVATE ENABLE_ATEN)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

@@ -22,8 +22,10 @@ class ATen : public OpKernel {
   std::string overload_name_;
 };
 
+#ifdef ENABLE_TRAINING
 bool IsATenOperatorExecutorInitialized();
 Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims);
+#endif
 
 }  // namespace contrib
 }  // namespace onnxruntime
