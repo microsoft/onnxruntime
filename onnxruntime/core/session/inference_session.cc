@@ -964,6 +964,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
         graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
+  if (execution_providers_.Get(kDmlExecutionProvider)) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
+                                                         session_state.GetMutableFuncMgr(),
+                                                         layout_transformer::TransformLayoutForCompilingEP, mode));
+  }
+
   bool modified = false;
   // Insert cast node/s.
   ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
