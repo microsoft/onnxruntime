@@ -36,8 +36,6 @@ namespace onnxruntime {
 /**
    Logical device representation.
 */
-using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
-using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
@@ -79,7 +77,7 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -199,8 +197,6 @@ class IExecutionProvider {
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
-  // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
-  void TryInsertAllocator(AllocatorPtr allocator);
 
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
@@ -277,11 +273,10 @@ class IExecutionProvider {
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
   /**
-     Register allocators used for EP
-     TODO: Used for CUDA & TRT only for now, will have one more PR to apply this for all EPs.
-     EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
+     Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
+     If the EP implements this it should generally delay creating any allocators until this is called.
   */
-  virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
+  virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
 
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
@@ -299,8 +294,14 @@ class IExecutionProvider {
 
  private:
   const std::string type_;
+
+  // allocator lookup is done by combining the device id and OrtMemType.
+  // there's also an implicit connection to the underlying OrtDevice involved that is dependent on the EP.
+  // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
+  // GPU device.
+  using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
   AllocatorMap allocators_;
-  MemoryInfoSet mem_info_set_;  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
+
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time

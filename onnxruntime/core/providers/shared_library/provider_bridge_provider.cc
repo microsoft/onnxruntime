@@ -106,8 +106,8 @@ void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
   return g_host->AllocatorManager__InsertAllocator(this, allocator);
 }
 
-AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
-  return g_host->AllocatorManager__GetAllocator(this, id, mem_type);
+AllocatorPtr AllocatorManager::GetAllocator(OrtMemType mem_type, OrtDevice device) const {
+  return g_host->AllocatorManager__GetAllocator(this, mem_type, device);
 }
 
 template <>
@@ -241,7 +241,7 @@ void TensorShape::Allocate(size_t size) {
 
 int64_t TensorShape::Size() const {
   int64_t size = SizeHelper(0, values_.size());
-  //should we cache the size? as multiple operation may be expensive.
+  // should we cache the size? as multiple operation may be expensive.
   return size;
 }
 
@@ -283,10 +283,6 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   g_host->IExecutionProvider__InsertAllocator(this, allocator);
 }
 
-void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
-  g_host->IExecutionProvider__TryInsertAllocator(this, allocator);
-}
-
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
@@ -305,7 +301,7 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
-void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
 }
 
@@ -504,8 +500,8 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
 Status ScatterND::ValidateShapes(const TensorShape& input_shape,
-                                     const TensorShape& indice_shape,
-                                     const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
+                                 const TensorShape& indice_shape,
+                                 const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
 
