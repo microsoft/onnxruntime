@@ -10,6 +10,11 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_debian_cpu
+  displayName: 'Whether Debian CPU (manylinux_2_27) package is built.'
+  type: boolean
+  default: true
+
 - name: enable_linux_gpu
   displayName: 'Whether Linux GPU package is built.'
   type: boolean
@@ -54,6 +59,88 @@ stages:
 - stage: Python_Packaging
 
   jobs:
+  - ${{ if eq(parameters.enable_debian_cpu, true) }}:
+    - job: Linux_Debian_py_Wheels
+      timeoutInMinutes: 90
+      workspace:
+        clean: all
+      pool: Linux-CPU
+      strategy:
+        matrix:
+          Python37:
+            PythonVersion: '3.7'
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+          Python310:
+            PythonVersion: '3.10'
+      steps:
+      - task: Docker@2
+        displayName: Login to ACR
+        inputs:
+          command: login
+          containerRegistry: "onnxruntimebuildcache"
+
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-python-manylinux-variables-step.yml
+
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux_2_27_cpu
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecpu227build
+
+      - task: CmdLine@2
+        displayName: 'Build Python Wheel'
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimecpu227build\
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release --update --build \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }}
+          workingDirectory: $(Build.SourcesDirectory)
+
+      # Not running tests, because manylinux_2_27 is compatible with Ubuntu 21.04+
+      # https://github.com/pypa/manylinux
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml
+
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
     - job: Linux_CPU_py_Wheels
       timeoutInMinutes: 90
