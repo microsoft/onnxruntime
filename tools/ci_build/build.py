@@ -519,7 +519,7 @@ def parse_arguments():
         "--winml_root_namespace_override", type=str, help="Specify the namespace that WinML builds into."
     )
     parser.add_argument(
-        "--dml_external_project", action='store_true', help="Build with DirectML as an external project."
+        "--dml_external_project", action="store_true", help="Build with DirectML as an external project."
     )
     parser.add_argument(
         "--use_telemetry", action="store_true", help="Only official builds can set this flag to enable telemetry."
@@ -1358,9 +1358,9 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
         for expected_file in ["bin/DirectML.dll", "lib/DirectML.lib", "include/DirectML.h"]:
             file_path = os.path.join(args.dml_path, expected_file)
             if not os.path.exists(file_path):
-                raise BuildError("dml_path is invalid.",
-                                 "dml_path='{}' expected_file='{}'."
-                                 .format(args.dml_path, file_path))
+                raise BuildError(
+                    "dml_path is invalid.", "dml_path='{}' expected_file='{}'.".format(args.dml_path, file_path)
+                )
     elif not args.dml_external_project:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
