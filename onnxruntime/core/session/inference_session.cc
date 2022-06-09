@@ -615,21 +615,24 @@ common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR
   ORT_RETURN_IF_ERROR(
       session_state_->SaveToOrtFormat(builder, session_state));
 
+  flatbuffers::Offset<fbs::KernelTypeStrResolver> kernel_type_str_resolver;
+  ORT_RETURN_IF_ERROR(
+      kernel_registry_manager_.GetKernelTypeStrResolver().SaveToOrtFormat(builder, kernel_type_str_resolver));
+
   fbs::InferenceSessionBuilder sb(builder);
   sb.add_ort_version(ort_model_version);
   sb.add_model(model);
   sb.add_session_state(session_state);
+  sb.add_kernel_type_str_resolver(kernel_type_str_resolver);
   auto session = sb.Finish();
   builder.Finish(session, fbs::InferenceSessionIdentifier());
 
-  // TODO: Do we need to catch any std::exceptions from creating/writing to disk and convert to Status codes?
   {
     std::ofstream file(filepath, std::ios::binary);
-
     uint8_t* buf = builder.GetBufferPointer();
     int size = builder.GetSize();
     file.write(reinterpret_cast<const char*>(buf), size);
-    file.close();
+    ORT_RETURN_IF_NOT(file, "Failed to save ORT format model to file: ", ToUTF8String(filepath));
   }
 
   return Status::OK();
@@ -1069,9 +1072,13 @@ Status InferenceSession::LoadOrtModel(std::function<Status()> load_ort_format_mo
   ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
   model_ = std::move(tmp_model);
 
-  // Initialize takes the session_mutex_ as well so we need to have released it prior to calling this
-  const auto* fbs_sess_state = fbs_session->session_state();
-  ORT_RETURN_IF(nullptr == fbs_sess_state, "SessionState is null. Invalid ORT format model.");
+  // TODO should kernel_type_str_resolver be required in the model?
+  if (const auto* fbs_kernel_type_str_resolver = fbs_session->kernel_type_str_resolver();
+      fbs_kernel_type_str_resolver != nullptr) {
+    KernelTypeStrResolver kernel_type_str_resolver{};
+    ORT_RETURN_IF_ERROR(kernel_type_str_resolver.LoadFromOrtFormat(*fbs_kernel_type_str_resolver));
+    kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
+  }
 
   is_model_loaded_ = true;
 
@@ -1338,8 +1345,6 @@ common::Status InferenceSession::Initialize() {
                                                                session_options_.graph_optimization_level,
                                                                minimal_build_optimization_handling));
 
-      // TODO load kernel_registry_manager_'s KernelTypeStrResolver from ORT format model, if any
-
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
                                                     execution_providers_, kernel_registry_manager_,
@@ -1409,8 +1414,6 @@ common::Status InferenceSession::Initialize() {
                                                   cpu_ep));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
-
-    // TODO initialize kernel_type_str_resolver_
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
@@ -1499,6 +1502,7 @@ common::Status InferenceSession::Initialize() {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
+
 // This method should be called from within Initialize() only and before the creation of the session state.
 // This ensures all providers have been registered in the session and the session state is consistent with the providers.
 void InferenceSession::UpdateProvidersWithSharedAllocators() {
