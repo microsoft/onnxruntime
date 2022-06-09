@@ -176,14 +176,23 @@ Status RunTraining(const TestRunnerParameters& params) {
                 state.module_checkpoint_state.named_parameters,
                 params.model_evaluation_graph_path);
 
-  Optimizer optimizer(params.optimizer_training_graph_path,
-                      state.module_checkpoint_state.named_parameters);
+  auto optimizer = std::make_shared<Optimizer>(params.optimizer_training_graph_path,
+                                               state.module_checkpoint_state.named_parameters);
 
 #ifdef USE_CUDA
-  api::SetExecutionProvider(module, optimizer, params.provider.get());
+  api::SetExecutionProvider(module, *optimizer, params.provider.get());
 #endif
 
-  auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);
+  size_t sample_batch_count_per_epoch = 4;
+  if (sample_batch_count_per_epoch < params.train_batch_size ||
+      sample_batch_count_per_epoch % params.train_batch_size != 0) {
+    throw std::runtime_error("sample_count cannot be divisible by batch_size");
+  }
+  size_t num_of_batches_per_epoch = sample_batch_count_per_epoch / params.train_batch_size;
+  int64_t total_step_count = static_cast<int64_t>(params.num_train_epochs * num_of_batches_per_epoch);
+  int64_t warmup_step_count = total_step_count / 3;
+
+  auto scheduler = std::make_unique<LinearLRScheduler>(optimizer, warmup_step_count, total_step_count);
   std::vector<std::vector<OrtValue>>
       data_loader = CreateSyntheticDataLoader(params.train_batch_size,
                                               params.input_allocator);
@@ -206,7 +215,7 @@ Status RunTraining(const TestRunnerParameters& params) {
 
       if (batch_idx % GRAD_ACC_STEPS == 0) {
         // gradient accumulation steps completed
-        ORT_ENFORCE(optimizer.Step().IsOK());
+        ORT_ENFORCE(optimizer->Step().IsOK());
         // modify learning rate
         ORT_ENFORCE(scheduler->Step().IsOK());
         ORT_ENFORCE(module.ResetGrad().IsOK());
@@ -221,7 +230,7 @@ Status RunTraining(const TestRunnerParameters& params) {
         // save trained weights
         CheckpointState state_to_save;
         ORT_ENFORCE(module.GetStateDict(state_to_save.module_checkpoint_state).IsOK());
-        ORT_ENFORCE(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
+        ORT_ENFORCE(optimizer->GetStateDict(state_to_save.optimizer_checkpoint_state).IsOK());
         state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), static_cast<int64_t>(epoch));
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
         ORT_ENFORCE(SaveCheckpoint(state_to_save, ckpt_file).IsOK());
