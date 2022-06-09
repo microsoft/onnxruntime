@@ -163,7 +163,7 @@ int Product(dnnl::memory::dims d) {
 }
 
 void DnnlSubgraphPrimitive::AddKernels() {
-  std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
+  std::unordered_set<std::string> binary_ops = {"Add", "Div", "Equal", "Greater", "GreaterOrEqual", "Less", "LessOrEqual", "Mul", "Sub"};
   std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
   std::unordered_set<std::string> reduce_ops = {"ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare"};
