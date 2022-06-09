@@ -368,6 +368,7 @@ constexpr auto requiredConstantCpuInputs(Args... args)
 #define REG_INFO_MSDML(version, operatorName, ...) \
     #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
 
+//NOLINT(whitespace/parens) # cpplint doesn't understand that readability is *improved* by adding whitespace between the macro and first parameter.
 constexpr static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
 ///  Domain/Type, Ver,  Name,                               TypeNames,                       Types,                                 Graph Support,                  Required const CPU inputs, 
@@ -397,10 +398,10 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 10,  RoiAlign,                           typeNameListTwo,                supportedTypeListRoiAlign,              DmlGraphSupport::Supported)},
     {REG_INFO(      7,  InstanceNormalization,              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)}, // v9 just removes 'spatial' attribute.
-    {REG_INFO(     14,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,     requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)}, // v14 adds training_mode attribute
+    {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},  // v9 just removes 'spatial' attribute.
+    {REG_INFO(     14,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,     requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)},  // v14 adds training_mode attribute
     // TODO: Add additional type constraints in BatchNormalization-15, with scale and bias (T1) being different from input X (T).
-    // {REG_INFO(  15,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)}, // v15 adds differing types for scale and bias vs input.
+    // {REG_INFO(  15,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},  // v15 adds differing types for scale and bias vs input.
     {REG_INFO(      7,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -417,15 +418,15 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
 
     // Data Reorganization Layers
     {REG_INFO_VER(  7,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
-    {REG_INFO_VER( 11,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)}, // Adds negative axis.
-    {REG_INFO_VER( 13,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))}, // Moves splits from constant parameter to dynamic input.
+    {REG_INFO_VER( 11,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
+    {REG_INFO_VER( 13,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},  // Moves splits from constant parameter to dynamic input.
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
-    {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)}, // Adds negative axis.
-    {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)}, // Adds negative axis.
+    {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
+    {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
-    {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)}, // Adds negative axes.
+    {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},  // Adds negative axes.
     {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},
     {REG_INFO_VER( 13,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},
     {REG_INFO_VER(  7,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
@@ -484,8 +485,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  Reciprocal,                         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Pow,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     12,  Pow,                                typeNameListPow12,              supportedTypeListPow12,                 DmlGraphSupport::Supported)},
-    {REG_INFO(     13,  Pow,                                typeNameListPow12,              supportedTypeListPow12,                 DmlGraphSupport::Supported)}, // 13 added bfloat16 to T.
-    {REG_INFO(     15,  Pow,                                typeNameListPow12,              supportedTypeListPow12,                 DmlGraphSupport::Supported)}, // 15 added bfloat16 to T1.
+    {REG_INFO(     13,  Pow,                                typeNameListPow12,              supportedTypeListPow12,                 DmlGraphSupport::Supported)},  // 13 added bfloat16 to T.
+    {REG_INFO(     15,  Pow,                                typeNameListPow12,              supportedTypeListPow12,                 DmlGraphSupport::Supported)},  // 15 added bfloat16 to T1.
     {REG_INFO(      7,  Exp,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Exp,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Log,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -698,7 +699,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     11,  Range,                              typeNameListDefault,            supportedTypeListRange,                 DmlGraphSupport::Supported,     requiredConstantCpuInputs(0,1,2))},
 
     {REG_INFO(      9,  MaxUnpool,                          typeNameListTwo,                supportedTypeListMaxUnpool,             DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},
-    {REG_INFO(     11,  MaxUnpool,                          typeNameListTwo,                supportedTypeListMaxUnpool,             DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))}, // 11 is identical to 9.
+    {REG_INFO(     11,  MaxUnpool,                          typeNameListTwo,                supportedTypeListMaxUnpool,             DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},  // 11 is identical to 9.
         
     {REG_INFO_MS(  1,   QLinearAdd,                         typeNameListDefault,            supportedTypeListInteger8,              DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,           DmlGraphSupport::Supported)},

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "precomp.h"
+#include "./precomp.h"
 
 namespace Dml
 {
@@ -13,7 +13,7 @@ class DmlOperatorRecurrentBase: public DmlOperator, public RecurrentHelper
 public:
     using Self = DmlOperatorRecurrentBase;
 
-    DmlOperatorRecurrentBase(const MLOperatorKernelCreationContext& kernelInfo):
+    explicit DmlOperatorRecurrentBase(const MLOperatorKernelCreationContext& kernelInfo):
         DmlOperator(kernelInfo),
         RecurrentHelper(kernelInfo, kernelInfo.GetTensorShapeDescription())
     {
@@ -411,7 +411,7 @@ void CALLBACK QueryRecurrentNeuralNetwork(IMLOperatorSupportQueryContextPrivate*
     // Currently (2022-05-27) the ORT CPU execution provider (lstm_base.h) does not support it either,
     // with no models warranting it. When needed, it can be achieved with no new DML API's by just
     // swapping the size and strides in the TensorDesc before filling in the *_OPERATOR_DESC, where:
-    // 
+    //
     // layout=0: (default, consistent with opset 7)
     //      X.shape = [seq_length, batch_size, input_size]
     //      Y.shape = [seq_length, num_directions, batch_size, hidden_size]
