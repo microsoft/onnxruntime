@@ -532,7 +532,7 @@ namespace Dml
                 partitionNodePropsMap.insert(std::make_pair(
                     GraphDescBuilder::GetUniqueNodeName(*node), std::move(graphNodePropertyMap[node])));
             }
-            
+
 #ifdef PRINT_PARTITON_INFO
             printf("\n");
 #endif
@@ -540,7 +540,7 @@ namespace Dml
             auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
             {
                 out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap));
-				return Status::OK();
+                return Status::OK();
             };
 
             // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
