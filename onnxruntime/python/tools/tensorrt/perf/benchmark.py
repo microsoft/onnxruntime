@@ -172,9 +172,9 @@ def run_trt_standalone(trtexec, model_name, model_path, test_data_dir, all_input
             out = get_output(load_command)
             success = True
             mem_usage = end_memory_tracking(p, success)
-        except Exception as e:
+        except Exception as excpt:
             end_memory_tracking(p, success)
-            raise (e)
+            raise (excpt)
     else:
         out = get_output(load_command)
 
@@ -262,8 +262,8 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
     return (sess_inputs, sess_outputs)
 
 
-def track_ep_memory(ep):
-    return cpu != ep
+def track_ep_memory(exec_provider):
+    return cpu != exec_provider
 
 
 def get_trtexec_pid(df, python_pid):
@@ -309,8 +309,8 @@ def end_memory_tracking(p, success):
     return mem_usage
 
 
-def inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, with_binding, io_binding):
-    if with_binding and cpu not in ep:  # other eps utilize python binding
+def inference_ort_with_ep(exec_provider, session, repeat_times, sess_outputs, sess_inputs, with_binding, io_binding):
+    if with_binding and cpu not in exec_provider:  # other eps utilize python binding
         runtime = timeit.repeat(
             lambda: session.run_with_iobinding(io_binding),
             number=1,
@@ -330,7 +330,7 @@ def inference_ort(
     args,
     name,
     session,
-    ep,
+    exec_provider,
     ort_inputs,
     result_template,
     repeat_times,
@@ -367,7 +367,7 @@ def inference_ort(
             if track_memory:
                 p = start_memory_tracking()
                 runtime, success = inference_ort_with_ep(
-                    ep,
+                    exec_provider,
                     session,
                     repeat_times,
                     sess_outputs,
@@ -379,7 +379,7 @@ def inference_ort(
                 mem_usages.append(mem_usage)
             else:
                 runtime, success = inference_ort_with_ep(
-                    ep,
+                    exec_provider,
                     session,
                     repeat_times,
                     sess_outputs,
@@ -391,11 +391,11 @@ def inference_ort(
                 runtime = runtime[1:]  # remove warmup
             runtimes += runtime
 
-        except Exception as e:
-            logger.error(e)
+        except Exception as excpt:
+            logger.error(excpt)
             if track_memory:
                 end_memory_tracking(p, success)
-            raise (e)
+            raise (excpt)
 
     if len(mem_usages) > 0:
         mem_usage = max(mem_usages)
@@ -486,8 +486,8 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
         i = 0
         for data in input_data:
             tensor = onnx.TensorProto()
-            with open(data, "rb") as f:
-                tensor.ParseFromString(f.read())
+            with open(data, "rb") as file_handle:
+                tensor.ParseFromString(file_handle.read())
                 tensor_to_array = numpy_helper.to_array(tensor)
                 if fp16 and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
@@ -508,8 +508,8 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
             output_data_pb = []
             for data in output_data:
                 tensor = onnx.TensorProto()
-                with open(data, "rb") as f:
-                    tensor.ParseFromString(f.read())
+                with open(data, "rb") as file_handle:
+                    tensor.ParseFromString(file_handle.read())
 
                     tensor_to_array = numpy_helper.to_array(tensor)
 
@@ -561,8 +561,8 @@ def generate_onnx_model_random_input(test_times, ref_input):
     return inputs
 
 
-def percentage_in_allowed_threshold(e, percent_mismatch):
-    percent_string = re.search(r"\(([^)]+)", str(e)).group(1)
+def percentage_in_allowed_threshold(excpt, percent_mismatch):
+    percent_string = re.search(r"\(([^)]+)", str(excpt)).group(1)
     if "%" in percent_string:
         percentage_wrong = float(percent_string.replace("%", ""))
         return percentage_wrong < percent_mismatch
@@ -592,23 +592,23 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
                 # abs(desired-actual) < rtol * abs(desired) + atol
                 try:
                     np.testing.assert_allclose(ref_o, o, rtol, atol)
-                except Exception as e:
-                    if percentage_in_allowed_threshold(e, percent_mismatch):
+                except Exception as excpt:
+                    if percentage_in_allowed_threshold(excpt, percent_mismatch):
                         continue
-                    logger.error(e)
-                    return False, e
+                    logger.error(excpt)
+                    return False, excpt
 
     logger.debug("ONNX Runtime outputs are similar to reference outputs!")
     return True, None
 
 
-def update_fail_report(fail_results, model, ep, e_type, e):
+def update_fail_report(fail_results, model, exec_provider, e_type, excpt):
     result = {}
 
     result["model"] = model
-    result["ep"] = ep
+    result["ep"] = exec_provider
     result["error type"] = e_type
-    result["error message"] = re.sub("^\n", "", str(e))
+    result["error message"] = re.sub("^\n", "", str(excpt))
 
     fail_results.append(result)
 
@@ -629,12 +629,12 @@ def update_op_metrics_map(model_to_op_metrics, model_name, ep_to_operator):
     if model_name not in model_to_op_metrics:
         model_to_op_metrics[model_name] = {}
 
-    for ep, op_maps in ep_to_operator.items():
-        if ep not in model_to_op_metrics[model_name]:
-            model_to_op_metrics[model_name][ep] = {}
+    for exec_provider, op_maps in ep_to_operator.items():
+        if exec_provider not in model_to_op_metrics[model_name]:
+            model_to_op_metrics[model_name][exec_provider] = {}
 
-        model_to_op_metrics[model_name][ep]["nodes"] = op_maps[0]
-        model_to_op_metrics[model_name][ep]["kernels"] = op_maps[1]
+        model_to_op_metrics[model_name][exec_provider]["nodes"] = op_maps[0]
+        model_to_op_metrics[model_name][exec_provider]["kernels"] = op_maps[1]
 
 
 ###################################################################################################
@@ -642,9 +642,9 @@ def update_op_metrics_map(model_to_op_metrics, model_name, ep_to_operator):
 # model: {ep1: {error_type: xxx, error_message: xxx}, ep2: {error_type: xx, error_message: xx}}
 #
 ###################################################################################################
-def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
+def update_fail_model_map(model_to_fail_ep, model_name, exec_provider, e_type, excpt):
 
-    if model_name in model_to_fail_ep and ep in model_to_fail_ep[model_name]:
+    if model_name in model_to_fail_ep and exec_provider in model_to_fail_ep[model_name]:
         return
 
     if model_name not in model_to_fail_ep:
@@ -652,11 +652,11 @@ def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
 
     new_map = {}
     new_map["error_type"] = e_type
-    new_map["error_message"] = re.sub("^\n", "", str(e))
-    model_to_fail_ep[model_name][ep] = new_map
+    new_map["error_message"] = re.sub("^\n", "", str(excpt))
+    model_to_fail_ep[model_name][exec_provider] = new_map
 
     # If TRT fails, TRT FP16 should fail as well
-    if ep == trt:
+    if exec_provider == trt:
         ep_ = trt_fp16
         e_ = "skip benchmarking since TRT failed already."
         new_map_1 = {}
@@ -665,34 +665,34 @@ def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
         model_to_fail_ep[model_name][ep_] = new_map_1
 
 
-def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_type, e):
+def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, exec_provider, e_type, excpt):
 
-    if model_name in model_to_fail_ep and ep in model_to_fail_ep[model_name]:
+    if model_name in model_to_fail_ep and exec_provider in model_to_fail_ep[model_name]:
         return
 
     if model_name not in model_to_fail_ep:
         model_to_fail_ep[model_name] = {}
 
-    model_to_fail_ep[model_name][ep] = e_type
-    update_fail_report(fail_results, model_name, ep, e_type, e)
+    model_to_fail_ep[model_name][exec_provider] = e_type
+    update_fail_report(fail_results, model_name, exec_provider, e_type, excpt)
 
     # If TRT fails, TRT FP16 should fail as well
-    if ep == trt:
+    if exec_provider == trt:
         ep_ = trt_fp16
         error_message_ = "skip benchmarking since TRT failed already."
         update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
         model_to_fail_ep[model_name][ep_] = e_type
 
 
-def skip_ep(model_name, ep, model_to_fail_ep):
+def skip_ep(model_name, exec_provider, model_to_fail_ep):
 
     if model_name not in model_to_fail_ep:
         return False
 
     fail_ep_list = model_to_fail_ep[model_name]
 
-    if ep in fail_ep_list:
-        logger.debug("Skip testing %s using %s since it has some issues.", model_name, ep)
+    if exec_provider in fail_ep_list:
+        logger.debug("Skip testing %s using %s since it has some issues.", model_name, exec_provider)
         return True
 
     return False
@@ -702,7 +702,7 @@ def read_map_from_file(map_file):
     with open(map_file, encoding="utf-8") as file_handle:
         try:
             data = json.load(file_handle)
-        except Exception as e:
+        except Exception:
             return {}
 
     return data
@@ -892,8 +892,8 @@ def parse_models_info_from_file(root_dir, path, models):
     # default working directory
     root_working_directory = root_dir + "perf/"
 
-    with open(path) as f:
-        data = json.load(f)
+    with open(path, encoding="utf-8") as file_handle:
+        data = json.load(file_handle)
 
         for row in data:
 
@@ -966,18 +966,18 @@ def run_symbolic_shape_inference(model_path, new_model_path):
         out = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(onnx.load(model_path), auto_merge=True)
         onnx.save(out, new_model_path)
         return True, None
-    except Exception as e:
-        logger.error(e)
+    except Exception as excpt:
+        logger.error(excpt)
         return False, "Symbolic shape inference error"
 
 
 def get_provider_options(providers, trt_ep_options, cuda_ep_options):
     provider_options = []
 
-    for ep in providers:
-        if ep == trt_ep:
+    for exec_provider in providers:
+        if exec_provider == trt_ep:
             provider_options.append(trt_ep_options)
-        elif ep == cuda_ep:
+        elif exec_provider == cuda_ep:
             provider_options.append(cuda_ep_options)
         else:
             provider_options.append({})
@@ -1003,19 +1003,19 @@ def create_session(model_path, providers, provider_options, session_options):
 
     try:
         return time_and_create_session(model_path, providers, provider_options, session_options)
-    except Exception as e:
+    except Exception as excpt:
         # shape inference required on model
-        if "shape inference" in str(e):
+        if "shape inference" in str(excpt):
             logger.debug("Using model from symbolic_shape_infer.py")
             new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
             if not os.path.exists(new_model_path):
                 status = run_symbolic_shape_inference(model_path, new_model_path)
                 if not status[0]:  # symbolic shape inference error
-                    e = status[1]
-                    raise Exception(e)
+                    excpt = status[1]
+                    raise Exception(excpt)
             return time_and_create_session(new_model_path, providers, provider_options, session_options)
         else:
-            raise Exception(e)
+            raise Exception(excpt)
 
 
 def fill_trt_subgraphs(op_maps, dump_dir):
@@ -1069,7 +1069,7 @@ def run_model_on_ep(
     args,
     model_name,
     model_info,
-    ep,
+    exec_provider,
     success_results,
     ep_to_latency,
     ep_to_op_metrics,
@@ -1083,7 +1083,7 @@ def run_model_on_ep(
     :param args: The command-line arguments to this script.
     :param model_name: The name of the model to run.
     :param model_info: A dictionary that contains paths to the model file and input data.
-    :param ep: The name of the EP (e.g., ORT-CUDAFp32) on which to run the model.
+    :param exec_provider: The name of the EP (e.g., ORT-CUDAFp32) on which to run the model.
     :param success_results: List of successful results that is updated by this function.
     :param ep_to_latency: Dictionary that maps an EP to inference latency and memory usage results.
                           Updated by this function.
@@ -1100,12 +1100,12 @@ def run_model_on_ep(
 
     os.chdir(tmp_work_dir)
 
-    logger.info("Starting mode '%s' for %s on %s ...", args.running_mode, model_name, ep)
+    logger.info("Starting mode '%s' for %s on %s ...", args.running_mode, model_name, exec_provider)
 
     # Set environment variables for ort-trt benchmarking
     trt_ep_options = copy.deepcopy(args.trt_ep_options)
-    if "ORT-TRT" in ep:
-        trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
+    if "ORT-TRT" in exec_provider:
+        trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in exec_provider else "False"
 
         # Create/set a directory to store TRT engine caches.
         engine_cache_path = os.path.normpath(os.path.join(tmp_work_dir, TRT_ENGINE_CACHE_DIR_NAME))
@@ -1117,7 +1117,7 @@ def run_model_on_ep(
     fp16 = False
 
     # use float16.py for cuda fp16 only
-    if cuda_fp16 == ep:
+    if cuda_fp16 == exec_provider:
 
         # handle model
         if "model_path_fp16" in model_info:
@@ -1127,9 +1127,9 @@ def run_model_on_ep(
             try:
                 model_path = convert_model_from_float_to_float16(model_path, tmp_work_dir)
                 fp16 = True
-            except Exception as e:
-                logger.error(e)
-                update_fail_model_map(model_to_fail_ep, model_name, ep, "script error", e)
+            except Exception as excpt:
+                logger.error(excpt)
+                update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "script error", excpt)
                 return
 
         # handle test data
@@ -1137,7 +1137,7 @@ def run_model_on_ep(
             test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path_fp16"]))
             fp16 = False
 
-    if standalone_trt_fp16 == ep:
+    if standalone_trt_fp16 == exec_provider:
         fp16 = True
 
     inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
@@ -1155,7 +1155,7 @@ def run_model_on_ep(
         result = None
 
         # get standalone TensorRT perf
-        if is_standalone(ep) and args.trtexec:
+        if is_standalone(exec_provider) and args.trtexec:
             try:
                 result = run_trt_standalone(
                     args.trtexec,
@@ -1166,15 +1166,15 @@ def run_model_on_ep(
                     fp16,
                     args.track_memory,
                 )
-            except Exception as e:
-                logger.error(e)
-                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+            except Exception as excpt:
+                logger.error(excpt)
+                update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
                 return
 
         # inference with onnxruntime ep
         else:
             # resolve providers to create session
-            providers = ep_to_provider_list[ep]
+            providers = ep_to_provider_list[exec_provider]
             provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
             options = onnxruntime.SessionOptions()
 
@@ -1192,15 +1192,15 @@ def run_model_on_ep(
             try:
                 sess, second_creation_time = create_session(model_path, providers, provider_options, options)
 
-            except Exception as e:
-                logger.error(e)
-                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+            except Exception as excpt:
+                logger.error(excpt)
+                update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
                 return
 
             if second_creation_time:
-                ep_to_session[ep + second] = second_creation_time
+                ep_to_session[exec_provider + second] = second_creation_time
 
-            logger.debug("Start to inference %s with %s ...", model_name, ep)
+            logger.debug("Start to inference %s with %s ...", model_name, exec_provider)
             logger.debug(sess.get_providers())
             logger.debug(sess.get_provider_options())
 
@@ -1216,7 +1216,7 @@ def run_model_on_ep(
             result_template = {
                 "engine": "onnxruntime",
                 "version": onnxruntime.__version__,
-                "device": ep,
+                "device": exec_provider,
                 "fp16": fp16,
                 "io_binding": args.io_binding,
                 "graph_optimizations": args.graph_enablement,
@@ -1229,8 +1229,8 @@ def run_model_on_ep(
             }
 
             # run cpu fewer times
-            repeat_times = 100 if ep == cpu else args.test_times
-            track_memory = False if ep == cpu else args.track_memory
+            repeat_times = 100 if exec_provider == cpu else args.test_times
+            track_memory = False if exec_provider == cpu else args.track_memory
 
             # inference with ort
             try:
@@ -1238,27 +1238,27 @@ def run_model_on_ep(
                     args,
                     model_name,
                     sess,
-                    ep,
+                    exec_provider,
                     inputs,
                     result_template,
                     repeat_times,
                     batch_size,
                     track_memory,
                 )
-            except Exception as e:
-                logger.error(e)
-                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+            except Exception as excpt:
+                logger.error(excpt)
+                update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
                 return
 
         if result:
 
-            ep_to_latency[ep] = {}
-            ep_to_latency[ep]["average_latency_ms"] = result["average_latency_ms"]
-            ep_to_latency[ep]["latency_90_percentile"] = result["latency_90_percentile"]
+            ep_to_latency[exec_provider] = {}
+            ep_to_latency[exec_provider]["average_latency_ms"] = result["average_latency_ms"]
+            ep_to_latency[exec_provider]["latency_90_percentile"] = result["latency_90_percentile"]
             if "memory" in result:
                 mem_usage = result["memory"]
             if mem_usage:
-                ep_to_latency[ep]["memory"] = mem_usage
+                ep_to_latency[exec_provider]["memory"] = mem_usage
             if not args.trtexec:  # skip standalone
                 success_results.append(result)
 
@@ -1268,30 +1268,30 @@ def run_model_on_ep(
         # enable profiling to generate profiling file for analysis
         options = onnxruntime.SessionOptions()
         options.enable_profiling = True
-        options.profile_file_prefix = "ort_profile_{}_{}".format(model_name, ep)
+        options.profile_file_prefix = f"ort_profile_{model_name}_{exec_provider}"
         options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-        if "ORT-TRT" in ep:
+        if "ORT-TRT" in exec_provider:
             trt_ep_options["trt_dump_subgraphs"] = "True"
 
-        providers = ep_to_provider_list[ep]
+        providers = ep_to_provider_list[exec_provider]
         provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
 
         # create onnxruntime inference session
         try:
             sess, creation_time = create_session(model_path, providers, provider_options, options)
 
-        except Exception as e:
-            logger.error(e)
-            update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+        except Exception as excpt:
+            logger.error(excpt)
+            update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
             return
 
         if creation_time:
-            ep_to_session[ep] = creation_time
+            ep_to_session[exec_provider] = creation_time
 
         sess.disable_fallback()
 
-        logger.debug("Start to inference %s with %s ...", model_name, ep)
+        logger.debug("Start to inference %s with %s ...", model_name, exec_provider)
         logger.debug(sess.get_providers())
         logger.debug(sess.get_provider_options())
 
@@ -1306,7 +1306,7 @@ def run_model_on_ep(
         # run inference and validate the result
         #
         # currently skip TensorRT float16 validation intentionally
-        if ep not in validation_exemption:
+        if exec_provider not in validation_exemption:
             try:
                 ort_outputs = inference_ort_and_get_prediction(model_name, sess, inputs)
 
@@ -1321,14 +1321,14 @@ def run_model_on_ep(
                     update_fail_model_map(
                         model_to_fail_ep,
                         model_name,
-                        ep,
+                        exec_provider,
                         "result accuracy issue",
                         status[1],
                     )
                     return
-            except Exception as e:
-                logger.error(e)
-                update_fail_model_map(model_to_fail_ep, model_name, ep, "runtime error", e)
+            except Exception as excpt:
+                logger.error(excpt)
+                update_fail_model_map(model_to_fail_ep, model_name, exec_provider, "runtime error", excpt)
                 return
 
             # Run inference again. the reason is that some ep like tensorrt
@@ -1344,10 +1344,10 @@ def run_model_on_ep(
         # get metrics from profiling file
         metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix, logger)
         if metrics:
-            if "ORT-TRT" in ep:
+            if "ORT-TRT" in exec_provider:
                 fill_trt_subgraphs(metrics, tmp_work_dir)
 
-            ep_to_op_metrics[ep] = metrics
+            ep_to_op_metrics[exec_provider] = metrics
 
 
 def run_onnxruntime(args, models):
@@ -1390,16 +1390,16 @@ def run_onnxruntime(args, models):
         ep_to_op_metrics = {}
         ep_to_session = {}
 
-        for ep in ep_list:
+        for exec_provider in ep_list:
 
             # Skip model + EP combinations that have already failed in a previous run.
-            if skip_ep(name, ep, model_to_fail_ep):
+            if skip_ep(name, exec_provider, model_to_fail_ep):
                 continue
 
-            if not is_standalone(ep):
-                ep_ = ep_to_provider_list[ep][0]
+            if not is_standalone(exec_provider):
+                ep_ = ep_to_provider_list[exec_provider][0]
                 if ep_ not in onnxruntime.get_available_providers():
-                    logger.error("No {} support".format(ep_))
+                    logger.error("No {ep_} support")
                     continue
 
             # Create a temporary directory for this run, which may create profiles, subgraph dumps, and TRT engines.
@@ -1409,7 +1409,7 @@ def run_onnxruntime(args, models):
                     args,
                     name,
                     model_info,
-                    ep,
+                    exec_provider,
                     success_results,
                     ep_to_latency,
                     ep_to_op_metrics,
@@ -1461,7 +1461,7 @@ def output_details(results, csv_filename):
     if os.path.exists(csv_filename):
         need_write_header = False
 
-    with open(csv_filename, mode="a", newline="") as csv_file:
+    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
         column_names = [
             "engine",
             "version",
@@ -1493,17 +1493,17 @@ def output_details(results, csv_filename):
 
 def output_fail(model_to_fail_ep, csv_filename):
 
-    with open(csv_filename, mode="w", newline="") as csv_file:
+    with open(csv_filename, mode="w", newline="", encoding="utf-8") as csv_file:
         column_names = ["model", "ep", "error type", "error message"]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
 
         for model, model_info in model_to_fail_ep.items():
-            for ep, ep_info in model_info.items():
+            for exec_provider, ep_info in model_info.items():
                 result = {}
                 result["model"] = model
-                result["ep"] = ep
+                result["ep"] = exec_provider
                 result["error type"] = ep_info["error_type"]
                 result["error message"] = ep_info["error_message"]
                 csv_writer.writerow(result)
@@ -1511,7 +1511,7 @@ def output_fail(model_to_fail_ep, csv_filename):
 
 def read_success_from_file(success_file):
     success_results = []
-    with open(success_file) as success:
+    with open(success_file, encoding="utf-8") as success:
         csv_reader = csv.DictReader(success)
         for row in csv_reader:
             success_results.append(row)
@@ -1520,28 +1520,26 @@ def read_success_from_file(success_file):
     return success_json
 
 
-def add_status_dict(status_dict, model_name, ep, status):
+def add_status_dict(status_dict, model_name, exec_provider, status):
     if model_name not in status_dict:
         status_dict[model_name] = {}
-    status_dict[model_name][ep] = status
+    status_dict[model_name][exec_provider] = status
 
 
 def build_status(status_dict, results, is_fail):
 
     if is_fail:
         for model, model_info in results.items():
-            for ep, ep_info in model_info.items():
+            for exec_provider, ep_info in model_info.items():
                 model_name = model
-                ep = ep
                 status = "Fail"
-                add_status_dict(status_dict, model_name, ep, status)
+                add_status_dict(status_dict, model_name, exec_provider, status)
     else:
         for model, value in results.items():
-            for ep, ep_info in value.items():
+            for exec_provider, ep_info in value.items():
                 model_name = model
-                ep = ep
                 status = "Pass"
-                add_status_dict(status_dict, model_name, ep, status)
+                add_status_dict(status_dict, model_name, exec_provider, status)
 
     return status_dict
 
@@ -1552,7 +1550,7 @@ def output_status(results, csv_filename):
     if os.path.exists(csv_filename):
         need_write_header = False
 
-    with open(csv_filename, mode="a", newline="") as csv_file:
+    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
         column_names = table_headers
 
         csv_writer = csv.writer(csv_file)
@@ -1569,20 +1567,20 @@ def output_status(results, csv_filename):
         standalone_fp16_status = ""
 
         for model_name, ep_dict in results.items():
-            for ep, status in ep_dict.items():
-                if ep == cpu:
+            for exec_provider, status in ep_dict.items():
+                if exec_provider == cpu:
                     cpu_status = status
-                elif ep == cuda:
+                elif exec_provider == cuda:
                     cuda_fp32_status = status
-                elif ep == trt:
+                elif exec_provider == trt:
                     trt_fp32_status = status
-                elif ep == standalone_trt:
+                elif exec_provider == standalone_trt:
                     standalone_fp32_status = status
-                elif ep == cuda_fp16:
+                elif exec_provider == cuda_fp16:
                     cuda_fp16_status = status
-                elif ep == trt_fp16:
+                elif exec_provider == trt_fp16:
                     trt_fp16_status = status
-                elif ep == standalone_trt_fp16:
+                elif exec_provider == standalone_trt_fp16:
                     standalone_fp16_status = status
                 else:
                     continue
@@ -1630,7 +1628,7 @@ def output_session_creation(results, csv_filename):
     if os.path.exists(csv_filename):
         need_write_header = False
 
-    with open(csv_filename, mode="a", newline="") as csv_file:
+    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
         session_1 = [p + session_ending for p in ort_provider_list]
         session_2 = [p + second_session_ending for p in ort_provider_list]
         column_names = [model_title] + session_1 + session_2
@@ -1698,7 +1696,7 @@ def output_latency(results, csv_filename):
     if os.path.exists(csv_filename):
         need_write_header = False
 
-    with open(csv_filename, mode="a", newline="") as csv_file:
+    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
         column_names = [model_title]
         for provider in provider_list:
             column_names.append(provider + avg_ending)
@@ -1925,7 +1923,7 @@ def output_metrics(model_to_op_metrics, csv_filename):
 
 
 def output_system_info(result, csv_filename):
-    with open(csv_filename, mode="a", newline="") as csv_file:
+    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
         column_names = ["cpu_info", "cuda", "gpu_info", "linux_distro", "memory", "trt"]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -1950,18 +1948,16 @@ class ParseDictArgAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string):
         dict_arg = {}
 
-        for kv in values.split(","):
+        for key_val in values.split(","):
             try:
-                k, v = kv.split("=")
+                key, val = key_val.split("=")
             except ValueError:
-                parser.error("argument {opt_str}: Expected '=' between key and value".format(opt_str=option_string))
+                parser.error(f"argument {option_string}: Expected '=' between key and value")
 
-            if k in dict_arg:
-                parser.error(
-                    "argument {opt_str}: Specified duplicate key '{dup_key}'".format(opt_str=option_string, dup_key=k)
-                )
+            if key in dict_arg:
+                parser.error(f"argument {option_string}: Specified duplicate key '{key}'")
 
-            dict_arg[k] = v
+            dict_arg[key] = val
 
         setattr(namespace, self.dest, dict_arg)
 
