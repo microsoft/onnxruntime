@@ -75,6 +75,3 @@
 [submodule "cmake/external/FP16"]
 	path = cmake/external/FP16
 	url = https://github.com/Maratyszcza/FP16.git
-[submodule "cmake/external/XNNPACK"]
-	path = cmake/external/XNNPACK
-	url = https://github.com/google/XNNPACK.git
