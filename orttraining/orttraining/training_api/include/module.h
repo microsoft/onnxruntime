@@ -34,7 +34,7 @@ struct Parameter {
   Status ResetGrad();
 
  protected:
-  Status AllocateGrad(const std::string& gradient_name, const OrtValue& param_grad);
+  Status SetGrad(const std::string& gradient_name, const OrtValue& param_grad);
 
  private:
   std::string name_;

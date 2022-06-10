@@ -8,7 +8,7 @@
 #include "../common/synthetic_data_loader.h"
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
-// This header is for profile using Nvidia's visual profilier.
+// This header is for profile using Nvidia's visual profiler.
 #include "core/providers/cuda/nvtx_profile.h"
 #include "core/providers/cuda/nvtx_profile_context.h"
 #endif

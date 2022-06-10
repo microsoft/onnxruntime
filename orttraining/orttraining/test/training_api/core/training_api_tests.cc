@@ -52,7 +52,8 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option, *env);
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+                                        *env);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -105,7 +106,8 @@ TEST(TrainingApiTest, OptimStep) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option, *env);
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+                                        *env);
   auto optim = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
 
   OrtValue input, target;
@@ -165,7 +167,8 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option, *env);
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+                                        *env);
   auto optim = std::make_shared<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
 
   OrtValue input, target;

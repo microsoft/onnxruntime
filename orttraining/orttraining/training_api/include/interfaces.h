@@ -13,9 +13,11 @@
  */
 
 #pragma once
+
+#include <onnxruntime_cxx_api.h>
+
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
-#include <onnxruntime_cxx_api.h>
 
 #include "orttraining/training_api/include/module.h"
 #include "orttraining/training_api/include/optimizer.h"

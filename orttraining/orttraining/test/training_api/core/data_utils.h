@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/framework/test_utils.h"
-#include "core/common/path_utils.h"
-#include "core/framework/tensorprotoutils.h"
+#pragma once
+
+#include <vector>
+
+#include "core/framework/ort_value.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 namespace training {

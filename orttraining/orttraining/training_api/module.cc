@@ -21,7 +21,7 @@ const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
 
 }  // namespace
 
-Status Parameter::AllocateGrad(const std::string& gradient_name, const OrtValue& param_grad) {
+Status Parameter::SetGrad(const std::string& gradient_name, const OrtValue& param_grad) {
   // assert param is allocated
   ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");
   ORT_ENFORCE(requires_grad_, "Gradient should only be allocated for trainable parameters.");
@@ -100,7 +100,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     const auto& node_info = node_info_vec.front();
     const auto target_device = *node_info.device;
     for (auto it = node_info_vec.begin(); it != node_info_vec.end(); ++it) {
-      ORT_ENFORCE(target_device == *(it->device));
+      ORT_ENFORCE(target_device == *(it->device), "Inconsistent device requirements found for input: ", param_name);
     }
 
     // Create parameter value copy with corresponding device user sets the session on.
@@ -121,20 +121,21 @@ Module::Module(const std::string& train_model_path_or_bytes,
     named_parameters_.insert({param_name, param_share_ptr});
     weights_.push_back(param_share_ptr->Data());
 
-    // Create gradient buffer when paramter requires gradient.
+    // Create gradient buffer when parameter requires gradient.
     if (param_share_ptr->RequiresGrad()) {
       // Create gradient accumulation buffer.
       auto it = param_name_to_grad_input_index_map.find(param_name);
       ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ",
                   param_name);
 
-      auto& param_grad_buffer_name = grad_input_names[param_name_to_grad_input_index_map[param_name]];
+      const size_t grad_input_index = it->second;
+      auto& param_grad_buffer_name = grad_input_names[grad_input_index];
       // TODO: don't pre-allocate the gradient buffer.
       // Gradient usually stays on the same device of its parameter.
       OrtValue param_grad_buffer_ortvalue;
       ORT_THROW_IF_ERROR(utils::OrtValueLike(train_sess_state, target_ortvalue, param_grad_buffer_ortvalue));
-      ORT_THROW_IF_ERROR(param_share_ptr->AllocateGrad(param_grad_buffer_name, param_grad_buffer_ortvalue));
-      gradients_[param_name_to_grad_input_index_map[param_name]] = param_share_ptr->Gradient();
+      ORT_THROW_IF_ERROR(param_share_ptr->SetGrad(param_grad_buffer_name, param_grad_buffer_ortvalue));
+      gradients_[grad_input_index] = param_share_ptr->Gradient();
     }
   }
 

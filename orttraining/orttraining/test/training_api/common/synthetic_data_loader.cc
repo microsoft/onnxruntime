@@ -4,7 +4,9 @@
 #include <onnxruntime_cxx_api.h>
 
 #include <algorithm>
+#include <memory>
 #include <random>
+#include <vector>
 
 #include "synthetic_data_loader.h"
 

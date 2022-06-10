@@ -10,7 +10,12 @@
  */
 
 #pragma once
+
 #include <onnxruntime_cxx_api.h>
+
+#include <memory>
+#include <utility>
+#include <vector>
 
 namespace onnxruntime {
 namespace training {
@@ -21,13 +26,13 @@ template <typename T>
 struct TypedSynctheticInput;
 
 struct SyntheticInput {
-  SyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
+  explicit SyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
     for (auto d : shape) {
       num_of_bytes_per_sample_ *= d;
     }
   }
 
-  virtual ~SyntheticInput(){};
+  virtual ~SyntheticInput() {}
 
   template <typename T>
   std::vector<T>& GetData() {
@@ -50,7 +55,7 @@ struct SyntheticInput {
 
 template <typename T>
 struct TypedSynctheticInput : public SyntheticInput {
-  TypedSynctheticInput(const std::vector<int64_t>& shape)
+  explicit TypedSynctheticInput(const std::vector<int64_t>& shape)
       : SyntheticInput(shape) {
     data_.resize(num_of_bytes_per_sample_);
   }

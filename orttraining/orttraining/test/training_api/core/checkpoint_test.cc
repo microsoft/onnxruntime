@@ -35,6 +35,7 @@ namespace onnxruntime {
 namespace training {
 namespace test {
 
+namespace {
 #define MODEL_FOLDER ORT_TSTR("testdata/")
 
 /**
@@ -152,27 +153,9 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   }
 }
 
-const OrtMemoryInfo cpu_alloc_info(onnxruntime::CPU, OrtDeviceAllocator);
-class OrtValueTensorData {
- public:
-  OrtValueTensorData(TensorShape shape, std::vector<float> data) {
-    ORT_ENFORCE(shape.Size() == static_cast<int64_t>(data.size()));
-    shape_ = std::move(shape);
-    data_ = std::move(data);
-  }
-
-  OrtValue GetOrtValue() {
-    return OrtValue(new Tensor(DataTypeImpl::GetType<float>(), shape_, data_.data(), cpu_alloc_info),
-                    DataTypeImpl::GetType<Tensor>(), DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-  }
-
- private:
-  TensorShape shape_;
-  std::vector<float> data_;
-};
-
 /**
- * Create Optimizer with sets of parameters,
+ * Create Module with sets of parameters,
+ * Create Optimizer passing in Module's parameters.
  * Save Optimizer states into ORT checkpoint files,
  * Then load it into ORT, compare with the initial optimizer states values.
  */
@@ -180,8 +163,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparision.
-
-  auto model_uri = MODEL_FOLDER "training_api/adamw.onnx";
+  auto model_uri = MODEL_FOLDER "training_api/gradient_graph.onnx";
+  auto optim_uri = MODEL_FOLDER "training_api/adamw.onnx";
 
   // Generate randomized weight values using synthetic data generator.
   const int64_t fc2_weight_dim_in = 10, fc2_weight_dim_out = 500, fc1_weight_dim_in = 500, fc1_weight_dim_out = 784;
@@ -209,7 +192,7 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
       {"fc2.bias", **reinterpret_cast<::OrtValue**>(data_ptr + 3)},
   };
 
-  // Optimizer creation and trainable parameter name definitions.
+  // Module/Optimizer creation and trainable parameter name definitions.
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
     auto param = std::make_shared<Parameter>(it->first, it->second, true /*is_trainable*/);
@@ -219,7 +202,9 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto optimizer = Optimizer(model_uri, named_parameters, session_option, *env);
+  auto model = std::make_unique<Module>(model_uri, named_parameters, session_option,
+                                        *env);
+  auto optimizer = Optimizer(optim_uri, model->NamedParameters(), session_option, *env);
 
   /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
   /// And check the result checkpoint files.
@@ -373,7 +358,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   std::string restored_s_data = restored_property_bag.GetProperty<std::string>(s_property_name);
   ASSERT_EQ(s_data, restored_s_data);
 }
-
+}  // namespace
 }  // namespace test
 }  // namespace training
 }  // namespace onnxruntime
