@@ -104,6 +104,12 @@ def pretty_print(pp, json_object):
     sys.stdout.flush()
 
 
+def split_and_sort_output(string_list):
+    string_list = string_list.split("\n")
+    string_list.sort()
+    return string_list
+
+
 def find_files(path, name_pattern, are_dirs=False):
     """
     Finds files that match the given name pattern within the given path.
@@ -126,6 +132,83 @@ def find_files(path, name_pattern, are_dirs=False):
         files = files_str.split("\n")
 
     return files
+
+
+def get_cuda_version():
+    nvidia_strings = get_output(["nvidia-smi"])
+    version = re.search(r"CUDA Version: \d\d\.\d", nvidia_strings).group(0)
+    return version
+
+
+def get_trt_version(workspace):
+    libnvinfer = get_output(["find", workspace, "-name", "libnvinfer.so.*"])
+    nvinfer = re.search(r".*libnvinfer.so.*", libnvinfer).group(0)
+    trt_strings = get_output(["nm", "-D", nvinfer])
+    version = re.search(r"tensorrt_version.*", trt_strings).group(0)
+    return version
+
+
+def get_linux_distro():
+    linux_strings = get_output(["cat", "/etc/os-release"])
+    stdout = linux_strings.split("\n")[:2]
+    infos = []
+    for row in stdout:
+        row = re.sub("=", ":  ", row)
+        row = re.sub('"', "", row)
+        infos.append(row)
+    return infos
+
+
+def get_memory_info():
+    mem_strings = get_output(["cat", "/proc/meminfo"])
+    stdout = mem_strings.split("\n")
+    infos = []
+    for row in stdout:
+        if "Mem" in row:
+            row = re.sub(": +", ":  ", row)
+            infos.append(row)
+    return infos
+
+
+def get_cpu_info():
+    cpu_strings = get_output(["lscpu"])
+    stdout = cpu_strings.split("\n")
+    infos = []
+    for row in stdout:
+        if "mode" in row or "Arch" in row or "name" in row:
+            row = re.sub(": +", ":  ", row)
+            infos.append(row)
+    return infos
+
+
+def get_gpu_info():
+    info = get_output(["lspci", "-v"])
+    infos = re.findall("NVIDIA.*", info)
+    return infos
+
+
+def get_cudnn_version(workspace):
+    cudnn_path = get_output(["whereis", "cudnn_version.h"])
+    cudnn_path = re.search(": (.*)", cudnn_path).group(1)
+    cudnn_outputs = get_output(["cat", cudnn_path])
+    major = re.search("CUDNN_MAJOR (.*)", cudnn_outputs).group(1)
+    minor = re.search("CUDNN_MINOR (.*)", cudnn_outputs).group(1)
+    patch = re.search("CUDNN_PATCHLEVEL (.*)", cudnn_outputs).group(1)
+    cudnn_version = major + "." + minor + "." + patch
+    return cudnn_version
+
+
+def get_system_info(root_dir):
+    info = {}
+    info["cuda"] = get_cuda_version()
+    info["trt"] = get_trt_version(root_dir)
+    info["cudnn"] = get_cudnn_version(root_dir)
+    info["linux_distro"] = get_linux_distro()
+    info["cpu_info"] = get_cpu_info()
+    info["gpu_info"] = get_gpu_info()
+    info["memory"] = get_memory_info()
+
+    return info
 
 
 def get_profile_model_runs(profile_entries):

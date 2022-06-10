@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 import argparse
 import copy
-import csv
 import json
 import logging
 import os
@@ -21,7 +20,6 @@ import numpy as np
 from perf_utils import (
     acl,
     acl_ep,
-    avg_ending,
     basic,
     cpu,
     cpu_ep,
@@ -35,19 +33,11 @@ from perf_utils import (
     get_output,
     get_profile_metrics,
     is_standalone,
-    memory_ending,
-    model_title,
-    op_metrics_columns,
-    ort_provider_list,
-    percentile_ending,
     pretty_print,
-    provider_list,
     second,
-    second_session_ending,
-    session_ending,
+    split_and_sort_output,
     standalone_trt,
     standalone_trt_fp16,
-    table_headers,
     trt,
     trt_ep,
     trt_fp16,
@@ -57,6 +47,7 @@ import onnxruntime  # isort:skip
 import onnx  # isort:skip
 from onnx import numpy_helper  # isort:skip
 import pandas as pd  # isort:skip
+from write_csv import output_details, output_fail, output_latency, output_metrics  # isort:skip
 
 debug = False
 sys.path.append(".")
@@ -85,12 +76,6 @@ SESSION_FILE = ".session_map"
 MEMORY_FILE = "./temp_memory.csv"
 
 TRT_ENGINE_CACHE_DIR_NAME = "engine_cache"
-
-
-def split_and_sort_output(string_list):
-    string_list = string_list.split("\n")
-    string_list.sort()
-    return string_list
 
 
 def is_dynamic(model):
@@ -262,16 +247,6 @@ def get_ort_session_inputs_and_outputs(name, session, ort_input):
     return (sess_inputs, sess_outputs)
 
 
-def track_ep_memory(exec_provider):
-    return cpu != exec_provider
-
-
-def get_trtexec_pid(df, python_pid):
-    for pid in df["pid"].tolist():
-        if pid != python_pid:
-            return pid
-
-
 def get_max_memory():
     df = pd.read_csv(MEMORY_FILE)
     pid = df["pid"].iloc[0]
@@ -436,22 +411,6 @@ def inference_ort_and_get_prediction(name, session, ort_inputs):
     return ort_outputs
 
 
-def get_acl_version():
-    from pathlib import Path
-
-    home = str(Path.home())
-    p = subprocess.run(["find", home, "-name", "libarm_compute.so"], check=True, stdout=subprocess.PIPE)
-    libarm_compute_path = p.stdout.decode("ascii").strip()
-    if libarm_compute_path == "":
-        return "No Compute Library Found"
-    else:
-        p = subprocess.run(["strings", libarm_compute_path], check=True, stdout=subprocess.PIPE)
-        libarm_so_strings = p.stdout.decode("ascii").strip()
-        version_match = re.search(r"arm_compute_version.*\n", libarm_so_strings)
-        version = version_match.group(0).split(" ")[0]
-        return version
-
-
 #######################################################################################################################################
 # The following two lists will be generated.
 #
@@ -602,17 +561,6 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
     return True, None
 
 
-def update_fail_report(fail_results, model, exec_provider, e_type, excpt):
-    result = {}
-
-    result["model"] = model
-    result["ep"] = exec_provider
-    result["error type"] = e_type
-    result["error message"] = re.sub("^\n", "", str(excpt))
-
-    fail_results.append(result)
-
-
 def update_op_metrics_map(model_to_op_metrics, model_name, ep_to_operator):
     """
     Updates `model_to_op_metrics` to include operator metrics for the given model.
@@ -665,25 +613,6 @@ def update_fail_model_map(model_to_fail_ep, model_name, exec_provider, e_type, e
         model_to_fail_ep[model_name][ep_] = new_map_1
 
 
-def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, exec_provider, e_type, excpt):
-
-    if model_name in model_to_fail_ep and exec_provider in model_to_fail_ep[model_name]:
-        return
-
-    if model_name not in model_to_fail_ep:
-        model_to_fail_ep[model_name] = {}
-
-    model_to_fail_ep[model_name][exec_provider] = e_type
-    update_fail_report(fail_results, model_name, exec_provider, e_type, excpt)
-
-    # If TRT fails, TRT FP16 should fail as well
-    if exec_provider == trt:
-        ep_ = trt_fp16
-        error_message_ = "skip benchmarking since TRT failed already."
-        update_fail_report(fail_results, model_name, ep_, e_type, error_message_)
-        model_to_fail_ep[model_name][ep_] = e_type
-
-
 def skip_ep(model_name, exec_provider, model_to_fail_ep):
 
     if model_name not in model_to_fail_ep:
@@ -721,87 +650,6 @@ def write_map_to_file(result, file_name):
 
     with open(file_name, "w") as file:
         file.write(json.dumps(existed_result))  # use `json.loads` to do the reverse
-
-
-def get_cuda_version():
-    nvidia_strings = get_output(["nvidia-smi"])
-    version = re.search(r"CUDA Version: \d\d\.\d", nvidia_strings).group(0)
-    return version
-
-
-def get_trt_version(workspace):
-    libnvinfer = get_output(["find", workspace, "-name", "libnvinfer.so.*"])
-    nvinfer = re.search(r".*libnvinfer.so.*", libnvinfer).group(0)
-    trt_strings = get_output(["nm", "-D", nvinfer])
-    version = re.search(r"tensorrt_version.*", trt_strings).group(0)
-    return version
-
-
-def get_linux_distro():
-    linux_strings = get_output(["cat", "/etc/os-release"])
-    stdout = linux_strings.split("\n")[:2]
-    infos = []
-    for row in stdout:
-        row = re.sub("=", ":  ", row)
-        row = re.sub('"', "", row)
-        infos.append(row)
-    return infos
-
-
-def get_memory_info():
-    mem_strings = get_output(["cat", "/proc/meminfo"])
-    stdout = mem_strings.split("\n")
-    infos = []
-    for row in stdout:
-        if "Mem" in row:
-            row = re.sub(": +", ":  ", row)
-            infos.append(row)
-    return infos
-
-
-def get_cpu_info():
-    cpu_strings = get_output(["lscpu"])
-    stdout = cpu_strings.split("\n")
-    infos = []
-    for row in stdout:
-        if "mode" in row or "Arch" in row or "name" in row:
-            row = re.sub(": +", ":  ", row)
-            infos.append(row)
-    return infos
-
-
-def get_gpu_info():
-    info = get_output(["lspci", "-v"])
-    infos = re.findall("NVIDIA.*", info)
-    return infos
-
-
-def get_cudnn_version(workspace):
-    cudnn_path = get_output(["whereis", "cudnn_version.h"])
-    cudnn_path = re.search(": (.*)", cudnn_path).group(1)
-    cudnn_outputs = get_output(["cat", cudnn_path])
-    major = re.search("CUDNN_MAJOR (.*)", cudnn_outputs).group(1)
-    minor = re.search("CUDNN_MINOR (.*)", cudnn_outputs).group(1)
-    patch = re.search("CUDNN_PATCHLEVEL (.*)", cudnn_outputs).group(1)
-    cudnn_version = major + "." + minor + "." + patch
-    return cudnn_version
-
-
-def get_system_info(args):
-    info = {}
-    info["cuda"] = get_cuda_version()
-    info["trt"] = get_trt_version(args.workspace)
-    info["cudnn"] = get_cudnn_version(args.workspace)
-    info["linux_distro"] = get_linux_distro()
-    info["cpu_info"] = get_cpu_info()
-    info["gpu_info"] = get_gpu_info()
-    info["memory"] = get_memory_info()
-    info["ep_option_overrides"] = {
-        trt_ep: args.trt_ep_options,
-        cuda_ep: args.cuda_ep_options,
-    }
-
-    return info
 
 
 def find_model_path(path):
@@ -1454,483 +1302,6 @@ def add_improvement_information(model_to_latency):
         if trt_fp16 in value and standalone_trt_fp16 in value:
             gain = calculate_gain(value, trt_fp16, standalone_trt_fp16)
             value[trt_native_fp16_gain] = "{:.2f} %".format(gain)
-
-
-def output_details(results, csv_filename):
-    need_write_header = True
-    if os.path.exists(csv_filename):
-        need_write_header = False
-
-    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
-        column_names = [
-            "engine",
-            "version",
-            "device",
-            "fp16",
-            "io_binding",
-            "graph_optimizations",
-            "enable_cache",
-            "model_name",
-            "inputs",
-            "batch_size",
-            "sequence_length",
-            "datetime",
-            "test_times",
-            "QPS",
-            "average_latency_ms",
-            "latency_variance",
-            "latency_90_percentile",
-            "latency_95_percentile",
-            "latency_99_percentile",
-        ]
-
-        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
-        if need_write_header:
-            csv_writer.writeheader()
-        for result in results:
-            csv_writer.writerow(result)
-
-
-def output_fail(model_to_fail_ep, csv_filename):
-
-    with open(csv_filename, mode="w", newline="", encoding="utf-8") as csv_file:
-        column_names = ["model", "ep", "error type", "error message"]
-
-        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
-        csv_writer.writeheader()
-
-        for model, model_info in model_to_fail_ep.items():
-            for exec_provider, ep_info in model_info.items():
-                result = {}
-                result["model"] = model
-                result["ep"] = exec_provider
-                result["error type"] = ep_info["error_type"]
-                result["error message"] = ep_info["error_message"]
-                csv_writer.writerow(result)
-
-
-def read_success_from_file(success_file):
-    success_results = []
-    with open(success_file, encoding="utf-8") as success:
-        csv_reader = csv.DictReader(success)
-        for row in csv_reader:
-            success_results.append(row)
-
-    success_json = json.loads(json.dumps(success_results, indent=4))
-    return success_json
-
-
-def add_status_dict(status_dict, model_name, exec_provider, status):
-    if model_name not in status_dict:
-        status_dict[model_name] = {}
-    status_dict[model_name][exec_provider] = status
-
-
-def build_status(status_dict, results, is_fail):
-
-    if is_fail:
-        for model, model_info in results.items():
-            for exec_provider, ep_info in model_info.items():
-                model_name = model
-                status = "Fail"
-                add_status_dict(status_dict, model_name, exec_provider, status)
-    else:
-        for model, value in results.items():
-            for exec_provider, ep_info in value.items():
-                model_name = model
-                status = "Pass"
-                add_status_dict(status_dict, model_name, exec_provider, status)
-
-    return status_dict
-
-
-def output_status(results, csv_filename):
-
-    need_write_header = True
-    if os.path.exists(csv_filename):
-        need_write_header = False
-
-    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
-        column_names = table_headers
-
-        csv_writer = csv.writer(csv_file)
-
-        if need_write_header:
-            csv_writer.writerow(column_names)
-
-        cpu_status = ""
-        cuda_fp32_status = ""
-        trt_fp32_status = ""
-        standalone_fp32_status = ""
-        cuda_fp16_status = ""
-        trt_fp16_status = ""
-        standalone_fp16_status = ""
-
-        for model_name, ep_dict in results.items():
-            for exec_provider, status in ep_dict.items():
-                if exec_provider == cpu:
-                    cpu_status = status
-                elif exec_provider == cuda:
-                    cuda_fp32_status = status
-                elif exec_provider == trt:
-                    trt_fp32_status = status
-                elif exec_provider == standalone_trt:
-                    standalone_fp32_status = status
-                elif exec_provider == cuda_fp16:
-                    cuda_fp16_status = status
-                elif exec_provider == trt_fp16:
-                    trt_fp16_status = status
-                elif exec_provider == standalone_trt_fp16:
-                    standalone_fp16_status = status
-                else:
-                    continue
-
-            row = [
-                model_name,
-                cpu_status,
-                cuda_fp32_status,
-                trt_fp32_status,
-                standalone_fp32_status,
-                cuda_fp16_status,
-                trt_fp16_status,
-                standalone_fp16_status,
-            ]
-            csv_writer.writerow(row)
-
-
-def output_specs(info, csv_filename):
-    cpu_version = info["cpu_info"][2]
-    gpu_version = info["gpu_info"][0]
-    tensorrt_version = info["trt"] + " , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32)."
-    cuda_version = info["cuda"]
-    cudnn_version = info["cudnn"]
-    ep_option_overrides = json.dumps(info["ep_option_overrides"])
-
-    table = pd.DataFrame(
-        {
-            ".": [1, 2, 3, 4, 5, 6],
-            "Spec": ["CPU", "GPU", "TensorRT", "CUDA", "CuDNN", "EPOptionOverrides"],
-            "Version": [
-                cpu_version,
-                gpu_version,
-                tensorrt_version,
-                cuda_version,
-                cudnn_version,
-                ep_option_overrides,
-            ],
-        }
-    )
-    table.to_csv(csv_filename, index=False)
-
-
-def output_session_creation(results, csv_filename):
-    need_write_header = True
-    if os.path.exists(csv_filename):
-        need_write_header = False
-
-    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
-        session_1 = [p + session_ending for p in ort_provider_list]
-        session_2 = [p + second_session_ending for p in ort_provider_list]
-        column_names = [model_title] + session_1 + session_2
-        csv_writer = csv.writer(csv_file)
-
-        csv_writer = csv.writer(csv_file)
-
-        if need_write_header:
-            csv_writer.writerow(column_names)
-
-        cpu_time = ""
-        cuda_fp32_time = ""
-        trt_fp32_time = ""
-        cuda_fp16_time = ""
-        trt_fp16_time = ""
-        cpu_time_2 = ""
-        cuda_fp32_time_2 = ""
-        trt_fp32_time_2 = ""
-        cuda_fp16_time_2 = ""
-        trt_fp16_time_2 = ""
-
-        for model_name, ep_dict in results.items():
-            for ep_key, sess_time in ep_dict.items():
-                if ep_key == cpu:
-                    cpu_time = sess_time
-                elif ep_key == cuda:
-                    cuda_fp32_time = sess_time
-                elif ep_key == trt:
-                    trt_fp32_time = sess_time
-                elif ep_key == cuda_fp16:
-                    cuda_fp16_time = sess_time
-                elif ep_key == trt_fp16:
-                    trt_fp16_time = sess_time
-                if ep_key == cpu + second:
-                    cpu_time_2 = sess_time
-                elif ep_key == cuda + second:
-                    cuda_fp32_time_2 = sess_time
-                elif ep_key == trt + second:
-                    trt_fp32_time_2 = sess_time
-                elif ep_key == cuda_fp16 + second:
-                    cuda_fp16_time_2 = sess_time
-                elif ep_key == trt_fp16 + second:
-                    trt_fp16_time_2 = sess_time
-                else:
-                    continue
-
-            row = [
-                model_name,
-                cpu_time,
-                cuda_fp32_time,
-                trt_fp32_time,
-                cuda_fp16_time,
-                trt_fp16_time,
-                cpu_time_2,
-                cuda_fp32_time_2,
-                trt_fp32_time_2,
-                cuda_fp16_time_2,
-                trt_fp16_time_2,
-            ]
-            csv_writer.writerow(row)
-
-
-def output_latency(results, csv_filename):
-    need_write_header = True
-    if os.path.exists(csv_filename):
-        need_write_header = False
-
-    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
-        column_names = [model_title]
-        for provider in provider_list:
-            column_names.append(provider + avg_ending)
-            column_names.append(provider + percentile_ending)
-            if cpu not in provider:
-                column_names.append(provider + memory_ending)
-
-        csv_writer = csv.writer(csv_file)
-
-        if need_write_header:
-            csv_writer.writerow(column_names)
-
-        for key, value in results.items():
-            cpu_average = ""
-            if cpu in value and "average_latency_ms" in value[cpu]:
-                cpu_average = value[cpu]["average_latency_ms"]
-
-            cpu_90_percentile = ""
-            if cpu in value and "latency_90_percentile" in value[cpu]:
-                cpu_90_percentile = value[cpu]["latency_90_percentile"]
-
-            cuda_average = ""
-            if cuda in value and "average_latency_ms" in value[cuda]:
-                cuda_average = value[cuda]["average_latency_ms"]
-
-            cuda_90_percentile = ""
-            if cuda in value and "latency_90_percentile" in value[cuda]:
-                cuda_90_percentile = value[cuda]["latency_90_percentile"]
-
-            cuda_memory = ""
-            if cuda in value and "memory" in value[cuda]:
-                cuda_memory = value[cuda]["memory"]
-
-            trt_average = ""
-            if trt in value and "average_latency_ms" in value[trt]:
-                trt_average = value[trt]["average_latency_ms"]
-
-            trt_90_percentile = ""
-            if trt in value and "latency_90_percentile" in value[trt]:
-                trt_90_percentile = value[trt]["latency_90_percentile"]
-
-            trt_memory = ""
-            if trt in value and "memory" in value[trt]:
-                trt_memory = value[trt]["memory"]
-
-            standalone_trt_average = ""
-            if standalone_trt in value and "average_latency_ms" in value[standalone_trt]:
-                standalone_trt_average = value[standalone_trt]["average_latency_ms"]
-
-            standalone_trt_90_percentile = ""
-            if standalone_trt in value and "latency_90_percentile" in value[standalone_trt]:
-                standalone_trt_90_percentile = value[standalone_trt]["latency_90_percentile"]
-
-            standalone_trt_memory = ""
-            if standalone_trt in value and "memory" in value[standalone_trt]:
-                standalone_trt_memory = value[standalone_trt]["memory"]
-
-            cuda_fp16_average = ""
-            if cuda_fp16 in value and "average_latency_ms" in value[cuda_fp16]:
-                cuda_fp16_average = value[cuda_fp16]["average_latency_ms"]
-
-            cuda_fp16_memory = ""
-            if cuda_fp16 in value and "memory" in value[cuda_fp16]:
-                cuda_fp16_memory = value[cuda_fp16]["memory"]
-
-            cuda_fp16_90_percentile = ""
-            if cuda_fp16 in value and "latency_90_percentile" in value[cuda_fp16]:
-                cuda_fp16_90_percentile = value[cuda_fp16]["latency_90_percentile"]
-
-            trt_fp16_average = ""
-            if trt_fp16 in value and "average_latency_ms" in value[trt_fp16]:
-                trt_fp16_average = value[trt_fp16]["average_latency_ms"]
-
-            trt_fp16_90_percentile = ""
-            if trt_fp16 in value and "latency_90_percentile" in value[trt_fp16]:
-                trt_fp16_90_percentile = value[trt_fp16]["latency_90_percentile"]
-
-            trt_fp16_memory = ""
-            if trt_fp16 in value and "memory" in value[trt_fp16]:
-                trt_fp16_memory = value[trt_fp16]["memory"]
-
-            standalone_trt_fp16_average = ""
-            if standalone_trt_fp16 in value and "average_latency_ms" in value[standalone_trt_fp16]:
-                standalone_trt_fp16_average = value[standalone_trt_fp16]["average_latency_ms"]
-
-            standalone_trt_fp16_90_percentile = ""
-            if standalone_trt_fp16 in value and "latency_90_percentile" in value[standalone_trt_fp16]:
-                standalone_trt_fp16_90_percentile = value[standalone_trt_fp16]["latency_90_percentile"]
-
-            standalone_trt_fp16_memory = ""
-            if standalone_trt_fp16 in value and "memory" in value[standalone_trt_fp16]:
-                standalone_trt_fp16_memory = value[standalone_trt_fp16]["memory"]
-
-            row = [
-                key,
-                cpu_average,
-                cpu_90_percentile,
-                cuda_average,
-                cuda_90_percentile,
-                cuda_memory,
-                trt_average,
-                trt_90_percentile,
-                trt_memory,
-                standalone_trt_average,
-                standalone_trt_90_percentile,
-                standalone_trt_memory,
-                cuda_fp16_average,
-                cuda_fp16_90_percentile,
-                cuda_fp16_memory,
-                trt_fp16_average,
-                trt_fp16_90_percentile,
-                trt_fp16_memory,
-                standalone_trt_fp16_average,
-                standalone_trt_fp16_90_percentile,
-                standalone_trt_fp16_memory,
-            ]
-            csv_writer.writerow(row)
-
-    logger.info("CUDA/TRT latency comparison are saved to csv file: %s", csv_filename)
-
-
-def get_operator_metrics_rows(model, input_ep, event_category, operator_metrics):
-    """
-    Returns a list of rows to append to the 'operator metrics' CSV file.
-    Each row contains metrics (e.g., num_instances, duration, etc.) for a particular operator (e.g, Conv, Add, etc.) used
-    in the specified model/input_ep.
-
-    :param model: The name of the model (e.g., zfnet512-9).
-    :param input_ep: The name of the input EP (e.g., ORT-CUDAFp32, ORT-TRTFp32, etc.).
-    :param event_category: The event category (i.e., "Node" or "Kernel").
-    :param operator_metrics: A dictionary that maps on ORT execution provider to a dictionary of operator metrics.
-
-        Ex: {
-                "CPUExecutionProvider" : {
-                    "Conv": {"num_instances": 20, "total_dur": 200, "min_dur": 10, "max_dur": 20},
-                    "Add": {"num_instances": 22, "total_dur": ... }
-                },
-                "CUDAExecutionProvider": { ... },
-                "TensorrtExecutionProvider: { ... }
-            }
-
-    :return: A list of rows containing operator metrics for the specified model and input_ep.
-        Ex: [
-            {
-                "model_name": "zfnet512-9",
-                "input_ep": "ORT-CUDAFp32",
-                "operator": "Conv",
-                "assigned_ep": "CUDAExecutionProvider",
-                "event_category": "Node",
-                "num_instances": 333,
-                "total_dur": 12345,
-                "min_dur": 31,
-                "max_dur": 6003
-            },
-            { ... },
-            ...
-        ]
-    """
-
-    rows = []
-
-    for assigned_ep, operators in operator_metrics.items():
-        for op_name, metrics in operators.items():
-            row = {
-                "model_name": model,
-                "input_ep": input_ep,
-                "operator": op_name,
-                "assigned_ep": assigned_ep,
-                "event_category": event_category,
-                "num_instances": metrics["num_instances"],
-                "total_dur": metrics["total_dur"],
-                "min_dur": metrics["min_dur"],
-                "max_dur": metrics["max_dur"],
-            }
-
-            rows.append(row)
-
-    return rows
-
-
-def output_metrics(model_to_op_metrics, csv_filename):
-    """
-    Writes every model's operator metrics to a CSV file.
-
-    :param model_to_op_metrics: A dictionary that maps a model to operator metrics for each input EP.
-
-        Ex: {
-                "zfnet512-9": {
-                    "ORT-CPUFp32": { ... },
-                    "ORT-CUDAFp32": { ... },
-                    "ORT-TRTFp32": { ... }
-                },
-                "resnet101-v1-7": {
-                    "ORT-CPUFp32": { ... },
-                    "ORT-CUDAFp32": { ... },
-                    "ORT-TRTFp32": { ... }
-                },
-                ...
-            }
-
-    :param csv_filename: The name of the CSV file to write.
-    """
-
-    with open(csv_filename, mode="w", newline="", encoding="utf-8") as csv_file:
-        column_names = [c[1] for c in op_metrics_columns]
-        csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(column_names)
-
-        results = []
-        for model, ep_info in model_to_op_metrics.items():
-            for input_ep in [cuda, trt, cuda_fp16, trt_fp16]:
-                if input_ep in ep_info:
-                    rows = get_operator_metrics_rows(model, input_ep, "Node", ep_info[input_ep]["nodes"])
-                    results.extend(rows)
-
-                    rows = get_operator_metrics_rows(model, input_ep, "Kernel", ep_info[input_ep]["kernels"])
-                    results.extend(rows)
-
-        for value in results:
-            row = [value[c[0]] for c in op_metrics_columns]
-            csv_writer.writerow(row)
-
-    logger.info("Execution provider operator metrics are saved to csv file: %s", csv_filename)
-
-
-def output_system_info(result, csv_filename):
-    with open(csv_filename, mode="a", newline="", encoding="utf-8") as csv_file:
-        column_names = ["cpu_info", "cuda", "gpu_info", "linux_distro", "memory", "trt"]
-
-        csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
-        csv_writer.writeheader()
-        csv_writer.writerow(result)
-
-    logger.info("System information are saved to csv file: %s", csv_filename)
 
 
 def str2bool(v):
