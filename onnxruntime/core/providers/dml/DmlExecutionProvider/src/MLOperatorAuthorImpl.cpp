@@ -546,13 +546,13 @@ namespace Windows::AI::MachineLearning::Adapter
               {
                 ORT_THROW_HR(E_FAIL);
               }
-            
+
               auto defaultAttr = m_defaultAttributes->find(name);
               if (defaultAttr == m_defaultAttributes->end())
               {
                 ORT_THROW_HR(E_FAIL);
               }
-            
+
               defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, /*out*/attributeValue);
             }
             else
@@ -562,17 +562,17 @@ namespace Windows::AI::MachineLearning::Adapter
                 case MLOperatorAttributeType::Float:
                   ML_CHECK_BOOL(elementCount == 1);
                   return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-            
+
                 case MLOperatorAttributeType::Int:
                   ML_CHECK_BOOL(elementCount == 1);
                   return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-            
+
                 case MLOperatorAttributeType::FloatArray:
                   return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-            
+
                 case MLOperatorAttributeType::IntArray:
                   return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
-            
+
                 default:
                   ML_CHECK_BOOL(false);
                   break;
