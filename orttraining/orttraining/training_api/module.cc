@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
@@ -13,15 +14,20 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
+namespace {
+
 // TODO: consolidate with frontend tooling
 const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
 
-Status Parameter::AllocateGrad(const std::string& gradient_name, const SessionState& sess_state) {
+}  // namespace
+
+Status Parameter::SetGrad(const std::string& gradient_name, const OrtValue& param_grad) {
   // assert param is allocated
   ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");
   ORT_ENFORCE(requires_grad_, "Gradient should only be allocated for trainable parameters.");
+
   gradient_name_ = gradient_name;
-  ORT_ENFORCE(utils::OrtValueLike(sess_state, data_, gradient_).IsOK(), "Failed to allocate gradient.");
+  gradient_ = param_grad;
   return Status::OK();
 }
 
@@ -44,67 +50,115 @@ Status Parameter::ResetGrad() {
   }
   return Status::OK();
 }
-Module::Module(const std::string& train_model_path_or_bytes,
-               std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-               const std::optional<std::string>& eval_model_path_or_bytes) : named_parameters_(parameters) {
-  // create value copy as same params are passed to Optimizer constructor
 
-  auto so = onnxruntime::SessionOptions();
-  std::unique_ptr<Environment> env;
-  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  train_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
+Module::Module(const std::string& train_model_path_or_bytes,
+               std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+               const onnxruntime::SessionOptions& session_options,
+               const Environment& env,
+               const std::optional<std::string>& eval_model_path_or_bytes) {
+  train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
-  if (eval_model_path_or_bytes.has_value()) {
-    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(so, *env);
-    ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
-    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
-    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
-  }
 
   utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
+
   auto& train_sess_state = train_sess_->GetSessionState();
   std::vector<std::string> param_input_names, grad_input_names, user_input_names, reset_grad_name;
   std::string param_name;
 
+  std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names_) {
-    auto it = named_parameters_.find(input_name);
-    if (it != named_parameters_.end()) {
+    auto it = named_parameters.find(input_name);
+    if (it != named_parameters.end()) {
       param_input_names.emplace_back(input_name);
-      weights_.push_back(it->second->Data());
     } else if (input_name == ACCUMULATE_GRAD_CONTROL_INPUT_NAME) {
       reset_grad_name.emplace_back(input_name);
     } else if (utils::GetParamNameFromGradient(input_name, param_name)) {
+      param_name_to_grad_input_index_map.insert({param_name, grad_input_names.size()});
       grad_input_names.emplace_back(input_name);
-      // create gradient buffer
-      auto it = named_parameters_.find(param_name);
-      ORT_ENFORCE(it != named_parameters_.end(), "Unknown param: ", param_name, " for gradient input: ", input_name);
-      // TODO: don't pre-allocate the gradient buffer.
-      ORT_THROW_IF_ERROR(it->second->AllocateGrad(input_name, train_sess_state));
-      gradients_.push_back(it->second->Gradient());
     } else {
       user_input_names.emplace_back(input_name);
     }
   }
+
+  gradients_.resize(grad_input_names.size());
+
   train_input_names_ = user_input_names;
   train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
   train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
 
-  // Eval model validation
-  if (nullptr != eval_sess_) {
+  // Loop each parameter, allocate it's memory based on user specified device.
+  for (auto& param_name : param_input_names) {
+    ORT_ENFORCE(named_parameters.find(param_name) != named_parameters.end());
+    OrtValue& source_ortvalue = named_parameters[param_name]->Data();
+    ORT_ENFORCE(source_ortvalue.IsTensor());
+    const Tensor& source_tensor = source_ortvalue.Get<Tensor>();
+
+    std::vector<SessionState::NodeInfo> node_info_vec;
+    ORT_THROW_IF_ERROR(train_sess_state.GetInputNodeInfo(param_name, node_info_vec));
+    const auto& node_info = node_info_vec.front();
+    const auto target_device = *node_info.device;
+    for (auto it = node_info_vec.begin(); it != node_info_vec.end(); ++it) {
+      ORT_ENFORCE(target_device == *(it->device), "Inconsistent device requirements found for input: ", param_name);
+    }
+
+    // Create parameter value copy with corresponding device user sets the session on.
+    // We did not re-use the data even CPU tensor is needed.
+    // TODO(pengwa): consider whether we should alloc contiguous buffer for parameters or gradients.
+    OrtValue target_ortvalue;
+    auto allocator = train_sess_state.GetAllocator(target_device);
+    ORT_ENFORCE(allocator != nullptr);
+
+    Tensor::InitOrtValue(source_tensor.DataType(),
+                         source_tensor.Shape(),
+                         allocator, target_ortvalue);
+    Tensor* target_tensor_ptr = target_ortvalue.GetMutable<Tensor>();
+    ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(source_tensor, *target_tensor_ptr));
+
+    auto param_share_ptr =
+        std::make_shared<Parameter>(param_name, target_ortvalue, named_parameters[param_name]->RequiresGrad());
+    named_parameters_.insert({param_name, param_share_ptr});
+    weights_.push_back(param_share_ptr->Data());
+
+    // Create gradient buffer when parameter requires gradient.
+    if (param_share_ptr->RequiresGrad()) {
+      // Create gradient accumulation buffer.
+      auto it = param_name_to_grad_input_index_map.find(param_name);
+      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ",
+                  param_name);
+
+      const size_t grad_input_index = it->second;
+      auto& param_grad_buffer_name = grad_input_names[grad_input_index];
+      // TODO: don't pre-allocate the gradient buffer.
+      // Gradient usually stays on the same device of its parameter.
+      OrtValue param_grad_buffer_ortvalue;
+      ORT_THROW_IF_ERROR(utils::OrtValueLike(train_sess_state, target_ortvalue, param_grad_buffer_ortvalue));
+      ORT_THROW_IF_ERROR(param_share_ptr->SetGrad(param_grad_buffer_name, param_grad_buffer_ortvalue));
+      gradients_[grad_input_index] = param_share_ptr->Gradient();
+    }
+  }
+
+  if (eval_model_path_or_bytes.has_value()) {
+    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+    ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
+    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
+    utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
+
+    // Eval model validation
     // We are making certain assumptions: Like the order in which parameters
     // occur will be same between train and eval graphs,
     // and all the weights present in both graphs match.
-    std::vector<std::string> eval_user_input_names;
+    std::vector<std::string> eval_user_input_names, param_input_names;
     for (const auto& input_name : eval_input_names_) {
       if (named_parameters_.find(input_name) != named_parameters_.end()) {
         // it is a parameter
+        param_input_names.emplace_back(input_name);
         continue;
       } else {
-        // It is a user input. We handle user inputs separately in eval 
-        // because eval graph might have different user inputs. 
-        // Eg if loss is not a part of eval graph, it won't have 
+        // It is a user input. We handle user inputs separately in eval
+        // because eval graph might have different user inputs.
+        // Eg if loss is not a part of eval graph, it won't have
         // certain inputs like targets
         eval_user_input_names.emplace_back(input_name);
       }
@@ -149,7 +203,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
 }
 
 Status Module::EvalStep(const std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) {
-  ORT_ENFORCE(nullptr != eval_sess_);
+  ORT_ENFORCE(nullptr != eval_sess_, "Evaluation session not initialized.");
   std::vector<OrtValue> feeds{inputs};
   feeds.insert(feeds.end(), weights_.begin(), weights_.end());
   auto status = eval_sess_->Run(RunOptions(), eval_input_names_, feeds, eval_output_names_, &outputs);

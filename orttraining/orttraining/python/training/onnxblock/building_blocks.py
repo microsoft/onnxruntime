@@ -3,10 +3,11 @@
 # _building_blocks.py
 
 from abc import ABC, abstractmethod
+
 import onnx
 
-import onnxruntime.training.onnxblock.model_accessor as accessor
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
+import onnxruntime.training.onnxblock.model_accessor as accessor
 
 
 class Block(ABC):
@@ -50,9 +51,7 @@ class _BinaryOp(Block):
 
         # create the graph node for sub
         node_input_names = [input_name1, input_name2]
-        node_output_name = graph_utils.generate_random_graph_name(
-            f"{self._op_name.lower()}_output"
-        )
+        node_output_name = graph_utils.generate_random_graph_name(f"{self._op_name.lower()}_output")
         node_output_names = [node_output_name]
         node = onnx.helper.make_node(
             self._op_name,
@@ -101,9 +100,7 @@ class Pow(Block):
         # create the graph initializer for the exponent
         pow_node_exponent_name = graph_utils.generate_random_graph_name("pow_exponent")
         onnx_model.graph.initializer.append(
-            onnx.helper.make_tensor(
-                pow_node_exponent_name, onnx.TensorProto.FLOAT, [1], [self._exponent]
-            )
+            onnx.helper.make_tensor(pow_node_exponent_name, onnx.TensorProto.FLOAT, [1], [self._exponent])
         )
 
         # create the graph node for pow
@@ -136,9 +133,7 @@ class _UnaryOp(Block):
 
         # create the graph node for this unary op
         node_input_names = [input_name]
-        node_output_name = graph_utils.generate_random_graph_name(
-            f"{self._op_name.lower()}_output"
-        )
+        node_output_name = graph_utils.generate_random_graph_name(f"{self._op_name.lower()}_output")
         node_output_names = [node_output_name]
         node = onnx.helper.make_node(
             self._op_name,
@@ -178,3 +173,22 @@ class Log(_UnaryOp):
 class Neg(_UnaryOp):
     def __init__(self):
         super(Neg, self).__init__("Neg")
+
+
+class Constant(Block):
+    """Creates a float initializer and adds it to the onnx model."""
+
+    # TODO: Add ability to add all sorts of initializers (not just floats).
+
+    def __init__(self, value_float):
+        super().__init__()
+
+        self._value = value_float
+
+    def build(self):
+        # create the graph initializer for the exponent
+        initializer_name = graph_utils.generate_random_graph_name("initializer")
+        accessor.global_accessor.model.graph.initializer.append(
+            onnx.helper.make_tensor(initializer_name, onnx.TensorProto.FLOAT, [1], [self._value])
+        )
+        return initializer_name

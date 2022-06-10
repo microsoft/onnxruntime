@@ -234,23 +234,25 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   # Training API Tests
   # Currently disable it by default for internal development usage.
   if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    # Only files in the direct folder will be compiled into test runner.
-    file(GLOB training_api_test_runner_src
-        "${ORTTRAINING_SOURCE_DIR}/test/training_api/*.h"
-        "${ORTTRAINING_SOURCE_DIR}/test/training_api/*.cc"
+    # Only files in the trainer and common folder will be compiled into test trainer.
+    file(GLOB_RECURSE training_api_test_trainer_src
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/common/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.cc"
+      "${ORTTRAINING_SOURCE_DIR}/test/training_api/trainer/*.h"
     )
-    onnxruntime_add_executable(onnxruntime_training_api_test_runner ${training_api_test_runner_src})
+    onnxruntime_add_executable(onnxruntime_test_trainer ${training_api_test_trainer_src})
 
     if(UNIX AND NOT APPLE)
       if (HAS_NO_MAYBE_UNINITIALIZED)
-        target_compile_options(onnxruntime_training_api_test_runner PUBLIC "-Wno-maybe-uninitialized")
+        target_compile_options(onnxruntime_test_trainer PUBLIC "-Wno-maybe-uninitialized")
       endif()
     endif()
 
-    onnxruntime_add_include_to_target(onnxruntime_training_api_test_runner onnxruntime_training
+    onnxruntime_add_include_to_target(onnxruntime_test_trainer onnxruntime_training
       onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
-    target_include_directories(onnxruntime_training_api_test_runner PUBLIC
+    target_include_directories(onnxruntime_test_trainer PUBLIC
       ${CMAKE_CURRENT_BINARY_DIR}
       ${ONNXRUNTIME_ROOT}
       ${ORTTRAINING_ROOT}
@@ -264,12 +266,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       ${CMAKE_CURRENT_BINARY_DIR}/onnx
     )
 
-    target_link_libraries(onnxruntime_training_api_test_runner PRIVATE
+    target_link_libraries(onnxruntime_test_trainer PRIVATE
       onnxruntime_training
       ${ONNXRUNTIME_LIBS}
       ${onnxruntime_EXTERNAL_LIBRARIES}
     )
-    set_target_properties(onnxruntime_training_api_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
+    set_target_properties(onnxruntime_test_trainer PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
 endif()

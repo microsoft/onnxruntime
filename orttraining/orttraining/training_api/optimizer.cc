@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -12,10 +13,17 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 
+namespace {
+
+// Currently all parameters are in a single group, so we hardcode group0 here.
+const std::string GROUP_ZERO_NAME = "group0";
+
 // TODO: don't hard code the state names, should get the state names according to the optimizer types.
 // TODO: Conolidate with frontend tooling
 const std::vector<std::string> MOMENT_SUFFIXES{".exp_avg", ".exp_avg_sq"};
 const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
+
+}  // namespace
 
 Status Optimizer::GenerateMomentumNamedStates() {
   auto& param_named_optimizer_states = optimizer_state_.param_named_optimizer_states;
@@ -26,7 +34,8 @@ Status Optimizer::GenerateMomentumNamedStates() {
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
       for (auto& state_name : MOMENT_STATE_NAMES) {
         OrtValue param_state;
-        ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(), "Error generating moment state for ", pair.first);
+        ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(),
+                    "Error generating moment state for ", pair.first);
         cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
       }
     }
@@ -67,6 +76,7 @@ Status Optimizer::ConstructInputs() {
       } else {
         ORT_ENFORCE("This is an invalid graph. Optimizer graph contains unknown user input:", name);
       }
+      ORT_ENFORCE(inputs_.back().IsAllocated() && inputs_.back().IsTensor(), "Uninitialized tensor data for ", name);
     }
   }
   // Add other optimizer reordering logic here
@@ -74,12 +84,10 @@ Status Optimizer::ConstructInputs() {
 }
 
 Optimizer::Optimizer(const std::string& optim_path_or_bytes,
-                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters) : named_parameters_(parameters) {
-  // TODO: share threadpool, env with module session
-  const SessionOptions session_options;
-  std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
-  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, *env));
+                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+                     const onnxruntime::SessionOptions& session_options,
+                     const Environment& env) : named_parameters_(named_parameters) {
+  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, env));
 
   ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
@@ -90,6 +98,8 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
   if (optimizer_type_ == OptimizerType::AdamW) {
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
+  } else {
+    ORT_THROW("Unsupported optimizer type");
   }
   ORT_THROW_IF_ERROR(ConstructInputs());
 }
@@ -115,16 +125,24 @@ Status Optimizer::Step() {
 Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_state) {
   auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
 
-  // Currently all parameters are in a single group, so we hardcode group0 here.
   // To support multiple groups, Optimizer constructor need accept informations for groupping.
-  const std::string group_zero_name = "group0";
-  grouped_optimizer_states.insert({group_zero_name, std::make_shared<GroupOptimizerState>(optimizer_state_)});
+  grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(optimizer_state_)});
 
   // Pass the optimizer session data transfer manager for data copying when saving.
   // An alternative is, we can do copy at this stage.
   ORT_RETURN_IF_NOT(optim_sess_, "optimizer session not initialized");
   const DataTransferManager& sess_data_transfer_manager = optim_sess_->GetDataTransferManager();
   optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &sess_data_transfer_manager;
+  return Status::OK();
+}
+
+Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_states) {
+  auto& group_optimizer_state =
+      optimizer_checkpoint_states.group_named_optimizer_states[GROUP_ZERO_NAME];
+  optimizer_state_.initial_lr = group_optimizer_state->initial_lr;
+  optimizer_state_.step = group_optimizer_state->step;
+
+  // TODO(pengwa): restore the momentums state from checkpoint.
   return Status::OK();
 }
 
