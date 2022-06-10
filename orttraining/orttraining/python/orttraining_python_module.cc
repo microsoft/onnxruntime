@@ -316,6 +316,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
 
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  addGlobalSchemaFunctions(m);
+  addOpSchemaSubmodule(m);
+  addOpKernelSubmodule(m);
+#endif
+
 #if !defined(__APPLE__) && \
     (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
   Ort::SessionOptions tmp_options;
