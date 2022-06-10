@@ -38,10 +38,6 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const TensorrtExecutionProviderInfo& info) {
-  return std::make_shared<onnxruntime::TensorrtProviderFactory>(info);
-}
-
 struct Tensorrt_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     TensorrtExecutionProviderInfo info;

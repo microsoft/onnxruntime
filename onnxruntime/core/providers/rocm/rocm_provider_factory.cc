@@ -47,10 +47,6 @@ std::unique_ptr<IExecutionProvider> ROCMProviderFactory::CreateProvider() {
   return std::make_unique<ROCMExecutionProvider>(info_);
 }
 
-std::shared_ptr<IExecutionProviderFactory> RocmProviderFactoryCreator::Create(const ROCMExecutionProviderInfo& info) {
-  return std::make_shared<onnxruntime::ROCMProviderFactory>(info);
-}
-
 struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
