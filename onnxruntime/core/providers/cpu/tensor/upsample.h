@@ -509,6 +509,7 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const int32_t x = static_cast<int32_t>(i % output_width);
             const int32_t y = static_cast<int32_t>(i / output_width);
+            int32_t output_offset = (output_width * y + x) * num_channels;
 
             // when use_extrapolation is set and original index of x or y is out of the dim range
             // then use extrapolation_value as the output value.
@@ -516,7 +517,7 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
               if ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
                   (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1))) {
                 for (int32_t c = 0; c < num_channels; ++c) {
-                  Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(extrapolation_value);
+                  Ydata[output_offset + c] = static_cast<T>(extrapolation_value);
                 }
               } else {
                 int32_t X11_offset = (p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels;
@@ -533,14 +534,13 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
                   T X12 = Xdata[X12_offset + c];
                   T X22 = Xdata[X22_offset + c];
 
-                  Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(X11_coef * X11 +
-                                                                                    X21_coef * X21 +
-                                                                                    X12_coef * X12 +
-                                                                                    X22_coef * X22);
+                  Ydata[output_offset + c] = static_cast<T>(X11_coef * X11 +
+                                                            X21_coef * X21 +
+                                                            X12_coef * X12 +
+                                                            X22_coef * X22);
                 }
               }
             } else {
-              int32_t output_offset = (output_width * y + x) * num_channels;
               int32_t X11_offset = (p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels;
               int32_t X21_offset = (p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels;
               int32_t X12_offset = (p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels;
@@ -606,6 +606,7 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const int32_t x = static_cast<int32_t>(i % output_width);
             const int32_t y = static_cast<int32_t>(i / output_width);
+            int32_t output_offset = (output_width * y + x) * num_channels;
 
             // when use_extrapolation is set and original index of x or y is out of the dim range
             // then use extrapolation_value as the output value.
@@ -613,7 +614,7 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
               if ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
                   (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1))) {
                 for (int32_t c = 0; c < num_channels; ++c) {
-                  Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(extrapolation_value);
+                  Ydata[output_offset + c] = static_cast<T>(extrapolation_value);
                 }
               } else {
                 int32_t X11_offset = (p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels;
@@ -630,15 +631,14 @@ void NhwcUpsampleBilinearInteger(const int32_t batch_size,
                   T X12 = Xdata[X12_offset + c];
                   T X22 = Xdata[X22_offset + c];
 
-                  Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>((X11_coef_scale_20 * X11 +
-                                                                                     X21_coef_scale_20 * X21 +
-                                                                                     X12_coef_scale_20 * X12 +
-                                                                                     X22_coef_scale_20 * X22) /
-                                                                                    (1 << 20));
+                  Ydata[output_offset + c] = static_cast<T>((X11_coef_scale_20 * X11 +
+                                                             X21_coef_scale_20 * X21 +
+                                                             X12_coef_scale_20 * X12 +
+                                                             X22_coef_scale_20 * X22) /
+                                                            (1 << 20));
                 }
               }
             } else {
-              int32_t output_offset = (output_width * y + x) * num_channels;
               int32_t X11_offset = (p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels;
               int32_t X21_offset = (p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels;
               int32_t X12_offset = (p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels;
