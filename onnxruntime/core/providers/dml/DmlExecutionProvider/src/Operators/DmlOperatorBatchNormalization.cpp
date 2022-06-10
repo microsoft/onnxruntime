@@ -6,7 +6,7 @@
 namespace Dml
 {
 
-class DmlOperatorBatchNormalization : public DmlOperator
+class DmlOperatorBatchNormalization : public DmlOperator, BatchNormalizationHelper
 {
     // This order matches the ONNX schema.
     enum OnnxInputIndex
@@ -21,10 +21,13 @@ class DmlOperatorBatchNormalization : public DmlOperator
 
 public:
     DmlOperatorBatchNormalization(const MLOperatorKernelCreationContext& kernelCreationContext)
-    :   DmlOperator(kernelCreationContext)
+    :   DmlOperator(kernelCreationContext),
+        BatchNormalizationHelper(kernelCreationContext, kernelCreationContext.GetTensorShapeDescription())
     {
-        std::vector<std::optional<uint32_t>> kernelInputIndices = {X, Mean, Variance, Scale, Bias};
-        DmlOperator::Initialize(kernelCreationContext, kernelInputIndices);
+        // DML's BatchNormalization and ONNX order the input tensors differently (with DML as X, Mean, Variance, Scale, Bias),
+        // and normally we'd need to specify kernelInputIndices to Initialize, but we'll utilize DMLX's mapping instead.
+        // Passing both reordered kernelInputIndices to Initialize would otherwise confuse DMLX.
+        DmlOperator::Initialize(kernelCreationContext);
 
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs.size() == 5);
         ML_CHECK_VALID_ARGUMENT(m_outputTensorDescs.size() >= 1);
@@ -47,19 +50,52 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_BATCH_NORMALIZATION_OPERATOR_DESC operatorDesc = {};
-        operatorDesc.InputTensor = &inputDescs[X];
-        operatorDesc.MeanTensor = &inputDescs[Mean];
-        operatorDesc.VarianceTensor = &inputDescs[Variance];
-        operatorDesc.ScaleTensor = &inputDescs[Scale];
-        operatorDesc.BiasTensor = &inputDescs[Bias];
-        operatorDesc.OutputTensor = &outputDescs[0];
-        operatorDesc.Spatial = static_cast<BOOL>(spatial);
-        operatorDesc.Epsilon = epsilon;
-        operatorDesc.FusedActivation = fusedActivation ? &fusedActivationDmlDesc : nullptr;
+        dml::Graph graph(m_dmlDevice.Get());
+        dml::TensorDesc inputTensorDesc = inputDescs[OnnxInputIndex::X];
+        dml::TensorDesc scaleTensorDesc = inputDescs[OnnxInputIndex::Scale];
+        dml::TensorDesc biasTensorDesc = inputDescs[OnnxInputIndex::Bias];
+        dml::Expression input = dml::InputTensor(graph, OnnxInputIndex::X, inputTensorDesc);
+        dml::Expression scale = dml::InputTensor(graph, OnnxInputIndex::Scale, scaleTensorDesc);
+        dml::Expression bias = dml::InputTensor(graph, OnnxInputIndex::Bias, biasTensorDesc);
+        dml::Expression mean = dml::InputTensor(graph, OnnxInputIndex::Mean, inputDescs[OnnxInputIndex::Mean]);
+        dml::Expression variance = dml::InputTensor(graph, OnnxInputIndex::Variance, inputDescs[OnnxInputIndex::Variance]);
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_BATCH_NORMALIZATION, &operatorDesc };
-        SetDmlOperatorDesc(opDesc, kernelCreationContext);
+        // If scale and bias have different data types than input, then coerce them.
+        if (scaleTensorDesc.dataType != inputTensorDesc.dataType)
+        {
+            scale = dml::Cast(scale, inputTensorDesc.dataType);
+        }
+        if (biasTensorDesc.dataType != inputTensorDesc.dataType)
+        {
+            bias = dml::Cast(bias, inputTensorDesc.dataType);
+        }
+
+        dml::Expression batchNormalization = dml::BatchNormalization(
+            input,
+            mean,
+            variance,
+            scale,
+            bias,
+            static_cast<BOOL>(spatial),
+            epsilon,
+            fusedActivation ? &fusedActivationDmlDesc : nullptr
+        );
+
+        DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
+        m_compiledOperator.Attach(graph.Compile(executionFlags, { batchNormalization }).Detach());
+    }
+
+    void Compute(const MLOperatorKernelContext& kernelContext) override
+    {
+        std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
+        std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
+
+        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+            m_compiledOperator.Get(),
+            m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+            gsl::make_span(inputTensors),
+            gsl::make_span(outputTensors)
+        ));
     }
 };
 
@@ -73,6 +109,7 @@ void CALLBACK QueryBatchNormalization(IMLOperatorSupportQueryContextPrivate* con
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(BatchNormalization, DmlOperatorBatchNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(BatchNormalization15, DmlOperatorBatchNormalization);
 DML_OP_DEFINE_CREATION_FUNCTION(FusedBatchNormalization, DmlOperatorBatchNormalization);
 
 } // namespace Dml

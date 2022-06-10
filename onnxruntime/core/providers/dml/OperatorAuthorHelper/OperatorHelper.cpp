@@ -2253,4 +2253,27 @@ namespace OperatorHelper
         return { EdgeShapes(m_outputDimensions) };
     }
 
+    void BatchNormalizationHelper::Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+        )
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetInputCount() == 5);
+        ML_CHECK_VALID_ARGUMENT(kernelInformation.GetOutputCount() >= 1 && kernelInformation.GetOutputCount() <= 3);
+    }
+
+    std::vector<EdgeShapes> BatchNormalizationHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInformation) const
+    {
+        std::vector<EdgeShapes> outputDimensionsList;
+
+        outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(0))); // output.shape = input.shape
+        int32_t trainingMode = shapeInformation.GetOptionalAttribute<int32_t>(AttrName::TrainingMode, 0);
+        if (trainingMode && shapeInformation.GetOutputCount() >= 3)
+        {
+            outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(3))); // running_mean.shape = input_mean.shape
+            outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(4))); // running_variance.shape = input_variance.shape
+        }
+        return outputDimensionsList;
+    }
+
 } // namespace OperatorHelper

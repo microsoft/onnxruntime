@@ -140,8 +140,9 @@ namespace Dml::GraphDescBuilder
                 node,
                 constantCpuNodeInputGetter,
                 executionHandle,
-                &graphNodeInfo
+                /*out*/ &graphNodeInfo
             );
+            ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeInfo.desc);
 
             uint32_t nodeIndex = gsl::narrow_cast<uint32_t>(graphNodes.size());
             AbstractOperatorDesc opDesc = *graphNodeInfo.desc; // Make a copy
