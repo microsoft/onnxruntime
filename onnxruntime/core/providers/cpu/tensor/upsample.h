@@ -69,6 +69,7 @@ struct BilinearParams {
   float* dy2;
 };
 
+// Same as above, but doesn't use any floating-point for the coefficient (i.e., d*_scale_10)
 struct BilinearParamsInteger {
   std::vector<float> x_original;
   std::vector<float> y_original;

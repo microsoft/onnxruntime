@@ -1777,6 +1777,8 @@ static bool isOpSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& node)
       return true;
     }
   }
+#else
+  (void)ctx;
 #endif
   return false;
 }

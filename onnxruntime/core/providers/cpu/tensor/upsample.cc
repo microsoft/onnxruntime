@@ -509,14 +509,7 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   return p;
 }
 
-// The following method supports a 4-D input in 'Linear mode'
-// that amounts to 'Bilinear' Upsampling/Resizing in the sense that it assumes
-// 1. the scale values for the outermost 2 dimensions are 1 or
-// 2. the scale values for the outermost and innermost dimensions are 1
-// This is the common use-case where the 4-D input (batched multi-channel images)
-// is usually of shapes:
-// - [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
-// - [N, H, W, C] and the scales are [1.0, height_scale, width_scale, 1.0]
+// Same as above, but doesn't use any floating-point for the coefficient (i.e., d*_scale_10) computation
 BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
                                                    const int32_t input_width,
                                                    const int32_t output_height,
@@ -1180,11 +1173,22 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           if (use_extrapolation_) {
-            NhwcUpsampleBilinear<T, true>(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
-                                          height_scale, width_scale, roi,
-                                          extrapolation_value_, X->Data<T>(),
-                                          Y->MutableData<T>(), alloc, get_original_coordinate_,
-                                          output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+            if (!is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+              NhwcUpsampleBilinearInteger<T, true>(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
+                                                   height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(),
+                                                   Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+            } else {
+#endif
+              NhwcUpsampleBilinear<T, true>(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
+                                            height_scale, width_scale, roi,
+                                            extrapolation_value_, X->Data<T>(),
+                                            Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                            output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+            }
+#endif
           } else {
 #if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             if (!is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
@@ -1341,62 +1345,4 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
 
   return BaseCompute(context, *roi_ptr, scales_array, output_dims);
 }
-
-#if 0
-template <>
-void NhwcUpsampleBilinear<int8_t, false>(const int32_t batch_size,
-                                         const int32_t num_channels,
-                                         const int32_t input_height,
-                                         const int32_t input_width,
-                                         const int32_t output_height,
-                                         const int32_t output_width,
-                                         const float height_scale,
-                                         const float width_scale,
-                                         const std::vector<float>& roi,
-                                         const float extrapolation_value,
-                                         const int8_t* const XdataBase,
-                                         int8_t* const YdataBase,
-                                         AllocatorPtr& alloc,
-                                         const GetOriginalCoordinateFunc& get_original_coordinate,
-                                         concurrency::ThreadPool* tp) {
-  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width,
-                                           height_scale, width_scale, roi,
-                                           alloc, get_original_coordinate, false);
-  for (int64_t n = 0; n < batch_size; ++n) {
-    const int8_t* Xdata = XdataBase + n * (input_height * input_width) * num_channels;
-    int8_t* Ydata = YdataBase + n * (output_height * output_width) * num_channels;
-    concurrency::ThreadPool::TryParallelFor(
-        tp, output_height * output_width,
-        static_cast<double>(num_channels * 2),
-        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
-          for (std::ptrdiff_t i = first; i < last; ++i) {
-            const int32_t x = i % output_width;
-            const int32_t y = i / output_width;
-
-            int32_t output_offset = (output_width * y + x) * num_channels;
-            int32_t X11_offset = (p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels;
-            int32_t X21_offset = (p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels;
-            int32_t X12_offset = (p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels;
-            int32_t X22_offset = (p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels;
-            float X11_coef = p.dx2[x] * p.dy2[y];
-            float X21_coef = p.dx1[x] * p.dy2[y];
-            float X12_coef = p.dx2[x] * p.dy1[y];
-            float X22_coef = p.dx1[x] * p.dy1[y];
-            for (int32_t c = 0; c < num_channels; ++c) {
-              int8_t X11 = Xdata[X11_offset + c];
-              int8_t X21 = Xdata[X21_offset + c];
-              int8_t X12 = Xdata[X12_offset + c];
-              int8_t X22 = Xdata[X22_offset + c];
-
-              Ydata[output_offset + c] = static_cast<int8_t>(X11_coef * X11 +
-                                                             X21_coef * X21 +
-                                                             X12_coef * X12 +
-                                                             X22_coef * X22);
-            }
-          }
-        });
-  }
-}
-#endif
-
 }  // namespace onnxruntime
