@@ -162,11 +162,12 @@ class OpNodeInfoWrapper : public Base1_t, public Base2_t, public Closable
         const EdgeShapes* inputShapesOverride,
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
-        MLOperatorTensorGetter& constantInputGetter) :
-            m_impl(impl), 
-            m_inputShapesOverride(inputShapesOverride),
-            m_constantInputGetter(constantInputGetter),
-            m_defaultAttributes(defaultAttributes)
+        MLOperatorTensorGetter& constantInputGetter
+        )
+    :   m_impl(impl),
+        m_inputShapesOverride(inputShapesOverride),
+        m_constantInputGetter(constantInputGetter),
+        m_defaultAttributes(defaultAttributes)
     {
         m_requiredConstantCpuInputs.assign(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end());
     }
@@ -334,17 +335,17 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
 {
  public:
     OpKernelInfoWrapper(
-            const onnxruntime::OpKernelInfo* kerneInfo,
-            IUnknown* abiExecutionObject,
-            const EdgeShapes* inputShapeOverrides,
-            const EdgeShapes* inferredOutputShapes,
-            bool allowInputShapeQuery,
-            bool allowOutputShapeQuery,
-            bool isInternalOperator,
-            const AttributeMap* defaultAttributes,
-            gsl::span<const uint32_t> requiredConstantCpuInputs,
-            MLOperatorTensorGetter& constantInputGetter 
-            );
+        const onnxruntime::OpKernelInfo* kerneInfo,
+        IUnknown* abiExecutionObject,
+        const EdgeShapes* inputShapeOverrides,
+        const EdgeShapes* inferredOutputShapes,
+        bool allowInputShapeQuery,
+        bool allowOutputShapeQuery,
+        bool isInternalOperator,
+        const AttributeMap* defaultAttributes,
+        gsl::span<const uint32_t> requiredConstantCpuInputs,
+        MLOperatorTensorGetter& constantInputGetter 
+    );
 
     // HasTensorShapeDescription returns false if and only if the kernel is registered using
     // MLOperatorKernelOptions::AllowDynamicInputTensorSizes.    If this flag is specified and upstream
@@ -386,7 +387,7 @@ private:
     
     // The execution object returned through the ABI, which may vary according to kernel
     // registration options.
-    ComPtr<IUnknown> m_abiExecutionObject;    
+    ComPtr<IUnknown> m_abiExecutionObject;
 };
 
 // OpKernelInfo used for DML graph fusion.  This uses the ONNX graph structures instead of ORT OpKernelInfo.
@@ -399,15 +400,15 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
 {
  public:
     DmlGraphOpKernelInfoWrapper(
-            const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> * protoHelper,
-            const void* executionHandle,
-            bool isInternalOperator,
-            const EdgeShapes* inferredOutputShapes,
-            const AttributeMap* defaultAttributes,
-            DmlGraphNodeCreateInfo* graphNodeCreateInfo,
-            gsl::span<const uint32_t> requiredConstantCpuInputs,
-            MLOperatorTensorGetter& constantInputGetter
-            );
+        const onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> * protoHelper,
+        const void* executionHandle,
+        bool isInternalOperator,
+        const EdgeShapes* inferredOutputShapes,
+        const AttributeMap* defaultAttributes,
+        DmlGraphNodeCreateInfo* graphNodeCreateInfo,
+        gsl::span<const uint32_t> requiredConstantCpuInputs,
+        MLOperatorTensorGetter& constantInputGetter
+    );
 
     // HasTensorShapeDescription returns false if and only if the kernel is registered using
     // MLOperatorKernelOptions::AllowDynamicInputTensorSizes.  If this flag is specified and upstream
@@ -488,20 +489,21 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     // Compute being called on the kernel.  This list is used to maintain their lifetime.
     mutable std::vector<ComPtr<IUnknown>> m_temporaryAllocations;
     mutable std::vector<ComPtr<IUnknown>> m_temporaryAbiAllocations;
-};    
+};
 
 class AbiOpKernel : public onnxruntime::OpKernel
 {
  public:
     AbiOpKernel(
-            IMLOperatorKernelFactory* operatorFactory,
-            const onnxruntime::OpKernelInfo& kerneInfo,
-            bool requiresInputShapesAtCreation,
-            bool requiresOutputShapesAtCreation,
-            bool isInternalOperator,
-            gsl::span<const uint32_t> requiredConstantCpuInputs,
-            IMLOperatorShapeInferrer* shapeInferrer,
-            const AttributeMap* defaultAttributes);
+        IMLOperatorKernelFactory* operatorFactory,
+        const onnxruntime::OpKernelInfo& kerneInfo,
+        bool requiresInputShapesAtCreation,
+        bool requiresOutputShapesAtCreation,
+        bool isInternalOperator,
+        gsl::span<const uint32_t> requiredConstantCpuInputs,
+        IMLOperatorShapeInferrer* shapeInferrer,
+        const AttributeMap* defaultAttributes
+    );
 
     onnxruntime::Status Compute(onnxruntime::OpKernelContext* context) const override;
 
@@ -595,13 +597,14 @@ class MLKernelInferenceContext final : public OpNodeInfoWrapper<
  public:
     MLKernelInferenceContext() = delete;
     MLKernelInferenceContext(
-            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
-            const EdgeShapes* inputShapesOverride,
-            EdgeShapes& inferredOutputShapes,
-            const AttributeMap* defaultAttributes,
-            gsl::span<const uint32_t> requiredConstantCpuInputs,
-            MLOperatorTensorGetter& constantInputGetter) : 
-        OpNodeInfoWrapper(info, inputShapesOverride, defaultAttributes, requiredConstantCpuInputs, constantInputGetter), 
+        onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+        const EdgeShapes* inputShapesOverride,
+        EdgeShapes& inferredOutputShapes,
+        const AttributeMap* defaultAttributes,
+        gsl::span<const uint32_t> requiredConstantCpuInputs,
+        MLOperatorTensorGetter& constantInputGetter
+        )
+    :  OpNodeInfoWrapper(info, inputShapesOverride, defaultAttributes, requiredConstantCpuInputs, constantInputGetter), 
         m_inferredOutputShapes(inferredOutputShapes)
     {
     }
@@ -630,13 +633,15 @@ class MLSupportQueryContext final : public OpNodeInfoWrapper<
     MLSupportQueryContext() = delete;
 
     MLSupportQueryContext(
-            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
-            const AttributeMap* defaultAttributes,
-            MLOperatorTensorGetter& mLOperatorTensorGetter);
+        onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+        const AttributeMap* defaultAttributes,
+        MLOperatorTensorGetter& mLOperatorTensorGetter
+    );
 
     static ComPtr<MLSupportQueryContext> Create(
-            onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
-            const AttributeMap* defaultAttributes);
+        onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext>* info,
+        const AttributeMap* defaultAttributes
+    );
 
     // TODO - ...
 };

@@ -1302,6 +1302,23 @@ protected:
     std::vector<uint32_t> m_outputDimensions;
 };
 
+class BatchNormalizationHelper
+{
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
+
+public:
+    template <typename Info_t, typename Shape_t>
+    BatchNormalizationHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shapeInfo));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1318,6 +1335,7 @@ using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
 
 using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
@@ -1504,7 +1522,7 @@ using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_FusedConv = ConvHelper;
 using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_FusedInstanceNormalization = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_FusedBatchNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_FusedBatchNormalization = BatchNormalizationHelper;
 using ShapeInferenceHelper_FusedMeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_FusedGemm = GemmHelper;
 using ShapeInferenceHelper_FusedMatMul = MatMulHelper;
