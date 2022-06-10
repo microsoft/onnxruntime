@@ -25,6 +25,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_SNPE(const ProviderOptions& provider_options);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Xnnpack();
 
 // EP for internal testing
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(const std::unordered_set<std::string>& supported_ops);
@@ -49,6 +51,8 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 
 // EP for internal testing
 std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(

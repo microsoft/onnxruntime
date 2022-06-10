@@ -6,6 +6,7 @@
 - [Build](#build-onnx-runtime-with-the-tvm-execution-provider)
 - [Configuration options](#configuration-options)
 - [Performance Tuning](#performance-tuning)
+    - [Using precompiled model](#using-precompiled-model)
 - [Samples](#samples)
 - [Known issues](#known-issues)
 
@@ -83,10 +84,14 @@ export PYTHONPATH=<path_to_onnx_runtime>/build/<OS_NAME>/Release/_deps/tvm-src/p
 ## Configuration options
 TVM Executor Provider can be configured with the following provider options:
 ```python
-po = [dict(target=client_target,
+po = [dict(executor=tvm_executor_type,
+           so_folder=folder_with_pretuned_files,
+           target=client_target,
            target_host=client_target_host,
            opt_level=client_opt_level,
            freeze_weights=freeze,
+           to_nhwc=layout_transform,
+           tuning_type=tvm_optimizer_type,
            tuning_file_path=client_tuning_logfile,
            input_names = input_names_str,
            input_shapes = input_shapes_str)]
@@ -94,9 +99,12 @@ tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionP
 ```
 <br>
 
+- `executor` is executor type used by TVM. There is choice between two types: GraphExecutor and VirtualMachine which are corresponded to "graph" and "vm" tags. VirtualMachine is used by default.
+- `so_folder` is path to folder with set of files (.ro-, .so-files and weights) obtained after model tuning. It uses these files for executor compilation instead of onnx-model. But the latter is still needed for ONNX Runtime.
 - `target` and `target_host` are strings like in TVM (e.g. "llvm --mcpu=avx2"). When using accelerators, target may be something like `cuda` while target_host may be `llvm -mtriple=x86_64-linux-gnu`
 - `opt_level` is TVM optimization level. It is 3 by default
 - `freeze_weights` means that all model weights are kept on compilation stage otherwise they are downloaded each inference. True is recommended value for the best performance. It is true by default.
+- `to_nhwc` switches on special model transformations, particularly data layout, which Octomizer is used. It allows to work correctly with tuning logs obtained from Octomizer. It is false by default.
 - `tuning_type` defines the type of TVM tuning logs being used, and can be set to either `AutoTVM` (1st gen auto tuning logs) or `Ansor` (2nd gen auto tuning logs). By default this option is set to `AutoTVM`.
 - `tuning_file_path` is path to AutoTVM or Ansor tuning file which gives specifications for given model and target for the best performance. (See below for more details).
 
@@ -125,12 +133,28 @@ so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 
+### Using precompiled model
+It is also possible to use a precompiled model.
+
+The compiled model can be obtained using the [OctoML platform](https://onnx.octoml.ai) 
+or compiled directly (see **Support precompiled model** section in
+[Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+for more information on model compilation).
+
+In order to use the precompiled model, only need to pass two options:
+* **executor** - `vm` (`VirtualMachine`) must be used as a value 
+(this functionality is not supported for `GraphExecutor`);
+* **so_folder** - as a value, you must pass the path to the directory where 
+the files of the precompiled model are located.
+
+You can read more about these options in section [Configuration options](#configuration-options) above.
+
+
 ## Samples
 - [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
 - At this moment, the TVM EP has only been verified on UNIX/Linux systems.
-- CUDA/GPU support is still in pre-alpha mode and results are expected to change. It is recommended that only CPU targets are used.
 - Some compatibility issues have been found between ONNX and Google protobuf. `AttributeError: module 'google.protobuf.internal.containers' has no attribute 'MutableMapping'`. This usually occurss during `import onnx` in any python scripts for protobuf version >= 3.19.0 and ONNX version <= 1.8.1. To resolve the issue Google protobuf and ONNX can be reinstalled separately or together using:
 ```
 pip3 uninstall onnx -y

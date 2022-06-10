@@ -32,10 +32,12 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
+#ifdef ENABLE_ATEN
+#include "contrib_ops/cpu/aten_ops/aten_op.h"
+#endif
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/record.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
@@ -173,10 +175,13 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override { p->contrib::transformers::BeamSearch::Init(info); }
   virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) { return p->contrib::transformers::BeamSearch::Compute(ctx); }
   virtual Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+
+#ifdef ENABLE_ATEN
+  Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }
+#endif
 #endif
 
 #ifdef ENABLE_TRAINING
-  Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }
   void contrib__record_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::record_event_in_tensor(event_id_tensor); }
   void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::wait_event_in_tensor(event_id_tensor); }
   Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) override { return p->Group::Compute(context); }
