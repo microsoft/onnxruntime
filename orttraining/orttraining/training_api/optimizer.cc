@@ -76,15 +76,21 @@ Status Optimizer::ConstructInputs() {
       } else {
         ORT_ENFORCE("This is an invalid graph. Optimizer graph contains unknown user input:", name);
       }
+      ORT_ENFORCE(inputs_.back().IsAllocated() && inputs_.back().IsTensor(), "Uninitialized tensor data for ", name);
     }
   }
   // Add other optimizer reordering logic here
   return Status::OK();
 }
 
-Optimizer::Optimizer(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
-                     InferenceSession* optim_session) : named_parameters_(named_parameters) {
-  optim_sess_ = optim_session;
+Optimizer::Optimizer(const std::string& optim_path_or_bytes,
+                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+                     const onnxruntime::SessionOptions& session_options,
+                     const Environment& env) : named_parameters_(named_parameters) {
+  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, env));
+
+  ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
+  ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
   ORT_ENFORCE(input_names_[0] == "learning_rate");  // TODO: make this better
@@ -92,6 +98,8 @@ Optimizer::Optimizer(const std::unordered_map<std::string, std::shared_ptr<Param
 
   if (optimizer_type_ == OptimizerType::AdamW) {
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
+  } else {
+    ORT_THROW("Unsupported optimizer type");
   }
   ORT_THROW_IF_ERROR(ConstructInputs());
 }

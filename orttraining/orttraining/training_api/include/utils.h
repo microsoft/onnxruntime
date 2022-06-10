@@ -13,7 +13,7 @@ namespace api {
 namespace utils {
 
 // Get names of graph inputs and outputs
-void GetGraphInputOutputNames(onnxruntime::InferenceSession* session_object,
+void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
                               std::vector<std::string>& input_names,
                               std::vector<std::string>& output_names);
 // Fetch the parameter name from suffix: name = param_name+suffix,

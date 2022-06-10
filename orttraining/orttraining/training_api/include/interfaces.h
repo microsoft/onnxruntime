@@ -66,27 +66,17 @@ void FromOrtValue(std::vector<OrtValue>& ortvalue_list, std::vector<Ort::Value>&
 
 struct OrtModule {
  public:
-  OrtModule(const OrtApi& ort_api, OrtEnv* env, OrtSessionOptions* session_options,
-            const std::string& train_model_path_or_bytes,
-            std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>>& parameters,
-            const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt) : ort_api_(ort_api) {
-    ORT_ENFORCE(ort_api.CreateSession(env, train_model_path_or_bytes.c_str(), session_options, &train_ort_session_) == nullptr);
-
-    if (eval_model_path_or_bytes.has_value()) {
-      ORT_ENFORCE(ort_api.CreateSession(env, train_model_path_or_bytes.c_str(), session_options, &eval_ort_session_) == nullptr);
-    }
-
+  OrtModule(
+      OrtEnv* env, OrtSessionOptions* session_options,
+      const std::string& train_model_path_or_bytes,
+      std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>>& parameters,
+      const std::optional<std::string>& eval_model_path_or_bytes = std::nullopt) {
     module_ = std::make_unique<onnxruntime::training::api::Module>(
+        train_model_path_or_bytes,
         parameters,
-        reinterpret_cast<::onnxruntime::InferenceSession*>(train_ort_session_),
-        reinterpret_cast<::onnxruntime::InferenceSession*>(eval_ort_session_));
-  }
-
-  ~OrtModule() {
-    ort_api_.ReleaseSession(train_ort_session_);
-    if (eval_ort_session_) {
-      ort_api_.ReleaseSession(eval_ort_session_);
-    }
+        *reinterpret_cast<::onnxruntime::SessionOptions*>(session_options),
+        *reinterpret_cast<::onnxruntime::Environment*>(env),
+        eval_model_path_or_bytes);
   }
 
   std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>> NamedParameters() const {
@@ -133,29 +123,21 @@ struct OrtModule {
   }
 
  private:
-  OrtSession* train_ort_session_{nullptr};
-  OrtSession* eval_ort_session_{nullptr};
   std::unique_ptr<onnxruntime::training::api::Module> module_;
-  const OrtApi& ort_api_;
 };
 
 struct OrtOptimizer {
   friend struct OrtLinearLRScheduler;
-  // Initialize an optimizer module from an ORT inference session with loaded
-  // training ONNX model For each parameter, initialize the OptimizerState based
-  // on the graph input's ValueInfoProto if the parameter doesn't have it already.
-  OrtOptimizer(const OrtApi& ort_api, OrtEnv* env, OrtSessionOptions* session_options,
-               const std::string& optim_path_or_bytes,
-               const std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>>& parameters)
-      : ort_api_(ort_api) {
-    ORT_ENFORCE(ort_api.CreateSession(env, optim_path_or_bytes.c_str(), session_options, &optim_ort_session_) == nullptr);
-    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
-        parameters,
-        reinterpret_cast<::onnxruntime::InferenceSession*>(optim_ort_session_));
-  }
 
-  ~OrtOptimizer() {
-    ort_api_.ReleaseSession(optim_ort_session_);
+  OrtOptimizer(
+      OrtEnv* env, OrtSessionOptions* session_options,
+      const std::string& optim_path_or_bytes,
+      const std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>>& parameters) {
+    optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
+        optim_path_or_bytes,
+        parameters,
+        *reinterpret_cast<::onnxruntime::SessionOptions*>(session_options),
+        *reinterpret_cast<::onnxruntime::Environment*>(env));
   }
 
   bool Step() {
@@ -167,9 +149,7 @@ struct OrtOptimizer {
   }
 
  private:
-  OrtSession* optim_ort_session_{nullptr};
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
-  const OrtApi& ort_api_;
 };
 
 struct OrtLinearLRScheduler {

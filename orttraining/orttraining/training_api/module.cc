@@ -25,6 +25,7 @@ Status Parameter::AllocateGrad(const std::string& gradient_name, const OrtValue&
   // assert param is allocated
   ORT_ENFORCE(data_.IsAllocated(), "Parameter data should be allocated before allocating gradient.");
   ORT_ENFORCE(requires_grad_, "Gradient should only be allocated for trainable parameters.");
+
   gradient_name_ = gradient_name;
   gradient_ = param_grad;
   return Status::OK();
@@ -50,9 +51,15 @@ Status Parameter::ResetGrad() {
   return Status::OK();
 }
 
-Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
-               InferenceSession* train_session) {
-  train_sess_ = train_session;
+Module::Module(const std::string& train_model_path_or_bytes,
+               std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+               const onnxruntime::SessionOptions& session_options,
+               const Environment& env,
+               const std::optional<std::string>& eval_model_path_or_bytes) {
+  train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+  ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
+  ORT_THROW_IF_ERROR(train_sess_->Initialize());
+
   utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
 
   auto& train_sess_state = train_sess_->GetSessionState();
@@ -109,7 +116,8 @@ Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& name
     Tensor* target_tensor_ptr = target_ortvalue.GetMutable<Tensor>();
     ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(source_tensor, *target_tensor_ptr));
 
-    auto param_share_ptr = std::make_shared<Parameter>(param_name, target_ortvalue, named_parameters[param_name]->RequiresGrad());
+    auto param_share_ptr =
+        std::make_shared<Parameter>(param_name, target_ortvalue, named_parameters[param_name]->RequiresGrad());
     named_parameters_.insert({param_name, param_share_ptr});
     weights_.push_back(param_share_ptr->Data());
 
@@ -117,7 +125,8 @@ Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& name
     if (param_share_ptr->RequiresGrad()) {
       // Create gradient accumulation buffer.
       auto it = param_name_to_grad_input_index_map.find(param_name);
-      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ", param_name);
+      ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ",
+                  param_name);
 
       auto& param_grad_buffer_name = grad_input_names[param_name_to_grad_input_index_map[param_name]];
       // TODO: don't pre-allocate the gradient buffer.
@@ -128,13 +137,11 @@ Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& name
       gradients_[param_name_to_grad_input_index_map[param_name]] = param_share_ptr->Gradient();
     }
   }
-}
 
-Module::Module(std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
-               InferenceSession* train_session,
-               InferenceSession* eval_session) : Module(named_parameters, train_session) {
-  if (eval_session) {
-    eval_sess_ = eval_session;
+  if (eval_model_path_or_bytes.has_value()) {
+    eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
+    ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
+    ORT_THROW_IF_ERROR(eval_sess_->Initialize());
     utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
 
     // Eval model validation

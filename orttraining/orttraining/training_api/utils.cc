@@ -17,7 +17,7 @@ namespace utils {
 // TODO: consolidate the gradient names with frontend tooling
 const std::vector<std::string> GRAD_SUFFIX{"_grad.accumulation.buffer", "_grad", "_grad.accumulation.out"};
 
-void GetGraphInputOutputNames(onnxruntime::InferenceSession* session_object,
+void GetGraphInputOutputNames(const std::unique_ptr<onnxruntime::InferenceSession>& session_object,
                               std::vector<std::string>& input_names,
                               std::vector<std::string>& output_names) {
   auto get_names = [](const std::vector<const NodeArg*>* node_args, std::vector<std::string>& names) {
