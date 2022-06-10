@@ -28,7 +28,7 @@ struct ParameterOptimizerState {
 struct GroupOptimizerState {
   int64_t step = 0;
   float initial_lr = 0.001;         // Default value used in torch AdamW
-  float learning_rate{initial_lr};  // Adaptive learning rate as training
+  float learning_rate{initial_lr};  // Adaptive learning rate as training proceeds.
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };
 
@@ -57,7 +57,9 @@ struct Optimizer {
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input's ValueInfoProto if the parameter doesn't have it already.
   Optimizer(const std::string& optim_path_or_bytes,
-            const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters);
+            const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+            const onnxruntime::SessionOptions& session_options,
+            const Environment& env);
 
   Status Step();
 
