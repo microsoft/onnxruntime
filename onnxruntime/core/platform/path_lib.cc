@@ -14,7 +14,7 @@
 #ifdef _WIN32
 
 #if _GAMING_XBOX
-// Hacky, but the PathCch* APIs work on Xbox. Presumably PathCch.h needs to be updated to include the 
+// Hacky, but the PathCch* APIs work on Xbox. Presumably PathCch.h needs to be updated to include the
 // GAMES partition. It would be worthwhile to investigate this a bit more (or just use std::filesystem).
 #pragma push_macro("WINAPI_FAMILY")
 #undef WINAPI_FAMILY
@@ -95,12 +95,16 @@ Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
 }  // namespace
 
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std::basic_string<ORTCHAR_T>& ret) {
-  std::wstring input = s;
-  if (input.empty()) {
+  if (s.empty()) {
     ret = ORT_TSTR(".");
     return Status::OK();
   }
+
   ret = s;
+
+  // Replace slash to backslash since we use PathCchRemoveBackslash
+  std::replace(ret.begin(), ret.end(), ORTCHAR_T('/'), ORTCHAR_T('\\'));
+
   auto st = onnxruntime::RemoveFileSpec(const_cast<wchar_t*>(ret.data()), ret.length() + 1);
   if (!st.IsOK()) {
     std::ostringstream oss;
