@@ -263,6 +263,19 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
     parameters_->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
   }
 
+  const Tensor* attention_mask = context.Input<Tensor>(10);
+  if (attention_mask != nullptr) {
+    const auto& dims_attn = attention_mask->Shape().GetDims();
+    if (dims_attn.size() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have 2 dimensions, got ",
+                             dims_attn.size());
+    }
+    if (dims_attn != dims) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have same shape as input_ids, got ",
+                             dims_attn);
+    }
+  }
+
   return Status::OK();
 }
 

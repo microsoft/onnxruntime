@@ -449,6 +449,7 @@ Status UpdateGptFeeds(
 // ---------------------------------------------------------------
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     int start_token_id,
@@ -476,24 +477,30 @@ Status CreateEncoderInputs(
                        encoder_input_ids);
 
   OrtValue encoder_attention_mask;
-  auto mask_type = DataTypeImpl::GetType<int32_t>();
-  Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
+  if (attn_mask_value != nullptr) {
+    const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
+    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
+                         allocator->Info(), encoder_attention_mask);
+  } else {
+    auto mask_type = DataTypeImpl::GetType<int32_t>();
+    Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
 
-  // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
-  int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
-  int32_t* mask = mask_data;
-  for (int i = 0; i < batch_size; i++) {
-    int32_t abs_position = 0;
-    for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
-      // T5Tokenizer might add one EOS pad token at the end.
-      // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
-      // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
-      if (*word_id == pad_token_id && abs_position == 0) {
-        *mask = 0;
-      } else {
-        *mask = 1;
-        abs_position++;
+    // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
+    int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+    const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
+    int32_t* mask = mask_data;
+    for (int i = 0; i < batch_size; i++) {
+      int32_t abs_position = 0;
+      for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
+        // T5Tokenizer might add one EOS pad token at the end.
+        // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
+        // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
+        if (*word_id == pad_token_id && abs_position == 0) {
+          *mask = 0;
+        } else {
+          *mask = 1;
+          abs_position++;
+        }
       }
     }
   }

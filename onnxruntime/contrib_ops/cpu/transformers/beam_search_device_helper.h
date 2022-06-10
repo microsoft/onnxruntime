@@ -104,6 +104,7 @@ using UpdateGptFeedsFunc = std::function<Status(
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
     const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     int start_token_id,
@@ -201,6 +202,7 @@ Status UpdateGptFeeds(
 // ---------------------------------------------------------------
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     int start_token_id,

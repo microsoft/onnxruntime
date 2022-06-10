@@ -30,7 +30,7 @@ class T5DecoderSubgraph : public Subgraph {
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
 
-  constexpr static int kFirstPastInputIndex = 3;
+  constexpr static int kFirstPastInputIndex = 2;
   constexpr static int kFirstPresentOutputIndex = 1;
 };
 

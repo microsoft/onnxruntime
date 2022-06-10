@@ -100,6 +100,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   const OrtValue* encoder_input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
 
+  const OrtValue* encoder_attn_mask_value = this->context_.GetInputOrtValue(10);
+
   BeamSearchCpuState cpu_state;
   cpu_state.Init(this->cpu_allocator_,
                  static_cast<size_t>(parameters->BatchBeamSize()),
@@ -111,6 +113,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   OrtValue expanded_decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
+      encoder_attn_mask_value,
       this->implicit_inputs_,
       parameters->num_beams,
       parameters->pad_token_id,

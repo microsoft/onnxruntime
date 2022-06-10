@@ -97,6 +97,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 // Create inputs for first inference of subgraph.
 Status T5EncoderSubgraph::CreateInitialFeeds(
     const Tensor& encoder_input_ids,
+    const OrtValue* attn_mask_value,
     const std::vector<const OrtValue*>& implicit_inputs,
     int num_beams,
     int pad_token_id,
@@ -121,6 +122,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   OrtValue expanded_encoder_input_ids;
   OrtValue expanded_encoder_attention_mask;
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids,
+                                                 attn_mask_value,
                                                  num_beams,
                                                  pad_token_id,
                                                  start_token_id,

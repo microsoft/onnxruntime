@@ -44,8 +44,8 @@ namespace transformers {
 
 Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_inputs < 7 || (num_subgraph_inputs - kFirstPastInputIndex) % 4 != 0,
-                "number of outputs expected to be 3 + 4 * layers, got:", num_subgraph_inputs);
+  // ORT_RETURN_IF(num_subgraph_inputs < 7 || (num_subgraph_inputs - kFirstPastInputIndex) % 4 != 0,
+  //               "number of outputs expected to be 3 + 4 * layers, got:", num_subgraph_inputs);
   ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - kFirstPresentOutputIndex) % 2 != 0,
                 "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
 
@@ -53,8 +53,8 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
                 "decoder subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
   ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
                 "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
-  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "encoder_hidden_states",
-                "decoder subgraph input 2 shall be named as encoder_hidden_states, got: ", subgraph_inputs[2]->Name());
+  // ORT_RETURN_IF(subgraph_inputs[2]->Name() != "encoder_hidden_states",
+  //               "decoder subgraph input 2 shall be named as encoder_hidden_states, got: ", subgraph_inputs[2]->Name());
 
   // check subgraph outputs
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
@@ -137,7 +137,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   decoder_feeds.push_back(encoder_feeds[1]);
 
   // The encoder_hidden_states and past states are copied from the second output of encoder.
-  for (size_t j = 1; j < encoder_fetches.size(); j++) {
+  for (size_t j = 2; j < encoder_fetches.size(); j++) {
     decoder_feeds.push_back(encoder_fetches[j]);
   }
 
