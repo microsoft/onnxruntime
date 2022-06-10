@@ -50,8 +50,8 @@ def parse_arguments():
     parser.add_argument("-u", "--report_url", help="Report Url", required=True)
     parser.add_argument("-t", "--trt_version", help="Tensorrt Version", required=True)
     parser.add_argument("-b", "--branch", help="Branch", required=True)
-    parser.add_argument("-k", "--kusto_conn", help="Kusto connection URL", required=True)
-    parser.add_argument("-d", "--database", help="Database name", required=True)
+    parser.add_argument("--kusto_conn", help="Kusto connection URL", required=True)
+    parser.add_argument("--database", help="Database name", required=True)
     parser.add_argument(
         "-d",
         "--commit_datetime",
