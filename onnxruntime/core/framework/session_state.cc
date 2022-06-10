@@ -20,7 +20,6 @@
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/parallel_execution_plan.h"
-#include "core/framework/stream_pool.h"
 
 using namespace ::onnxruntime::common;
 
@@ -82,8 +81,7 @@ SessionState::SessionState(Graph& graph,
       use_deterministic_compute_(use_deterministic_compute),
       enable_mem_reuse_(enable_mem_reuse),
       prepacked_weights_container_(prepacked_weights_container),
-      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()),
-      stream_pool_(std::make_unique<StreamPool>()){
+      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()){
   SetupAllocators();
 }
 
@@ -1474,37 +1472,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
   }
 
-  // read stream configuration from session option
-  auto split = [](const std::string& s, char splitor) {
-    std::stringstream ss(s);
-    std::string tmp;
-    std::vector<std::string> ret;
-    while (std::getline(ss, tmp, splitor)) {
-      ret.push_back(std::move(tmp));
-    }
-    return ret;
-  };
-
-  std::unordered_map<std::string, size_t> ep_max_stream_map;
-
-  if (!session_options.max_streams_per_ep.empty()) {
-    for (const auto& max_stream_per_ep : split(session_options.max_streams_per_ep, ';')) {
-      std::vector<std::string> max_stream_setting = split(max_stream_per_ep, ':');
-      ep_max_stream_map[max_stream_setting[0]] = atoi(max_stream_setting[1].c_str());
-    }
-  }
-
-  for (auto& ep : eps) {
-    auto it = ep_max_stream_map.find(ep->Type());
-    if (it == ep_max_stream_map.end()) {
-      // if not set, set max stream number to 1
-      ep_max_stream_map.insert({ep->Type(), 1});
-    }
-  }
-
-  // init stream pool
-  ORT_RETURN_IF_ERROR(stream_pool_->Init(*this, ep_max_stream_map));
-
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
@@ -1517,6 +1484,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
 
   ProviderStreamMap provider_stream_map;
+
+  // read stream configuration from session option
+  auto split = [](const std::string& s, char splitor) {
+    std::stringstream ss(s);
+    std::string tmp;
+    std::vector<std::string> ret;
+    while (std::getline(ss, tmp, splitor)) {
+      ret.push_back(std::move(tmp));
+    }
+    return ret;
+  };
 
   if (!session_options.streams_per_ep.empty()) {
     for (const auto& streams_per_ep : split(session_options.streams_per_ep, ';')) {

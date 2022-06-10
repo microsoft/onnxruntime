@@ -341,7 +341,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state,
-                               const std::vector<Stream*>* device_streams)
+                               const std::vector<std::unique_ptr<Stream>>* device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
@@ -487,7 +487,7 @@ Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
   auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
   if (it != value_to_stream_map.end() && device_streams_ && it->second < device_streams_->size()) {
-    return (*device_streams_)[it->second];
+    return (*device_streams_)[it->second].get();
   }
   return nullptr;
 }
