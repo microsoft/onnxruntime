@@ -1590,7 +1590,8 @@ if (onnxruntime_USE_XNNPACK)
 
       set(wasmsimd_src_patterns "${XNNPACK_DIR}/src/wasmsimd-*.c"
                                 "${XNNPACK_DIR}/src/*-wasmsimd-*.c"
-                                "${XNNPACK_DIR}/src/*-wasmsimd.c")
+                                "${XNNPACK_DIR}/src/*-wasmsimd.c"
+                                "${XNNPACK_DIR}/src/*/wasmsimd.c")
 
       file(GLOB_RECURSE XNNPACK_WASMSIMD_MICROKERNEL_SRCS CONFIGURE_DEPENDS ${wasmsimd_src_patterns})
       message(DEBUG "XNNPACK_WASMSIMD_MICROKERNEL_SRCS:${XNNPACK_WASMSIMD_MICROKERNEL_SRCS}")
