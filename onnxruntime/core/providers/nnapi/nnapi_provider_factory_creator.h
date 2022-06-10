@@ -12,6 +12,6 @@
 namespace onnxruntime {
 struct NnapiProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(
-      uint32_t nnapi_flags, const optional<std::string>& partitioning_stop_ops_list);
+      uint32_t nnapi_flags, const std::optional<std::string>& partitioning_stop_ops_list);
 };
 }  // namespace onnxruntime

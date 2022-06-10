@@ -12,7 +12,7 @@ namespace tvm {
 struct TvmEPOptions;
 }
 
-struct TvmProviderFactoryCreator {
+struct TVMProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const tvm::TvmEPOptions& options);
   static std::shared_ptr<IExecutionProviderFactory> Create(const char* params);
 };
