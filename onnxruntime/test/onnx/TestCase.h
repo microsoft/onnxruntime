@@ -85,10 +85,11 @@ std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
 
 class TestTolerances {
  public:
+  typedef std::unordered_map<std::string, double> Map;
   TestTolerances(
       double absolute_default, double relative_default,
-      const std::unordered_map<std::string, double>& absolute_overrides,
-      const std::unordered_map<std::string, double>& relative_overrides);
+      const Map& absolute_overrides,
+      const Map& relative_overrides);
   TestTolerances() = delete;
   double absolute(const std::string& test_name) const;
   double relative(const std::string& test_name) const;
@@ -96,8 +97,8 @@ class TestTolerances {
  private:
   double absolute_default_;
   double relative_default_;
-  const std::unordered_map<std::string, double> absolute_overrides_;
-  const std::unordered_map<std::string, double> relative_overrides_;
+  const Map absolute_overrides_;
+  const Map relative_overrides_;
 };
 
 void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,

@@ -781,9 +781,11 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
         ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
       }
 
+      const auto tolerance_key = ToUTF8String(my_dir_name);
+
       std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
-                                                        tolerances.absolute(my_dir_name),
-                                                        tolerances.relative(my_dir_name));
+                                                        tolerances.absolute(tolerance_key),
+                                                        tolerances.relative(tolerance_key));
       process_function(std::move(l));
       return true;
     });
@@ -792,11 +794,11 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
 
 TestTolerances::TestTolerances(
     double absolute_default, double relative_default,
-    const std::unordered_map<std::string, double>& absolute_overrides,
-    const std::unordered_map<std::string, double>& relative_overrides) : absolute_default_(absolute_default),
-                                                                         relative_default_(relative_default),
-                                                                         absolute_overrides_(absolute_overrides),
-                                                                         relative_overrides_(relative_overrides) {}
+    const Map& absolute_overrides,
+    const Map& relative_overrides) : absolute_default_(absolute_default),
+                                     relative_default_(relative_default),
+                                     absolute_overrides_(absolute_overrides),
+                                     relative_overrides_(relative_overrides) {}
 
 double TestTolerances::absolute(const std::string& name) const {
   const auto iter = absolute_overrides_.find(name);

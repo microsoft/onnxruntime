@@ -4,7 +4,6 @@
 #include <set>
 #include <iostream>
 #include <fstream>
-#include <filesystem>
 #include <string>
 #include <unordered_map>
 #ifdef _WIN32
@@ -61,19 +60,20 @@ void usage() {
 }
 
 static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino) {
-  const std::filesystem::path overrides_path("testdata/onnx_backend_test_series_overrides.jsonc");
-  const double absolute = 1e-3;
-  // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-  const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                : 1e-3;
-  std::unordered_map<std::string, double> absolute_overrides;
-  std::unordered_map<std::string, double> relative_overrides;
-  if (!std::filesystem::exists(overrides_path)) {
+  TestTolerances::Map absolute_overrides;
+  TestTolerances::Map relative_overrides;
+  std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
+      "testdata", "onnx_backend_test_series_overrides.jsonc"));
+  if (!overrides_ifstream.good()) {
+    const double absolute = 1e-3;
+    // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
+    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                  : 1e-3;
     return TestTolerances(absolute, relative, absolute_overrides, relative_overrides);
   };
   const auto overrides_json = nlohmann::json::parse(
-      std::ifstream(overrides_path),
+      overrides_ifstream,
       /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
   overrides_json["atol_overrides"].get_to(absolute_overrides);
   overrides_json["rtol_overrides"].get_to(relative_overrides);
