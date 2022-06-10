@@ -557,8 +557,8 @@ def convert_model(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): arguments parsed from command line
     """
-
-    if args.model_type == "gpt2":
+    is_gpt2: bool = args.model_type == "gpt2"
+    if is_gpt2:
         if os.path.exists(args.decoder_onnx):
             print(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
         else:
@@ -580,7 +580,7 @@ def convert_model(args: argparse.Namespace):
         print(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx)
 
-    if args.model_type == "gpt2":
+    if is_gpt2:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     else:
         config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -589,7 +589,7 @@ def convert_model(args: argparse.Namespace):
         print(config)
 
     eos_token_id = config.eos_token_id
-    pad_token_id = config.eos_token_id
+    pad_token_id = config.eos_token_id if is_gpt2 else config.pad_token_id
     vocab_size = config.vocab_size
 
     # if vocab_size is given in parameters use that.
@@ -757,12 +757,14 @@ def test_torch_performance(
         pad_token_id (int): Padding token ID
         bad_words_ids (List[List[int]]): Words shall not be generated.
 
+    Raises:
+        RuntimeError: PyTorch with CUDA is not available for --use_gpu
+
     Returns:
         Dict[str, Any]: A dictionary with string with metric name, and value can be integer or string.
     """
     if args.use_gpu and not torch.cuda.is_available():
-        logger.error("Please install PyTorch with Cuda, and use a machine with GPU for testing gpu performance.")
-        return None
+        raise RuntimeError("Please install PyTorch with Cuda for testing gpu performance.")
 
     if args.precision == Precision.FLOAT16:
         model.half()
@@ -892,7 +894,7 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         for i, sequence in enumerate(beam_outputs.sequences):
             decoded_sequence = tokenizer.decode(sequence, skip_special_tokens=True)
             torch_decoded_sequences.append(decoded_sequence)
-            print("{}: {}".format(i, decoded_sequence))
+            print(f"{i}: {decoded_sequence}")
 
     print("-" * 50)
     print("Test ONNX model and bream search with onnxruntime...")
@@ -1012,12 +1014,10 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
 
     tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     tokenizer.padding_side = "left"
-    tokenizer.pad_token = tokenizer.eos_token
 
     model = T5ForConditionalGeneration.from_pretrained(
         args.model_name_or_path,
         cache_dir=args.cache_dir,
-        pad_token_id=tokenizer.eos_token_id,
     )
 
     # Use different length sentences to test batching
@@ -1044,8 +1044,9 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
 
     config = model.config
     eos_token_id = config.eos_token_id
-    pad_token_id = config.eos_token_id
+    pad_token_id = config.pad_token_id
     vocab_size = config.vocab_size
+    print(f"eos_token_id:{eos_token_id}, pad_token_id:{pad_token_id}, vocab_size:{vocab_size}")
 
     torch_decoded_sequences = []
     if not args.disable_parity:
@@ -1069,6 +1070,7 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
             return_dict_in_generate=True,
             output_scores=args.output_sequences_scores or args.output_token_scores,
         )
+
         print("input_ids", input_ids)
         print("huggingface transformers outputs:")
         print("sequences", beam_outputs.sequences)

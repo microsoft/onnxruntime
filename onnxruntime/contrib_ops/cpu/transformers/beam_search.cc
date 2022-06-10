@@ -59,11 +59,12 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
 
-  // Check model_type 0 (GPT-2) and 1 (encoder-decoder like T5)
-  ORT_ENFORCE(parameters_.model_type == 0 || parameters_.model_type == 1);
+  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5).
+  ORT_ENFORCE(parameters_.model_type == IBeamSearchParameters::kModelTypeGpt ||
+              parameters_.model_type == IBeamSearchParameters::kModelTypeT5);
 
   ONNX_NAMESPACE::GraphProto proto;
-  if (parameters_.model_type != 0) {
+  if (parameters_.model_type != IBeamSearchParameters::kModelTypeGpt) {
     ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("encoder", &proto).IsOK());
   }
 
@@ -76,7 +77,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const std::string& attribute_name,
                                               const SessionState& subgraph_session_state) {
   const auto& node = Node();
-  if (parameters_.model_type == 0) {  // GPT-2
+  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
     if (attribute_name == "decoder") {
       ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
@@ -87,7 +88,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                         gpt_subgraph_->head_size,
                                         gpt_subgraph_->num_layers);
     }
-  } else if (parameters_.model_type == 1) {  // T5
+  } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -134,9 +135,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   // Make a copy of parameters since we will update it based on inputs later
   BeamSearchParameters parameters = parameters_;
 
-  if (parameters_.model_type == 0) {  // GPT-2
-    // Subgraph has constraint that the output is either float or float16
-    if (!gpt_subgraph_->IsOutputFloat16()) {
+  if (parameters_.model_type == IBeamSearchParameters::kModelTypeGpt) {
+    if (!gpt_subgraph_->IsOutputFloat16()) {  // Output float32
       BeamSearchGpt<float> impl{
           *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
           BeamSearchCpuDeviceHelper::CreateGptInputs,
@@ -150,7 +150,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
       ORT_RETURN_IF_ERROR(impl.Initialize());
 
       return impl.Execute(*decoder_feeds_fetches_manager_);
-    } else {
+    } else {  // Output float16
       BeamSearchGpt<MLFloat16> impl{
           *ctx_internal, *decoder_session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
           BeamSearchCpuDeviceHelper::CreateGptInputs,

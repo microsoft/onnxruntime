@@ -105,10 +105,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
     const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
     const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
     IAllocatorUniquePtr<char>& buffer,
-    OrtValue& expanded_decoder_input_ids,
-    const IConsoleDumper* dumper) {
-  ORT_UNUSED_PARAMETER(dumper);
-
+    OrtValue& expanded_decoder_input_ids) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // The ordering is the same as used in Setup.

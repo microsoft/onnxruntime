@@ -18,7 +18,7 @@ Status BeamSearchParameters::Validate() const {
 }
 
 void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
-  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));
+  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", IBeamSearchParameters::kModelTypeGpt));
   early_stopping = info.GetAttrOrDefault<int64_t>("early_stopping", 0) == 1;
   eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));
   pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
@@ -34,7 +34,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   batch_size = static_cast<int>(dims[0]);
 
   // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1
-  sequence_length = this->decoder_start_token_id >= 1 ? 0 : static_cast<int>(dims[1]);
+  sequence_length = (this->model_type == IBeamSearchParameters::kModelTypeGpt) ? static_cast<int>(dims[1]) : 1;
 
   auto* max_length_tensor = context->Input<Tensor>(1);
   max_length = max_length_tensor ? static_cast<int>(*max_length_tensor->Data<int32_t>()) : kMaxSequenceLength;

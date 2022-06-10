@@ -119,8 +119,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
       buffer,
-      expanded_decoder_input_ids,
-      this->GetConsoleDumper()));
+      expanded_decoder_input_ids));
 
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
                                              encoder_feeds_fetches_manager,

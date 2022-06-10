@@ -75,6 +75,9 @@ class IBeamScorer {
 };
 
 struct IBeamSearchParameters {
+  static constexpr int kModelTypeGpt = 0;
+  static constexpr int kModelTypeT5 = 1;
+
   // Parameters from node attributes
   int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5
   int eos_token_id;
