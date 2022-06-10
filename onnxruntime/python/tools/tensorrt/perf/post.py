@@ -36,6 +36,7 @@ from perf_utils import (
     trt_fp16,
 )
 
+
 def parse_arguments():
     """
     Parses command-line arguments and returns an object with each argument as a field.
