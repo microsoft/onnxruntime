@@ -3,9 +3,9 @@
 
 import assert from 'assert';
 import * as fs from 'fs-extra';
-import { jsonc } from 'jsonc';
+import {jsonc} from 'jsonc';
 import * as onnx_proto from 'onnx-proto';
-import { InferenceSession, Tensor } from 'onnxruntime-common';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
 export const TEST_ROOT = __dirname;
@@ -17,8 +17,8 @@ export const NODE_TESTS_ROOT = path.join(ORT_ROOT, 'cmake/external/onnx/onnx/bac
 export const SQUEEZENET_INPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.input0.json'));
 export const SQUEEZENET_OUTPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.output0.json'));
 
-export const BACKEND_TEST_SERIES_FILTERS: { [name: string]: string[] } =
-  jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc'));
+export const BACKEND_TEST_SERIES_FILTERS: {[name: string]: string[]} =
+    jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc'));
 
 
 export const NUMERIC_TYPE_MAP = new Map<Tensor.Type, new (len: number) => Tensor.DataType>([
@@ -54,7 +54,7 @@ export function createTestData(type: Tensor.Type, length: number): Tensor.DataTy
 }
 
 // a simple function to create a tensor for test
-export function createTestTensor(type: Tensor.Type, lengthOrDims?: number | number[]): Tensor {
+export function createTestTensor(type: Tensor.Type, lengthOrDims?: number|number[]): Tensor {
   let length = 100;
   let dims = [100];
   if (typeof lengthOrDims === 'number') {
@@ -70,22 +70,21 @@ export function createTestTensor(type: Tensor.Type, lengthOrDims?: number | numb
 
 // call the addon directly to make sure DLL is loaded
 export function warmup(): void {
-  describe('Warmup', async function () {
+  describe('Warmup', async function() {
     // eslint-disable-next-line no-invalid-this
     this.timeout(0);
     // we have test cases to verify correctness in other place, so do no check here.
     try {
       const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'));
-      await session.run({ input: new Tensor(new Float32Array(5), [1, 5]) }, { output: null }, {});
+      await session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
     } catch (e) {
     }
   });
 }
 
 export function assertFloatEqual(
-  actual: number[] | Float32Array | Float64Array, expected: number[] | Float32Array | Float64Array,
-  atol?: number, rtol?: number): void {
-
+    actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array, atol?: number,
+    rtol?: number): void {
   const absolute_tol: number = atol ?? 1.0e-4;
   const relative_tol: number = 1 + (rtol ?? 1.0e-6);
 
@@ -129,14 +128,13 @@ export function assertFloatEqual(
 }
 
 export function assertDataEqual(
-  type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType, atol?: number, rtol?: number): void {
-
+    type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType, atol?: number, rtol?: number): void {
   switch (type) {
     case 'float32':
     case 'float64':
       assertFloatEqual(
-        actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array,
-        atol, rtol);
+          actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array, atol,
+          rtol);
       break;
 
     case 'uint8':
@@ -248,7 +246,7 @@ export function loadTensorFromFile(pbFile: string): Tensor {
         throw new Error(`not supported tensor type: ${tensorProto.dataType}`);
     }
     const transferredTypedArrayRawDataView =
-      new Uint8Array(transferredTypedArray.buffer, transferredTypedArray.byteOffset, tensorProto.rawData.byteLength);
+        new Uint8Array(transferredTypedArray.buffer, transferredTypedArray.byteOffset, tensorProto.rawData.byteLength);
     transferredTypedArrayRawDataView.set(tensorProto.rawData);
 
     return new Tensor(type, transferredTypedArray, dims);
@@ -280,18 +278,18 @@ export function shouldSkipModel(model: string, eps: string[]): boolean {
   return false;
 }
 
-const OVERRIDES: { [key: string]: (number | { [name: string]: number }) } =
-  jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc'));
+const OVERRIDES: {[key: string]: (number|{[name: string]: number})} =
+    jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc'));
 
 const ATOL_DEFAULT = OVERRIDES.atol_default as number;
 const RTOL_DEFAULT = OVERRIDES.rtol_default as number;
 
 export function atol(model: string): number {
-  const override = OVERRIDES.atol_overrides as { [name: string]: number };
+  const override = OVERRIDES.atol_overrides as {[name: string]: number};
   return override[model] ?? ATOL_DEFAULT;
 }
 
 export function rtol(model: string): number {
-  const override = OVERRIDES.rtol_overrides as { [name: string]: number };
+  const override = OVERRIDES.rtol_overrides as {[name: string]: number};
   return override[model] ?? RTOL_DEFAULT;
 }

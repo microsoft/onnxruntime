@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 import * as fs from 'fs-extra';
-import { InferenceSession, Tensor } from 'onnxruntime-common';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
-import { atol, assertTensorEqual, loadTensorFromFile, rtol, shouldSkipModel } from './test-utils';
+import {assertTensorEqual, atol, loadTensorFromFile, rtol, shouldSkipModel} from './test-utils';
 
 export function run(testDataFolder: string): void {
   const models = fs.readdirSync(testDataFolder);
@@ -14,7 +14,7 @@ export function run(testDataFolder: string): void {
     // read each model folders
     const modelFolder = path.join(testDataFolder, model);
     let modelPath: string;
-    const modelTestCases: Array<[Array<Tensor | undefined>, Array<Tensor | undefined>]> = [];
+    const modelTestCases: Array<[Array<Tensor|undefined>, Array<Tensor|undefined>]> = [];
     for (const currentFile of fs.readdirSync(modelFolder)) {
       const currentPath = path.join(modelFolder, currentFile);
       const stat = fs.lstatSync(currentPath);
@@ -24,14 +24,14 @@ export function run(testDataFolder: string): void {
           modelPath = currentPath;
         }
       } else if (stat.isDirectory()) {
-        const inputs: Array<Tensor | undefined> = [];
-        const outputs: Array<Tensor | undefined> = [];
+        const inputs: Array<Tensor|undefined> = [];
+        const outputs: Array<Tensor|undefined> = [];
         for (const dataFile of fs.readdirSync(currentPath)) {
           const dataFileFullPath = path.join(currentPath, dataFile);
           const ext = path.extname(dataFile);
 
           if (ext.toLowerCase() === '.pb') {
-            let tensor: Tensor | undefined;
+            let tensor: Tensor|undefined;
             try {
               tensor = loadTensorFromFile(dataFileFullPath);
             } catch (e) {
@@ -51,7 +51,7 @@ export function run(testDataFolder: string): void {
 
     // add cases
     describe(`${model}`, () => {
-      let session: InferenceSession | null = null;
+      let session: InferenceSession|null = null;
       let skipModel = shouldSkipModel(model, ['cpu']);
       if (!skipModel) {
         before(async () => {
