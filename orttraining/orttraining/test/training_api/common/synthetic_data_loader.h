@@ -1,6 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/**
+ * @brief Synthethic sample batch generator.
+ *
+ * Avoid introducing non-public data structure dependencies here, as beside our internal unit tests, this header will
+ * also be included by trainer which only use our public C API, has no hard dependencies on ORT internal libs.
+ *
+ */
+
+#pragma once
 #include <onnxruntime_cxx_api.h>
 
 namespace onnxruntime {

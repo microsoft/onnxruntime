@@ -5,7 +5,7 @@
 #include "orttraining/training_api/include/interfaces.h"
 
 #include "cxxopts.hpp"
-#include "synthetic_data_loader.h"
+#include "../common/synthetic_data_loader.h"
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
 // This header is for profile using Nvidia's visual profilier.
@@ -173,7 +173,7 @@ void RunTraining(const TestRunnerParameters& params) {
   EnforceCheck(api.CreateEnv(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner", &env) == nullptr, "Failed to create env");
 
   // TODO: update using public API's calling pattern, e.g. api.CreateModule().
-  Ort::OrtModule module(api, env, session_options,
+  Ort::OrtModule module(env, session_options,
                         params.model_training_graph_path,
                         state.module_checkpoint_state.named_parameters,
                         params.model_evaluation_graph_path);
@@ -181,7 +181,7 @@ void RunTraining(const TestRunnerParameters& params) {
   bool do_eval = params.model_evaluation_graph_path.has_value();
 
   // TODO: update using public API's calling pattern, e.g. api.CreateOptimizer().
-  Ort::OrtOptimizer optimizer(api, env, session_options,
+  Ort::OrtOptimizer optimizer(env, session_options,
                               params.optimizer_training_graph_path,
                               module.NamedParameters());
 

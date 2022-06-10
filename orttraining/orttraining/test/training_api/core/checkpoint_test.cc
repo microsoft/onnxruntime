@@ -25,6 +25,8 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test/test_environment.h"
+#include "orttraining/test/training_api/common/synthetic_data_loader.h"
+#include "orttraining/test/training_api/core/data_utils.h"
 
 using onnxruntime::test::TemporaryDirectory;
 using namespace onnxruntime::training::api;
@@ -32,7 +34,6 @@ using namespace onnxruntime::training::api;
 namespace onnxruntime {
 namespace training {
 namespace test {
-namespace training_api {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/")
 
@@ -180,38 +181,45 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparision.
 
-  auto model_uri = MODEL_FOLDER "transform/computation_reduction/e2e.onnx";
-  std::unordered_map<std::string, OrtValueTensorData> name_to_ort_value_data{
-      {"param1", {{3}, {1.0f, 2.0f, 3.0f}}},
-      {"param2", {{2, 2}, {1.0f, 2.0f, 3.0f, 4.0f}}},
-      {"param3", {{3}, {1.0f, 2.0f, 3.0f}}},
-      {"param4", {{2, 2}, {1.0f, 2.0f, 3.0f, 4.0f}}},
-  };
+  auto model_uri = MODEL_FOLDER "training_api/adamw.onnx";
 
-  std::vector<std::string> trainable_param_names{"param1", "param4"};
-  NameMLValMap name_to_ort_value{};
-  for (auto& name_and_ort_value_data : name_to_ort_value_data) {
-    name_to_ort_value.emplace(
-        name_and_ort_value_data.first, name_and_ort_value_data.second.GetOrtValue());
-  }
+  // Generate randomized weight values using synthetic data generator.
+  const int64_t fc2_weight_dim_in = 10, fc2_weight_dim_out = 500, fc1_weight_dim_in = 500, fc1_weight_dim_out = 784;
+  const std::vector<int64_t> fc1_weight_shape{fc1_weight_dim_in, fc1_weight_dim_out};
+  const std::vector<int64_t> fc1_bias_shape{fc1_weight_dim_in};
+  const std::vector<int64_t> fc2_weight_shape{fc2_weight_dim_in, fc2_weight_dim_out};
+  const std::vector<int64_t> fc2_bias_shape{fc2_weight_dim_in};
+
+  onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
+  auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
+  sample->AddFloatInput(fc1_weight_shape);
+  sample->AddFloatInput(fc1_bias_shape);
+  sample->AddFloatInput(fc2_weight_shape);
+  sample->AddFloatInput(fc2_bias_shape);
+  data_loader.AddSyntheticSampleBatch(std::move(sample));
+
+  std::vector<Ort::Value> all_weights_values;
+  data_loader.GetNextSampleBatch(all_weights_values);
+  ASSERT_EQ(all_weights_values.size(), 4);
+  Ort::Value* data_ptr = all_weights_values.data();
+  NameMLValMap name_to_ort_value{
+      {"fc1.weight", **reinterpret_cast<::OrtValue**>(data_ptr)},
+      {"fc1.bias", **reinterpret_cast<::OrtValue**>(data_ptr + 1)},
+      {"fc2.weight", **reinterpret_cast<::OrtValue**>(data_ptr + 2)},
+      {"fc2.bias", **reinterpret_cast<::OrtValue**>(data_ptr + 3)},
+  };
 
   // Optimizer creation and trainable parameter name definitions.
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
   for (auto it = name_to_ort_value.begin(); it != name_to_ort_value.end(); ++it) {
-    bool is_trainable =
-        std::find(trainable_param_names.begin(), trainable_param_names.end(), it->first) != trainable_param_names.end();
-    auto param = std::make_shared<Parameter>(it->first, it->second, is_trainable);
+    auto param = std::make_shared<Parameter>(it->first, it->second, true /*is_trainable*/);
     named_parameters.insert({it->first, param});
   }
 
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto optim_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
-  ORT_THROW_IF_ERROR(optim_sess->Load(model_uri));
-  ORT_THROW_IF_ERROR(optim_sess->Initialize());
-
-  auto optimizer = Optimizer(named_parameters, optim_sess.get());
+  auto optimizer = Optimizer(model_uri, named_parameters, session_option, *env);
 
   /// Phase 2 - Run Optimizer.GetStateDict and call save checkpoint APIs.
   /// And check the result checkpoint files.
@@ -269,24 +277,27 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   std::unordered_map<std::string, ParameterOptimizerState>&
       param_named_optimizer_states = group_optimizer_states["group0"]->param_named_optimizer_states;
 
-  ASSERT_EQ(param_named_optimizer_states.size(), 2);
-  auto it = param_named_optimizer_states.begin();
-  ASSERT_EQ(it->first, "param1");
-  std::advance(it, 1);
-  ASSERT_EQ(it->first, "param4");
+  ASSERT_EQ(param_named_optimizer_states.size(), named_parameters.size());
 
   for (auto it = param_named_optimizer_states.begin(); it != param_named_optimizer_states.end(); ++it) {
+    ASSERT_TRUE(named_parameters.find(it->first) != named_parameters.end());
     for (auto& state_pair : it->second.momentum_named_states) {
       ASSERT_TRUE(state_pair.first == "momentum0" || state_pair.first == "momentum1");
       const OrtValue& restored_ort_value = state_pair.second;
-      const OrtValue& expected_ort_value = name_to_ort_value[it->first];
-      ASSERT_TRUE(restored_ort_value.IsTensor() && expected_ort_value.IsTensor());
+      const OrtValue& param_ort_value = name_to_ort_value[it->first];
+      ASSERT_TRUE(restored_ort_value.IsTensor() && param_ort_value.IsTensor());
       const Tensor& restored_tensor = restored_ort_value.Get<Tensor>();
-      const Tensor& expected_tensor = expected_ort_value.Get<Tensor>();
+      const Tensor& param_tensor = param_ort_value.Get<Tensor>();
 
-      ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
-      ASSERT_EQ(expected_tensor.SizeInBytes(), restored_tensor.SizeInBytes());
-      ASSERT_EQ(expected_tensor.DataType(), restored_tensor.DataType());
+      ASSERT_EQ(param_tensor.DataType(), restored_tensor.DataType());
+      ASSERT_EQ(param_tensor.SizeInBytes(), restored_tensor.SizeInBytes());
+      ASSERT_EQ(param_tensor.DataType(), restored_tensor.DataType());
+
+      std::vector<float> state_vect;
+      OrtValueToVec(restored_ort_value, state_vect);
+      for (size_t i = 0; i < state_vect.size(); i++) {
+        ASSERT_EQ(state_vect[i], 0.0f);
+      }
     }
   }
 }
@@ -363,7 +374,6 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
   ASSERT_EQ(s_data, restored_s_data);
 }
 
-}  // namespace training_api
 }  // namespace test
 }  // namespace training
 }  // namespace onnxruntime

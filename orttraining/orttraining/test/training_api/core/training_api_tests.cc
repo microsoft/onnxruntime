@@ -12,6 +12,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/interfaces.h"
+#include "orttraining/test/training_api/core/data_utils.h"
 
 using json = nlohmann::json;
 using namespace onnxruntime::training;
@@ -21,20 +22,11 @@ using namespace onnxruntime::path_utils;
 
 namespace onnxruntime {
 namespace training {
-
 namespace test {
 
 namespace {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
-
-template <typename T>
-void OrtValueToVec(OrtValue& val, std::vector<T>& output) {
-  const Tensor& tensor = val.Get<Tensor>();
-  int64_t num_elem = tensor.Shape().Size();
-  const T* val_ptr = tensor.template Data<T>();
-  output.assign(val_ptr, val_ptr + num_elem);
-}
 
 void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
   float scale = 1.f;
@@ -60,10 +52,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto module_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
-  ORT_THROW_IF_ERROR(module_sess->Load(model_uri));
-  ORT_THROW_IF_ERROR(module_sess->Initialize());
-  auto model = std::make_unique<Module>(state.module_checkpoint_state.named_parameters, module_sess.get());
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option, *env);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -116,15 +105,8 @@ TEST(TrainingApiTest, OptimStep) {
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto module_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
-  auto optim_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
-  ORT_THROW_IF_ERROR(module_sess->Load(model_uri));
-  ORT_THROW_IF_ERROR(module_sess->Initialize());
-  ORT_THROW_IF_ERROR(optim_sess->Load(optim_uri));
-  ORT_THROW_IF_ERROR(optim_sess->Initialize());
-
-  auto model = std::make_unique<Module>(state.module_checkpoint_state.named_parameters, module_sess.get());
-  auto optim = std::make_unique<Optimizer>(state.module_checkpoint_state.named_parameters, optim_sess.get());
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option, *env);
+  auto optim = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -183,22 +165,15 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
-  auto module_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
-  auto optim_sess = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
-  ORT_THROW_IF_ERROR(module_sess->Load(model_uri));
-  ORT_THROW_IF_ERROR(module_sess->Initialize());
-  ORT_THROW_IF_ERROR(optim_sess->Load(optim_uri));
-  ORT_THROW_IF_ERROR(optim_sess->Initialize());
-
-  auto model = std::make_unique<Module>(state.module_checkpoint_state.named_parameters, module_sess.get());
-  auto optim = std::make_shared<Optimizer>(state.module_checkpoint_state.named_parameters, optim_sess.get());
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option, *env);
+  auto optim = std::make_shared<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
 
   /// Load test data for learning rate schedulers.
-  auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_schduler/" + test_file_name);
+  auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
   std::ifstream in{data_uri};
   // Element of vector represent a pair of <step_count, list of learning rates>>
   typedef std::vector<std::pair<int64_t, std::vector<float>>> TestDataDictType;
@@ -282,7 +257,6 @@ TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test)
 }
 
 }  // namespace
-
 }  // namespace test
 }  // namespace training
 }  // namespace onnxruntime
