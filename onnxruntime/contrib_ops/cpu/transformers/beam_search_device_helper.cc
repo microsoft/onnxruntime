@@ -569,6 +569,8 @@ Status UpdateDecoderFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(stream);
 
@@ -581,14 +583,22 @@ Status UpdateDecoderFeeds(
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
-  int64_t dims[] = {batch_beam_size, 1};
+  int64_t dims[] = {batch_beam_size, current_length};
   TensorShape input_ids_shape(&dims[0], 2);
 
   // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   OrtValue input_ids;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
+  int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  for (int i = 0; i < batch_beam_size; i++) {
+    gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+    const int32_t* sequence_data = sequence.data();
+    for (int j = 0; j < current_length; j++) {
+      input_ids_data[i * current_length + j] = sequence_data[j];
+    }
+  }
 
-  gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
+  //gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
 
   next_inputs[0] = input_ids;
 
@@ -671,6 +681,8 @@ template Status UpdateDecoderFeeds<float>(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);

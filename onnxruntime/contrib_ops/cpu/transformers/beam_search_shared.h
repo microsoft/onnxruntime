@@ -7,9 +7,9 @@
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 
-#ifndef NDEBUG
-//#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
-#endif
+//#ifndef NDEBUG
+#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
+//#endif
 
 namespace onnxruntime {
 

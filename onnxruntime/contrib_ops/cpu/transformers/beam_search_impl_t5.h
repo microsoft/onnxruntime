@@ -275,6 +275,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
           beam_next_tokens.as_span<const int32_t>(),
           beam_indices.as_span<const int32_t>(),
           parameters->num_beams,
+          current_length,
+          cpu_state.sequences,
           this->GetConsoleDumper()));
     }
     decoder_fetches.clear();
