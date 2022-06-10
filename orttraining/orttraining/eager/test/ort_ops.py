@@ -6,6 +6,7 @@ import unittest
 import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
+from torch import nn
 
 
 class OrtOpTests(unittest.TestCase):
@@ -82,8 +83,10 @@ class OrtOpTests(unittest.TestCase):
         device = self.get_device()
         cpu_ones = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
         ort_ones = cpu_ones.to(device)
+        print(f"ort_ones: {ort_ones} on device {ort_ones.device}")
         cpu_ans = cpu_ones * 4
         ort_ans = torch_ort.custom_ops.gemm(ort_ones, ort_ones, ort_ones, 1.0, 1.0, 0, 0)
+        print(f"ort_ans: {ort_ans}")
         assert torch.allclose(cpu_ans, ort_ans.cpu())
 
     def test_batchnormalization_inplace(self):
@@ -151,6 +154,55 @@ class OrtOpTests(unittest.TestCase):
         cpu_result = torch.softmax(cpu_tensor, dim=1)
         ort_result = torch.softmax(ort_tensor, dim=1)
         assert torch.allclose(cpu_result, ort_result.cpu())
+
+    def test_maia(self):
+        device = self.get_device()
+        size = 10
+        input = torch.ones([size, size]).to(device)
+        input_bias = torch.ones([size]).to(device)
+        print(f"type is {input_bias.dtype}")
+        input_bias = (input_bias * 4.).to(dtype=torch.float32)
+        print(f"type is {input_bias.dtype}")
+
+        output = torch.addmm(input_bias, input, input)
+        print(f"Output Shape = {output.size}")
+        print(output[0:5,0:5])
+        print(f"type is {input_bias.dtype}")
+
+    def test_model(self):
+        device = self.get_device()
+        print(f"Model test")
+        model = NeuralNetwork().to(device)
+        print(model)
+        X = torch.ones(1, 28, 28, dtype=torch.float32)
+        print(f"X ={X[0:2,0:2]}")
+        X_ort = X.to(device)
+        print(X_ort)
+        logits = model(X_ort)
+        logits_cpu = logits.to("cpu")
+        print(logits_cpu)
+        pred_probab = nn.Softmax(dim=1)(logits)
+        print(pred_probab)
+        y_pred = pred_probab.argmax()
+        y_pred_cpu = y_pred.to("cpu")
+        print(f"Predicted class: {y_pred}")
+
+class NeuralNetwork(nn.Module):
+    def __init__(self):
+        super(NeuralNetwork, self).__init__()
+        self.flatten = nn.Flatten()
+        self.linear_relu_stack = nn.Sequential(
+            nn.Linear(28*28, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, 10),
+        )
+
+    def forward(self, x):
+        x = self.flatten(x)
+        logits = self.linear_relu_stack(x)
+        return logits
 
 
 if __name__ == "__main__":
