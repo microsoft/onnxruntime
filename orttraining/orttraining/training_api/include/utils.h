@@ -6,6 +6,7 @@
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+
 namespace onnxruntime {
 namespace training {
 namespace api {

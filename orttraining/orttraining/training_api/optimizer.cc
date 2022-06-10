@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/execution_provider.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -33,7 +34,8 @@ Status Optimizer::GenerateMomentumNamedStates() {
       ParameterOptimizerState& cur_param_optimizer_states = param_named_optimizer_states[pair.first];
       for (auto& state_name : MOMENT_STATE_NAMES) {
         OrtValue param_state;
-        ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(), "Error generating moment state for ", pair.first);
+        ORT_ENFORCE(utils::OrtValueLike(optim_sess_state, pair.second->Data(), param_state).IsOK(),
+                    "Error generating moment state for ", pair.first);
         cur_param_optimizer_states.momentum_named_states.insert({state_name, std::move(param_state)});
       }
     }
@@ -74,6 +76,7 @@ Status Optimizer::ConstructInputs() {
       } else {
         ORT_ENFORCE("This is an invalid graph. Optimizer graph contains unknown user input:", name);
       }
+      ORT_ENFORCE(inputs_.back().IsAllocated() && inputs_.back().IsTensor(), "Uninitialized tensor data for ", name);
     }
   }
   // Add other optimizer reordering logic here
@@ -81,12 +84,10 @@ Status Optimizer::ConstructInputs() {
 }
 
 Optimizer::Optimizer(const std::string& optim_path_or_bytes,
-                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters) : named_parameters_(parameters) {
-  // TODO: share threadpool, env with module session
-  const SessionOptions session_options;
-  std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
-  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, *env));
+                     const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+                     const onnxruntime::SessionOptions& session_options,
+                     const Environment& env) : named_parameters_(named_parameters) {
+  optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, env));
 
   ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
@@ -97,6 +98,8 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
   if (optimizer_type_ == OptimizerType::AdamW) {
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
+  } else {
+    ORT_THROW("Unsupported optimizer type");
   }
   ORT_THROW_IF_ERROR(ConstructInputs());
 }

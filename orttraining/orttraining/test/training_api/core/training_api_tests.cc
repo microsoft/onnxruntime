@@ -12,6 +12,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/include/utils.h"
 #include "orttraining/training_api/include/interfaces.h"
+#include "orttraining/test/training_api/core/data_utils.h"
 
 using json = nlohmann::json;
 using namespace onnxruntime::training;
@@ -21,20 +22,11 @@ using namespace onnxruntime::path_utils;
 
 namespace onnxruntime {
 namespace training {
-
 namespace test {
 
 namespace {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
-
-template <typename T>
-void OrtValueToVec(OrtValue& val, std::vector<T>& output) {
-  const Tensor& tensor = val.Get<Tensor>();
-  int64_t num_elem = tensor.Shape().Size();
-  const T* val_ptr = tensor.template Data<T>();
-  output.assign(val_ptr, val_ptr + num_elem);
-}
 
 void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
   float scale = 1.f;
@@ -57,7 +49,11 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
 
-  auto module_sess = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+                                        *env);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -67,14 +63,14 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   size_t step = 0;
   std::vector<float> single_bias_grad_vec, current_bias_grad_vec;
   std::string param_name = "fc2.weight";
-  std::shared_ptr<Parameter> bias_param = module_sess->NamedParameters()[param_name];
+  std::shared_ptr<Parameter> bias_param = model->NamedParameters()[param_name];
   OrtValue& bias_grad = bias_param->Gradient();
 
   for (auto it = data_loader.begin(); it != data_loader.end(); ++it) {
     step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
-    ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
+    ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
     bias_grad = bias_param->Gradient();
 
     if (step > 1) {
@@ -87,12 +83,12 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     }
   }
   // reset grad
-  ORT_ENFORCE(module_sess->ResetGrad().IsOK());
+  ORT_ENFORCE(model->ResetGrad().IsOK());
 
   // run a single step
   std::vector<OrtValue>& inputs = *data_loader.begin();
   std::vector<OrtValue> fetches;
-  ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
+  ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
   OrtValueToVec(bias_grad, current_bias_grad_vec);
   for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
     ORT_ENFORCE(current_bias_grad_vec[i] == single_bias_grad_vec[i]);
@@ -106,8 +102,13 @@ TEST(TrainingApiTest, OptimStep) {
   CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
-  auto module_sess = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
-  auto optim_sess = std::make_unique<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+                                        *env);
+  auto optim = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -119,7 +120,7 @@ TEST(TrainingApiTest, OptimStep) {
 
   // before training, check if optim state is initialized to 0
   OptimizerCheckpointState optimizer_states;
-  ORT_ENFORCE(optim_sess->GetStateDict(optimizer_states).IsOK());
+  ORT_ENFORCE(optim->GetStateDict(optimizer_states).IsOK());
   ParameterOptimizerState& param_state =
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
@@ -134,8 +135,8 @@ TEST(TrainingApiTest, OptimStep) {
     step += 1;
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
-    ORT_ENFORCE(module_sess->TrainStep(inputs, fetches).IsOK());
-    ORT_ENFORCE(optim_sess->Step().IsOK());
+    ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
+    ORT_ENFORCE(optim->Step().IsOK());
 
     // get optim state and check if it is updated
     OrtValueToVec(moment_1, moment_1_vec);
@@ -162,15 +163,20 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
-  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters);
-  auto optim = std::make_shared<Optimizer>(optim_uri, state.module_checkpoint_state.named_parameters);
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
+                                        *env);
+  auto optim = std::make_shared<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
 
   /// Load test data for learning rate schedulers.
-  auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_schduler/" + test_file_name);
+  auto data_uri = ORT_TSTR("testdata/test_data_generation/lr_scheduler/" + test_file_name);
   std::ifstream in{data_uri};
   // Element of vector represent a pair of <step_count, list of learning rates>>
   typedef std::vector<std::pair<int64_t, std::vector<float>>> TestDataDictType;
@@ -254,7 +260,6 @@ TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test)
 }
 
 }  // namespace
-
 }  // namespace test
 }  // namespace training
 }  // namespace onnxruntime
