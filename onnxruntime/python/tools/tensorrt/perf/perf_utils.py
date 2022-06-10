@@ -264,7 +264,7 @@ def parse_session_profile(profile):
     return op_maps
 
 
-def get_profile_metrics(path, profile_file_prefix, logger=None):
+def get_profile_metrics(path, profile_file_prefix, logger):
     """
     Parses a session profile file to obtain information on operator usage per EP.
 
@@ -275,14 +275,14 @@ def get_profile_metrics(path, profile_file_prefix, logger=None):
     :return: A tuple containing the parsed operator usage information for CPU nodes and GPU kernels.
     """
 
-    logger.debug("Parsing/Analyzing profiling files in {} ...".format(path))
+    logger.debug("Parsing/Analyzing profiling files in %s ...", path)
 
-    p1 = subprocess.Popen(
+    find_proc = subprocess.Popen(
         ["find", path, "-name", f"{profile_file_prefix}*", "-printf", "%T+\t%p\n"],
         stdout=subprocess.PIPE,
     )
-    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
+    sort_proc = subprocess.Popen(["sort"], stdin=find_proc.stdout, stdout=subprocess.PIPE)
+    stdout, sterr = sort_proc.communicate()
     stdout = stdout.decode("ascii").strip()
     profiling_files = stdout.split("\n")
     logger.info(profiling_files)
@@ -291,9 +291,9 @@ def get_profile_metrics(path, profile_file_prefix, logger=None):
     for profile in profiling_files:
         profile = profile.split("\t")[1]
 
-        logger.debug("Parsing profile {} ...".format(profile))
-        with open(profile) as f:
-            op_maps = parse_session_profile(f)
+        logger.debug("Parsing profile %s ...", profile)
+        with open(profile, encoding="utf-8") as file_handle:
+            op_maps = parse_session_profile(file_handle)
             if op_maps and op_maps[0]:
                 data.append(op_maps)
 

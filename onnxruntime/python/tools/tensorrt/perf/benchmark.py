@@ -459,7 +459,7 @@ def get_acl_version():
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
-    logger.debug(f"Parsing test data in {path} ...")
+    logger.debug("Parsing test data in %s ...", path)
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = split_and_sort_output(output)
     logger.debug(test_data_set_dir)
@@ -497,7 +497,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.debug(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        logger.debug(f"Loaded {len(inputs)} inputs successfully.")
+        logger.debug("Loaded %d inputs successfully.", len(inputs))
 
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
@@ -519,7 +519,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
 
                     logger.debug(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            logger.debug(f"Loaded {len(outputs)} outputs successfully.")
+            logger.debug("Loaded %d outputs successfully.", len(outputs))
 
         os.chdir(pwd)
     return inputs, outputs
@@ -575,9 +575,9 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
         logger.debug("No reference output provided.")
         return True, None
 
-    logger.debug(f"Reference {len(all_ref_outputs)} results.")
-    logger.debug(f"Predicted {len(all_outputs)} results.")
-    logger.debug(f"rtol: {rtol}, atol: {atol}")
+    logger.debug("Reference %d results.", len(all_ref_outputs))
+    logger.debug("Predicted %d results.", len(all_outputs))
+    logger.debug("rtol: %d, atol: %d", rtol, atol)
 
     for i in range(len(all_outputs)):
         ref_outputs = all_ref_outputs[i]
@@ -692,18 +692,18 @@ def skip_ep(model_name, ep, model_to_fail_ep):
     fail_ep_list = model_to_fail_ep[model_name]
 
     if ep in fail_ep_list:
-        logger.debug(f"Skip testing {model_name} using {ep} since it has some issues.")
+        logger.debug("Skip testing %s using %s since it has some issues.", model_name, ep)
         return True
 
     return False
 
 
 def read_map_from_file(map_file):
-    with open(map_file) as f:
+    with open(map_file, encoding="utf-8") as file_handle:
         try:
-            data = json.load(f)
+            data = json.load(file_handle)
         except Exception as e:
-            return None
+            return {}
 
     return data
 
@@ -1100,7 +1100,7 @@ def run_model_on_ep(
 
     os.chdir(tmp_work_dir)
 
-    logger.info(f"Starting mode '{args.running_mode}' for {model_name} on {ep} ...")
+    logger.info("Starting mode '%s' for %s on %s ...", args.running_mode, model_name, ep)
 
     # Set environment variables for ort-trt benchmarking
     trt_ep_options = copy.deepcopy(args.trt_ep_options)
@@ -1200,7 +1200,7 @@ def run_model_on_ep(
             if second_creation_time:
                 ep_to_session[ep + second] = second_creation_time
 
-            logger.debug(f"Start to inference {model_name} with {ep} ...")
+            logger.debug("Start to inference %s with %s ...", model_name, ep)
             logger.debug(sess.get_providers())
             logger.debug(sess.get_provider_options())
 
@@ -1291,7 +1291,7 @@ def run_model_on_ep(
 
         sess.disable_fallback()
 
-        logger.debug(f"Start to inference {model_name} with {ep} ...")
+        logger.debug("Start to inference %s with %s ...", model_name, ep)
         logger.debug(sess.get_providers())
         logger.debug(sess.get_provider_options())
 
@@ -1817,7 +1817,7 @@ def output_latency(results, csv_filename):
             ]
             csv_writer.writerow(row)
 
-    logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
+    logger.info("CUDA/TRT latency comparison are saved to csv file: %s", csv_filename)
 
 
 def get_operator_metrics_rows(model, input_ep, event_category, operator_metrics):
@@ -1902,7 +1902,7 @@ def output_metrics(model_to_op_metrics, csv_filename):
     :param csv_filename: The name of the CSV file to write.
     """
 
-    with open(csv_filename, mode="w", newline="") as csv_file:
+    with open(csv_filename, mode="w", newline="", encoding="utf-8") as csv_file:
         column_names = [c[1] for c in op_metrics_columns]
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(column_names)
@@ -1921,7 +1921,7 @@ def output_metrics(model_to_op_metrics, csv_filename):
             row = [value[c[0]] for c in op_metrics_columns]
             csv_writer.writerow(row)
 
-    logger.info(f"Execution provider operator metrics are saved to csv file: {csv_filename}")
+    logger.info("Execution provider operator metrics are saved to csv file: %s", csv_filename)
 
 
 def output_system_info(result, csv_filename):
@@ -1932,7 +1932,7 @@ def output_system_info(result, csv_filename):
         csv_writer.writeheader()
         csv_writer.writerow(result)
 
-    logger.info(f"System information are saved to csv file: {csv_filename}")
+    logger.info("System information are saved to csv file: %s", csv_filename)
 
 
 def str2bool(v):
@@ -2167,15 +2167,15 @@ def main():
     perf_end_time = datetime.now()
 
     logger.info("Done running the perf.")
-    logger.info("\nTotal time for benchmarking all models: {}".format(perf_end_time - perf_start_time))
-    logger.info("\nTotal models: {}".format(len(models)))
+    logger.info("\nTotal time for benchmarking all models: %s", str(perf_end_time - perf_start_time))
+    logger.info("\nTotal models: %d", len(models))
 
     fail_model_cnt = 0
     for key, value in models.items():
         if key in model_to_fail_ep:
             fail_model_cnt += 1
-    logger.info("Fail models: {}".format(fail_model_cnt))
-    logger.info("Success models: {}".format(len(models) - fail_model_cnt))
+    logger.info("Fail models: %d", fail_model_cnt)
+    logger.info("Success models: %d", len(models) - fail_model_cnt)
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
