@@ -176,9 +176,13 @@ class Neg(_UnaryOp):
 
 
 class Constant(Block):
-    """Creates an initializer and adds it to the onnx model."""
+    """Creates a float initializer and adds it to the onnx model."""
+
+    # TODO: Add ability to add all sorts of initializers (not just floats).
 
     def __init__(self, value_float):
+        super().__init__()
+
         self._value = value_float
 
     def build(self):
