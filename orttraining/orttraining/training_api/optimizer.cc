@@ -137,10 +137,11 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
   ORT_ENFORCE(input_names_[0] == LearningRateName);        // TODO: make this better
   ORT_ENFORCE(input_names_[1] == StepName);                // TODO: make this better
   ORT_ENFORCE(input_names_[2] == ParamsName);              // TODO: make this better
-  ORT_ENFORCE(input_names_[3] == FirstOrderMomentsName);   // TODO: make this better
-  ORT_ENFORCE(input_names_[4] == SecondOrderMomentsName);  // TODO: make this better
 
   if (optimizer_type_ == OptimizerType::AdamW) {
+    ORT_ENFORCE(input_names_[3] == FirstOrderMomentsName);   // TODO: make this better
+    ORT_ENFORCE(input_names_[4] == SecondOrderMomentsName);  // TODO: make this better
+
     ORT_THROW_IF_ERROR(GenerateMomentumNamedStates());
   } else {
     ORT_THROW("Unsupported optimizer type");
