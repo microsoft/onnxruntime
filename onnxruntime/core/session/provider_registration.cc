@@ -88,19 +88,23 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_END
 }
 
-/**
- * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings.
- *
- * These are required when building an iOS app using Xamarin as all external symbols must be defined at compile time.
- * In that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
- * TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
- */
 #if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
 }
 #endif
 
+/**
+ * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings
+ * and are not implemented in provider_bridge_ort.cc.
+ *
+ * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for 
+ * provider_bridge_ort.cc being excluded in a minimal build.
+ * 
+ * These are required when building an iOS app using Xamarin as all external symbols must be defined at compile time.
+ * In that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
+ * TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
+ */
 #ifdef __APPLE__
 #ifdef __cplusplus
 extern "C" {
@@ -111,15 +115,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessio
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("DML");
-}
-#endif
-
-#ifndef USE_MIGRAPHX
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX,
-                    _In_ OrtSessionOptions* options, int device_id) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateNotEnabledStatus("MIGraphX");
 }
 #endif
 
