@@ -45,7 +45,7 @@ namespace {
 TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
-  /// Also cooked the data for test result comparision.
+  /// Also cooked the data for test result comparison.
 
   // Model path and trainable parameter name definitions.
   auto model_uri = MODEL_FOLDER "transform/computation_reduction/e2e.onnx";
@@ -162,7 +162,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
 TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
-  /// Also cooked the data for test result comparision.
+  /// Also cooked the data for test result comparison.
   auto model_uri = MODEL_FOLDER "training_api/gradient_graph.onnx";
   auto optim_uri = MODEL_FOLDER "training_api/adamw.onnx";
 
