@@ -71,7 +71,7 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
     const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
                                                                   : 1e-3;
     return TestTolerances(absolute, relative, absolute_overrides, relative_overrides);
-  };
+  }
   const auto overrides_json = nlohmann::json::parse(
       overrides_ifstream,
       /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
@@ -355,7 +355,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      // Setting default optimization level for OpenVINO can be overriden with -o option
+      // Setting default optimization level for OpenVINO can be overridden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
 #else
