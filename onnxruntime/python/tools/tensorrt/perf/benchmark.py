@@ -459,7 +459,7 @@ def get_acl_version():
 # outputs: [[test_data_0_output_0.pb, test_data_0_output_1.pb ...], [test_data_1_output_0.pb, test_data_1_output_1.pb ...] ...]
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
-    logger.debug("Parsing test data in {} ...".format(path))
+    logger.debug(f"Parsing test data in {path} ...")
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = split_and_sort_output(output)
     logger.debug(test_data_set_dir)
@@ -497,7 +497,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.debug(all_inputs_shape[-1])
         inputs.append(input_data_pb)
-        logger.debug("Loaded {} inputs successfully.".format(len(inputs)))
+        logger.debug(f"Loaded {len(inputs)} inputs successfully.")
 
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
@@ -519,7 +519,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, fp16):
 
                     logger.debug(np.array(output_data_pb[-1]).shape)
             outputs.append(output_data_pb)
-            logger.debug("Loaded {} outputs successfully.".format(len(outputs)))
+            logger.debug(f"Loaded {len(outputs)} outputs successfully.")
 
         os.chdir(pwd)
     return inputs, outputs
@@ -575,9 +575,9 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
         logger.debug("No reference output provided.")
         return True, None
 
-    logger.debug("Reference {} results.".format(len(all_ref_outputs)))
-    logger.debug("Predicted {} results.".format(len(all_outputs)))
-    logger.debug("rtol: {}, atol: {}".format(rtol, atol))
+    logger.debug(f"Reference {len(all_ref_outputs)} results.")
+    logger.debug(f"Predicted {len(all_outputs)} results.")
+    logger.debug(f"rtol: {rtol}, atol: {atol}")
 
     for i in range(len(all_outputs)):
         ref_outputs = all_ref_outputs[i]
@@ -602,48 +602,6 @@ def validate(all_ref_outputs, all_outputs, rtol, atol, percent_mismatch):
     return True, None
 
 
-# not use for this script
-def cleanup_files():
-    files = []
-    p = subprocess.Popen(["find", ".", "-name", "test_data_set*", "-type", "d"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n")
-
-    p = subprocess.Popen(["find", ".", "-name", "*.onnx"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n")
-
-    p = subprocess.Popen(["find", ".", "-name", "*.gz"], stdout=subprocess.PIPE)
-    stdout, sterr = p.communicate()
-    stdout = stdout.decode("ascii").strip()
-    files = files + stdout.split("\n")
-
-    for f in files:
-        if "custom_test_data" in f:
-            logger.info(f)
-            continue
-        subprocess.Popen(["rm", "-rf", f], stdout=subprocess.PIPE)
-
-
-def remove_files(running_mode, path):
-    files = []
-    if running_mode == "validate":
-        files = find_files(path, "ort_profile_*.json")  # Session profiles
-        files += find_files(path, "TensorrtExecutionProvider_*.onnx")  # TRT subgraphs
-        #files += find_files(path, "TensorrtExecutionProvider_*.engine")  # TRT subgraph engines
-    elif running_mode == "benchmark":
-        #files = find_files(path, "TensorrtExecutionProvider_*.engine")  # TRT subgraph engines
-        #files += find_files(path, "TensorrtExecutionProvider_*.profile")  # TRT subgraph engines
-        pass
-
-    if files:
-        print("^^^^^^^^ removing {} files:".format(len(files)))
-        print(files)
-        sys.stdout.flush()
-        subprocess.run(["rm", "-rf"] + files)
-
 def update_fail_report(fail_results, model, ep, e_type, e):
     result = {}
 
@@ -655,11 +613,11 @@ def update_fail_report(fail_results, model, ep, e_type, e):
     fail_results.append(result)
 
 
-def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
+def update_op_metrics_map(model_to_op_metrics, model_name, ep_to_operator):
     """
-    Updates `model_to_metrics` to include operator metrics for the given model.
+    Updates `model_to_op_metrics` to include operator metrics for the given model.
 
-    :param model_to_metrics: Dictionary that maps a model to a dictionary of operator metrics per EP.
+    :param model_to_op_metrics: Dictionary that maps a model to a dictionary of operator metrics per EP.
                              This function sets the operator metrics.
     :param model_name: The name of the model.
     :param ep_to_operator: Dictionary that maps an EP to information on operator usage.
@@ -668,15 +626,15 @@ def update_op_metrics_map(model_to_metrics, model_name, ep_to_operator):
     if len(ep_to_operator) == 0:
         return
 
-    if model_name not in model_to_metrics:
-        model_to_metrics[model_name] = {}
+    if model_name not in model_to_op_metrics:
+        model_to_op_metrics[model_name] = {}
 
     for ep, op_maps in ep_to_operator.items():
-        if ep not in model_to_metrics[model_name]:
-            model_to_metrics[model_name][ep] = {}
+        if ep not in model_to_op_metrics[model_name]:
+            model_to_op_metrics[model_name][ep] = {}
 
-        model_to_metrics[model_name][ep]["nodes"] = op_maps[0]
-        model_to_metrics[model_name][ep]["kernels"] = op_maps[1]
+        model_to_op_metrics[model_name][ep]["nodes"] = op_maps[0]
+        model_to_op_metrics[model_name][ep]["kernels"] = op_maps[1]
 
 
 ###################################################################################################
@@ -733,9 +691,8 @@ def skip_ep(model_name, ep, model_to_fail_ep):
 
     fail_ep_list = model_to_fail_ep[model_name]
 
-    # if ep in fail_ep_list and fail_ep_list[ep] == "runtime error":
     if ep in fail_ep_list:
-        logger.debug("|||||||----|||||||||Skip testing " + model_name + " using " + ep + " since it has some issues.")
+        logger.debug(f"Skip testing {model_name} using {ep} since it has some issues.")
         return True
 
     return False
@@ -814,13 +771,10 @@ def get_cpu_info():
 
 
 def get_gpu_info():
-    try:
-        info = get_output(["lspci", "-v"])
-        infos = re.findall("NVIDIA.*", info)
-    except FileNotFoundError as e:
-        infos = str(e)
-
+    info = get_output(["lspci", "-v"])
+    infos = re.findall("NVIDIA.*", info)
     return infos
+
 
 def get_cudnn_version(workspace):
     cudnn_path = get_output(["whereis", "cudnn_version.h"])
@@ -1064,10 +1018,82 @@ def create_session(model_path, providers, provider_options, session_options):
             raise Exception(e)
 
 
-def run_model_ep(args, model_name, model_info, ep, success_results, ep_to_latency, ep_to_op_metrics,
-                 model_to_fail_ep, ep_to_session, tmp_work_dir):
+def fill_trt_subgraphs(op_maps, dump_dir):
+    """
+    Parses dumped TensorRT subgraphs to augment operator usage information with the actual operators
+    used within TRT subgraphs.
 
-    all_inputs_shape = []  # use for standalone trt
+    :param op_maps: A tuple containing the parsed operator usage information for CPU nodes and GPU kernels.
+    :param dump_dir: The name of the directory containing dumped TRT subgraphs.
+    """
+
+    # List of dumped subgraph files (See trt_dump_subgraphs EP option)
+    subgraph_files = find_files(dump_dir, "*.onnx")
+
+    # Dictionary that maps a TRT operator name (e.g., TRTKernel_graph_main_9492348588788950893_1) to a list of
+    # 'info' dictionaries that need to be updated with subgraph information.
+    op_infos_to_update = {}
+
+    # Determine which 'info' dictionaries need to be updated.
+    for op_map in op_maps:
+        if trt_ep in op_map:
+            for op_name, op_info in op_map[trt_ep].items():
+                if op_name in op_infos_to_update:
+                    op_infos_to_update[op_name].append(op_info)
+                else:
+                    op_infos_to_update[op_name] = [op_info]
+
+    # Load dumped .onnx subraphs and update 'info' dictionaries.
+    for op_name, op_infos in op_infos_to_update.items():
+        subgraph_file = next((file_name for file_name in subgraph_files if op_name in file_name), None)
+
+        if not subgraph_file:
+            continue
+
+        onnx_model = onnx.load(subgraph_file)
+        subgraph_op_counts = {}
+
+        for node in onnx_model.graph.node:
+            op_type = node.op_type
+
+            if op_type in subgraph_op_counts:
+                subgraph_op_counts[op_type] += 1
+            else:
+                subgraph_op_counts[op_type] = 1
+
+        for op_info in op_infos:
+            op_info["subgraph"] = copy.deepcopy(subgraph_op_counts)
+
+
+def run_model_on_ep(
+    args,
+    model_name,
+    model_info,
+    ep,
+    success_results,
+    ep_to_latency,
+    ep_to_op_metrics,
+    model_to_fail_ep,
+    ep_to_session,
+    tmp_work_dir,
+):
+    """
+    Benchmarks or validates the given model on the given EP.
+
+    :param args: The command-line arguments to this script.
+    :param model_name: The name of the model to run.
+    :param model_info: A dictionary that contains paths to the model file and input data.
+    :param ep: The name of the EP (e.g., ORT-CUDAFp32) on which to run the model.
+    :param success_results: List of successful results that is updated by this function.
+    :param ep_to_latency: Dictionary that maps an EP to inference latency and memory usage results.
+                          Updated by this function.
+    :param ep_to_op_metrics: Dictionary that maps an EP to operator usage information. Updated by this function.
+    :param model_to_fail_ep: Dictionary that tracks failing model and EP combinations. Updated by this function.
+    :param ep_to_session: Dictionary that maps an EP to session creation latency results. Updated by this function.
+    :param tmp_work_dir: Temporary directory in which to run the model + EP.
+    """
+
+    all_inputs_shape = []  # used for standalone trt
     model_work_dir = os.path.normpath(model_info["working_directory"])
     model_path = os.path.normpath(os.path.join(model_work_dir, model_info["model_path"]))
     test_data_dir = os.path.normpath(os.path.join(model_work_dir, model_info["test_data_path"]))
@@ -1174,7 +1200,7 @@ def run_model_ep(args, model_name, model_info, ep, success_results, ep_to_latenc
             if second_creation_time:
                 ep_to_session[ep + second] = second_creation_time
 
-            logger.debug("start to inference {} with {} ...".format(model_name, ep))
+            logger.debug(f"Start to inference {model_name} with {ep} ...")
             logger.debug(sess.get_providers())
             logger.debug(sess.get_provider_options())
 
@@ -1265,7 +1291,7 @@ def run_model_ep(args, model_name, model_info, ep, success_results, ep_to_latenc
 
         sess.disable_fallback()
 
-        logger.debug("start to inference {} with {} ...".format(model_name, ep))
+        logger.debug(f"Start to inference {model_name} with {ep} ...")
         logger.debug(sess.get_providers())
         logger.debug(sess.get_provider_options())
 
@@ -1319,16 +1345,25 @@ def run_model_ep(args, model_name, model_info, ep, success_results, ep_to_latenc
         metrics = get_profile_metrics(tmp_work_dir, options.profile_file_prefix, logger)
         if metrics:
             if "ORT-TRT" in ep:
-                pass # Parse subgraphs
+                fill_trt_subgraphs(metrics, tmp_work_dir)
 
             ep_to_op_metrics[ep] = metrics
 
 
 def run_onnxruntime(args, models):
+    """
+    Benchmarks or validates the given models over the provided set of EPs.
+
+    :param args: The command-line arguments to this script. Contains the list of EPs to use.
+    :param models: Dictionary of models to run. The keys are model names and the values are dictionaries containing
+                   paths to the model files and input data.
+
+    :return: A tuple containing aggregated metrics/results.
+    """
 
     success_results = []
     model_to_latency = {}  # model -> cuda and tensorrt latency
-    model_to_metrics = {}  # model -> metrics from profiling file
+    model_to_op_metrics = {}  # model -> metrics from profiling file
     model_to_fail_ep = {}  # model -> failing ep
     model_to_session = {}  # models -> session creation time
 
@@ -1347,20 +1382,17 @@ def run_onnxruntime(args, models):
     if os.path.exists(FAIL_MODEL_FILE):
         model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
 
-    pwd = os.getcwd()
+    init_dir = os.getcwd()
 
-    #######################
-    # iterate model
-    #######################
+    # Run benchmarking or validation for every model + EP combination.
     for name, model_info in models.items():
         ep_to_latency = {}
-        ep_to_op_metrics = {}  # ep -> { operator -> count }
+        ep_to_op_metrics = {}
         ep_to_session = {}
 
-        #######################
-        # iterate ep
-        #######################
         for ep in ep_list:
+
+            # Skip model + EP combinations that have already failed in a previous run.
             if skip_ep(name, ep, model_to_fail_ep):
                 continue
 
@@ -1370,22 +1402,33 @@ def run_onnxruntime(args, models):
                     logger.error("No {} support".format(ep_))
                     continue
 
+            # Create a temporary directory for this run, which may create profiles, subgraph dumps, and TRT engines.
+            # The temporary directory is created in '/tmp/' and is automatically deleted after scope exit.
             with tempfile.TemporaryDirectory() as temp_dir:
-                # TODO: Do not pass in all model_to_* dicts. Pass int ep_to_* dicts instead.
-                run_model_ep(args, name, model_info, ep, success_results, ep_to_latency, ep_to_op_metrics,
-                             model_to_fail_ep, ep_to_session, temp_dir)
+                run_model_on_ep(
+                    args,
+                    name,
+                    model_info,
+                    ep,
+                    success_results,
+                    ep_to_latency,
+                    ep_to_op_metrics,
+                    model_to_fail_ep,
+                    ep_to_session,
+                    temp_dir,
+                )
 
         model_to_latency[name] = ep_to_latency
         model_to_session[name] = ep_to_session
-        update_op_metrics_map(model_to_metrics, name, ep_to_op_metrics)
+        update_op_metrics_map(model_to_op_metrics, name, ep_to_op_metrics)
 
-    os.chdir(pwd)
+    os.chdir(init_dir)
 
     return (
         success_results,
         model_to_latency,
         model_to_fail_ep,
-        model_to_metrics,
+        model_to_op_metrics,
         model_to_session,
     )
 
@@ -1836,11 +1879,11 @@ def get_operator_metrics_rows(model, input_ep, event_category, operator_metrics)
     return rows
 
 
-def output_metrics(model_to_metrics, csv_filename):
+def output_metrics(model_to_op_metrics, csv_filename):
     """
     Writes every model's operator metrics to a CSV file.
 
-    :param model_to_metrics: A dictionary that maps a model to operator metrics for each input EP.
+    :param model_to_op_metrics: A dictionary that maps a model to operator metrics for each input EP.
 
         Ex: {
                 "zfnet512-9": {
@@ -1865,7 +1908,7 @@ def output_metrics(model_to_metrics, csv_filename):
         csv_writer.writerow(column_names)
 
         results = []
-        for model, ep_info in model_to_metrics.items():
+        for model, ep_info in model_to_op_metrics.items():
             for input_ep in [cuda, trt, cuda_fp16, trt_fp16]:
                 if input_ep in ep_info:
                     rows = get_operator_metrics_rows(model, input_ep, "Node", ep_info[input_ep]["nodes"])
@@ -2118,7 +2161,7 @@ def main():
         success_results,
         model_to_latency,
         model_to_fail_ep,
-        model_to_metrics,
+        model_to_op_metrics,
         model_to_session,
     ) = run_onnxruntime(args, models)
     perf_end_time = datetime.now()
@@ -2175,19 +2218,19 @@ def main():
         csv_filename = os.path.join(path, csv_filename)
         output_details(success_results, csv_filename)
 
-    if len(model_to_metrics) > 0:
+    if len(model_to_op_metrics) > 0:
         logger.info("\n=========================================")
         logger.info("========== Models/EPs metrics  ==========")
         logger.info("=========================================")
-        pretty_print(pp, model_to_metrics)
-        write_map_to_file(model_to_metrics, OP_METRICS_FILE)
+        pretty_print(pp, model_to_op_metrics)
+        write_map_to_file(model_to_op_metrics, OP_METRICS_FILE)
 
         if args.write_test_result:
             csv_filename = (
                 args.benchmark_metrics_csv if args.benchmark_metrics_csv else f"benchmark_metrics_{time_stamp}.csv"
             )
             csv_filename = os.path.join(path, csv_filename)
-            output_metrics(model_to_metrics, csv_filename)
+            output_metrics(model_to_op_metrics, csv_filename)
 
     if len(model_to_session) > 0:
         write_map_to_file(model_to_session, SESSION_FILE)

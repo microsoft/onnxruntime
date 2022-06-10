@@ -91,19 +91,6 @@ def get_output(command):
     return output
 
 
-def find_files(path, name_pattern, are_dirs=False):
-    files = []
-
-    cmd = ["find", path, "-name", name_pattern]
-    if are_dirs:
-        cmd += ["-type", "d"]
-
-    files_str = get_output(cmd)
-    if files_str:
-        files = files_str.split("\n")
-
-    return files
-
 def find(regex_string):
     import glob
 
@@ -116,10 +103,43 @@ def pretty_print(pp, json_object):
     pp.pprint(json_object)
     sys.stdout.flush()
 
-def parse_model_run_info(data):
+
+def find_files(path, name_pattern, are_dirs=False):
+    """
+    Finds files that match the given name pattern within the given path.
+
+    :param path: The path in which to search for files.
+    :param name_pattern: Glob pattern (e.g., *.py) used to search for files.
+    :param are_dirs: True if function should find directories instead of regular files.
+
+    :return: A list of the found file path names.
+    """
+
+    files = []
+
+    cmd = ["find", path, "-name", name_pattern]
+    if are_dirs:
+        cmd += ["-type", "d"]
+
+    files_str = get_output(cmd)
+    if files_str:
+        files = files_str.split("\n")
+
+    return files
+
+
+def get_profile_model_runs(profile_entries):
+    """
+    Parses in-memory session profile data and returns all 'model run' entries.
+
+    :param profile_entries: A list of session profile entries.
+
+    :return: A list of model run entries.
+    """
+
     model_run_info = []
 
-    for entry in data:
+    for entry in profile_entries:
         if entry["cat"] == "Session" and entry["name"] == "model_run":
             model_run_info.append(entry)
 
@@ -127,6 +147,15 @@ def parse_model_run_info(data):
 
 
 def add_op_map_entry(provider_op_map, provider, op_name, duration):
+    """
+    Adds an operator usage data point to a dictionary that tracks operator usage per EP.
+
+    :param provider_op_map: Dictionary that tracks operator usage per EP.
+    :param provider: The EP for which to add a new operator usage data point.
+    :param op_name: The name of the operator.
+    :param duration: The execution duration (in microseconds) of the operator.
+    """
+
     if provider not in provider_op_map:
         provider_op_map[provider] = {}
 
@@ -137,7 +166,8 @@ def add_op_map_entry(provider_op_map, provider, op_name, duration):
             "num_instances": 1,
             "total_dur": duration,
             "min_dur": duration,
-            "max_dur": duration
+            "max_dur": duration,
+            "subgraph": {},
         }
     else:
         op_info = op_map[op_name]
@@ -155,7 +185,7 @@ def parse_model_run(profile_entries, target_model_run):
     :param profile_entries: List of profile data entries.
     :param target_model_run: Time range information on the model run to parse.
 
-    :return: The parsed operator usage information.
+    :return: A tuple containing the parsed operator usage information for CPU nodes and GPU kernels.
     """
 
     provider_node_op_map = {}  # ep -> map of node operator info
@@ -164,7 +194,7 @@ def parse_model_run(profile_entries, target_model_run):
     model_run_end = model_run_start + target_model_run["dur"]
 
     # Used to track the previous CPU node that launched kernel(s).
-    prev_node = None
+    prev_node = {}
 
     for entry in profile_entries:
         entry_start = entry["ts"]
@@ -172,7 +202,7 @@ def parse_model_run(profile_entries, target_model_run):
 
         # Skip entries that end before the target model run.
         if entry_end < model_run_start:
-            prev_node = None
+            prev_node = {}
             continue
 
         # Stop if we encounter entries that start after the target model run ends.
@@ -182,12 +212,12 @@ def parse_model_run(profile_entries, target_model_run):
         assert (entry_start >= model_run_start) and (entry_end <= model_run_end)
 
         if (not "cat" in entry) or (not "name" in entry) or (not "args" in entry) or (not "op_name" in entry["args"]):
-            prev_node = None
+            prev_node = {}
             continue
 
         # Parse a graph node. The node's duration represents execution time on a CPU thread (regardless of EP).
         if entry["cat"] == "Node":
-            prev_node = None
+            prev_node = {}
 
             if re.search(".*kernel_time", entry["name"]) and ("provider" in entry["args"]):
                 entry_args = entry["args"]
@@ -195,11 +225,12 @@ def parse_model_run(profile_entries, target_model_run):
                 prev_node = entry
 
         # Parse a GPU kernel that was launched by a previous node. Kernels only run on TensorRT or CUDA EPs.
-        elif entry["cat"] == "Kernel" and prev_node is not None:
-            add_op_map_entry(provider_kernel_op_map, prev_node["args"]["provider"], entry["args"]["op_name"],
-                             entry["dur"])
+        elif entry["cat"] == "Kernel" and prev_node:
+            add_op_map_entry(
+                provider_kernel_op_map, prev_node["args"]["provider"], entry["args"]["op_name"], entry["dur"]
+            )
         else:
-            prev_node = None
+            prev_node = {}
 
     return (provider_node_op_map, provider_kernel_op_map)
 
@@ -210,7 +241,7 @@ def parse_session_profile(profile):
 
     :param profile: The file handle for the profile to parse.
 
-    :return: Dictionary containing operator usage information per EP.
+    :return: A tuple containing the parsed operator usage information for CPU nodes and GPU kernels.
     """
 
     try:
@@ -219,27 +250,33 @@ def parse_session_profile(profile):
         return None
 
     # Get information on where each model run starts and ends.
-    model_run_info = parse_model_run_info(profile_entries)
-    print("{} contains {} model runs".format(profile, len(model_run_info)))
-    print(model_run_info)
+    model_runs = get_profile_model_runs(profile_entries)
 
-    if not model_run_info:
+    if not model_runs:
         return None
 
     # Use the model run with the lowest total duration.
-    min_run = min(model_run_info, key=lambda entry: entry["dur"])
-    print("{} has min run with duration {}".format(profile, min_run["dur"]))
+    min_run = min(model_runs, key=lambda entry: entry["dur"])
 
     # Parse model run
-    print("Parsing model run for {}".format(profile))
     op_maps = parse_model_run(profile_entries, min_run)
 
-    print(op_maps)
     return op_maps
 
 
 def get_profile_metrics(path, profile_file_prefix, logger=None):
-    logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
+    """
+    Parses a session profile file to obtain information on operator usage per EP.
+
+    :param path: The path containing the session profile file.
+    :param profile_file_prefix: Custom prefix for session profile names. Refer to ORT SessionOptions.
+    :param logger: The logger object to use for debug/info logging.
+
+    :return: A tuple containing the parsed operator usage information for CPU nodes and GPU kernels.
+    """
+
+    logger.debug("Parsing/Analyzing profiling files in {} ...".format(path))
+
     p1 = subprocess.Popen(
         ["find", path, "-name", f"{profile_file_prefix}*", "-printf", "%T+\t%p\n"],
         stdout=subprocess.PIPE,
@@ -254,14 +291,14 @@ def get_profile_metrics(path, profile_file_prefix, logger=None):
     for profile in profiling_files:
         profile = profile.split("\t")[1]
 
-        logger.info("start to parse {} ...".format(profile))
+        logger.debug("Parsing profile {} ...".format(profile))
         with open(profile) as f:
             op_maps = parse_session_profile(f)
             if op_maps and op_maps[0]:
                 data.append(op_maps)
 
     if len(data) == 0:
-        logger.info("No profile metrics got.")
+        logger.debug("No profile metrics found.")
         return None
 
     return data[-1]
