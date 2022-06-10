@@ -233,6 +233,10 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
           // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
           // through to Compile via a filtered GraphViewer.
           fused_node = &graph.BeginFuseSubGraph(capability, node_name);
+
+          for (const auto& outer_scope_node_arg_name : capability.GetMetaDef()->outer_scope_node_arg_names) {
+            graph.AddOuterScopeNodeArg(outer_scope_node_arg_name);
+          }
         }
 
         fused_node->SetExecutionProviderType(provider_type);

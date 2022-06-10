@@ -20,6 +20,9 @@
 #include <map>
 #include <memory>
 
+#include <iostream>
+//#include <fstream>
+
 #ifdef _WIN32
 #include <windows.h>
 #define LIBTYPE HINSTANCE
@@ -516,6 +519,33 @@ Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
   return Status::OK();
 }
 
+void GetOuterScopeNodeArgNames(const Graph* graph, std::unordered_set<std::string>& outer_scope_node_arg_names) {
+  auto parent_node = graph->ParentNode();
+  std::unordered_set<std::string> tmp_outer_scope_node_arg_names;
+
+  if (parent_node == nullptr) {
+    return;
+  }
+
+  for (const auto& input : parent_node->ImplicitInputDefs()) {
+    tmp_outer_scope_node_arg_names.insert(input->Name());
+  }
+
+  for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
+    auto node = graph->GetNode(i);
+    if (node == nullptr) {
+      continue;
+    }
+
+    for (const auto& input : node->InputDefs()) {
+      if (tmp_outer_scope_node_arg_names.find(input->Name()) == tmp_outer_scope_node_arg_names.end()) {
+        continue;
+      }
+      outer_scope_node_arg_names.insert(input->Name());
+    }
+  }
+}
+
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
@@ -627,6 +657,9 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
 
+  std::unordered_set<std::string> outer_scope_node_arg_names;
+  GetOuterScopeNodeArgNames(&graph.GetGraph(), outer_scope_node_arg_names);
+
   // Generate unique kernel name for TRT subgraph
   HashValue model_hash = 0;
   int id = GenerateMetaDefId(graph, model_hash);
@@ -652,11 +685,50 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     }
   }
 
+  for (const auto& outer_scope_node_arg_name : outer_scope_node_arg_names) {
+    meta_def->outer_scope_node_arg_names().insert(outer_scope_node_arg_name);
+  }
+
   meta_def->domain() = kMSDomain;
   meta_def->since_version() = 1;
   sub_graph->SetMetaDef(std::move(meta_def));
 
   return sub_graph;
+}
+
+void CheckAndResolveGraph(Graph* build_graph, const Graph* graph) {
+  
+  for (int i = 0; i < build_graph->NumberOfNodes(); ++i) {
+    auto build_graph_node = build_graph->GetNode(i);
+    auto build_subgraph_map = build_graph_node->GetAttributeNameToMutableSubgraphMap();
+    const Node* graph_node = nullptr;
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraph_map;
+    
+    for (int j = 0; j < graph->MaxNodeIndex(); ++j) {
+      if (graph->GetNode(j) && graph->GetNode(j)->Name() == build_graph_node->Name()) {
+        graph_node = graph->GetNode(j);
+        subgraph_map = graph_node->GetAttributeNameToSubgraphMap();
+        break;
+      }
+    }
+
+    if (graph_node != nullptr) {
+      for (const auto& input : graph_node->ImplicitInputDefs()) {
+        // TODO: need to check whether node arg is existed then add node arg is not existed
+        build_graph->AddOuterScopeNodeArg(input->Name());
+      }
+    }
+
+    for (auto& entry : build_subgraph_map) {
+      auto attr_name = entry.first;
+      Graph* subgraph = entry.second;
+      if (subgraph_map.find(attr_name) != subgraph_map.end()) {
+        // recursive into subgraph
+        const Graph* graph_subgraph = subgraph_map.at(attr_name);
+        CheckAndResolveGraph(subgraph, graph_subgraph);
+      }
+    }
+  }
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
@@ -683,14 +755,21 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         nodes_list_output.push_back(group);
       } else {
         auto model_build = graph.CreateModel(*GetLogger());
-        auto& graph_build = model_build->MainGraph();
+        auto& graph_build = model_build->MainGraph(); // the Graph is basically empty
 
         // Add node and node args
         // If node output is also parent graph output, the  output will be added to the
         // subgraph's output list
         std::vector<std::string> subgraph_output_names;
+        std::vector<size_t> exclude_node_list; 
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
+
+          if (node->OpType() == "If" || node->OpType() == "Loop") {
+            exclude_node_list.push_back(index);
+            continue;
+          }
+          
           std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
@@ -722,9 +801,17 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             }
           }
           graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+
         }
 
-        ORT_ENFORCE(graph_build.Resolve().IsOK());
+        if (group.first.size() == exclude_node_list.size()) {
+          SubGraphCollection_t empty_nodes_list_output;
+          return empty_nodes_list_output;
+        }
+
+        CheckAndResolveGraph(&graph_build, &graph.GetGraph()); 
+
+        ORT_ENFORCE(graph_build.Resolve().IsOK()); // input and output are added to subgraph
 
         // Add parent graph output to the subgraph
         int i = 0;
@@ -777,11 +864,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::string string_buf;
         model_proto->SerializeToString(string_buf);
 
-        if (dump_subgraphs_) {
+        //if (dump_subgraphs_) {
           // Dump TensorRT subgraph for debugging
           std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
           model_proto->SerializeToOstream(dump);
-        }
+        //}
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;
@@ -798,7 +885,16 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
+            auto index = subgraph_node_index[next_nodes_list[i].first[j]];
+            auto shift = 0;
+            for (auto exclude_index : exclude_node_list) {
+              if (index >= exclude_index) {
+                shift += 1;
+              }
+            }
+            index = index + shift;
+            next_nodes_list[i].first[j] = group.first[index];
+            //next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
@@ -1021,6 +1117,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     std::string string_buf;
     model_proto->SerializeToString(string_buf);
 
+    dump_subgraphs_ = true;
     if (dump_subgraphs_) {
       // Dump TensorRT subgraphs
       std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);

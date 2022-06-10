@@ -14,6 +14,9 @@
 #include "test/util/include/default_providers.h"
 #include "test/framework/test_utils.h"
 
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
+//#include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
+
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -361,9 +364,11 @@ void RunTest(int64_t max_iterations,
     execution_providers.push_back(DefaultCudaExecutionProvider());
     execution_providers.push_back(DefaultCpuExecutionProvider());
 
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+    //test.Run(expect_result, failure_message, {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+    test.Run(expect_result, failure_message, {}, nullptr, &execution_providers);
   } else {
-    test.Run(expect_result, failure_message, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // Disable TensorRT because of unsupported data type INT64
+    //test.Run(expect_result, failure_message, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // Disable TensorRT because of unsupported data type INT64
+    test.Run(expect_result, failure_message, {kOpenVINOExecutionProvider});
   }
 }
 
@@ -938,6 +943,29 @@ TEST(Loop, BugFixIssue4031_implicit_input_handling) {
   so.graph_optimization_level = TransformerLevel::Level2;  // we need constant folding to run
   InferenceSession session_object{so, GetEnvironment()};
   static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/ort_github_issue_4031.onnx");
+
+   OrtTensorRTProviderOptionsV2 params{
+      0,
+      0,
+      nullptr,
+      1000,
+      1,
+      1 << 30,
+      0,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      0};
+
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());

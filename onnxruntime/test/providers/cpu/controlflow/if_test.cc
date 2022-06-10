@@ -243,7 +243,7 @@ void RunTest(bool condition_value,
   std::unordered_set<std::string> excluded_providers;
   // Disable TensorRT on SymbolicShape or NoShape tests
   if (!is_tensorrt_supported) {
-    excluded_providers.insert(kTensorrtExecutionProvider);
+    //excluded_providers.insert(kTensorrtExecutionProvider);
   }
   if (options.mixed_execution_providers) {
     // we want the CUDA provider to be first, and the CPU provider second. all except the If should run on
