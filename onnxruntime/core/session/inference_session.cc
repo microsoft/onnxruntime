@@ -1147,27 +1147,19 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
 }
 
 namespace {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
-  std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
-
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             layout_transformer::TransformLayoutForCompilingEP,
-                                            GraphPartitioner::Mode::kOrtFormatLoad,
-                                            &compiled_kernel_hashes));
-
-  if (!compiled_kernel_hashes.empty()) {
-    session_state.SetCompiledKernelHashes(std::move(compiled_kernel_hashes));
-  }
-
+                                            GraphPartitioner::Mode::kOrtFormatLoad));
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
     const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep) {
@@ -1326,13 +1318,8 @@ common::Status InferenceSession::Initialize() {
       return false;
     }();
 
-    const fbs::SessionState* serialized_session_state =
-        loading_ort_format
-            ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
-            : nullptr;
-
-#if !defined(ORT_MINIMAL_BUILD)
     if (!loading_ort_format) {
+#if !defined(ORT_MINIMAL_BUILD)
       const auto minimal_build_opt_config_value = session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigMinimalBuildOptimizations, "");
       MinimalBuildOptimizationHandling minimal_build_optimization_handling{};
@@ -1393,21 +1380,16 @@ common::Status InferenceSession::Initialize() {
 
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
-    } else
+#else   // !defined(ORT_MINIMAL_BUILD)
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                          "Loading anything other than ORT format models is not enabled in this build."));
 #endif  // !defined(ORT_MINIMAL_BUILD)
-    {
-      ORT_ENFORCE(loading_ort_format && serialized_session_state != nullptr);
+    } else {
+      ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                             *session_state_));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      // nodes are already partitioned, but a custom EP may compile some at runtime.
-      // run the partitioning to allow that to happen.
-      //
-      // We always have the CPU EP, so only need to run this if some other EP is enabled
-      if (execution_providers_.NumProviders() > 1) {
-        ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                    *session_state_));
-      }
-
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
@@ -1418,7 +1400,6 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              session_options_,
-                                             serialized_session_state,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));

@@ -9,6 +9,7 @@
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/basic_types.h"
 
+// TODO do we need these helpers after removing session state from ORT format model?
 namespace onnxruntime::fbs::utils {
 
 /**

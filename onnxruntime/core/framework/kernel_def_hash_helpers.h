@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 
+// TODO can these be removed?
 namespace onnxruntime {
 class Node;
 namespace utils {
