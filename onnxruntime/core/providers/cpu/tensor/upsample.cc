@@ -1186,21 +1186,21 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                           Y->MutableData<T>(), alloc, get_original_coordinate_,
                                           output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
           } else {
-            const bool is_half_pixel = coordinate_transform_mode_ == HALF_PIXEL;
-            const bool is_align_corners = coordinate_transform_mode_ == ALIGN_CORNERS;
-            if (/* CPUIDInfo::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd() && */
-                !is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8 &&
-                (is_half_pixel || is_align_corners || coordinate_transform_mode_ == ASYMMETRIC)) {
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+            if (!is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
               NhwcUpsampleBilinearInteger<T, false>(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
                                                     height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(),
                                                     Y->MutableData<T>(), alloc, get_original_coordinate_,
                                                     output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
+#endif
               NhwcUpsampleBilinear<T, false>(static_cast<int32_t>(batch_size), static_cast<int32_t>(num_channels), static_cast<int32_t>(input_height), static_cast<int32_t>(input_width), static_cast<int32_t>(output_height), static_cast<int32_t>(output_width),
                                              height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(),
                                              Y->MutableData<T>(), alloc, get_original_coordinate_,
                                              output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             }
+#endif
           }
         }
         return Status::OK();
