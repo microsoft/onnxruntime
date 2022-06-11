@@ -7,6 +7,7 @@
 #include "core/framework/op_kernel.h"
 #endif
 #include <cmath>
+#include <vector>
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // Chance of arithmetic overflow could be reduced
@@ -452,7 +453,8 @@ void UpsampleBilinear(const int32_t batch_size,
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, num_channels,
         [&](std::ptrdiff_t c) {
-          const T* const Xdata = XdataBase + (n * num_channels + static_cast<int32_t>(c)) * (input_height * input_width);
+          const T* const Xdata =
+              XdataBase + (n * num_channels + static_cast<int32_t>(c)) * (input_height * input_width);
           T* const Ydata = YdataBase + (n * num_channels + static_cast<int32_t>(c)) * (output_height * output_width);
           for (int32_t y = 0; y < output_height; ++y) {
             for (int32_t x = 0; x < output_width; ++x) {

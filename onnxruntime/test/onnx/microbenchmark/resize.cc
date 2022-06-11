@@ -41,11 +41,11 @@ static void BM_NhwcUpsampleBilinear(benchmark::State& state) {
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
 
   for (auto _ : state) {
-    NhwcUpsampleBilinear<T, use_extrapolation>(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                                               height_scale, width_scale, roi,
-                                               extrapolation_value, XdataBase,
-                                               YdataBase, alloc, get_original_coordinate,
-                                               output_height * output_width * num_channels > 64 ? tp.get() : nullptr);
+    NhwcUpsampleBilinear<T, use_extrapolation>(
+        batch_size, num_channels, input_height, input_width, output_height, output_width,
+        height_scale, width_scale, roi, extrapolation_value, XdataBase, YdataBase,
+        alloc, get_original_coordinate,
+        output_height * output_width * num_channels > 64 ? tp.get() : nullptr);
   }
 }
 
