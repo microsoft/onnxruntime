@@ -28,6 +28,7 @@
 #include <sstream>
 #include <map>
 #include <regex>
+#include <string>
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
