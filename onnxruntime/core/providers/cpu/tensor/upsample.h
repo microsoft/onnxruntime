@@ -452,8 +452,8 @@ void UpsampleBilinear(const int32_t batch_size,
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, num_channels,
         [&](std::ptrdiff_t c) {
-          const T* const Xdata = XdataBase + (n * num_channels + c) * (input_height * input_width);
-          T* const Ydata = YdataBase + (n * num_channels + c) * (output_height * output_width);
+          const T* const Xdata = XdataBase + (n * num_channels + static_cast<int32_t>(c)) * (input_height * input_width);
+          T* const Ydata = YdataBase + (n * num_channels + static_cast<int32_t>(c)) * (output_height * output_width);
           for (int32_t y = 0; y < output_height; ++y) {
             for (int32_t x = 0; x < output_width; ++x) {
               const int32_t output_offset = output_width * y + x;
@@ -504,7 +504,7 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
     const T* const Xdata = XdataBase + n * (input_height * input_width) * num_channels;
     T* const Ydata = YdataBase + n * (output_height * output_width) * num_channels;
     concurrency::ThreadPool::TryParallelFor(
-        tp, output_height * output_width,
+        tp, static_cast<std::ptrdiff_t>(output_height) * output_width,
         static_cast<double>(num_channels * 2),
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           for (std::ptrdiff_t i = first; i < last; ++i) {
