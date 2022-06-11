@@ -467,7 +467,7 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
     const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
     if (!input_operand_type.channelQuant) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input [", input_name, "] has no channelQuant");
+                             "Input [", input_name, "] has nogathe channelQuant");
     }
 
     if (input_operand_type.channelQuant.value().scales != scales.value()) {
@@ -2475,13 +2475,19 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
   const int64_t* raw_indices_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
 
-  const auto size = SafeInt<uint32_t>(indices_tensor.dims()[0]);
+  const auto indices_shape = indices_tensor.dims();
+  uint32_t size = 1;
+  Shape indices_dimen;
+  indices_dimen.reserve(indices_tensor.dims_size());
+  for (auto i = 0; i < indices_tensor.dims_size(); i++) {
+    size *= indices_shape[i];
+    indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
+  }
   std::vector<int32_t> indices(size);
   for (uint32_t i = 0; i < size; i++) {
     indices[i] = SafeInt<int32_t>(raw_indices_data[i]);
   }
 
-  Shape indices_dimen = {static_cast<uint32_t>(indices.size())};
   OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
   input_indices.push_back(operand_indices.at(input2));
