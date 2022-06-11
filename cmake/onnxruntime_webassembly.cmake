@@ -72,9 +72,6 @@ function(bundle_static_library bundled_target_name)
   endforeach()
 
   add_library(${bundled_target_name} STATIC IMPORTED GLOBAL)
-  set_target_properties(${bundled_target_name}
-    PROPERTIES
-      IMPORTED_LOCATION ${bundled_target_full_name})
   foreach(target_name IN ITEMS ${ARGN})
     set_property(TARGET ${bundled_target_name} APPEND
       PROPERTY INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:${target_name},INTERFACE_INCLUDE_DIRECTORIES>)
