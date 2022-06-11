@@ -467,7 +467,7 @@ static Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
     const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
     if (!input_operand_type.channelQuant) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input [", input_name, "] has nogathe channelQuant");
+                             "Input [", input_name, "] has no channelQuant");
     }
 
     if (input_operand_type.channelQuant.value().scales != scales.value()) {
