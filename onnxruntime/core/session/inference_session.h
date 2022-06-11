@@ -664,6 +664,17 @@ class InferenceSession {
   std::basic_string<ORTCHAR_T> thread_pool_name_;
   std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
 
+  // This counter increments each time Run() is issued and decrements each time
+  // Run() exits. For concurrent executions this reference counter will be greater than 1
+  // This is currently used by thread-pools to find out if there is a Run() call in progress
+  // so it can adjust it spinning policies.
+  std::atomic_int32_t invocation_refcounter_{0};
+  // This option allows to decrease CPU usage between infrequent
+  // requests and forces any TP threads spinning stop immediately when the last of
+  // concurrent Run() call returns.
+  // Spinning is restarted on the next Run()
+  bool force_spinning_stop_between_runs_ = false;
+
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 

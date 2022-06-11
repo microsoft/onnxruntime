@@ -650,6 +650,18 @@ std::string ThreadPool::StopProfiling(concurrency::ThreadPool* tp) {
   }
 }
 
+void ThreadPool::EnableSpinning() {
+  if (extended_eigen_threadpool_) {
+    extended_eigen_threadpool_->EnableSpinning();
+  }
+}
+
+void ThreadPool::DisableSpinning() {
+  if (extended_eigen_threadpool_) {
+    extended_eigen_threadpool_->DisableSpinning();
+  }
+}
+
 // Return the number of threads created by the pool.
 int ThreadPool::NumThreads() const {
   if (underlying_threadpool_) {

@@ -594,12 +594,6 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
   }
 
   {
-    // Enter a parallel section encompassing the kernels invoked
-    // below.  This lets the runtime system amortize loop entry/exit
-    // costs over a series of short kernels, and promotes cache
-    // affinity between iterations of successive loops.
-    onnxruntime::concurrency::ThreadPool::ParallelSection ps(ttp_);
-
     // for each item in sequence run all calculations
     for (int step = 0; step < max_sequence_length; step++) {
 #if defined(DUMP_MATRIXES)
