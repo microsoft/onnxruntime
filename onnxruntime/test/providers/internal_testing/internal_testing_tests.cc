@@ -6,6 +6,9 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/utils.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ort_env.h"
 
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
@@ -20,9 +23,13 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
-namespace onnxruntime {
+// defined in test_main.cc
+extern std::unique_ptr<Ort::Env> ort_env;
 
+namespace onnxruntime {
 namespace test {
+
+using namespace onnxruntime::internal_testing_ep;
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
@@ -85,7 +92,6 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
   }
 }
 
-#if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "mnist.internal_testing_ep.test_output.ort";
@@ -149,8 +155,174 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
   ASSERT_FALSE(status.IsOK()) << "Initialize should have failed when trying to save model with compiled kernels";
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Unable to serialize model as it contains compiled nodes"));
 }
+
+// the internal NHWC operators are only included as part of contrib ops currently. as the EP requests the NHWC
+// version of the ONNX operator when matching a static kernel, those are required.
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "transform/fusion/conv_relu_opset12.onnx";
+
+  SessionOptions so;
+  InferenceSessionWrapper session(so, GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{"Conv", "Add", "Relu", "MaxPool"};
+  auto ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
+                                                               std::unordered_set<std::string>{},
+                                                               DataLayout::NHWC);
+  ep->EnableStaticKernels();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+
+  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  TensorShape input_shape_x{1, 1, 7, 7};
+  TensorShape input_shape_w{1, 1, 1, 1};
+  std::vector<float> input_x(input_shape_x.Size(), 1.f);
+  std::vector<float> input_w(input_shape_w.Size(), 1.f);
+  OrtValue ml_value_x;
+  OrtValue ml_value_w;
+  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+  CreateMLValue<float>(input_shape_w.GetDims(), input_w.data(), OrtMemoryInfo(), &ml_value_w);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("W", ml_value_w));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Z");
+  std::vector<OrtValue> fetches;
+
+  auto status = session.Run(feeds, output_names, &fetches);
+  // Error message should come from the Conv implementation with the statically registered kernel
+  ASSERT_THAT(status.ErrorMessage(),
+              ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
+                                   "Status Message: TODO: add NHWC implementation here."));
+}
+
+TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
+
+  SessionOptions so;
+  // set this if you want to manually inspect the optimized model
+  // so.optimized_model_filepath = ORT_MODEL_FOLDER "squeezenet/model.test_output.onnx";
+  InferenceSessionWrapper session(so, GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
+  auto ep = std::make_unique<InternalTestingExecutionProvider>(supported_ops,
+                                                               std::unordered_set<std::string>{},
+                                                               DataLayout::NHWC);
+  ep->EnableStaticKernels();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+
+  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+
+  // all Conv nodes should have been converted to NHWC versions and
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      ASSERT_EQ(node.Domain(), kMSInternalNHWCDomain);
+    }
+  }
+
+  TensorShape input_shape_x{1, 3, 224, 224};
+  std::vector<float> input_x(input_shape_x.Size(), 1.f);
+  OrtValue ml_value_x;
+  CreateMLValue<float>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data_0", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("softmaxout_1");
+  std::vector<OrtValue> fetches;
+
+  auto status = session.Run(feeds, output_names, &fetches);
+  ASSERT_THAT(status.ErrorMessage(),
+              ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
+                                   "Status Message: TODO: add NHWC implementation here."));
+}
+
+TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
+  auto init_session = [](std::vector<std::shared_ptr<IExecutionProvider>>& eps,
+                         InferenceSessionWrapper& session) {
+    for (const auto& ep : eps) {
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep));
+    }
+
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
+    ASSERT_STATUS_OK(session.Load(ort_model_path));
+    ASSERT_STATUS_OK(session.Initialize());
+  };
+
+  // create 2 sessions
+  SessionOptions so;
+  InferenceSessionWrapper session1(so, GetEnvironment());
+  InferenceSessionWrapper session2(so, GetEnvironment());
+
+  // and use the same EP instances in both
+  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
+  std::vector<std::shared_ptr<IExecutionProvider>> eps{
+      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
+                                                         DataLayout::NHWC),
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+
+  // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
+  init_session(eps, session1);
+  init_session(eps, session2);
+
+  // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
+  ASSERT_EQ(eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault),
+            eps[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault))
+      << "EPs do not have the same default allocator";
+}
+
+// make sure allocators returned by SessionState::GetAllocator are valid when IExecutionProvider::ReplaceAllocator
+// is used. if something is off InferenceSession::Initialize will fail.
+TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorage) {
+  OrtMemoryInfo mem_info("Replacement", OrtAllocatorType::OrtDeviceAllocator);
+  AllocatorPtr replacement_alloc = std::make_shared<CPUAllocator>(mem_info);
+  OrtEnv& env = *(OrtEnv*)(*ort_env);
+
+  ASSERT_STATUS_OK(env.RegisterAllocator(replacement_alloc));
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
+  InferenceSessionWrapper session(so, env.GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
+
+  std::vector<std::shared_ptr<IExecutionProvider>> eps{
+      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
+                                                         DataLayout::NHWC),
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+
+  for (const auto& ep : eps) {
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep));
+  }
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
+  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  ASSERT_STATUS_OK(env.UnregisterAllocator(mem_info));
+
+  // CPU EP is simple and should use the replacement allocator
+  ASSERT_EQ(replacement_alloc, eps[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault));
+
+  // our test EP has a local allocator and GetAllocator override.
+  //   - a call to GetAllocator won't match the replacement one because of this.
+  //   - a call to IExecutionProvider::GetAllocator should.
+  // this is not a good setup, but at least clarifies how the current system works.
+  ASSERT_NE(replacement_alloc, eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault));
+  ASSERT_EQ(replacement_alloc, eps[0]->IExecutionProvider::GetAllocator(0, OrtMemType::OrtMemTypeDefault));
+}
+
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)
-#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // test to validate a minimal build
 TEST(InternalTestingEP, TestLoadOrtModel) {

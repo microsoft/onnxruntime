@@ -14,7 +14,7 @@ import torch
 from t5_helper import PRETRAINED_T5_MODELS, T5Helper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
+from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -80,7 +80,7 @@ def parse_arguments():
         "--use_decoder_start_token",
         required=False,
         action="store_true",
-        help="Use config.decoder_start_token_id in decoding. Otherwise, add an extra graph input for decoder_input_ids.",
+        help="Use config.decoder_start_token_id. Otherwise, add an extra graph input for decoder_input_ids.",
     )
     parser.set_defaults(use_decoder_start_token=False)
 
@@ -101,6 +101,22 @@ def parse_arguments():
     )
     parser.set_defaults(disable_auto_mixed_precision=False)
 
+    parser.add_argument(
+        "--separate_encoder_and_decoder_init",
+        required=False,
+        action="store_true",
+        help="Do not merge encode and decoder init. Output 3 instead of 2 onnx models.",
+    )
+    parser.set_defaults(separate_encoder_and_decoder_init=False)
+
+    parser.add_argument(
+        "--use_int64_inputs",
+        required=False,
+        action="store_true",
+        help="Use int64 instead of int32 for input_ids, position_ids and attention_mask.",
+    )
+    parser.set_defaults(use_int64_inputs=False)
+
     args = parser.parse_args()
 
     return args
@@ -115,10 +131,11 @@ def export_onnx_models(
     optimize_onnx,
     precision,
     verbose,
-    use_decoder_start_token: bool = True,
+    use_decoder_start_token: bool = False,
     merge_encoder_and_decoder_init: bool = True,
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
+    use_int32_inputs: bool = True,
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
@@ -126,7 +143,7 @@ def export_onnx_models(
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):
-        logger.info(f"Try use_external_data_format when model size > 2GB")
+        logger.info("Try use_external_data_format when model size > 2GB")
 
     output_paths = []
     for name, model in models.items():
@@ -151,6 +168,7 @@ def export_onnx_models(
                 verbose,
                 use_external_data_format,
                 use_decoder_input_ids=not use_decoder_start_token,
+                use_int32_inputs=use_int32_inputs,
             )
         else:
             logger.info(f"Skip exporting: existed ONNX model {onnx_path}")
@@ -185,10 +203,12 @@ def export_onnx_models(
             use_gpu=use_gpu,
             provider=["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"],
         )
-        max_diff = T5Helper.verify_onnx(model, ort_session, device)
+
+        with torch.no_grad():
+            max_diff = T5Helper.verify_onnx(model, ort_session, device, use_int32_inputs)
         logger.info(f"PyTorch and OnnxRuntime results max difference = {max_diff}")
         if max_diff > 1e-4:
-            logger.warn(f"PyTorch and OnnxRuntime results are NOT close")
+            logger.warning("PyTorch and OnnxRuntime results are NOT close")
 
         output_paths.append(output_path)
 
@@ -212,24 +232,23 @@ def main():
         assert args.use_gpu, "fp16 requires --use_gpu"
 
     if args.optimize_onnx:
-        logger.warn(f"Graph optimization for T5 is not implemented yet.")
+        logger.warning("Graph optimization for T5 is not implemented yet.")
 
-    with torch.no_grad():
-        merge_encoder_and_decoder_init = True  # Merge encoder and decoder initialization into one model is recommended.
-        output_paths = export_onnx_models(
-            args.model_name_or_path,
-            cache_dir,
-            output_dir,
-            args.use_gpu,
-            args.use_external_data_format,
-            args.optimize_onnx,
-            args.precision,
-            args.verbose,
-            args.use_decoder_start_token,
-            merge_encoder_and_decoder_init,
-            args.overwrite,
-            args.disable_auto_mixed_precision,
-        )
+    output_paths = export_onnx_models(
+        args.model_name_or_path,
+        cache_dir,
+        output_dir,
+        args.use_gpu,
+        args.use_external_data_format,
+        args.optimize_onnx,
+        args.precision,
+        args.verbose,
+        args.use_decoder_start_token,
+        not args.separate_encoder_and_decoder_init,
+        args.overwrite,
+        args.disable_auto_mixed_precision,
+        not args.use_int64_inputs,
+    )
 
     logger.info(f"Done! Outputs: {output_paths}")
 

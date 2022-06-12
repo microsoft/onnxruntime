@@ -103,7 +103,7 @@ class TestOpReshape(unittest.TestCase):
             weight_type=weight_type,
             extra_options=extra_options,
         )
-        # make sure transpose become xint8 operator, its input name could tell that
+        # make sure reshape become xint8 operator, its input name could tell that
         check_op_nodes(
             self,
             model_uint8_path,
