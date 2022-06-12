@@ -180,7 +180,7 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.8.2"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML.Preview" version="1.9.0-dev2b57b4f738b1d0dcc2dd31ecd502e36f4e3ea5a0"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         list.append("<dependencies>")
@@ -200,7 +200,7 @@ def generate_dependencies(list, package_name, version):
 
         list.append("</dependencies>")
     else:
-        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML"
+        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML.Preview"
 
         list.append("<dependencies>")
         # Support .Net Core
