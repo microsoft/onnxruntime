@@ -21,7 +21,10 @@
 #include "core/framework/TensorSeq.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+#endif
+
+#ifdef ENABLE_ATEN
+#include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -104,6 +107,8 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kArmNNExecutionProvider ||
          provider_type == onnxruntime::kRknpuExecutionProvider ||
          provider_type == onnxruntime::kCoreMLExecutionProvider ||
+         provider_type == onnxruntime::kSnpeExecutionProvider ||
+         provider_type == onnxruntime::kXnnpackExecutionProvider ||
          provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
 
@@ -226,7 +231,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       }
       ++source_iter;
       ++target_iter;
-    }  //while
+    }  // while
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type to copy between device.");
   }
@@ -322,9 +327,9 @@ static common::Status CalculateStaticCopyInfoForFetches(const SessionState& sess
     // If for some reason using just the device from the allocation plan isn't enough, the following
     // would use the NodeInfo from the node producing the output
     //
-    //std::vector<SessionState::NodeInfo> node_info_vec;
-    //auto status = session_state.GetOutputNodeInfo(output_name, node_info_vec);
-    //if (status.IsOK()) {
+    // std::vector<SessionState::NodeInfo> node_info_vec;
+    // auto status = session_state.GetOutputNodeInfo(output_name, node_info_vec);
+    // if (status.IsOK()) {
     //  const auto& node_info = node_info_vec.front();  // only one entry as only one node can produce a given output
     //  copy_info[idx].source_device = *node_info.device;
     //} else {
@@ -785,8 +790,9 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
     return true;
   }
 
-#ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" && node.Domain() == kPytorchAtenDomain) {
+#ifdef ENABLE_ATEN
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" &&
+      node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
     ORT_ENFORCE(utils::HasString(attrs.at("operator")));
     std::string op_name = attrs.at("operator").s();

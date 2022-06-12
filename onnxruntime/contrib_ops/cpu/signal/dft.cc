@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
-                      .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
+                      .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
     DFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -42,7 +42,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
-                                       .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
+                                       .TypeConstraint("T2", BuildKernelDefConstraints<int32_t, int64_t>()),
     STFT);
 
 // dedupe with the other one in window_functions.cc
@@ -362,11 +362,24 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto is_real_valued = is_real_valued_signal(X_shape);
   const auto is_complex_valued = is_complex_valued_signal(X_shape);
 
+  // Get the rank of the input tensor
+  // Ensure that the axis is in the valid range of [-rank, rank)
+  auto rank = static_cast<int64_t>(X_shape.GetDims().size());
+  if (!(-rank <= axis && axis < rank)) {
+    ORT_RETURN_IF(!(-rank <= axis && axis < rank),
+                  "axis attribute value ",
+                  axis,
+                  " is invalid for a tensor of rank ",
+                  rank);
+  }
+  axis = (axis >= 0 ? axis : axis + rank);
+
   int64_t number_of_samples = static_cast<int64_t>(X_shape[axis]);
   if (dft_length) {
     const auto& dft_length_shape = dft_length->Shape();
     ORT_RETURN_IF(!dft_length_shape.IsScalar(), "dft_length must be a scalar value.");
     number_of_samples = static_cast<int>(get_scalar_value_from_tensor<int64_t>(dft_length));
+    ORT_RETURN_IF(number_of_samples <= 0, "dft_length must be greater than zero.");
   }
 
   // Get the DFT output size. Onesided will return only the unique values!
@@ -419,12 +432,20 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
 }
 
 Status DFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_ + 1, is_onesided_, false));
+  ORT_RETURN_IF_ERROR(
+    discrete_fourier_transform(ctx,
+                               axis_,
+                               is_onesided_,
+                               is_inverse_));
   return Status::OK();
 }
 
 Status IDFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_ + 1, false, true));
+  ORT_RETURN_IF_ERROR(
+    discrete_fourier_transform(ctx,
+                               axis_,
+                               false /*is_onesided_*/,
+                               true /*is_inverse_*/));
   return Status::OK();
 }
 

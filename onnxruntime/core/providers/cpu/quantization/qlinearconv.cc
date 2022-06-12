@@ -543,7 +543,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     Y_dims.push_back(M);
   }
   TensorShape input_shape = X->Shape().Slice(spatial_dim_start, spatial_dim_end);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   if (channels_last_) {
     Y_dims.push_back(M);
   }

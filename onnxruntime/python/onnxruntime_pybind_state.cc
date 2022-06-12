@@ -30,6 +30,10 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 
+#ifdef ENABLE_ATEN
+#include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
+#endif
+
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
 // GCC 4.x.
@@ -1010,6 +1014,19 @@ void addGlobalMethods(py::module& m, Environment& env) {
     arena_extend_strategy = strategy;
   });
 #endif
+
+#ifdef ENABLE_ATEN
+  m.def("register_aten_op_executor",
+        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
+          ORT_THROW_IF_ERROR(
+              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
+          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
+          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
+        });
+#endif
 }
 
 void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistrationFn ep_registration_fn) {
@@ -1236,7 +1253,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
             ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
           })
-      .def("add_external_initializers", [](PySessionOptions* options, py::list& names, 
+      .def("add_external_initializers", [](PySessionOptions* options, py::list& names,
                                                     const py::list& ort_values) -> void {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
           const auto init_num = ort_values.size();

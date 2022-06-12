@@ -1,9 +1,12 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
-#include "sequences.h"
-#include "beam_search_parameters.h"
 
 #include "core/common/inlined_containers.h"
-#include "beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
