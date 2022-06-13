@@ -44,80 +44,23 @@ parameters:
   default: 'default'
 
 jobs:
-- job: Linux_C_API_Packaging_CPU_x64
-  workspace:
-    clean: all
-  timeoutInMinutes:  210
-  strategy:
-    matrix:
-      ARCH_x86_64:
-        BASE_IMAGE: centos:7
-        ONNXRUNTIME_ARCH: x64
-        ONNXRUNTIME_CFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-        ONNXRUNTIME_CXXFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-        NODEJS_BINDING_ARCH: x64
-      ARCH_AARCH64:
-        BASE_IMAGE: arm64v8/centos:7
-        ONNXRUNTIME_ARCH: aarch64
-        ONNXRUNTIME_CFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-        ONNXRUNTIME_CXXFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-        NODEJS_BINDING_ARCH: arm64
-  pool: 'Linux-CPU'
-  steps:
-    - template: set-version-number-variables-step.yml
-    - template: get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=$(BASE_IMAGE)"
-        Repository: onnxruntimecpubuildcentos7$(ONNXRUNTIME_ARCH)
+- template: c-api-linux-cpu.yml
+  parameters:        
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+    BaseImage: 'centos:7'
+    OnnxruntimeArch: 'x64'
+    OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+    OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+    OnnxruntimeNodejsBindingArch: 'x64'
 
-    - task: CmdLine@2
-      inputs:
-        script: |
-          mkdir -p $HOME/.onnx
-          docker run --rm -e CFLAGS="$(ONNXRUNTIME_CFLAGS)" -e CXXFLAGS="$(ONNXRUNTIME_CXXFLAGS)" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos7$(ONNXRUNTIME_ARCH) /bin/bash -c "python3 \
-          /onnxruntime_src/tools/ci_build/build.py --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-$(ONNXRUNTIME_ARCH)"
-        workingDirectory: $(Build.SourcesDirectory)
-
-    - script: |
-       set -e -x
-       mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
-       ls -al $(Build.ArtifactStagingDirectory)
-      displayName: 'Create Artifacts'
-
-    - template: java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: 'linux-$(ONNXRUNTIME_ARCH)'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-$(ONNXRUNTIME_ARCH)'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
-
-    - template: c-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-$(ONNXRUNTIME_ARCH)-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: 'onnxruntime-linux-$(ONNXRUNTIME_ARCH)'
-          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-
-    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: '$(NODEJS_BINDING_ARCH)'
-          os: 'linux'
-          artifactName: 'drop-onnxruntime-nodejs-linux-$(ONNXRUNTIME_ARCH)'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
+- template: c-api-linux-cpu.yml
+  parameters:        
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+    BaseImage: 'arm64v8/centos:7'
+    OnnxruntimeArch: 'aarch64'
+    OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
+    OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
+    OnnxruntimeNodejsBindingArch: 'arm64'
 
 - job: MacOS_C_API_Packaging_CPU_x64
   workspace:
@@ -304,6 +247,7 @@ jobs:
   pool: 'Win-CPU-2021'
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
   - MacOS_C_API_Packaging_CPU_x64
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
@@ -387,6 +331,7 @@ jobs:
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
   - MacOS_C_API_Packaging_CPU_x64
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
@@ -591,6 +536,7 @@ jobs:
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
   - MacOS_C_API_Packaging_CPU_x64
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}

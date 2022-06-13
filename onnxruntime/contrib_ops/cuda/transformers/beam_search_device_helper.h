@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -26,21 +29,15 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             std::unique_ptr<Tensor>& output_indices);
 
 Status AddToFeeds(const IExecutionProvider* execution_provider,
-                  OrtValue& input_ids,
-                  OrtValue& position_ids,
-                  OrtValue& attention_mask,
+                  std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& buffer);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
-                   transformers::IBeamSearchCpuState* cpu_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int32_t> input_ids_in_cpu,
-                   int sequence_length,
-                   int max_length,
                    void* stream);
 
 template <typename T>
@@ -64,13 +61,30 @@ Status DeviceCopy(gsl::span<T> target,
                   int copyDirection);
 
 template <typename T>
-Status UpdateFeeds(
+Status UpdateGptFeeds(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper);
+
+// ---------------------------------------------------------------
+// Functions for encoder-decoder model like T5
+// ---------------------------------------------------------------
+
+// Update decoder inputs given decoder outputs of last iteration.
+template <typename T>
+Status UpdateDecoderFeeds(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int num_present_tensors,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,

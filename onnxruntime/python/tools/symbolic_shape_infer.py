@@ -192,19 +192,19 @@ class SymbolicShapeInference:
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
         }
         self.aten_op_dispatcher_ = {
-            "aten::embedding": self._infer_Gather,
-            "aten::bitwise_or": self._infer_aten_bitwise_or,
-            "aten::diagonal": self._infer_aten_diagonal,
-            "aten::max_pool2d_with_indices": self._infer_aten_pool2d,
-            "aten::max": self._infer_aten_minmax,
-            "aten::min": self._infer_aten_minmax,
-            "aten::multinomial": self._infer_aten_multinomial,
-            "aten::unfold": self._infer_aten_unfold,
-            "aten::argmax": self._infer_aten_argmax,
-            "aten::avg_pool2d": self._infer_aten_pool2d,
-            "aten::_adaptive_avg_pool2d": self._infer_aten_pool2d,
-            "aten::binary_cross_entropy_with_logits": self._infer_aten_bce,
-            "aten::numpy_T": self._infer_Transpose,
+            "embedding": self._infer_Gather,
+            "bitwise_or": self._infer_aten_bitwise_or,
+            "diagonal": self._infer_aten_diagonal,
+            "max_pool2d_with_indices": self._infer_aten_pool2d,
+            "max": self._infer_aten_minmax,
+            "min": self._infer_aten_minmax,
+            "multinomial": self._infer_aten_multinomial,
+            "unfold": self._infer_aten_unfold,
+            "argmax": self._infer_aten_argmax,
+            "avg_pool2d": self._infer_aten_pool2d,
+            "_adaptive_avg_pool2d": self._infer_aten_pool2d,
+            "binary_cross_entropy_with_logits": self._infer_aten_bce,
+            "numpy_T": self._infer_Transpose,
         }
         self.run_ = True
         self.suggested_merge_ = {}
