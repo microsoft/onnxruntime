@@ -95,6 +95,29 @@ inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
                          rocblas_gemm_algo_standard, 0, 0);
 }
 
+// Compatible for function call with the extra hipDeviceProp_t argument
+template<typename Scalar>
+rocblas_status rocblasGemmHelper(rocblas_handle handle, 
+                                 rocblas_operation transa, 
+                                 rocblas_operation transb, 
+                                 int m, int n, int k, 
+                                 const Scalar* alpha, 
+                                 const Scalar* A, int lda,
+                                 const Scalar* B, int ldb, 
+                                 const Scalar* beta, 
+                                 Scalar* C, int ldc,
+                                 const hipDeviceProp_t&) {
+    return rocblasGemmHelper(handle, 
+                             transa, 
+                             transb,
+                             m, n, k, 
+                             alpha, 
+                             A, lda, 
+                             B, ldb, 
+                             beta, 
+                             C,  ldc);
+}
+
 // batched gemm
 inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle,
                                                 rocblas_operation transa,
