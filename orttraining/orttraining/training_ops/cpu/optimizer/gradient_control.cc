@@ -81,5 +81,63 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),
     ZeroGradient<float>);
 
+ONNX_OPERATOR_KERNEL_EX(
+    InPlaceAccumulatorV2,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 1)  // accumulate tensors in-place
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    InPlaceAccumulatorV2<float>);
+
+template <typename T>
+Status InPlaceAccumulatorV2<T>::Compute(OpKernelContext* context) const {
+  Tensor* accumulation_buffer = const_cast<Tensor*>(context->Input<Tensor>(0));
+  const Tensor* new_value = context->Input<Tensor>(1);
+  const Tensor* overwrite_tensor = context->Input<Tensor>(2);
+
+  void* accumulation_buffer_data = accumulation_buffer->template MutableData<T>();
+  const bool overwrite = overwrite_tensor != nullptr ? *(overwrite_tensor->template Data<bool>()) : false;
+
+  if (overwrite) {
+    const void* updated_data = new_value->template Data<T>();
+    memcpy(accumulation_buffer_data, updated_data, new_value->SizeInBytes());
+  } else {
+    // Copy from Add CPU kernel
+    ProcessBroadcastSpanFuncs funcs{
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+        },
+        [](BroadcastHelper& per_iter_bh) {
+          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+        }};
+
+    // UntypedBroadcastTwo(*context, funcs);
+    InputBroadcaster input_broadcaster(*accumulation_buffer, *new_value);
+    OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(), *accumulation_buffer);
+    BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, nullptr);
+
+    BroadcastLooper(broadcast_helper, funcs);
+  }
+
+  Tensor* updated_output = context->Output(0, {});
+  bool* updated_output_ptr = updated_output->template MutableData<bool>();
+  *updated_output_ptr = true;
+
+  Tensor* accumulated_value_out = context->Output(1, new_value->Shape());
+  if (nullptr != accumulated_value_out) {
+    void* output_data = accumulated_value_out->template MutableData<T>();
+    if (output_data != accumulation_buffer_data){
+    memcpy(output_data, accumulation_buffer_data, new_value->SizeInBytes());
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -2092,6 +2092,40 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   test.Run();
 }
 
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_CUDA) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
+  test.AddInput<float>("value", {3}, {4, 5, 6});
+  test.AddOutput<bool>("updated",{},{true});
+  test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
+  test.AddInput<float>("value", {3}, {4, 5, 6});
+  test.AddOutput<bool>("updated",{},{true});
+  test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
+  test.AddInput<float>("value", {3}, {4, 5, 6});
+  test.AddInput<bool>("overwrite",{1},{true});
+  test.AddOutput<bool>("updated",{},{true});
+  test.AddOutput<float>("new_sum", {3}, {4, 5, 6});
+
+  test.Run();
+}
+
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
