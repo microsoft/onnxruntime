@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <string>
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/ort_value.h"
