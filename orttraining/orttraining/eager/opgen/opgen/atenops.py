@@ -1,7 +1,6 @@
 from copy import deepcopy
 
 import torch
-from opgen.generator import MakeTorchFallback as MakeTorchFallback
 from opgen.generator import ONNXOp as ONNXOp
 from opgen.generator import ORTGen as ORTGen
 from opgen.generator import SignatureOnly as SignatureOnly

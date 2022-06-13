@@ -6,7 +6,6 @@ from opgen.generator import (
     ORTGen as ORTGen,
     ONNXOp as ONNXOp,
     SignatureOnly as SignatureOnly,
-    MakeTorchFallback as MakeTorchFallback,
 )
 
 from opgen.onnxops import *

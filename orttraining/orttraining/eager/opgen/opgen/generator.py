@@ -85,11 +85,6 @@ class SignatureOnly(ONNXOp):
         super().__init__(None, 0, [])
 
 
-class MakeTorchFallback(ONNXOp):
-    def __init__(self):
-        super().__init__(None, 0, [])
-
-
 class FunctionGenerationError(NotImplementedError):
     def __init__(self, cpp_func: ast.FunctionDecl, message: str):
         super().__init__(f"{message} ({cpp_func.identifier})")
@@ -103,14 +98,12 @@ class MappedOpFunction:
         onnx_op: ONNXOp,
         cpp_func: ast.FunctionDecl,
         signature_only: bool,
-        make_torch_fallback: bool,
     ):
         self.op_namespace = op_namespace
         self.mapped_op_name = mapped_op_name
         self.onnx_op = onnx_op
         self.cpp_func = cpp_func
         self.signature_only = signature_only
-        self.make_torch_fallback = make_torch_fallback
 
 
 class ORTGen:
@@ -244,9 +237,6 @@ class ORTGen:
         log_params = ", ".join([p.member.identifier.value for p in cpp_func.parameters if p.member.identifier])
         writer.writeline(f"ORT_LOG_FN({log_params});")
         writer.writeline()
-
-        if mapped_func.make_torch_fallback:
-            return self._write_cpu_fall_back(writer, mapped_func)
 
         # Eval the outer ONNX op to produce a topologically ordered list of ops
         ctx = ONNXOpEvalContext()
@@ -588,7 +578,6 @@ class ORTGen:
                 onnx_op,
                 cpp_func,
                 isinstance(onnx_op, SignatureOnly),
-                isinstance(onnx_op, MakeTorchFallback),
             )
 
     def _parse_function_decls(self, cpp_parser: parser.CPPParser):
