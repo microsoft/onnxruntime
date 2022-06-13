@@ -10,7 +10,6 @@
 #include "core/graph/constants.h"
 #include "core/common/logging/macros.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/framework/stream_pool.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/tensorprotoutils.h"
 
@@ -67,24 +66,27 @@ struct ReleasePlan {
 // TODO: if we merge the notifications to execution frame, we might don't need this.
 struct ExecutionContext {
   const SessionState* session_state;
-  ExecutionFrame* frame;
+  std::unique_ptr<ExecutionFrame> frame;
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unique_ptr<ReleasePlan> release_plan;
-  std::vector<Stream*> device_streams;
+  std::vector<std::unique_ptr<Stream> > device_streams;
 
   ExecutionContext(const SessionState& sess_state,
                    std::vector<std::unique_ptr<LogicStream>>& logic_streams,
                    std::vector<size_t> notification_owners,
+                   const std::vector<int>& feed_mlvalue_idxs,
+                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+                   std::vector<OrtValue>& fetches,
+                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    const logging::Logger& sess_logger) : session_state(&sess_state),
                                                          logger(&sess_logger) {
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
       if (logic_stream->commands_.size() > 0) {
-        auto* stream = sess_state.GetStreamPool().GetStream(logic_stream->ep_);
-        // TODO: if EP doesn't provide stream support, fallback to CPU stream (sync on the host thread)
-        ORT_ENFORCE(stream);
-        device_streams.push_back(stream);
+        auto& stream_handle_registry = sess_state.GetStreamHandleRegistryInstance();
+        auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->ep_->Type());
+        device_streams.emplace_back(create_stream_fn(logic_stream->ep_));
       } else {
         device_streams.push_back(nullptr);
       }
@@ -95,16 +97,15 @@ struct ExecutionContext {
       notifications.push_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
     }
 
+    // create frame
+    frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
+
     auto* para_exe_plan = const_cast<SessionState&>(sess_state).GetParalllelExecutionPlan();
     release_plan = para_exe_plan->GenerateReleasePlan();
   }
 
-  void SetFrame(ExecutionFrame* execution_frame) {
-    frame = execution_frame;
-  }
-
   ~ExecutionContext() {
-    for (auto* stream : device_streams) {
+    for (auto& stream : device_streams) {
       if (stream) {
         auto& allocators = stream->provider->GetAllocators();
         for (auto& alloc : allocators) {
@@ -112,11 +113,10 @@ struct ExecutionContext {
             auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
             auto* stream_aware_alloc = static_cast<StreamAwareArena*>(arena_alloc);
             if (stream_aware_alloc) {
-              stream_aware_alloc->ReleaseStreamBuffers(static_cast<BFCArena::StreamId>(stream));
+              stream_aware_alloc->ReleaseStreamBuffers(stream.get());
             }
           }
         }
-        session_state->GetStreamPool().ReleaseStream(stream);
       }
     }
   }
@@ -323,6 +323,8 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           const std::string& upstream_node_name = it->Name();
           logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](ExecutionContext& ctx) {
             wait_handle(*ctx.device_streams[cur_stream_idx], *ctx.notifications[notification_index]);
+            // update streams clock status
+            ctx.device_streams[cur_stream_idx]->UpdateStreamClock(ctx.notifications[notification_index]->stream, ctx.notifications[notification_index]->timestamp);
             LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
           });
         }
@@ -336,7 +338,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         // TODO: set terminate flag from run_option
-        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, false, ctx.device_streams[cur_stream_idx]);
+        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, false, ctx.device_streams[cur_stream_idx].get());
         if (p_kernel->IsAsync()) {
           assert(false);
         } else {
@@ -429,9 +431,15 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                                                   const logging::Logger& logger) {
   auto* tp = session_state.GetInterOpThreadPool();
   // prepare the execution context, notifications got initialized.
-  ExecutionContext execution_context(session_state, logic_streams_, notification_owners_, logger);
-  ExecutionFrame frame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state, &execution_context.device_streams);
-  execution_context.SetFrame(&frame);
+  ExecutionContext execution_context(session_state, 
+      logic_streams_, 
+      notification_owners_, 
+      feed_mlvalue_idxs, 
+      feeds, 
+      fetch_mlvalue_idxs, 
+      fetches, 
+      fetch_allocators, 
+      logger);
   // execution_context.release_plan = GenerateReleasePlan();
   std::unique_ptr<Barrier[]> barriers{new Barrier[num_logic_streams_-1]}; // TODO: handle case when num_logic_streams_ == 0
 
@@ -461,7 +469,7 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
   }
 
   //TODO: we might need to flush all the stream before return the result.
-  ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
+  ORT_RETURN_IF_ERROR(execution_context.frame->GetOutputs(fetches));
   return Status::OK();
 }
 

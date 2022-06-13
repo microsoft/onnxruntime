@@ -341,7 +341,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
                                const std::vector<int>& fetch_mlvalue_idxs, const std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state,
-                               const std::vector<Stream*>* device_streams)
+                               const std::vector<std::unique_ptr<Stream>>* device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
@@ -487,7 +487,7 @@ Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
   auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
   if (it != value_to_stream_map.end() && device_streams_ && it->second < device_streams_->size()) {
-    return (*device_streams_)[it->second];
+    return (*device_streams_)[it->second].get();
   }
   return nullptr;
 }
@@ -567,17 +567,21 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   auto create_fn = [this, alloc, current_stream](size_t len) {
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
     if (stream_aware_alloc && current_stream) {
-      auto* chunk = stream_aware_alloc->AllocOnStream(len, static_cast<BFCArena::StreamId>(current_stream));
-      Stream* chunk_stream = static_cast<Stream*>(chunk->stream_id);
+      auto* chunk = stream_aware_alloc->AllocOnStream(len, current_stream);
+      Stream* chunk_stream = static_cast<Stream*>(chunk->stream);
       if (chunk_stream != current_stream) {
-        //TODO: sync
-        ORT_ENFORCE(chunk_stream);
-        auto notificaiton = chunk_stream->CreateNotification(/*TODO*/ 0);
-        notificaiton->Activate();
-        auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-            chunk_stream->provider->Type(), current_stream->provider->Type());
-        wait_handle(*current_stream, *notificaiton);
-        // it should be ok to release the notification now, as the wait is already launch to stream.
+        auto it = current_stream->other_stream_clock.find(chunk_stream);
+        if (it == current_stream->other_stream_clock.end() || chunk->stream_timestamp >= it->second) {
+          //TODO: sync
+          ORT_ENFORCE(chunk_stream);
+          auto notificaiton = chunk_stream->CreateNotification(/*TODO*/ 1);
+          notificaiton->ActivateAndUpdate();
+          auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
+              chunk_stream->provider->Type(), current_stream->provider->Type());
+          wait_handle(*current_stream, *notificaiton);
+          current_stream->UpdateStreamClock(chunk_stream, notificaiton->timestamp); 
+          // it should be ok to release the notification now, as the wait is already launch to stream. 
+        }
       }
       return chunk->ptr;
     } else {

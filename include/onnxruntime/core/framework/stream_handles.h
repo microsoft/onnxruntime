@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <unordered_map>
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -20,8 +21,20 @@ struct Notification;
 struct Stream {
   StreamHandle handle;
   const IExecutionProvider* provider;
+  uint64_t timestamp{0};
+  // TODO: do we really need it to be a dynamic map?
+  std::unordered_map<Stream*, uint64_t> other_stream_clock;
 
   Stream::Stream(StreamHandle h, const IExecutionProvider* p) : handle(h), provider(p) {}
+
+  uint64_t BumpTimeStampAndReturn() {
+    return ++timestamp;
+  }
+
+  void UpdateStreamClock(Stream* stream, uint64_t clock) {
+    other_stream_clock[stream] = clock;
+  }
+
   virtual ~Stream() {}
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) = 0;
   virtual void Flush() = 0;
@@ -31,9 +44,15 @@ namespace synchronize {
 struct Notification {
   // which stream create this notificaiton.
   Stream* stream;
+  uint64_t timestamp{0};
 
   Notification(Stream* s) : stream(s) {}
   virtual ~Notification() {}
+
+  void ActivateAndUpdate() {
+    Activate();
+    timestamp = stream->BumpTimeStampAndReturn();
+  }
 
   virtual void Activate() = 0;
 };

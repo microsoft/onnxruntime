@@ -159,7 +159,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         //make it stream aware
         true,
         // enable cross stream sharing?
-        true
+        false
         );
 
     // CUDA malloc/free is expensive so always use an arena
