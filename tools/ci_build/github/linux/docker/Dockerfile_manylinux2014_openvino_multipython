@@ -10,6 +10,7 @@ ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 ARG OV_DEVICE_PRECISION="CPU_FP32"
 ARG ENABLE_TRAINING=true
+ARG ORT_BRANCH="master"
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 ENV PYTHON_EXE="/opt/python/$PYTHON_VER_PATH/bin/python$PYTHON_VERSION"
@@ -52,7 +53,7 @@ ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64
 ENV OPENVINO_MANYLINUX 1
 
 RUN cd $WORKDIR && \
-    git clone --recursive -b preetha/master_training_package https://github.com/intel/onnxruntime.git
+    git clone --recursive -b $ORT_BRANCH https://github.com/intel/onnxruntime.git
 RUN cd onnxruntime/onnxruntime/core/providers/openvino && mkdir scripts
 
 RUN cp ${IE_PLUGINS_PATH}/libopenvino.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
