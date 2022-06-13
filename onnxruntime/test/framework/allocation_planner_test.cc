@@ -1613,7 +1613,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
-  //so.optimized_model_filepath = L"./optimized_ssd.onnx";
+  so.optimized_model_filepath = L"./optimized_ssd.onnx";
   InferenceSession sess{so, GetEnvironment()};
 
   /*auto*/ status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
@@ -1634,16 +1634,16 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
   const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
   InlinedHashMap<std::string, std::string> reuse_pairs;
-  reuse_pairs.emplace("conv_0_out", "conv_1_out");
-  reuse_pairs.emplace("relu_0_out", "relu_1_out");
+  reuse_pairs.emplace("conv_0_out", "relu_0_out");
+  reuse_pairs.emplace("conv_1_out", "relu_1_out");
   reuse_pairs.emplace("conv_2_out", "relu_2_out");
   for (OrtValueIndex i = 0; i < para_exe_plan->allocation_plan.size(); ++i) {
     auto& per_value_plan = para_exe_plan->allocation_plan[i];
     if (per_value_plan.alloc_kind == AllocKind::kReuse) {
       std::string reused;
-      //std::string current;
+      // std::string current;
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
-      //ORT_ENFORCE(main_graph_ort_value_index_map.GetName(i, current).IsOK());
+      // ORT_ENFORCE(main_graph_ort_value_index_map.GetName(i, current).IsOK());
       reuse_pairs.erase(reused);
       // std::cout << reused << " resused by " << current << std::endl;
     }  //if
