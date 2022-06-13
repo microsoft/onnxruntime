@@ -2,11 +2,11 @@ import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
 
-class QLinearActivation(QuantOperatorBase):
+class QLinearActivation(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
@@ -19,12 +19,12 @@ class QLinearActivation(QuantOperatorBase):
         # If input to this node is not quantized then keep this node
         # If activation is symmetric, not quantize the op and simply return
         if node.input[0] not in self.quantizer.quantized_value_map or self.quantizer.is_activation_symmetric:
-            return super().quantize()
+            return super().do_quantization()
 
         quantized_value = self.quantizer.quantized_value_map[node.input[0]]
         self.quantizer.quantized_value_map[node.output[0]] = quantized_value
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         if node.op_type == "Relu" or node.op_type == "Clip":
             self.QuantizeClipRelu()
@@ -55,7 +55,7 @@ class QLinearActivation(QuantOperatorBase):
             nodes,
         ) = self.quantizer.quantize_inputs(node, [0])
         if not data_found or quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         qlinear_activation_output = node.output[0] + "_quantized"
         qlinear_activation_name = ""
@@ -100,7 +100,7 @@ class QDQRemovableActivation(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
 
         if not self.quantizer.is_activation_symmetric and self.quantizer.try_replacing_upstream_output(

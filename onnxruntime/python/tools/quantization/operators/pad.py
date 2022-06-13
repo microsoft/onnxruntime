@@ -2,21 +2,21 @@ import numpy as np
 import onnx
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, quantize_nparray
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 
 
-class QPad(QuantOperatorBase):
+class QPad(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Pad"
 
         # Only after version 11, it has the optional constant_value
         # If input[0] is not quantized, do not quanitize this node
         if (self.quantizer.opset_version < 11) or (node.input[0] not in self.quantizer.quantized_value_map):
-            super().quantize()
+            super().do_quantization()
             return
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
 
@@ -30,7 +30,7 @@ class QPad(QuantOperatorBase):
                 zp_tensor = self.quantizer.model.get_initializer(quantized_input_value.zp_name)
                 scale_tensor = self.quantizer.model.get_initializer(quantized_input_value.scale_name)
                 if zp_tensor is None or scale_tensor is None:
-                    super().quantize()
+                    super().do_quantization()
                     return
 
                 padding_constant_initializer = self.quantizer.model.get_initializer(node.input[2])

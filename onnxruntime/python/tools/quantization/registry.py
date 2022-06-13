@@ -1,7 +1,7 @@
 from .operators.activation import QDQRemovableActivation, QLinearActivation
 from .operators.argmax import QArgMax
 from .operators.attention import AttentionQuant
-from .operators.base_operator import QuantOperatorBase
+from .operators.base_operator import QOperatorBase
 from .operators.binary_op import QLinearBinaryOp
 from .operators.concat import QDQConcat, QLinearConcat
 from .operators.conv import ConvInteger, QDQConv, QLinearConv
@@ -76,14 +76,14 @@ QDQRegistry = {
 
 
 def CreateDefaultOpQuantizer(onnx_quantizer, node):
-    return QuantOperatorBase(onnx_quantizer, node)
+    return QOperatorBase(onnx_quantizer, node)
 
 
 def CreateOpQuantizer(onnx_quantizer, node):
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry
     if node.op_type in registry.keys():
         return registry[node.op_type](onnx_quantizer, node)
-    return QuantOperatorBase(onnx_quantizer, node)
+    return QOperatorBase(onnx_quantizer, node)
 
 
 def CreateQDQQuantizer(onnx_quantizer, node):

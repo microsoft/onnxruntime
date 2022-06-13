@@ -1,20 +1,20 @@
 import onnx
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 
 
-class QGlobalAveragePool(QuantOperatorBase):
+class QGlobalAveragePool(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "GlobalAveragePool"
 
         # If input to this node is not quantized then keep this node.
         if node.input[0] not in self.quantizer.quantized_value_map:
-            return super().quantize()
+            return super().do_quantization()
 
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
 

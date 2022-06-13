@@ -2,14 +2,14 @@ import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 
 
-class QSplit(QuantOperatorBase):
+class QSplit(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         (
             quantized_input_names,
@@ -18,7 +18,7 @@ class QSplit(QuantOperatorBase):
             nodes,
         ) = self.quantizer.quantize_inputs(node, [0])
         if quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         quantized_node_name = ""
         if node.name != "":

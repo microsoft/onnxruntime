@@ -5,7 +5,7 @@ class QMaxPool(Direct8BitOp):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "MaxPool"
 
@@ -15,14 +15,14 @@ class QMaxPool(Direct8BitOp):
             return
 
         # Direct 8bits op
-        return super().quantize()
+        return super().do_quantization()
 
 
 class QDQMaxPool(QDQDirect8BitOp):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "MaxPool"
 
@@ -31,4 +31,4 @@ class QDQMaxPool(QDQDirect8BitOp):
             return
 
         # Direct 8bits op
-        return super().quantize()
+        return super().do_quantization()

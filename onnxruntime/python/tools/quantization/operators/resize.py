@@ -5,7 +5,7 @@ class QResize(Direct8BitOp):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Resize"
 
@@ -15,14 +15,14 @@ class QResize(Direct8BitOp):
             return
 
         # Direct 8bits op
-        return super().quantize()
+        return super().do_quantization()
 
 
 class QDQResize(QDQDirect8BitOp):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Resize"
 
@@ -31,4 +31,4 @@ class QDQResize(QDQDirect8BitOp):
             return
 
         # Direct 8bits op
-        return super().quantize()
+        return super().do_quantization()

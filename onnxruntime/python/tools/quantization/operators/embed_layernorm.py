@@ -4,7 +4,7 @@ import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import attribute_to_kwarg, ms_domain
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 
 """
 Quantizes the EmbedLayerNorm fused ONNXRuntime Op.
@@ -14,17 +14,17 @@ weight inputs associated with the node to uint8.
 """
 
 
-class EmbedLayerNormalizationQuant(QuantOperatorBase):
+class EmbedLayerNormalizationQuant(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "EmbedLayerNormalization"
 
         if len(node.output) > 2:
             logging.info(f"Quantization is not applied to {node.name} since it has 3 outputs")
-            return super().quantize()
+            return super().do_quantization()
 
         """
         Pre-quantization EmbedLayerNorm inputs:
@@ -44,7 +44,7 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
             nodes,
         ) = self.quantizer.quantize_inputs(node, [2, 3, 4, 5, 6])
         if quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         qembed_layer_norm_name = "" if node.name == "" else node.name + "_quant"
 

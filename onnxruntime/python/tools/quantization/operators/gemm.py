@@ -5,7 +5,7 @@ import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, find_by_name, get_mul_node, ms_domain
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
 
@@ -33,11 +33,11 @@ def set_default_beta(gemm_node):
     return 1.0
 
 
-class QLinearGemm(QuantOperatorBase):
+class QLinearGemm(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Gemm"
 
@@ -73,12 +73,12 @@ class QLinearGemm(QuantOperatorBase):
             ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         if not data_found or quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         quantized_bias_name = ""
         if len(node.input) == 3:
             if not self.quantizer.is_input_a_weight(node.input[2]):
-                return super().quantize()
+                return super().do_quantization()
 
             quantized_bias_name = self.quantizer.quantize_bias_static(
                 node.input[2], node.input[0], node.input[1], get_beta(self.node)
@@ -120,7 +120,7 @@ class QDQGemm(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Gemm"
 

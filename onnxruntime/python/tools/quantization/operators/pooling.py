@@ -1,14 +1,14 @@
 import onnx
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 
 
-class QLinearPool(QuantOperatorBase):
+class QLinearPool(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
 
         # only try to quantize when given quantization parameters for it
@@ -29,7 +29,7 @@ class QLinearPool(QuantOperatorBase):
         ) = self.quantizer.quantize_inputs(node, [0])
 
         if not data_found or quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         # Create an entry for output quantized value.
         qlinear_output_name = node.output[0] + "_quantized"

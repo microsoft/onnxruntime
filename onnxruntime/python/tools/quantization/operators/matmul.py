@@ -4,7 +4,7 @@ import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, find_by_name, get_mul_node
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
 """
@@ -12,11 +12,20 @@ from .qdq_base_operator import QDQOperatorBase
 """
 
 
-class MatMulInteger(QuantOperatorBase):
+class MatMulInteger(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def should_quantize(self):
+        node = self.node
+        quantizer = self.quantizer
+        if quantizer.q_matmul_const_b_only and (not quantizer.find_initializer_in_path(node.input[1])):
+                print("Ignore MatMul due to non constant B: {}[{}]".format(self.quantizer.graph_scope, node.name))
+                return False
+
+        return super().should_quantize()
+
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "MatMul"
 
@@ -83,11 +92,11 @@ class MatMulInteger(QuantOperatorBase):
 """
 
 
-class QLinearMatMul(QuantOperatorBase):
+class QLinearMatMul(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "MatMul"
 
@@ -105,7 +114,7 @@ class QLinearMatMul(QuantOperatorBase):
             _,
         ) = self.quantizer._get_quantization_params(node.output[0])
         if not data_found or quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         qlinear_matmul_output = node.output[0] + "_quantized"
         qlinear_matmul_name = node.name + "_quant" if node.name != "" else ""
@@ -148,7 +157,7 @@ class QDQMatMul(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "MatMul"
 

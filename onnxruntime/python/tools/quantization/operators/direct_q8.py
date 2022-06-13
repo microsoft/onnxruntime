@@ -1,15 +1,15 @@
 from ..quant_utils import QuantizedValue, QuantizedValueType
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
 
 # For operators that support 8bits operations directly, and output could
 # reuse input[0]'s type, zeropoint, scale; For example,Transpose, Reshape, etc.
-class Direct8BitOp(QuantOperatorBase):
+class Direct8BitOp(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
 
         if not self.quantizer.force_quantize_no_input_check:
@@ -36,7 +36,7 @@ class Direct8BitOp(QuantOperatorBase):
         else:
             # Force quantize those ops if possible, use exclude node list if this is not you want
             if not self.quantizer.is_valid_quantize_weight(node.input[0]):
-                super().quantize()
+                super().do_quantization()
                 return
 
             (
@@ -46,7 +46,7 @@ class Direct8BitOp(QuantOperatorBase):
                 nodes,
             ) = self.quantizer.quantize_inputs(node, [0])
             if quantized_input_names is None:
-                return super().quantize()
+                return super().do_quantization()
 
             # Create an entry for output quantized value
             quantized_output_value = QuantizedValue(
@@ -69,7 +69,7 @@ class QDQDirect8BitOp(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         self.quantizer.quantize_tensor(self.node.input[0])
         if not self.disable_qdq_for_node_output:
             self.quantizer.quantize_tensor(self.node.output[0])

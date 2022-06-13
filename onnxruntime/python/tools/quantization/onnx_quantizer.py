@@ -4,9 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 import logging
-import os
-import struct
-from pathlib import Path
 
 import numpy as np
 import onnx
@@ -1042,7 +1039,7 @@ class ONNXQuantizer:
 
         return (q_weight_name, zp_name, scale_name)
 
-    def _dequantize_value(self, value_name):
+    def dequantize_value(self, value_name):
         """
         Given a value (input/output) which is quantized, add a DequantizeLinear node to dequantize
         it back to float32
@@ -1079,7 +1076,7 @@ class ONNXQuantizer:
         """
 
         for output in self.model.graph().output:
-            dequantize_node = self._dequantize_value(output.name)
+            dequantize_node = self.dequantize_value(output.name)
             if dequantize_node is not None:
                 self.new_nodes.append(dequantize_node)
 

@@ -2,18 +2,18 @@ import onnx
 from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import attribute_to_kwarg, ms_domain
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 
 """
     Quantize Attention
 """
 
 
-class AttentionQuant(QuantOperatorBase):
+class AttentionQuant(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         """
         parameter node: Attention node.
         parameter new_nodes_list: List of new nodes created before processing this node.
@@ -27,7 +27,7 @@ class AttentionQuant(QuantOperatorBase):
         # is implemented
         for attr in node.attribute:
             if "qkv_hidden_sizes" == attr.name:
-                return super().quantize()
+                return super().do_quantization()
 
         (
             quantized_input_names,
@@ -36,7 +36,7 @@ class AttentionQuant(QuantOperatorBase):
             nodes,
         ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
         if quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         qattention_name = "" if node.name == "" else node.name + "_quant"
 

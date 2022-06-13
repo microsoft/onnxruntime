@@ -10,11 +10,11 @@ from ..quant_utils import (
     find_by_name,
     get_mul_node,
 )
-from .base_operator import QuantOperatorBase
+from .base_operator import QOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
 
-class ConvInteger(QuantOperatorBase):
+class ConvInteger(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
@@ -55,7 +55,7 @@ class ConvInteger(QuantOperatorBase):
         add_node = onnx.helper.make_node("Add", [scaled_output, reshape_output], [output], output + "_bias_add")
         nodes.append(add_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Conv"
 
@@ -122,11 +122,11 @@ class ConvInteger(QuantOperatorBase):
         self.quantizer.new_nodes += nodes
 
 
-class QLinearConv(QuantOperatorBase):
+class QLinearConv(QOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Conv"
 
@@ -160,7 +160,7 @@ class QLinearConv(QuantOperatorBase):
             ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         if not data_found or quantized_input_names is None:
-            return super().quantize()
+            return super().do_quantization()
 
         quantized_bias_name = ""
         bias_present = False
@@ -213,7 +213,7 @@ class QDQConv(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def do_quantization(self):
         node = self.node
         assert node.op_type == "Conv"
 
