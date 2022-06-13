@@ -642,9 +642,9 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       // otherwise a temporary buffer is required for the im2col transform.
       int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
       group_col_buffer_size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
-      auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
+      auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(ActType) * group_col_buffer_size));
       col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
-      memset(col_data, 0, group_col_buffer_size);
+      memset(col_data, 0, SafeInt<size_t>(sizeof(ActType) * group_col_buffer_size));
     }
   }
   if (use_indirection_buffer) {
