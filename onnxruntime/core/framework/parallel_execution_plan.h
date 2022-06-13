@@ -14,7 +14,8 @@ namespace onnxruntime {
 class SessionState;
 struct ReleasePlan;
 struct AllocPlanPerValue;
-struct ParallelExecutionPlanImpl;
+struct ParallelExecutionPlanImpl; 
+class ISequentialPlannerContext;
 
 // Specify how many logic streams for each provider type
 using ProviderStreamMap = std::unordered_map<std::string, int>;
@@ -27,7 +28,6 @@ class ParallelExecutionPlan : public IExecutor, public SequentialExecutionPlan {
                         const ProviderStreamMap& provider_stream_map,
                         const OpStreamMap& op_stream_map = {});
   ~ParallelExecutionPlan();
-  bool CanReuse(size_t ort_value_old, size_t ort_value_new) const override;
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
@@ -38,7 +38,7 @@ class ParallelExecutionPlan : public IExecutor, public SequentialExecutionPlan {
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;
   std::unique_ptr<ReleasePlan> GenerateReleasePlan() const;
   const std::unordered_map<size_t, size_t>& GetValueToStreamMap() const;
-  void GenerateReusePlan();
+  void GenerateReusePlan(const ISequentialPlannerContext&);
 };
 
 }  // namespace onnxruntime

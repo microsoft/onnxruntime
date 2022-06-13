@@ -1005,12 +1005,17 @@ class PlannerImpl {
               }
             }
           }
-        } else if (/*!context_.IsParallelExecutionEnabled() &&*/
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused) &&
-                   plan_.CanReuse(reused, current)) {
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
+          //std::cout << ort_value_info_[reused].p_def_site->Name() << " reused by " << node_output->Name() << " as input" << std::endl;
+          //auto* shape = ort_value_info_[reused].p_def_site->Shape();
+          //for (int i = 0; i < shape->dim_size(); ++i) {
+          //  std::cout << shape->dim().at(i).dim_value() << " ";
+          //}
+          //std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
@@ -1018,10 +1023,15 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
-        } else if (/*!context_.IsParallelExecutionEnabled() &&*/
-                   FindReusableTensor(*node_output, &reused) &&
-                   plan_.CanReuse(reused, current)) {
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
+          //std::cout << ort_value_info_[reused].p_def_site->Name() << " reused by " << node_output->Name() << " as remote tensor" << std::endl;
+          //auto* shape = ort_value_info_[reused].p_def_site->Shape();
+          //for (int i = 0; i < shape->dim_size(); ++i) {
+          //  std::cout << shape->dim().at(i).dim_value() << " ";
+          //}
+          //std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
           OrtValueIndex original = Buffer(reused);
           if (AllocPlan(original).alloc_kind == AllocKind::kAllocate) {

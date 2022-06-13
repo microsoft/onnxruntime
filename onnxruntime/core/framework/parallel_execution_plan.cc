@@ -474,14 +474,6 @@ ParallelExecutionPlan::ParallelExecutionPlan(const SessionState& session_state,
 ParallelExecutionPlan::~ParallelExecutionPlan() {
 }
 
-bool ParallelExecutionPlan::CanReuse(size_t ort_value_old, size_t ort_value_new) const {
-  // only allow reuse to happen in same stream
-  // TODO: enable reusing among streams under certain cases
-  return impl_->value_to_stream_map_.count(ort_value_old) &&
-         impl_->value_to_stream_map_.count(ort_value_new) &&
-         impl_->value_to_stream_map_[ort_value_old] == impl_->value_to_stream_map_[ort_value_new];
-}
-
 common::Status ParallelExecutionPlan::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                               const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                               std::vector<OrtValue>& fetches,
@@ -540,7 +532,7 @@ std::unique_ptr<ReleasePlan> ParallelExecutionPlan::GenerateReleasePlan() const 
   return release_plan;
 }
 
-void ParallelExecutionPlan::GenerateReusePlan() {
+void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& context) {
   InlinedHashMap<NodeIndex, int> dependents;
   for (const auto& it : impl_->dependence_graph_) {
     for (NodeIndex node_index : it.second) {
@@ -582,14 +574,18 @@ void ParallelExecutionPlan::GenerateReusePlan() {
   const auto& graph_viewer = impl_->session_state_.GetGraphViewer();
   const auto& value_map = impl_->session_state_.GetOrtValueNameIdxMap();
   const auto& kernel_create_info_map = impl_->session_state_.GetKernelCreateInfoMap();
+  const auto& allcation_plan = this->allocation_plan;
 
   std::function<void(NodeIndex)> TryReuseInput = [&](NodeIndex node_index) {
     auto* node = graph_viewer.GetNode(node_index);
 
     for (int output_arg_num = 0; output_arg_num < node->OutputDefs().size(); output_arg_num++) {
+
       auto p_output_arg = node->OutputDefs()[output_arg_num];
       OrtValueIndex output_idx_global{};
-      if (!value_map.GetIdx(p_output_arg->Name(), output_idx_global).IsOK()) {
+
+      if (!value_map.GetIdx(p_output_arg->Name(), output_idx_global).IsOK() || 
+          allcation_plan[output_idx_global].alloc_kind != AllocKind::kAllocate) {
         continue;
       }
 
@@ -632,6 +628,28 @@ void ParallelExecutionPlan::GenerateReusePlan() {
         continue;
       }
 
+      const auto& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
+      if (variadic_alias_offsets.has_value()) {
+        int input_offset = variadic_alias_offsets->first;
+        int output_offset = variadic_alias_offsets->second;
+        int alias_input_index = output_arg_num - output_offset + input_offset;
+        if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
+          auto p_input_arg = input_args[alias_input_index];
+          if (p_input_arg->Exists()) {
+            OrtValueIndex reusable_input{};
+            if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK()) {
+              LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
+              allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+              allocation_plan[output_idx_global].reused_buffer = reusable_input;
+              impl_->value_consumer_map_[reusable_input].insert(impl_->value_consumer_map_[output_idx_global].begin(),
+                                                                impl_->value_consumer_map_[output_idx_global].end());
+              reused.insert(reusable_input);
+              continue;
+            }  //if
+          }    //if
+        }
+      }
+
       const auto& inplace_map = ci.kernel_def->MayInplace();
       for (auto& pair : inplace_map) {
         if (pair.second == output_arg_num) {
@@ -640,16 +658,15 @@ void ParallelExecutionPlan::GenerateReusePlan() {
             if (p_input_arg->Exists()) {
               OrtValueIndex input_arg_index{};
               if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK()) {
-                auto original = allocation_plan[input_arg_index].reused_buffer;
-                if (impl_->value_consumer_map_[original].size() == 1) {
-                  auto* input_shape = p_input_arg->Shape();
-                  auto* output_shape = p_output_arg->Shape();
-                  if (input_shape && output_shape && input_shape->ByteSizeLong() == output_shape->ByteSizeLong()) {
+                if (impl_->value_consumer_map_[input_arg_index].size() == 1) {
+                  auto* input_shape = context.GetShape(*p_input_arg);
+                  auto* output_shape = context.GetShape(*p_output_arg);
+                  if (input_shape && output_shape && input_shape->ByteSizeLong() == output_shape->ByteSizeLong() && *input_shape == *output_shape) {
                     LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
                     allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                     allocation_plan[output_idx_global].reused_buffer = input_arg_index;
-                    impl_->value_consumer_map_[original].insert(impl_->value_consumer_map_[output_idx_global].begin(),
-                                                                impl_->value_consumer_map_[output_idx_global].end());
+                    impl_->value_consumer_map_[input_arg_index].insert(impl_->value_consumer_map_[output_idx_global].begin(),
+                                                                       impl_->value_consumer_map_[output_idx_global].end());
                     reused.insert(input_arg_index);
                     break;
                   }
@@ -679,7 +696,7 @@ void ParallelExecutionPlan::GenerateReusePlan() {
           continue;  // skip when it is already reused
         }
 
-        const auto* shape = node_output->Shape();
+        const auto* shape = context.GetShape(*node_output);
         if (!shape) continue;
         size_t size_in_bytes = shape->ByteSizeLong();
 
@@ -706,7 +723,7 @@ void ParallelExecutionPlan::GenerateReusePlan() {
             continue;
           }
 
-          const auto* downstream_shape = downstream_arg->Shape();
+          const auto* downstream_shape = context.GetShape(*downstream_arg);
           if (!(*downstream_shape == *shape)) {
             node_iter = next(node_iter);
             continue;

@@ -20,8 +20,6 @@ class ExecutionPlanBase {
   // return all memory locations for all the MLValues
   virtual std::set<struct OrtMemoryInfo> GetAllLocations() const = 0;
   virtual ~ExecutionPlanBase() = default;
-
-  virtual bool CanReuse(size_t ort_value_old, size_t ort_value_new) const { return true; }
 };
 
 }  // namespace onnxruntime

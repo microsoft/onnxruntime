@@ -1508,7 +1508,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
-  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
+  //SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
+  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL, ExecutionOrder::DEFAULT, true);
   p_seq_exec_plan_ = std::make_unique<SequentialExecutionPlan>();
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
@@ -1552,7 +1553,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, para_context, tmp_para_exec_plan_wrapper));
   tmp_para_exec_plan_wrapper.release();
-  p_para_exec_plan_->GenerateReusePlan();
+  p_para_exec_plan_->GenerateReusePlan(para_context);
   LOGS(logger_, INFO) << "p_para_exec_plan initialized";
 
   // Record the allocation plan

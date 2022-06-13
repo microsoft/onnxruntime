@@ -151,6 +151,15 @@ class SequentialPlannerTestContext : public ISequentialPlannerContext {
   ShapeMap* shape_map_;
 };
 
+class ParalllelPlannerTestContext : public SequentialPlannerTestContext {
+ public:
+  ParalllelPlannerTestContext(ShapeMap* shape_map) : SequentialPlannerTestContext(shape_map) {
+  }
+  bool IsParallelExecutionEnabled() const override { return true; }
+  ExecutionOrder GetExecutionOrder() const override { return ExecutionOrder::DEFAULT; }
+  bool GetEnableMemoryReuse() const override { return false; }
+};
+
 class PlannerTest : public ::testing::Test {
  private:
   void index(const std::string& name, int& out) {
@@ -182,6 +191,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
   std::unique_ptr<SequentialExecutionPlan> plan_;
+  std::unique_ptr<ParallelExecutionPlan> para_plan_;
 
  public:
   PlannerTest()
@@ -306,19 +316,33 @@ class PlannerTest : public ::testing::Test {
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     SequentialPlannerTestContext test_context(&shape_map_);
-
+    plan_ = std::make_unique<SequentialExecutionPlan>();
     status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
                                            kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
                                            plan_);
-
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
     AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
+
+    ProviderStreamMap provider_stream_map;
+    provider_stream_map["CPUExecutionProvider"] = 1;
+    provider_stream_map["CUDAExecutionProvider"] = 1;
+    OpStreamMap op_stream_map;
+    ParalllelPlannerTestContext paral_test_context(&shape_map_);
+    para_plan_ = std::make_unique<ParallelExecutionPlan>(*state_.get(), provider_stream_map, op_stream_map);
+    std::unique_ptr<SequentialExecutionPlan> tmp_para_exec_plan_wrapper(para_plan_.get());
+    status = SequentialPlanner::CreatePlan(nullptr, GraphViewer(graph_), outer_scope_node_args, execution_providers_,
+                                           kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), paral_test_context,
+                                           tmp_para_exec_plan_wrapper);
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+    tmp_para_exec_plan_wrapper.release();
+    para_plan_->GenerateReusePlan(paral_test_context);
   }
 
   void CheckAllocKind(const std::string& name, AllocKind kind) {
     int id;
     index(name, id);
     EXPECT_EQ(plan_->allocation_plan[id].alloc_kind, kind) << "Error in allocation kind for " << name;
+    EXPECT_EQ(para_plan_->allocation_plan[id].alloc_kind, kind) << "Error in para allocation kind for " << name;
   }
 
   void CheckFreed(int step_number, std::initializer_list<std::string> freed_items) {
@@ -1050,6 +1074,10 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
   ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("init_data", init_data_index));
 
   EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::CPU);
+
+  //TODO: test para exe plan on subgraph supported
+  //const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
+  //EXPECT_EQ(para_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
 TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInMainGraph) {
@@ -1138,8 +1166,490 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("image_data_in", input_data_index));
 
   EXPECT_EQ(main_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
+
+  //TODO: test para exe plan on subgraph supported
+  //const auto* para_graph_plan = const_cast<SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
+  //EXPECT_EQ(para_graph_plan->allocation_plan[input_data_index].location.device.Type(), OrtDevice::GPU);
 }
 
+TEST_F(PlannerTest, ParaPlanCreation) {
+  TypeProto graph_in_type;
+  graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* graph_in_shape = graph_in_type.mutable_tensor_type()->mutable_shape();
+  graph_in_shape->add_dim()->set_dim_value(3L);
+  graph_in_shape->add_dim()->set_dim_value(3L);
+  graph_in_shape->add_dim()->set_dim_value(300L);
+  graph_in_shape->add_dim()->set_dim_value(300L);
+
+  TypeProto relu_0_out_type, relu_1_out_type, relu_2_out_type;
+  relu_0_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  relu_1_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  relu_2_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  TypeProto maxpool_0_out_type;
+  maxpool_0_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  TypeProto conv_0_weight_type, conv_1_weight_type, conv_2_weight_type, conv_3_weight_type, conv_4_weight_type;
+
+  conv_0_weight_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_0_weight_shape = conv_0_weight_type.mutable_tensor_type()->mutable_shape();
+  conv_0_weight_shape->add_dim()->set_dim_value(64L);
+  conv_0_weight_shape->add_dim()->set_dim_value(3L);
+  conv_0_weight_shape->add_dim()->set_dim_value(7L);
+  conv_0_weight_shape->add_dim()->set_dim_value(7L);
+
+  conv_1_weight_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_1_weight_shape = conv_1_weight_type.mutable_tensor_type()->mutable_shape();
+  conv_1_weight_shape->add_dim()->set_dim_value(64L);
+  conv_1_weight_shape->add_dim()->set_dim_value(64L);
+  conv_1_weight_shape->add_dim()->set_dim_value(1L);
+  conv_1_weight_shape->add_dim()->set_dim_value(1L);
+
+  conv_2_weight_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_2_weight_shape = conv_2_weight_type.mutable_tensor_type()->mutable_shape();
+  conv_2_weight_shape->add_dim()->set_dim_value(64L);
+  conv_2_weight_shape->add_dim()->set_dim_value(64L);
+  conv_2_weight_shape->add_dim()->set_dim_value(3L);
+  conv_2_weight_shape->add_dim()->set_dim_value(3L);
+
+  conv_3_weight_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_3_weight_shape = conv_3_weight_type.mutable_tensor_type()->mutable_shape();
+  conv_3_weight_shape->add_dim()->set_dim_value(256L);
+  conv_3_weight_shape->add_dim()->set_dim_value(64L);
+  conv_3_weight_shape->add_dim()->set_dim_value(1L);
+  conv_3_weight_shape->add_dim()->set_dim_value(1L);
+
+  conv_4_weight_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_4_weight_shape = conv_4_weight_type.mutable_tensor_type()->mutable_shape();
+  conv_4_weight_shape->add_dim()->set_dim_value(256L);
+  conv_4_weight_shape->add_dim()->set_dim_value(64L);
+  conv_4_weight_shape->add_dim()->set_dim_value(1L);
+  conv_4_weight_shape->add_dim()->set_dim_value(1L);
+
+  TypeProto conv_0_bias_type, conv_1_bias_type, conv_2_bias_type, conv_3_bias_type, conv_4_bias_type;
+  conv_0_bias_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_0_bias_shape = conv_0_bias_type.mutable_tensor_type()->mutable_shape();
+  conv_0_bias_shape->add_dim()->set_dim_value(64L);
+
+  conv_1_bias_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_1_bias_shape = conv_1_bias_type.mutable_tensor_type()->mutable_shape();
+  conv_1_bias_shape->add_dim()->set_dim_value(64L);
+
+  conv_2_bias_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_2_bias_shape = conv_2_bias_type.mutable_tensor_type()->mutable_shape();
+  conv_2_bias_shape->add_dim()->set_dim_value(64L);
+
+  conv_3_bias_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_3_bias_shape = conv_3_bias_type.mutable_tensor_type()->mutable_shape();
+  conv_3_bias_shape->add_dim()->set_dim_value(256L);
+
+  conv_4_bias_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto* conv_4_bias_shape = conv_4_bias_type.mutable_tensor_type()->mutable_shape();
+  conv_4_bias_shape->add_dim()->set_dim_value(256L);
+
+  TypeProto conv_0_out_type, conv_1_out_type, conv_2_out_type, conv_3_out_type, conv_4_out_type;
+  conv_0_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  //auto* conv_0_out_shape = conv_0_out_type.mutable_tensor_type()->mutable_shape();
+  //conv_0_out_shape->add_dim()->set_dim_value(3L);
+  //conv_0_out_shape->add_dim()->set_dim_value(64L);
+  //conv_0_out_shape->add_dim()->set_dim_value(150L);
+  //conv_0_out_shape->add_dim()->set_dim_value(150L);
+
+  conv_1_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  //auto* conv_1_out_shape = conv_1_out_type.mutable_tensor_type()->mutable_shape();
+  //conv_1_out_shape->add_dim()->set_dim_value(3L);
+  //conv_1_out_shape->add_dim()->set_dim_value(64L);
+  //conv_1_out_shape->add_dim()->set_dim_value(75L);
+  //conv_1_out_shape->add_dim()->set_dim_value(75L);
+
+  conv_2_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  //auto* conv_2_out_shape = conv_2_out_type.mutable_tensor_type()->mutable_shape();
+  //conv_2_out_shape->add_dim()->set_dim_value(3L);
+  //conv_2_out_shape->add_dim()->set_dim_value(64L);
+  //conv_2_out_shape->add_dim()->set_dim_value(75L);
+  //conv_2_out_shape->add_dim()->set_dim_value(75L);
+
+  conv_3_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  //auto* conv_3_out_shape = conv_3_out_type.mutable_tensor_type()->mutable_shape();
+  //conv_3_out_shape->add_dim()->set_dim_value(3L);
+  //conv_3_out_shape->add_dim()->set_dim_value(256L);
+  //conv_3_out_shape->add_dim()->set_dim_value(75L);
+  //conv_3_out_shape->add_dim()->set_dim_value(75L);
+
+  conv_4_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  //auto* conv_4_out_shape = conv_4_out_type.mutable_tensor_type()->mutable_shape();
+  //conv_4_out_shape->add_dim()->set_dim_value(3L);
+  //conv_4_out_shape->add_dim()->set_dim_value(256L);
+  //conv_4_out_shape->add_dim()->set_dim_value(75L);
+  //conv_4_out_shape->add_dim()->set_dim_value(75L);
+
+  TypeProto graph_out_type;
+  graph_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  //auto* graph_out_shape = graph_out_type.mutable_tensor_type()->mutable_shape();
+  //graph_out_shape->add_dim()->set_dim_value(3L);
+  //graph_out_shape->add_dim()->set_dim_value(256L);
+  //graph_out_shape->add_dim()->set_dim_value(75L);
+  //graph_out_shape->add_dim()->set_dim_value(75L);
+
+  //auto create_model = [&]() -> Model {
+    onnxruntime::Model model("main_graph", false, ModelMetaData(),
+                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                             {{kOnnxDomain, 14}}, {}, DefaultLoggingManager().DefaultLogger());
+    auto& main_graph = model.MainGraph();
+
+    auto& graph_in = main_graph.GetOrCreateNodeArg("graph_in", &graph_in_type);
+    //main_graph.AddOuterScopeNodeArg("graph_in");
+    //main_graph.AddValueInfo(&graph_in);
+
+    auto& maxpool_0_out = main_graph.GetOrCreateNodeArg("maxpool_out", &maxpool_0_out_type);
+    auto& relu_0_out = main_graph.GetOrCreateNodeArg("relu_0_out", &relu_0_out_type);
+    auto& relu_1_out = main_graph.GetOrCreateNodeArg("relu_1_out", &relu_1_out_type);
+    auto& relu_2_out = main_graph.GetOrCreateNodeArg("relu_2_out", &relu_2_out_type);
+
+    ONNX_NAMESPACE::TensorProto conv_0_weight_tensor;
+    conv_0_weight_tensor.add_dims(64L);
+    conv_0_weight_tensor.add_dims(3L);
+    conv_0_weight_tensor.add_dims(7L);
+    conv_0_weight_tensor.add_dims(7L);
+    for (int i = 0; i < 64 * 3 * 7 * 7; ++i) conv_0_weight_tensor.add_float_data(0.234f);
+    conv_0_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_0_weight_tensor.set_name("conv_0_weight");
+    main_graph.AddInitializedTensor(conv_0_weight_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_1_weight_tensor;
+    conv_1_weight_tensor.add_dims(64L);
+    conv_1_weight_tensor.add_dims(64L);
+    conv_1_weight_tensor.add_dims(1L);
+    conv_1_weight_tensor.add_dims(1L);
+    conv_1_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    for (int i = 0; i < 64 * 64; ++i) conv_1_weight_tensor.add_float_data(1.017f);
+    conv_1_weight_tensor.set_name("conv_1_weight");
+    main_graph.AddInitializedTensor(conv_1_weight_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_2_weight_tensor;
+    conv_2_weight_tensor.add_dims(64L);
+    conv_2_weight_tensor.add_dims(64L);
+    conv_2_weight_tensor.add_dims(3L);
+    conv_2_weight_tensor.add_dims(3L);
+    for (int i = 0; i < 64 * 64 * 3 * 3; ++i) conv_2_weight_tensor.add_float_data(2.317f);
+    conv_2_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_2_weight_tensor.set_name("conv_2_weight");
+    main_graph.AddInitializedTensor(conv_2_weight_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_3_weight_tensor;
+    conv_3_weight_tensor.add_dims(256L);
+    conv_3_weight_tensor.add_dims(64L);
+    conv_3_weight_tensor.add_dims(1L);
+    conv_3_weight_tensor.add_dims(1L);
+    for (int i = 0; i < 256 * 64; ++i) conv_3_weight_tensor.add_float_data(1.256f);
+    conv_3_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_3_weight_tensor.set_name("conv_3_weight");
+    main_graph.AddInitializedTensor(conv_3_weight_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_4_weight_tensor;
+    conv_4_weight_tensor.add_dims(256L);
+    conv_4_weight_tensor.add_dims(64L);
+    conv_4_weight_tensor.add_dims(1L);
+    conv_4_weight_tensor.add_dims(1L);
+    for (int i = 0; i < 256 * 64; ++i) conv_4_weight_tensor.add_float_data(1.913f);
+    conv_4_weight_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_4_weight_tensor.set_name("conv_4_weight");
+    main_graph.AddInitializedTensor(conv_4_weight_tensor);
+
+    auto& conv_0_weight = main_graph.GetOrCreateNodeArg("conv_0_weight", &conv_0_weight_type);
+    auto& conv_1_weight = main_graph.GetOrCreateNodeArg("conv_1_weight", &conv_1_weight_type);
+    auto& conv_2_weight = main_graph.GetOrCreateNodeArg("conv_2_weight", &conv_2_weight_type);
+    auto& conv_3_weight = main_graph.GetOrCreateNodeArg("conv_3_weight", &conv_3_weight_type);
+    auto& conv_4_weight = main_graph.GetOrCreateNodeArg("conv_4_weight", &conv_4_weight_type);
+
+    ONNX_NAMESPACE::TensorProto conv_0_bias_tensor;
+    conv_0_bias_tensor.add_dims(64L);
+    conv_0_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_0_bias_tensor.set_name("conv_0_bias");
+    for (int i = 0; i < 64; ++i) conv_0_bias_tensor.add_float_data(1.123f);
+    main_graph.AddInitializedTensor(conv_0_bias_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_1_bias_tensor;
+    conv_1_bias_tensor.add_dims(64L);
+    for (int i = 0; i < 64; ++i) conv_1_bias_tensor.add_float_data(2.234f);
+    conv_1_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_1_bias_tensor.set_name("conv_1_bias");
+    main_graph.AddInitializedTensor(conv_1_bias_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_2_bias_tensor;
+    conv_2_bias_tensor.add_dims(64L);
+    for (int i = 0; i < 64; ++i) conv_2_bias_tensor.add_float_data(0.121f);
+    conv_2_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_2_bias_tensor.set_name("conv_2_bias");
+    main_graph.AddInitializedTensor(conv_2_bias_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_3_bias_tensor;
+    conv_3_bias_tensor.add_dims(256L);
+    for (int i = 0; i < 256; ++i) conv_3_bias_tensor.add_float_data(1.201f);
+    conv_3_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_3_bias_tensor.set_name("conv_3_bias");
+    main_graph.AddInitializedTensor(conv_3_bias_tensor);
+
+    ONNX_NAMESPACE::TensorProto conv_4_bias_tensor;
+    conv_4_bias_tensor.add_dims(256L);
+    for (int i = 0; i < 256; ++i) conv_4_bias_tensor.add_float_data(0.897f);
+    conv_4_bias_tensor.set_data_type(TensorProto_DataType_FLOAT);
+    conv_4_bias_tensor.set_name("conv_4_bias");
+    main_graph.AddInitializedTensor(conv_4_bias_tensor);
+
+    auto& conv_0_bias = main_graph.GetOrCreateNodeArg("conv_0_bias", &conv_0_bias_type);
+    auto& conv_1_bias = main_graph.GetOrCreateNodeArg("conv_1_bias", &conv_1_bias_type);
+    auto& conv_2_bias = main_graph.GetOrCreateNodeArg("conv_2_bias", &conv_2_bias_type);
+    auto& conv_3_bias = main_graph.GetOrCreateNodeArg("conv_3_bias", &conv_3_bias_type);
+    auto& conv_4_bias = main_graph.GetOrCreateNodeArg("conv_4_bias", &conv_4_bias_type);
+    
+    auto& conv_0_out = main_graph.GetOrCreateNodeArg("conv_0_out", &conv_0_out_type);
+    auto& conv_1_out = main_graph.GetOrCreateNodeArg("conv_1_out", &conv_1_out_type);
+    auto& conv_2_out = main_graph.GetOrCreateNodeArg("conv_2_out", &conv_2_out_type);
+    auto& conv_3_out = main_graph.GetOrCreateNodeArg("conv_3_out", &conv_3_out_type);
+    auto& conv_4_out = main_graph.GetOrCreateNodeArg("conv_4_out", &conv_4_out_type);
+
+    auto& graph_out = main_graph.GetOrCreateNodeArg("graph_out", &graph_out_type);
+
+    NodeAttributes conv_0_attributes;
+    
+    ONNX_NAMESPACE::AttributeProto dilation;
+    dilation.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    dilation.add_ints(1);
+    dilation.add_ints(1);
+    dilation.set_name("dilations");
+    conv_0_attributes["dilations"] = dilation;
+    
+    ONNX_NAMESPACE::AttributeProto group;
+    group.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+    group.set_i(1);
+    group.set_name("group");
+    conv_0_attributes["group"] = group;
+
+    ONNX_NAMESPACE::AttributeProto conv_0_kernel_shape;
+    conv_0_kernel_shape.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_0_kernel_shape.add_ints(7);
+    conv_0_kernel_shape.add_ints(7);
+    conv_0_kernel_shape.set_name("kernel_shape");
+    conv_0_attributes["kernel_shape"] = conv_0_kernel_shape;
+
+    ONNX_NAMESPACE::AttributeProto conv_0_pads;
+    conv_0_pads.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_0_pads.add_ints(3);
+    conv_0_pads.add_ints(3);
+    conv_0_pads.add_ints(3);
+    conv_0_pads.add_ints(3);
+    conv_0_pads.set_name("pads");
+    conv_0_attributes["pads"] = conv_0_pads;
+
+    ONNX_NAMESPACE::AttributeProto conv_0_strides;
+    conv_0_strides.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_0_strides.add_ints(2);
+    conv_0_strides.add_ints(2);
+    conv_0_strides.set_name("strides");
+    conv_0_attributes["strides"] = conv_0_strides;
+
+    main_graph.AddNode("conv_0", "Conv", "", {&graph_in, &conv_0_weight, &conv_0_bias}, {&conv_0_out}, &conv_0_attributes);
+    main_graph.AddNode("relu_0", "Relu", "", {&conv_0_out}, {&relu_0_out});
+
+    NodeAttributes maxpool_0_attributes;
+    ONNX_NAMESPACE::AttributeProto ceil_mode;
+    ceil_mode.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+    ceil_mode.set_i(0);
+    ceil_mode.set_name("ceil_mode");
+    maxpool_0_attributes["ceil_mode"] = ceil_mode;
+    
+    ONNX_NAMESPACE::AttributeProto maxpool_0_kernel_shape;
+    maxpool_0_kernel_shape.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    maxpool_0_kernel_shape.add_ints(3);
+    maxpool_0_kernel_shape.add_ints(3);
+    maxpool_0_kernel_shape.set_name("kernel_shape");
+    maxpool_0_attributes["kernel_shape"] = maxpool_0_kernel_shape;
+
+    ONNX_NAMESPACE::AttributeProto maxpool_0_pads;
+    maxpool_0_pads.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    maxpool_0_pads.add_ints(1);
+    maxpool_0_pads.add_ints(1);
+    maxpool_0_pads.add_ints(1);
+    maxpool_0_pads.add_ints(1);
+    maxpool_0_pads.set_name("pads");
+    maxpool_0_attributes["pads"] = maxpool_0_pads;
+
+    ONNX_NAMESPACE::AttributeProto maxpool_0_strides;
+    maxpool_0_strides.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    maxpool_0_strides.add_ints(1);
+    maxpool_0_strides.add_ints(1);
+    maxpool_0_strides.set_name("strides");
+    maxpool_0_attributes["strides"] = maxpool_0_strides;
+
+    main_graph.AddNode("maxpool_0", "MaxPool", "", {&relu_0_out}, {&maxpool_0_out}, &maxpool_0_attributes);
+
+    NodeAttributes conv_1_attributes;
+    conv_1_attributes["dilations"] = dilation;
+    conv_1_attributes["group"] = group;
+
+    ONNX_NAMESPACE::AttributeProto conv_1_kernel_shape;
+    conv_1_kernel_shape.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_1_kernel_shape.add_ints(1);
+    conv_1_kernel_shape.add_ints(1);
+    conv_1_kernel_shape.set_name("kernel_shape");
+    conv_1_attributes["kernel_shape"] = conv_1_kernel_shape;
+
+    ONNX_NAMESPACE::AttributeProto conv_1_pads;
+    conv_1_pads.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_1_pads.add_ints(0);
+    conv_1_pads.add_ints(0);
+    conv_1_pads.add_ints(0);
+    conv_1_pads.add_ints(0);
+    conv_1_pads.set_name("pads");
+    conv_1_attributes["pads"] = conv_1_pads;
+
+    ONNX_NAMESPACE::AttributeProto conv_1_strides;
+    conv_1_strides.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_1_strides.add_ints(1);
+    conv_1_strides.add_ints(1);
+    conv_1_strides.set_name("strides");
+    conv_1_attributes["strides"] = conv_1_strides;
+
+    main_graph.AddNode("conv_1", "Conv", "", {&maxpool_0_out, &conv_1_weight, &conv_1_bias}, {&conv_1_out}, &conv_1_attributes);
+    main_graph.AddNode("relu_1", "Relu", "", {&conv_1_out}, {&relu_1_out});
+
+    NodeAttributes conv_2_attributes;
+    conv_2_attributes["dilations"] = dilation;
+    conv_2_attributes["group"] = group;
+
+    ONNX_NAMESPACE::AttributeProto conv_2_kernel_shape;
+    conv_2_kernel_shape.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_2_kernel_shape.add_ints(3);
+    conv_2_kernel_shape.add_ints(3);
+    conv_2_kernel_shape.set_name("kernel_shape");
+    conv_2_attributes["kernel_shape"] = conv_2_kernel_shape;
+
+    ONNX_NAMESPACE::AttributeProto conv_2_pads;
+    conv_2_pads.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_2_pads.add_ints(1);
+    conv_2_pads.add_ints(1);
+    conv_2_pads.add_ints(1);
+    conv_2_pads.add_ints(1);
+    conv_2_pads.set_name("pads");
+    conv_2_attributes["pads"] = conv_2_pads;
+
+    ONNX_NAMESPACE::AttributeProto conv_2_strides;
+    conv_2_strides.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_2_strides.add_ints(1);
+    conv_2_strides.add_ints(1);
+    conv_2_strides.set_name("strides");
+    conv_2_attributes["strides"] = conv_2_strides;
+
+    main_graph.AddNode("conv_2", "Conv", "", {&relu_1_out, &conv_2_weight, &conv_2_bias}, {&conv_2_out}, &conv_2_attributes);
+    main_graph.AddNode("relu_2", "Relu", "", {&conv_2_out}, {&relu_2_out});
+
+    NodeAttributes conv_3_attributes;
+    conv_3_attributes["dilations"] = dilation;
+    conv_3_attributes["group"] = group;
+
+    ONNX_NAMESPACE::AttributeProto conv_3_kernel_shape;
+    conv_3_kernel_shape.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_3_kernel_shape.add_ints(1);
+    conv_3_kernel_shape.add_ints(1);
+    conv_3_kernel_shape.set_name("kernel_shape");
+    conv_3_attributes["kernel_shape"] = conv_3_kernel_shape;
+
+    ONNX_NAMESPACE::AttributeProto conv_3_pads;
+    conv_3_pads.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_3_pads.add_ints(0);
+    conv_3_pads.add_ints(0);
+    conv_3_pads.add_ints(0);
+    conv_3_pads.add_ints(0);
+    conv_3_pads.set_name("pads");
+    conv_3_attributes["pads"] = conv_3_pads;
+
+    ONNX_NAMESPACE::AttributeProto conv_3_strides;
+    conv_3_strides.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_3_strides.add_ints(1);
+    conv_3_strides.add_ints(1);
+    conv_3_strides.set_name("strides");
+    conv_3_attributes["strides"] = conv_3_strides;
+
+    main_graph.AddNode("conv_3", "Conv", "", {&relu_2_out, &conv_3_weight, &conv_3_bias}, {&conv_3_out}, &conv_3_attributes);
+
+    NodeAttributes conv_4_attributes;
+    conv_4_attributes["dilations"] = dilation;
+    conv_4_attributes["group"] = group;
+
+    ONNX_NAMESPACE::AttributeProto conv_4_kernel_shape;
+    conv_4_kernel_shape.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_4_kernel_shape.add_ints(1);
+    conv_4_kernel_shape.add_ints(1);
+    conv_4_kernel_shape.set_name("kernel_shape");
+    conv_4_attributes["kernel_shape"] = conv_4_kernel_shape;
+
+    ONNX_NAMESPACE::AttributeProto conv_4_pads;
+    conv_4_pads.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_4_pads.add_ints(0);
+    conv_4_pads.add_ints(0);
+    conv_4_pads.add_ints(0);
+    conv_4_pads.add_ints(0);
+    conv_4_pads.set_name("pads");
+    conv_4_attributes["pads"] = conv_4_pads;
+
+    ONNX_NAMESPACE::AttributeProto conv_4_strides;
+    conv_4_strides.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+    conv_4_strides.add_ints(1);
+    conv_4_strides.add_ints(1);
+    conv_4_strides.set_name("strides");
+    conv_4_attributes["strides"] = conv_4_strides;
+
+    main_graph.AddNode("conv_4", "Conv", "", {&maxpool_0_out, &conv_4_weight, &conv_4_bias}, {&conv_4_out}, &conv_4_attributes);
+    main_graph.AddNode("add_0", "Add", "", {&conv_3_out, &conv_4_out}, {&graph_out});
+
+    main_graph.SetInputs({&graph_in});
+    main_graph.SetOutputs({&graph_out});
+
+    auto status = main_graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+    // return model;
+  //};
+
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Default;
+  //so.optimized_model_filepath = L"./optimized_ssd.onnx";
+  InferenceSession sess{so, GetEnvironment()};
+
+  /*auto*/ status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  std::string s1;
+  const bool rc = model.ToProto().SerializeToString(&s1);
+  EXPECT_EQ(rc, true);
+  std::stringstream sstr(s1);
+
+  status = sess.Load(sstr);
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  const auto& main_graph_session_state = sess.GetSessionState();
+  const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
+  const auto* para_exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetParalllelExecutionPlan();
+  InlinedHashMap<std::string, std::string> reuse_pairs;
+  reuse_pairs.emplace("conv_0_out", "conv_1_out");
+  reuse_pairs.emplace("relu_0_out", "relu_1_out");
+  reuse_pairs.emplace("conv_2_out", "relu_2_out");
+  for (OrtValueIndex i = 0; i < para_exe_plan->allocation_plan.size(); ++i) {
+    auto& per_value_plan = para_exe_plan->allocation_plan[i];
+    if (per_value_plan.alloc_kind == AllocKind::kReuse) {
+      std::string reused;
+      //std::string current;
+      ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
+      //ORT_ENFORCE(main_graph_ort_value_index_map.GetName(i, current).IsOK());
+      reuse_pairs.erase(reused);
+      // std::cout << reused << " resused by " << current << std::endl;
+    }  //if
+  }    //for
+  ASSERT_TRUE(reuse_pairs.empty());
+}
 #endif  // USE_CUDA
 
 }  // namespace test
