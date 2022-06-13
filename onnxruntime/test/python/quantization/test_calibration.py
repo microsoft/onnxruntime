@@ -61,11 +61,16 @@ class TestCalibrate(unittest.TestCase):
         vi_b = helper.make_tensor_value_info("B", TensorProto.FLOAT, [1, 1, 3, 3])
         vi_e = helper.make_tensor_value_info("E", TensorProto.FLOAT, [1, 1, 5, 1])
         vi_f = helper.make_tensor_value_info("F", TensorProto.FLOAT, [1, 1, 5, 1])
-        conv_node = onnx.helper.make_node(
-            "Conv", ["A", "B"], ["C"], name="Conv", kernel_shape=[3, 3], pads=[1, 1, 1, 1],
+        conv_node = helper.make_node(
+            "Conv",
+            ["A", "B"],
+            ["C"],
+            name="Conv",
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
         )
-        clip_node = onnx.helper.make_node("Clip", ["C"], ["D"], name="Clip")
-        matmul_node = onnx.helper.make_node("MatMul", ["D", "E"], ["F"], name="MatMul")
+        clip_node = helper.make_node("Clip", ["C"], ["D"], name="Clip")
+        matmul_node = helper.make_node("MatMul", ["D", "E"], ["F"], name="MatMul")
         graph = helper.make_graph([conv_node, clip_node, matmul_node], "test_graph_1", [vi_a, vi_b, vi_e], [vi_f])
 
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
@@ -139,11 +144,21 @@ class TestCalibrate(unittest.TestCase):
         vi_h = helper.make_tensor_value_info("H", TensorProto.FLOAT, [1, 1, 3, 3])
         vi_j = helper.make_tensor_value_info("J", TensorProto.FLOAT, [1, 1, 3, 3])
         vi_k = helper.make_tensor_value_info("K", TensorProto.FLOAT, [1, 1, 5, 5])
-        conv_node_1 = onnx.helper.make_node(
-            "Conv", ["G", "H"], ["I"], name="Conv1", kernel_shape=[3, 3], pads=[1, 1, 1, 1],
+        conv_node_1 = helper.make_node(
+            "Conv",
+            ["G", "H"],
+            ["I"],
+            name="Conv1",
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
         )
-        conv_node_2 = onnx.helper.make_node(
-            "Conv", ["I", "J"], ["K"], name="Conv2", kernel_shape=[3, 3], pads=[1, 1, 1, 1],
+        conv_node_2 = helper.make_node(
+            "Conv",
+            ["I", "J"],
+            ["K"],
+            name="Conv2",
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
         )
         graph = helper.make_graph([conv_node_1, conv_node_2], "test_graph_2", [vi_g, vi_h, vi_j], [vi_k])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
@@ -185,12 +200,17 @@ class TestCalibrate(unittest.TestCase):
         vi_l = helper.make_tensor_value_info("L", TensorProto.FLOAT, [1, 1, 5, 5])
         vi_n = helper.make_tensor_value_info("N", TensorProto.FLOAT, [1, 1, 3, 3])
         vi_q = helper.make_tensor_value_info("Q", TensorProto.FLOAT, [1, 1, 5, 5])
-        relu_node = onnx.helper.make_node("Relu", ["L"], ["M"], name="Relu")
-        conv_node = onnx.helper.make_node(
-            "Conv", ["M", "N"], ["O"], name="Conv", kernel_shape=[3, 3], pads=[1, 1, 1, 1],
+        relu_node = helper.make_node("Relu", ["L"], ["M"], name="Relu")
+        conv_node = helper.make_node(
+            "Conv",
+            ["M", "N"],
+            ["O"],
+            name="Conv",
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
         )
-        clip_node = onnx.helper.make_node("Clip", ["O"], ["P"], name="Clip")
-        matmul_node = onnx.helper.make_node("MatMul", ["P", "M"], ["Q"], name="MatMul")
+        clip_node = helper.make_node("Clip", ["O"], ["P"], name="Clip")
+        matmul_node = helper.make_node("MatMul", ["P", "M"], ["Q"], name="MatMul")
         graph = helper.make_graph([relu_node, conv_node, clip_node, matmul_node], "test_graph_3", [vi_l, vi_n], [vi_q])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         test_model_path = "./test_model_3.onnx"
@@ -273,12 +293,12 @@ class TestCalibrate(unittest.TestCase):
         b3 = generate_input_initializer([3], np.float32, "B3")
         w5 = generate_input_initializer([3, 3, 1, 1], np.float32, "W5")
         b5 = generate_input_initializer([3], np.float32, "B5")
-        relu_node_1 = onnx.helper.make_node("Relu", ["input"], ["X1"], name="Relu1")
-        conv_node_1 = onnx.helper.make_node("Conv", ["X1", "W1", "B1"], ["X2"], name="Conv1")
-        relu_node_2 = onnx.helper.make_node("Relu", ["X2"], ["X3"], name="Relu2")
-        conv_node_2 = onnx.helper.make_node("Conv", ["X3", "W3", "B3"], ["X4"], name="Conv2")
-        conv_node_3 = onnx.helper.make_node("Conv", ["X1", "W5", "B5"], ["X5"], name="Conv3")
-        add_node = onnx.helper.make_node("Add", ["X4", "X5"], ["X6"], name="Add")
+        relu_node_1 = helper.make_node("Relu", ["input"], ["X1"], name="Relu1")
+        conv_node_1 = helper.make_node("Conv", ["X1", "W1", "B1"], ["X2"], name="Conv1")
+        relu_node_2 = helper.make_node("Relu", ["X2"], ["X3"], name="Relu2")
+        conv_node_2 = helper.make_node("Conv", ["X3", "W3", "B3"], ["X4"], name="Conv2")
+        conv_node_3 = helper.make_node("Conv", ["X1", "W5", "B5"], ["X5"], name="Conv3")
+        add_node = helper.make_node("Add", ["X4", "X5"], ["X6"], name="Add")
         graph = helper.make_graph(
             [relu_node_1, conv_node_1, relu_node_2, conv_node_2, conv_node_3, add_node],
             "test_graph_4",
@@ -307,7 +327,9 @@ class TestCalibrate(unittest.TestCase):
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         infer_session = onnxruntime.InferenceSession(
-            test_model_path, sess_options=sess_options, providers=["CPUExecutionProvider"],
+            test_model_path,
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
         )
         data_reader.rewind()
         rmin = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, np.inf], dtype=np.float32)
@@ -339,14 +361,29 @@ class TestCalibrate(unittest.TestCase):
         vi_n = helper.make_tensor_value_info("N", TensorProto.FLOAT, [0])
         vi_o = helper.make_tensor_value_info("O", TensorProto.FLOAT, [1, 1, 5, 5])
         # O = helper.make_tensor_value_info('O', TensorProto.FLOAT, None)
-        conv_node_1 = onnx.helper.make_node(
-            "Conv", ["G", "conv1_w"], ["I"], name="Conv1", kernel_shape=[3, 3], pads=[1, 1, 1, 1],
+        conv_node_1 = helper.make_node(
+            "Conv",
+            ["G", "conv1_w"],
+            ["I"],
+            name="Conv1",
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
         )
-        conv_node_2 = onnx.helper.make_node(
-            "Conv", ["I", "conv2_w"], ["K"], name="Conv2", kernel_shape=[3, 3], pads=[1, 1, 1, 1],
+        conv_node_2 = helper.make_node(
+            "Conv",
+            ["I", "conv2_w"],
+            ["K"],
+            name="Conv2",
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
         )
-        resize_node_1 = onnx.helper.make_node("Resize", ["K", "M", "N"], ["O"], name="Reize1")
-        graph = helper.make_graph([conv_node_1, conv_node_2, resize_node_1], "test_graph_5", [vi_g, vi_m, vi_n], [vi_o],)
+        resize_node_1 = helper.make_node("Resize", ["K", "M", "N"], ["O"], name="Reize1")
+        graph = helper.make_graph(
+            [conv_node_1, conv_node_2, resize_node_1],
+            "test_graph_5",
+            [vi_g, vi_m, vi_n],
+            [vi_o],
+        )
         conv1_w = generate_input_initializer([1, 1, 3, 3], np.float32, "conv1_w")
         conv2_w = generate_input_initializer([1, 1, 3, 3], np.float32, "conv2_w")
         graph.initializer.extend([conv1_w, conv2_w])

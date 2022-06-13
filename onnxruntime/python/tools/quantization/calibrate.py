@@ -90,7 +90,9 @@ class CalibraterBase:
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         self.infer_session = onnxruntime.InferenceSession(
-            self.augmented_model_path, sess_options=sess_options, providers=self.execution_providers,
+            self.augmented_model_path,
+            sess_options=sess_options,
+            providers=self.execution_providers,
         )
 
     def select_tensors_to_calibrate(self, model):
@@ -170,7 +172,11 @@ class MinMaxCalibrater(CalibraterBase):
         :param averaging_constant: constant smoothing factor to use when computing the moving average.
         """
         super(MinMaxCalibrater, self).__init__(
-            model, op_types_to_calibrate, augmented_model_path, symmetric, use_external_data_format,
+            model,
+            op_types_to_calibrate,
+            augmented_model_path,
+            symmetric,
+            use_external_data_format,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -221,7 +227,9 @@ class MinMaxCalibrater(CalibraterBase):
             add_reduce_min_max(tensor, "ReduceMax")
 
         onnx.save(
-            model, self.augmented_model_path, save_as_external_data=self.use_external_data_format,
+            model,
+            self.augmented_model_path,
+            save_as_external_data=self.use_external_data_format,
         )
         self.augment_model = model
 
@@ -368,7 +376,9 @@ class HistogramCalibrater(CalibraterBase):
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
         onnx.save(
-            model, self.augmented_model_path, save_as_external_data=self.use_external_data_format,
+            model,
+            self.augmented_model_path,
+            save_as_external_data=self.use_external_data_format,
         )
         self.augment_model = model
 

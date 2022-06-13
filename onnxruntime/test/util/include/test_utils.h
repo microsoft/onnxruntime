@@ -20,17 +20,20 @@ namespace test {
 // If set to None: verify that no nodes is assigned to ep (typically for an expected failure path test case)
 enum class ExpectedEPNodeAssignment { None,
                                       Some,
-                                      All, };
+                                      All,
+};
 
 // struct to hold some verification params for RunAndVerifyOutputsWithEP
 struct EPVerificationParams {
-  
   ExpectedEPNodeAssignment ep_node_assignment = ExpectedEPNodeAssignment::Some;
 
   // Some EP may use different rounding than ORT CPU EP, which may cause a bigger abs error than
   // the default of 1e-5f, especially for scenarios such as [Q -> Quantized op -> DQ]
   // Set this only if this is necessary
   float fp32_abs_err = 1e-5f;
+
+  // optional graph verification function
+  const std::function<void(const Graph&)>* graph_verifier{nullptr};
 };
 
 // return number of nodes in the Graph and any subgraphs that are assigned to the specified execution provider

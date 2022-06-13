@@ -59,6 +59,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
+  * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
@@ -2951,6 +2952,49 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float or half tensors.</dd>
 <dt><tt>U</tt> : tensor(float)</dt>
 <dd>Constrain mean and inv_std_var to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.Snpe"></a><a name="com.microsoft.snpe">**com.microsoft.Snpe**</a>
+
+  Onnx node for SNPE.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>DLC</tt> : string (required)</dt>
+<dd>payload of the SNPE DLC file.</dd>
+<dt><tt>notes</tt> : string</dt>
+<dd>(Optional) Some notes for the model</dd>
+<dt><tt>snpe_version</tt> : string</dt>
+<dd>(Optional) SNPE version used to convert the model.</dd>
+<dt><tt>target_device</tt> : string</dt>
+<dd>(Optional) Target device like CPU, DSP, etc.</dd>
+</dl>
+
+#### Inputs (1 - &#8734;)
+
+<dl>
+<dt><tt>inputs</tt> (variadic) : T</dt>
+<dd>List of tensors for SNPE DLC input</dd>
+</dl>
+
+#### Outputs (1 - &#8734;)
+
+<dl>
+<dt><tt>outputs</tt> (variadic) : T</dt>
+<dd>One or more outputs, list of tensors for DLC output</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(uint8), tensor(uint16), tensor(float)</dt>
+<dd>Constrain input and output types to uint8, uint16, float tensors.</dd>
 </dl>
 
 
