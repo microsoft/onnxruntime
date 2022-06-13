@@ -10,8 +10,8 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_debian_cpu
-  displayName: 'Whether Debian CPU (manylinux_2_27) package is built.'
+- name: enable_ubuntu_cpu
+  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
   type: boolean
   default: true
 
@@ -59,8 +59,8 @@ stages:
 - stage: Python_Packaging
 
   jobs:
-  - ${{ if eq(parameters.enable_debian_cpu, true) }}:
-    - job: Linux_Debian_py_Wheels
+  - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
+    - job: Linux_Ubuntu_py_Wheels
       timeoutInMinutes: 90
       workspace:
         clean: all

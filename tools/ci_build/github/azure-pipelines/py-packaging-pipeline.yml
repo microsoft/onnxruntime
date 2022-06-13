@@ -4,8 +4,8 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_debian_cpu
-  displayName: 'Whether Debian CPU (manylinux_2_27) package is built.'
+- name: enable_ubuntu_cpu
+  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
   type: boolean
   default: true
 
@@ -45,7 +45,7 @@ stages:
 - template: templates/py-packaging-stage.yml
   parameters:
     enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
-    enable_debian_cpu: ${{ parameters.enable_debian_cpu }}
+    enable_ubuntu_cpu: ${{ parameters.enable_ubuntu_cpu }}
     enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
     enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
     enable_windows_gpu: ${{ parameters.enable_windows_gpu }}

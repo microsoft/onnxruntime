@@ -54,8 +54,6 @@ else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
 
-
-
 SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
 GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
