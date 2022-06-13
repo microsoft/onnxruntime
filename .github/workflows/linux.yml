@@ -21,7 +21,7 @@ jobs:
          with:
            python-version: '3.8.x'
            architecture: 'x64'
-       - name: 'Setup TVM EP requirements'
+       - name: 'Setup TVM EP requirements1'
          run: |
            set -e -x 
            sudo apt-get update
