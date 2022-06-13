@@ -14,17 +14,6 @@ jobs:
     - script: 'mkdir $(Build.SourcesDirectory)\Artifact && copy $(onnxruntimeDlls.secureFilePath) $(Build.SourcesDirectory)\Artifact'
       displayName: 'Copy dlls to sources directory'
 
-    - script: 'unzip $(secureFile)'
-      displayName: 'Unzip dll files'
-      workingDirectory: '$(Build.SourcesDirectory)\Artifact'
-
-    - template: templates/win-esrp-dll.yml
-      parameters:
-        DisplayName: 'ESRP - sign NuGet package'
-        FolderPath: '$(Build.SourcesDirectory)\Artifact'
-        DoEsrp: 'true'
-        Pattern: 'onnxruntime*.dll'
-    
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)\Artifact'
