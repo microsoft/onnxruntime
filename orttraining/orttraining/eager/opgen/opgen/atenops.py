@@ -128,16 +128,6 @@ hand_implemented = {
     "aten::min": ReduceMin("self", keepdims=1),
     "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
-    "aten::ne.Scalar": MakeTorchFallback(),
-    "aten::ne.Scalar_out": MakeTorchFallback(),
-    "aten::ne.Tensor_out": MakeTorchFallback(),
-    "aten::eq.Tensor": MakeTorchFallback(),
-    "aten::eq.Tensor_out": MakeTorchFallback(),
-    "aten::bitwise_and.Tensor_out": MakeTorchFallback(),
-    "aten::masked_select": MakeTorchFallback(),
-    "aten::_local_scalar_dense": MakeTorchFallback(),
-    "aten::gt.Scalar_out": MakeTorchFallback(),
-    "aten::equal": MakeTorchFallback(),
     "aten::_softmax": Softmax("self", axis="dim"),
 }
 
