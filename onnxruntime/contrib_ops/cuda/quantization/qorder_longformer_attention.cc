@@ -47,6 +47,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
+  use_qdq_and_fp16_compute_ = ParseEnvironmentVariableWithDefault<bool>("USE_QDQ_AND_FP16_COMPUTE", false);
   const cublasLtOrder_t InputOrders[2] = {CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_COL32};
   const cublasLtOrder_t weight_tiles_for_input_col32[2] = {CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4};
   const cublasLtOrder_t weight_tiles_for_input_row[1] = {CUBLASLT_ORDER_COL};
@@ -184,7 +185,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   size_t qkv_size = qkv_count * element_size;
   size_t qkv_3 = qkv_size + qkv_count * sizeof(int8_t);
   auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3);
-  auto gemm_buffer_2 = GetScratchBuffer<int8_t>(qkv_3);
+  auto gemm_buffer_2 = GetScratchBuffer<int8_t>(qkv_size);
 
   typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
 
@@ -199,111 +200,126 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   auto& device_prop = GetDeviceProp();
 
   // Approach-1 - Do the quantized MatMul
-  // TODO: bias need pre-processing, i.e., / *scale_qkvgemm
-  ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      batch_size, sequence_length, n, k,
-                                      &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
-                                      bias->Data<float>(), gemm_buffer.get() + qkv_size,
-                                      (cublasLtOrder_t)order_weight_));
+   //if (!use_qdq_and_fp16_compute_) {
+      // TODO: bias need pre-processing, i.e., / *scale_qkvgemm
+      ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
+                                          batch_size, sequence_length, n, k,
+                                          &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
+                                          bias->Data<float>(), gemm_buffer.get() + qkv_size,
+                                          (cublasLtOrder_t)order_weight_));
 
 
-  QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);
+      QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, gemm_buffer.get() + qkv_size, (CudaT*)gemm_buffer.get(), *scale_qkvgemm, batch_size, sequence_length, n);
+  //}
+
+  // Approach-2 - de-quantize and then do cuBlas fp16 Gemm
+  // else {
+      auto buffer_A = GetScratchBuffer<MLFloat16>(m * k);
+      auto buffer_B = GetScratchBuffer<MLFloat16>(k * n);
 
 
-  // Approach-2 - de-quantize and then do cuBlas Gemm
-  auto buffer_A = GetScratchBuffer<MLFloat16>(m * k);
-  auto buffer_B = GetScratchBuffer<MLFloat16>(k * n);
-
-
-  QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, input->Data<int8_t>(), (CudaT*)buffer_A.get(), *scale_input, batch_size, sequence_length, n);
+      QOrderDequantizeToRow((cublasLtOrder_t)order_input_, stream, device_prop, input->Data<int8_t>(), (CudaT*)buffer_A.get(), *scale_input, batch_size, sequence_length, n);
   
-  AllocatorPtr alloc;
-  auto status = context->GetTempSpaceAllocator(&alloc);
+      AllocatorPtr alloc;
+      auto status = context->GetTempSpaceAllocator(&alloc);
 
-  auto t = Tensor::Create(DataTypeImpl::GetType<int8_t>(), 
-                           TensorShape({n, k}), (void*)weights->Data<int8_t>(), alloc->Info(), 0);
-  auto weights_transposed = GetScratchBuffer<int8_t>(k * n);
-  auto t_transposed = Tensor::Create(DataTypeImpl::GetType<int8_t>(), 
-                                      TensorShape({k, n}), weights_transposed.get(), alloc->Info(), 0);
+      auto t = Tensor::Create(DataTypeImpl::GetType<int8_t>(), 
+                               TensorShape({n, k}), (void*)weights->Data<int8_t>(), alloc->Info(), 0);
+      auto weights_transposed = GetScratchBuffer<int8_t>(k * n);
+      auto t_transposed = Tensor::Create(DataTypeImpl::GetType<int8_t>(), 
+                                          TensorShape({k, n}), weights_transposed.get(), alloc->Info(), 0);
  
-  std::vector<size_t> permutation = {1, 0};
+      std::vector<size_t> permutation = {1, 0};
 
-  ORT_RETURN_IF_ERROR(onnxruntime::cuda::Transpose::DoTranspose(device_prop,
-                            Stream(),
-                            CublasHandle(),
-                            permutation,
-                            *t, *t_transposed, 
-                            nullptr));
+      ORT_RETURN_IF_ERROR(onnxruntime::cuda::Transpose::DoTranspose(device_prop,
+                                Stream(),
+                                CublasHandle(),
+                                permutation,
+                                *t, *t_transposed, 
+                                nullptr));
 
-QOrderDequantizeToRow(CUBLASLT_ORDER_ROW, stream, device_prop, t_transposed->Data<int8_t>(), (CudaT*)buffer_B.get(), *scale_weight, 1, k, n);
+      QOrderDequantizeToRow(CUBLASLT_ORDER_ROW, stream, device_prop, t_transposed->Data<int8_t>(), (CudaT*)buffer_B.get(), *scale_weight, 1, k, n);
 
  
 
-  const CudaT alpha_half = ToCudaType<CudaT>::FromFloat(1.0f);
-  const CudaT zero_half = ToCudaType<CudaT>::FromFloat(0.0f);
+      const CudaT alpha_half = ToCudaType<CudaT>::FromFloat(1.0f);
+      const CudaT zero_half = ToCudaType<CudaT>::FromFloat(0.0f);
 
-  int64_t stride_A, stride_B, stride_C, batch_count;
+      int64_t stride_A, stride_B, stride_C, batch_count;
 
-  const int lda = k;
-  const int ldb = n;
-  const int ldc = n;
+      const int lda = k;
+      const int ldb = n;
+      const int ldc = n;
 
-  if (CanUseStridedBatchedGemm(input->Shape(), t_transposed->Shape(),
-                                      false, false, false, false, stride_A, stride_B, stride_C, batch_count)) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(CublasHandle(),
-                                                          CUBLAS_OP_N,
-                                                          CUBLAS_OP_N,
-                                                          static_cast<int>(n),
-                                                          static_cast<int>(m / batch_size),
-                                                          static_cast<int>(k),
-                                                          &alpha_half,
-                                                          reinterpret_cast<const CudaT*>(buffer_B.get()),
-                                                          ldb,
-                                                          stride_B,
-                                                          reinterpret_cast<const CudaT*>(buffer_A.get()),
-                                                          lda,
-                                                          stride_A,
-                                                          &zero_half,
-                                                          reinterpret_cast<CudaT*>(gemm_buffer_2.get()),
-                                                          ldc,
-                                                          stride_C,
-                                                          static_cast<int>(batch_count),
-                                                          device_prop));
+      if (CanUseStridedBatchedGemm(input->Shape(), t_transposed->Shape(),
+                                          false, false, false, false, stride_A, stride_B, stride_C, batch_count)) {
+        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(CublasHandle(),
+                                                              CUBLAS_OP_N,
+                                                              CUBLAS_OP_N,
+                                                              static_cast<int>(n),
+                                                              static_cast<int>(m / batch_size),
+                                                              static_cast<int>(k),
+                                                              &alpha_half,
+                                                              reinterpret_cast<const CudaT*>(buffer_B.get()),
+                                                              ldb,
+                                                              stride_B,
+                                                              reinterpret_cast<const CudaT*>(buffer_A.get()),
+                                                              lda,
+                                                              stride_A,
+                                                              &zero_half,
+                                                              reinterpret_cast<CudaT*>(gemm_buffer_2.get()),
+                                                              ldc,
+                                                              stride_C,
+                                                              static_cast<int>(batch_count),
+                                                              device_prop));
 
-  }
-  else {
-      ORT_THROW("No can go");
-  }
+      }
+      else {
+          ORT_THROW("No can go");
+      }
 
-  cudaStreamSynchronize(Stream());
+     // De-quantize and re-quantize the gemm_buffer_2
+     auto gemm_buffer_2_quantized = GetScratchBuffer<int8_t>(m * n);
+
+     QOrderQuantizeRowTo(CUBLASLT_ORDER_ROW, stream, device_prop, (CudaT*)gemm_buffer_2.get(), gemm_buffer_2_quantized.get(), *scale_qkvgemm, batch_size, m, n);
+     QOrderDequantizeToRow(CUBLASLT_ORDER_ROW, stream, device_prop, gemm_buffer_2_quantized.get(), (CudaT*)gemm_buffer_2.get(), *scale_qkvgemm, batch_size, m, n);
+  //}
 
 
   // Check the results of the MatMul
-  CudaT* matmul_1 = reinterpret_cast<CudaT*>(gemm_buffer.get());
-  CudaT* matmul_2 = reinterpret_cast<CudaT*>(gemm_buffer_2.get());
+  {
+      cudaStreamSynchronize(Stream());
 
-  half* matmul_1_host = (half*)malloc(sizeof(half) * m * n);
-  half* matmul_2_host = (half*)malloc(sizeof(half) * m * n);
+      CudaT* matmul_1 = reinterpret_cast<CudaT*>(gemm_buffer.get());
+      CudaT* matmul_2 = reinterpret_cast<CudaT*>(gemm_buffer_2.get());
 
-  cudaMemcpy(matmul_1_host, matmul_1, sizeof(half) * m * n, cudaMemcpyDeviceToHost);
-  cudaMemcpy(matmul_2_host, matmul_2, sizeof(half) * m * n, cudaMemcpyDeviceToHost);
+      half* matmul_1_host = (half*)malloc(sizeof(half) * m * n);
+      half* matmul_2_host = (half*)malloc(sizeof(half) * m * n);
 
-  float max_diff = 0;
+      cudaMemcpy(matmul_1_host, matmul_1, sizeof(half) * m * n, cudaMemcpyDeviceToHost);
+      cudaMemcpy(matmul_2_host, matmul_2, sizeof(half) * m * n, cudaMemcpyDeviceToHost);
 
-  for (int i = 0; i < m * n; ++i) {
-      float f1 = __half2float(matmul_1_host[i]);
+      float max_diff = 0;
 
-      float f2 = __half2float(matmul_2_host[i]);
-      // quantize this matmul value
-      float quantized_matmul_2_res = f2 / *scale_qkvgemm;
-      float quantized_matmul_2_res_clamped = std::min(std::max(quantized_matmul_2_res, -128.f), 127.f);
-      int8_t quantized_matmul_2_res_clamped_quant = static_cast<int8_t>(std::round(quantized_matmul_2_res_clamped));
+      for (int i = 0; i < m * n; ++i) {
+          float f1 = __half2float(matmul_1_host[i]);
 
-      f2 = quantized_matmul_2_res_clamped_quant * *scale_qkvgemm;
+          float f2 = __half2float(matmul_2_host[i]);
+          // quantize this matmul value
+      
+          //float quantized_matmul_2_res = f2 / *scale_qkvgemm;
+          //float quantized_matmul_2_res_clamped = std::min(std::max(quantized_matmul_2_res, -128.f), 127.f);
+          //int8_t quantized_matmul_2_res_clamped_quant = static_cast<int8_t>(std::round(quantized_matmul_2_res_clamped));
 
-      if (std::abs(f1 - f2) > max_diff) {
-          max_diff = std::abs(f1 - f2);
+          //f2 = quantized_matmul_2_res_clamped_quant * *scale_qkvgemm;
+
+          if (std::abs(f1 - f2) > max_diff) {
+              max_diff = std::abs(f1 - f2);
+          }
       }
+
+      free(matmul_1_host);
+      free(matmul_2_host);
   }
 
   // Wait for async copy of batch_global_num
@@ -349,7 +365,8 @@ QOrderDequantizeToRow(CUBLASLT_ORDER_ROW, stream, device_prop, t_transposed->Dat
           device_prop,
           cublas,
           stream,
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
+          !use_qdq_and_fp16_compute_ ? reinterpret_cast<const CudaT*>(gemm_buffer.get()) 
+                                    : reinterpret_cast<const CudaT*>(gemm_buffer_2.get()),
           reinterpret_cast<const CudaT*>(mask->template Data<MLFloat16>()),
           reinterpret_cast<const CudaT*>(global_gemm_buffer.get()),
           global_attention->template Data<int>(),
@@ -374,6 +391,8 @@ QOrderDequantizeToRow(CUBLASLT_ORDER_ROW, stream, device_prop, t_transposed->Dat
   QOrderQuantizeRowTo((cublasLtOrder_t)order_input_, stream, device_prop,
                       (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
                       *scale_output, batch_size, sequence_length, hidden_size);
+
+   
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 

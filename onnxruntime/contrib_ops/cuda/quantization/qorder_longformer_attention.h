@@ -24,6 +24,8 @@ class QOrderedLongformerAttention final : public CudaKernel, public LongformerAt
   int order_weight_;
   int order_global_weight_;
   int order_output_;
+  
+  bool use_qdq_and_fp16_compute_;
 };
 
 }  // namespace cuda
