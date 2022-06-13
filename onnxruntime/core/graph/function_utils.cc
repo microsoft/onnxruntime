@@ -403,5 +403,11 @@ void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMES
   Inliner::specialize(calling_node, called_function, attr_map, unique_prefix);
 }
 
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix) {
+  ONNX_NAMESPACE::NodeProto calling_node_proto;
+  calling_node.ToProto(calling_node_proto);
+  Specialize(called_function, calling_node_proto, calling_node.GetAttributes(), unique_prefix);
+}
+
 }  // namespace function_utils
 }  // namespace onnxruntime

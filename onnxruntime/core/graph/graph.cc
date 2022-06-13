@@ -3992,9 +3992,7 @@ Status Graph::InlineFunction(Node& callnode) {
     // a model-local function or a schema-defined function).
     FunctionProto inlined_fp;
     ORT_ENFORCE(callnode.TryGetFunctionProto(inlined_fp), "Node has no function body and cannot be inlined.");
-    ONNX_NAMESPACE::NodeProto callnode_proto;
-    callnode.ToProto(callnode_proto);
-    function_utils::Specialize(inlined_fp, callnode_proto, callnode.GetAttributes(), uniq_identifier);
+    function_utils::Specialize(inlined_fp, callnode, uniq_identifier);
 
     auto to_node_arg = [this](const std::string& name) {
       return &this->GetOrCreateNodeArg(name, nullptr);
