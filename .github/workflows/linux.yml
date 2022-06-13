@@ -8,7 +8,7 @@ on:
 
 jobs:
   Onnxruntime-TVM:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-ubuntu-2004-cpu"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-ubuntu-20-04-cpu-mms"]
     steps:
        - uses: actions/checkout@v3
          with:
