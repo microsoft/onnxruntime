@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   Onnxruntime-TVM:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-ubuntu-20-04-cpu-mms"]
