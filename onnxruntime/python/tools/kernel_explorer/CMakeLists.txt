@@ -14,7 +14,8 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm)
+list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME} ${onnxruntime_ROCM_HOME}/hip)
+
 find_package(hip)
 find_package(PythonLibs 3.8 EXACT REQUIRED)
 
@@ -22,12 +23,11 @@ include_directories(${PYTHON_INCLUDE_DIRS})
 include_directories(${pybind11_INCLUDE_DIRS})
 include_directories(.)
 
-add_library(timer timer.cpp)
-add_library(vector_add kernels/vector_add.cpp)
-add_library(kernel_explorer SHARED kernel_explorer.cpp)
-target_link_libraries(kernel_explorer timer vector_add ${PYTHON_LIBRARIES})
+FILE(GLOB kernel_srcs kernels/*.cpp)
+add_library(kernel_explorer SHARED kernel_explorer.cpp timer.cpp ${kernel_srcs})
+target_link_libraries(kernel_explorer ${PYTHON_LIBRARIES})
 set_target_properties(kernel_explorer PROPERTIES PREFIX "")
 
 enable_testing()
 find_package(Python COMPONENTS Interpreter REQUIRED)
-add_test(NAME test_vector_add COMMAND ${Python_EXECUTABLE} -m pytest ..)
+add_test(NAME test_kernels COMMAND ${Python_EXECUTABLE} -m pytest ..)
