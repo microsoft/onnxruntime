@@ -203,5 +203,87 @@ TEST(FunctionTest, TempInSubgraph) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
 }
 
+// Test a function body that calls another function.
+TEST(FunctionTest, NestedCall) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.myfun (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1],
+        domain: "local"
+        >
+        myfun (lx) => (ly) {
+            one = Constant <value = float[1] {1.0}> ()
+            tmp = local.twice (lx)
+            ly = Add (tmp, one)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        twice (lx) => (ly) {
+            two = Constant <value = float[1] {2.0}> ()
+            ly = Mul (lx, two)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {3.0, 5.0, 7.0});
+}
+
+// Nested call inside a conditional statement.
+TEST(FunctionTest, CallInConditional) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            f = Constant <value = bool {0}> ()
+            t = Constant <value = bool {1}> ()
+            y1 = local.myfun (f, x)
+            y = local.myfun (t, y1)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1],
+        domain: "local"
+        >
+        myfun (b, lx) => (ly) {
+            temp = Identity (lx)
+            ly = If (b) <
+                then_branch = g1 () => (float[N] z_then)
+                {
+                    two = Constant <value = float[1] {2.0}> ()
+                    z_then =  local.MulFun (temp, two)
+                },
+                else_branch = g2 () => (float[N] z_else)
+                {
+                    three = Constant <value = float[1] {3.0}> ()
+                    z_else =  local.MulFun (temp, three)
+                }
+                >
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        MulFun (ax, bx) => (cx) {
+            cx = Mul (ax, bx)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

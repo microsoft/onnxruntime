@@ -266,8 +266,10 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
         ONNX_NAMESPACE::ShapeInferenceOptions options{true, 1, false};
         std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
                                                                                        model_local_functions.end());
+        std::unordered_map<std::string, TensorShapeProto> empty_map;
         ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
-                                                                   schema_registry, ctx, options, map_copy);
+                                                                   schema_registry, ctx, options, map_copy,
+                                                                   nullptr, &empty_map);
       });
 
   op_schema->Finalize();
@@ -292,7 +294,6 @@ private:
     auto new_name = prefix + name;
     auto& current_scope = rename_scopes.back();
     current_scope[name] = new_name;
-    // std::cout << "Uniquifying " << name << " as " << new_name << std::endl;
     name = new_name;
   }
 
@@ -301,7 +302,6 @@ private:
       const auto& map = rename_scopes[i - 1];
       auto iter = map.find(name);
       if (iter != map.end()) {
-        // std::cout << "Renaming " << name << " as " << iter->second << std::endl;
         name = iter->second;
         return;
       }
