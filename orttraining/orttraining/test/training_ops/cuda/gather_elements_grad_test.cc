@@ -100,7 +100,7 @@ void RunTestWrapper() {
   // No coalesce
   RunTest<T, int64_t>({2, 3, 2}, {2, 3, 2}, true, -2LL);
 
-  // ([2,2,2],[2,2,2],axis=2) coalesce to ([4,2],[4,3],axis=1)
+  // ([2,2,2],[2,2,3],axis=2) coalesce to ([4,2],[4,3],axis=1)
   RunTest<T, int64_t>({2, 2, 2}, {2, 2, 3}, true, 2LL);
 
   // ([2,2,3,2],[2,2,2,3],axis=-1) coalesce to ([4,3,2],[4,2,3],axis=2)

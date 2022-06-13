@@ -82,8 +82,18 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
 
   const auto& indices_shape = indices_tensor->Shape();
   const int64_t indices_size = indices_shape.Size();
-  if (indices_shape != updates_tensor->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices and updates must have the same shape.");
+
+  auto indices_dims = indices_shape.GetDims();
+  auto updates_dims = updates_tensor->Shape().GetDims();
+  if (indices_dims.size() != updates_dims.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices and updates must have the same rank");
+  }
+
+  for (size_t i = 0; i < indices_dims.size(); ++i) {
+    if (indices_dims[i] != updates_dims[i]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices vs updates dimensions differs at position=", i,
+                             " ", indices_dims[i], " vs ", updates_dims[i]);
+    }
   }
 
   // Validate input shapes and ranks (invoke the static method in the CPU GatherElements kernel that hosts the shared

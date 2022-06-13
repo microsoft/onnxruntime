@@ -119,7 +119,7 @@ void RunTestWrapper() {
   // No coalesce
   RunTest<T, int64_t>({2, 3, 2}, {2, 3, 2}, true, -2LL);
 
-  // ([2,2,2],[2,2,2],axis=2) coalesce to ([4,2],[4,3],axis=1)
+  // ([2,2,2],[2,2,3],axis=2) coalesce to ([4,2],[4,3],axis=1)
   RunTest<T, int64_t>({2, 2, 2}, {2, 2, 3}, true, 2LL);
 
   // ([2,2,3,2],[2,2,2,3],axis=-1) coalesce to ([4,3,2],[4,2,3],axis=2)
@@ -167,7 +167,8 @@ static void scatter_indices_updates_dont_match(const char* op_name, int op_versi
   test.AddInput<int64_t>("indices", {1, 3}, {1, 3, 3});
   test.AddInput<float>("updates", {1, 2}, {1.1f, 2.1f});
   test.AddOutput<float>("y", {1, 5}, {1.0f, 1.1f, 3.0f, 2.1f, 5.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Indices vs updates dimensions differs at position=1 3 vs 2",
+           {kTensorrtExecutionProvider});
 }
 
 TEST(Scatter, IndicesUpdatesDontMatch) {
