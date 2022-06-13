@@ -633,6 +633,11 @@ at::Tensor slice_Tensor(
     std::move(ot),
     self.options());
 }
+// Register default CPU fallback for operations without
+// specific registered implemention
+TORCH_LIBRARY_IMPL(_, ORT, m) {
+  m.fallback(torch::CppFunction::makeFromBoxedFunction<&at::native::cpu_fallback>());
+}
 
 } // namespace aten
 
