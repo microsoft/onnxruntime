@@ -7,6 +7,7 @@ import datetime
 import platform
 import subprocess
 import sys
+import os
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
@@ -17,7 +18,6 @@ from shutil import copyfile
 from setuptools import Extension, setup
 from setuptools.command.install import install as InstallCommandBase
 from wheel.vendored.packaging.tags import sys_tags
-import os
 
 nightly_build = False
 package_name = "onnxruntime"
@@ -56,7 +56,6 @@ cuda_version = None
 rocm_version = None
 is_rocm = False
 is_openvino = False
-
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
@@ -118,20 +117,20 @@ class build_ext(_build_ext):
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
-    class BinaryBdistWheel(_bdist_wheel):
-        def get_tag(self):
-          _, _, plat = _bdist_wheel.get_tag(self)
-          if platform.system() == 'Linux':
-            # Get the right platform tag by querying the linker version
-            glibc_major, glibc_minor = os.popen("ldd --version | head -1").read().split()[-1].split(".")
-            # OVTF is built against GLIBC 2.17 with ABI-0 for compatibility with TensorFlow wheels
-            # See https://github.com/mayeut/pep600_compliance/blob/master/pep600_compliance/tools/manylinux-policy.json
-            if glibc_major == "2" and glibc_minor == "17":
-                plat = 'manylinux_2_17_x86_64.manylinux2014_x86_64'
-            else: # For manylinux2014 and above, no alias is required
-                plat = 'manylinux_%s_%s_x86_64'%(glibc_major, glibc_minor)
-          tags = next(sys_tags())
-          return (tags.interpreter, tags.abi, plat)
+    class bdist_wheel(_bdist_wheel):
+        if is_openvino :
+            def get_tag(self):
+                _, _, plat = _bdist_wheel.get_tag(self)
+                if platform.system() == "Linux":
+                    # Get the right platform tag by querying the linker version
+                    glibc_major, glibc_minor = os.popen("ldd --version | head -1").read().split()[-1].split(".")
+                    # See https://github.com/mayeut/pep600_compliance/blob/master/pep600_compliance/tools/manylinux-policy.json
+                    if glibc_major == "2" and glibc_minor == "17":
+                        plat = "manylinux_2_17_x86_64.manylinux2014_x86_64"
+                    else: # For manylinux2014 and above, no alias is required
+                        plat = "manylinux_%s_%s_x86_64"%(glibc_major, glibc_minor)
+                tags = next(sys_tags())
+                return (tags.interpreter, tags.abi, plat)
 
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
@@ -254,10 +253,12 @@ try:
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                        dest = 'onnxruntime/capi/libonnxruntime_providers_openvino.so'
-                        if path.isfile(dest):
-                            result = subprocess.run(['patchelf', '--set-rpath', '$ORIGIN', dest, '--force-rpath'],
-                                                    check=True, stdout=subprocess.PIPE, universal_newlines=True)
+
+                dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
+                if path.isfile(dest):
+                    result = subprocess.run(["patchelf", "--set-rpath", "$ORIGIN", dest, "--force-rpath"],
+                                            check=True, stdout=subprocess.PIPE, universal_newlines=True)
+
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
@@ -283,7 +284,7 @@ try:
 except ImportError as error:
     print("Error importing dependencies:")
     print(error)
-    BinaryBdistWheel = None
+    bdist_wheel = None
 
 providers_cuda_or_rocm = "libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
 providers_tensorrt_or_migraphx = "libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
@@ -342,7 +343,7 @@ if is_manylinux:
                'libopenvino_intel_gpu_plugin.so',
                'libopenvino_intel_myriad_plugin.so',
                'libopenvino_auto_plugin.so',
-               'libopenvino_hetero_plugin.so', 
+               'libopenvino_hetero_plugin.so',
                'libtbb.so.2',
                'libtbbmalloc.so.2',
                'libopenvino.so',
@@ -375,6 +376,8 @@ examples = [path.join("datasets", x) for x in examples_names]
 
 # Extra files such as EULA and ThirdPartyNotices
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
+
+# Description
 if(is_openvino):
   README = path.join(getcwd(), "docs/python/ReadMeOV.rst")
   if not path.exists(README):
@@ -385,6 +388,7 @@ else:
   if not path.exists(README):
     this = path.dirname(__file__)
     README = path.join(this, "docs/python/README.rst")
+
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
 with open(README) as f:
@@ -394,14 +398,10 @@ with open(README) as f:
 # line option is specified.
 # If the options is not specified this following condition fails as onnxruntime/external folder is not created in the
 # build flow under the build binary directory.
-if path.isdir(path.join("onnxruntime", "external")):
+if (path.isdir(path.join("onnxruntime", "external"))):
     # Gather all files under onnxruntime/external directory.
-    extra.extend(
-        list(
-            str(Path(*Path(x).parts[1:]))
-            for x in list(iglob(path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))
-        )
-    )
+    extra.extend(list(str(Path(*Path(x).parts[1:])) for x in list(iglob(
+        path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))))
 
 packages = [
     "onnxruntime",
@@ -595,8 +595,8 @@ if wheel_name_suffix:
         package_name = "{}-{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
-if BinaryBdistWheel is not None:
-    cmd_classes['bdist_wheel'] = BinaryBdistWheel
+if bdist_wheel is not None:
+    cmd_classes['bdist_wheel'] = bdist_wheel
 cmd_classes['install'] = InstallCommand
 cmd_classes["build_ext"] = build_ext
 

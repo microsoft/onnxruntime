@@ -8,11 +8,11 @@ ARG PYTHON_VER_PATH="cp36-cp36m"
 ARG PYTHON_VERSION="3.6"
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
+ARG OV_DEVICE_PRECISION="CPU_FP32"
+ARG ENABLE_TRAINING=true
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 ENV PYTHON_EXE="/opt/python/$PYTHON_VER_PATH/bin/python$PYTHON_VERSION"
-
-RUN echo ${PYTHON_EXE}
 
 RUN yum -y install wget git
 
@@ -52,7 +52,7 @@ ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64
 ENV OPENVINO_MANYLINUX 1
 
 RUN cd $WORKDIR && \
-    git clone --recursive -b sahar/manylinux2014_1.11 https://github.com/intel/onnxruntime.git
+    git clone --recursive -b preetha/master_training_package https://github.com/intel/onnxruntime.git
 RUN cd onnxruntime/onnxruntime/core/providers/openvino && mkdir scripts
 
 RUN cp ${IE_PLUGINS_PATH}/libopenvino.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
@@ -65,11 +65,17 @@ RUN cp ${IE_PLUGINS_PATH}/libopenvino_hetero_plugin.so /home/onnxruntimedev/onnx
 RUN cp ${IE_PLUGINS_PATH}/libopenvino_auto_plugin.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${IE_PLUGINS_PATH}/plugins.xml /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${IE_PLUGINS_PATH}/usb-ma2x8x.mvcmd /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
-RUN cp ${TBB_LIBS}/libtbb.so /home/onnxruntimedev/onnxruntime/onnxruntime/cre/providers/openvino/scripts/
+RUN cp ${TBB_LIBS}/libtbb.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${TBB_LIBS}/libtbb.so.2 /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${TBB_LIBS}/libtbbmalloc.so /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cp ${TBB_LIBS}/libtbbmalloc.so.2 /home/onnxruntimedev/onnxruntime/onnxruntime/core/providers/openvino/scripts/
 RUN cd /home/onnxruntimedev/onnxruntime && git pull
-RUN ${PYTHON_EXE} ./onnxruntime/tools/ci_build/build.py \
-                  --build_dir ./onnxruntime/build --use_openvino CPU_FP32 --build_shared_lib \
-                  --config Release --build_wheel --skip_tests
+RUN if $ENABLE_TRAINING; then \
+        ${PYTHON_EXE} ./onnxruntime/tools/ci_build/build.py \
+        --build_dir ./onnxruntime/build --use_openvino $(OV_DEVICE_PRECISION) --build_shared_lib \
+        --config Release --build_wheel --skip_tests --enable_training ; \
+    else \
+        ${PYTHON_EXE} ./onnxruntime/tools/ci_build/build.py \
+        --build_dir ./onnxruntime/build --use_openvino $(OV_DEVICE_PRECISION) --build_shared_lib \
+        --config Release --build_wheel --skip_tests ;\
+    fi
