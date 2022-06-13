@@ -1,0 +1,27 @@
+#!/bin/bash -ex
+
+PATH=/work/onnxruntime/cmake-3.21.3-linux-x86_64/bin:$PATH
+
+#build ort
+output_dir=./ortmodule_build7
+mkdir $output_dir
+set -e
+build_type=Release
+rm -rf ./$output_dir/$build_type/*.so
+rm -rf ./$output_dir/$build_type/dist/*
+bash ./build.sh \
+    --build_dir=./$output_dir \
+    --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
+    --cuda_version=11.3 \
+    --use_cuda --config $build_type --update --build \
+    --build_wheel \
+    --parallel \
+    --enable_training --skip_tests --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) CMAKE_CUDA_ARCHITECTURES="70;75;80" \
+    --use_mpi=false --disable_nccl \
+    2>&1 | tee build_log
+
+sudo env "PATH=$PATH" pip uninstall -y onnxruntime-training
+sudo env "PATH=$PATH" pip install ./$output_dir/$build_type/dist/*.whl
+sudo env "PATH=$PATH" pip install torch-ort
+cd /tmp
+sudo env "PATH=$PATH" TORCH_CUDA_ARCH_LIST="8.0;7.0+PTX" python -m torch_ort.configure
