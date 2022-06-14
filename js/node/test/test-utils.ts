@@ -20,6 +20,13 @@ export const SQUEEZENET_OUTPUT0_DATA: number[] = require(path.join(TEST_DATA_ROO
 export const BACKEND_TEST_SERIES_FILTERS: {[name: string]: string[]} =
     jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc'));
 
+const OVERRIDES: {
+  atol_default: number; rtol_default: number; atol_overrides: {[name: string]: number};
+  rtol_overrides: {[name: string]: number};
+} = jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc'));
+
+const ATOL_DEFAULT = OVERRIDES.atol_default;
+const RTOL_DEFAULT = OVERRIDES.rtol_default;
 
 export const NUMERIC_TYPE_MAP = new Map<Tensor.Type, new (len: number) => Tensor.DataType>([
   ['float32', Float32Array],
@@ -278,18 +285,10 @@ export function shouldSkipModel(model: string, eps: string[]): boolean {
   return false;
 }
 
-const OVERRIDES: {[key: string]: (number|{[name: string]: number})} =
-    jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc'));
-
-const ATOL_DEFAULT = OVERRIDES.atol_default as number;
-const RTOL_DEFAULT = OVERRIDES.rtol_default as number;
-
 export function atol(model: string): number {
-  const override = OVERRIDES.atol_overrides as {[name: string]: number};
-  return override[model] ?? ATOL_DEFAULT;
+  return OVERRIDES.atol_overrides[model] ?? ATOL_DEFAULT;
 }
 
 export function rtol(model: string): number {
-  const override = OVERRIDES.rtol_overrides as {[name: string]: number};
-  return override[model] ?? RTOL_DEFAULT;
+  return OVERRIDES.rtol_overrides[model] ?? RTOL_DEFAULT;
 }
