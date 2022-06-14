@@ -571,6 +571,16 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider_SNPE(const char* const* provider_options_keys,
+                                                                    const char* const* provider_options_values,
+                                                                    size_t num_keys) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_SNPE(p_,
+                                                                   provider_options_keys,
+                                                                   provider_options_values,
+                                                                   num_keys));
+  return *this;
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
 }

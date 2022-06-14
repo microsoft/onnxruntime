@@ -466,8 +466,8 @@ endif()
 if(onnxruntime_USE_NUPHAR)
   # the test case under nuphar_tvm is only to verify some basic tvm show case, which is already out of date
   # it doesn't have relationship to nuphar directly. consider we have an official tvm execution provider now,
-  # keep those test cases doesn't bring any value now. 
-  
+  # keep those test cases doesn't bring any value now.
+
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
@@ -493,6 +493,7 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
@@ -540,6 +541,13 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_SNPE)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/snpe/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_snpe)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_snpe)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_snpe)
 endif()
 
 if(onnxruntime_USE_RKNPU)
@@ -691,11 +699,11 @@ endif()
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
     # TRT EP CI takes much longer time when updating to TRT 8.2
-    # So, we only run trt ep and exclude other eps to reduce CI test time.  
+    # So, we only run trt ep and exclude other eps to reduce CI test time.
     #
     # The test names of model tests were using sequential number in the past.
-    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details) 
-    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.  
+    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details)
+    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.
     list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
 endif ()
 
@@ -706,7 +714,7 @@ AddTest(
     onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
-  TEST_ARGS ${test_all_args} 
+  TEST_ARGS ${test_all_args}
 )
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
@@ -745,6 +753,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
+endif()
+
+if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_test_all PRIVATE ENABLE_ATEN)
 endif()
 
 set(test_data_target onnxruntime_test_all)
@@ -788,6 +800,12 @@ add_custom_command(
   ${TEST_SAMPLES_DES})
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  if (onnxruntime_USE_SNPE)
+    add_custom_command(
+      TARGET ${test_data_target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>
+      )
+  endif()
   if (onnxruntime_USE_DNNL)
     list(APPEND onnx_test_libs dnnl)
     add_custom_command(
@@ -1030,6 +1048,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
     if(NOT WIN32)
       list(APPEND onnxruntime_perf_test_libs nsync_cpp)
+      if(onnxruntime_USE_SNPE)
+        list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
+      endif()
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
@@ -1070,6 +1091,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
     if(NOT WIN32)
       list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
+      if(onnxruntime_USE_SNPE)
+        list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_providers_snpe)
+      endif()
     endif()
     if (onnxruntime_USE_CUDA)
       list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_test_cuda_ops_lib cudart)

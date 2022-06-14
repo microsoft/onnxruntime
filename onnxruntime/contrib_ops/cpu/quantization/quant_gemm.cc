@@ -104,8 +104,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     std::vector<float> output_scales = ComputeOutputScale(a_scale, b_scale, y_scale);
     std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_proc_ptr;
     std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_proc_ptr;
-    std::unique_ptr<MLAS_REQUANT_PARAM> requant_param;
-    SetPostProcessor(y_zp, N, output_scales, y, gemm_param, scale_bias_proc_ptr, requant_proc_ptr, requant_param);
+    SetPostProcessor(y_zp, N, output_scales, y, gemm_param, scale_bias_proc_ptr, requant_proc_ptr);
 
     MlasGemmBatch(gemm_shape, &gemm_param, 1, context->GetOperatorThreadPool());
     return Status::OK();
@@ -182,17 +181,17 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
                                Tensor* y,
                                MLAS_GEMM_QUANT_DATA_PARAMS& gemm_param,
                                std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
-                               std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr,
-                               std::unique_ptr<MLAS_REQUANT_PARAM>& requant_param) {
+                               std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
     if (nullptr != y_zp) {
       bool is_y_signed = y->IsDataType<int8_t>();
       int32_t y_zero_point = is_y_signed ? *y_zp->template Data<int8_t>() : *y_zp->template Data<uint8_t>();
-      requant_param = std::make_unique<MLAS_REQUANT_PARAM>(output_scales.data(), output_scales.size(), y_zero_point);
       requant_proc_ptr = std::make_unique<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>(
           y->MutableDataRaw(),
           out_lda,
           nullptr,
-          requant_param.get(),
+          output_scales.data(),
+          output_scales.size() > 1,
+          y_zero_point,
           is_y_signed);
       gemm_param.OutputProcessor = requant_proc_ptr.get();
     } else {

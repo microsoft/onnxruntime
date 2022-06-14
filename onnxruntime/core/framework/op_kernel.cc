@@ -208,7 +208,7 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
   return execution_frame_->GetMutableNodeInputOrOutputMLValue(output_arg_index);
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
 Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
   if (index < 0 || index >= OutputCount()) {
     return Status(common::ONNXRUNTIME, common::FAIL,

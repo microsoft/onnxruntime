@@ -1,0 +1,84 @@
+# This file contains the ADO job that build libonnxruntime.so on Linux
+parameters:
+- name: AdditionalBuildFlags
+  displayName: Additional build flags for build.py
+  type: string
+  default: ''
+
+- name: BaseImage  
+  type: string
+
+- name: OnnxruntimeArch  
+  type: string
+
+- name: OnnxruntimeCFlags  
+  type: string
+
+- name: OnnxruntimeCXXFlags  
+  type: string
+
+- name: OnnxruntimeNodejsBindingArch  
+  type: string
+  
+jobs:
+- job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
+  workspace:
+    clean: all
+  timeoutInMinutes:  210
+  pool: 'Linux-CPU'
+  steps:
+    - template: set-version-number-variables-step.yml
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
+        Repository: onnxruntimecpubuildcentos7${{parameters.OnnxruntimeArch}}
+
+    - task: CmdLine@2
+      inputs:
+        script: |
+          mkdir -p $HOME/.onnx
+          docker run --rm -e CFLAGS="${{parameters.OnnxruntimeCFlags}}" -e CXXFLAGS="${{parameters.OnnxruntimeCXXFlags}}" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos7${{parameters.OnnxruntimeArch}} /bin/bash -c "python3 \
+          /onnxruntime_src/tools/ci_build/build.py --build_java --build_nodejs --build_dir /build --config Release \
+          --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-${{parameters.OnnxruntimeArch}}"
+        workingDirectory: $(Build.SourcesDirectory)
+      displayName: 'Build'
+
+    - script: |
+       set -e -x
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+
+    - template: java-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          arch: 'linux-${{parameters.OnnxruntimeArch}}'
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-java-linux-${{parameters.OnnxruntimeArch}}'
+          version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.so'
+          nativeLibraryName: 'libonnxruntime4j_jni.so'
+
+    - template: c-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-linux-${{parameters.OnnxruntimeArch}}-$(OnnxRuntimeVersion)'
+          artifactNameNoVersionString: 'onnxruntime-linux-${{parameters.OnnxruntimeArch}}'
+          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
+          os: 'linux'
+          artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
+
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()

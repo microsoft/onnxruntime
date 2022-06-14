@@ -93,10 +93,8 @@ TEST(ParallelExecutor, TestStatusPropagation) {
     tester.AddInput<int64_t>("action", {1}, {/*success*/ 0});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
     // TensorRT doesn't handle a custom op. Possibly it should, but that would be a separate PR
-    SessionOptions so;
-    tester.SetUpDefaultSessionOptions(so);
-    so.execution_mode = ExecutionMode::ORT_PARALLEL;
-    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider});
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, {}, {kTensorrtExecutionProvider}, nullptr, nullptr,
+               ExecutionMode::ORT_PARALLEL);
   }
 
   {  // test failure
@@ -105,11 +103,8 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*failure*/ 1});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-
-    SessionOptions so;
-    tester.SetUpDefaultSessionOptions(so);
-    so.execution_mode = ExecutionMode::ORT_PARALLEL;
-    tester.Run(so, OpTester::ExpectResult::kExpectFailure, "Action was 1", {kTensorrtExecutionProvider});
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Action was 1", {kTensorrtExecutionProvider}, nullptr, nullptr,
+               ExecutionMode::ORT_PARALLEL);
   }
 
   {  // test exception
@@ -118,11 +113,7 @@ TEST(ParallelExecutor, TestStatusPropagation) {
 
     tester.AddInput<int64_t>("action", {1}, {/*exception*/ 2});
     tester.AddOutput<int64_t>("action_out", {1}, {0});
-
-    SessionOptions so;
-    tester.SetUpDefaultSessionOptions(so);
-    so.execution_mode = ExecutionMode::ORT_PARALLEL;
-    tester.Run(so, OpTester::ExpectResult::kExpectFailure, "Throwing as action was 2", {kTensorrtExecutionProvider});
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Throwing as action was 2", {kTensorrtExecutionProvider}, nullptr, nullptr, ExecutionMode::ORT_PARALLEL);
   }
 }
 
