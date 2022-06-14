@@ -119,6 +119,7 @@ try:
 
     class bdist_wheel(_bdist_wheel):
         if is_openvino and is_manylinux:
+
             def get_tag(self):
                 _, _, plat = _bdist_wheel.get_tag(self)
                 if platform.system() == "Linux":
@@ -127,7 +128,7 @@ try:
                     # See https://github.com/mayeut/pep600_compliance/blob/master/pep600_compliance/tools/manylinux-policy.json
                     if glibc_major == "2" and glibc_minor == "17":
                         plat = "manylinux_2_17_x86_64.manylinux2014_x86_64"
-                    else: # For manylinux2014 and above, no alias is required
+                    else:  # For manylinux2014 and above, no alias is required
                         plat = "manylinux_%s_%s_x86_64"%(glibc_major, glibc_minor)
                 tags = next(sys_tags())
                 return (tags.interpreter, tags.abi, plat)
@@ -256,8 +257,12 @@ try:
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
-                    result = subprocess.run(["patchelf", "--set-rpath", "$ORIGIN", dest, "--force-rpath"],
-                                            check=True, stdout=subprocess.PIPE, universal_newlines=True)
+                    result = subprocess.run(
+                        ["patchelf", "--set-rpath", "$ORIGIN", dest, "--force-rpath"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        universal_newlines=True,
+                    )
 
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
@@ -276,10 +281,10 @@ try:
 
     class InstallCommand(InstallCommandBase):
 
-      def finalize_options(self):
-        ret = InstallCommandBase.finalize_options(self)
-        self.install_lib = self.install_platlib
-        return ret
+        def finalize_options(self):
+            ret = InstallCommandBase.finalize_options(self)
+            self.install_lib = self.install_platlib
+            return ret
 
 except ImportError as error:
     print("Error importing dependencies:")
@@ -338,26 +343,30 @@ else:
 
 if is_manylinux:
     if(is_openvino):
-      ov_libs =[
-               'libopenvino_intel_cpu_plugin.so',
-               'libopenvino_intel_gpu_plugin.so',
-               'libopenvino_intel_myriad_plugin.so',
-               'libopenvino_auto_plugin.so',
-               'libopenvino_hetero_plugin.so',
-               'libtbb.so.2',
-               'libtbbmalloc.so.2',
-               'libopenvino.so',
-               'libopenvino_c.so',
-               'libopenvino_onnx_frontend.so'
-             ]
+        ov_libs =[
+            "libopenvino_intel_cpu_plugin.so",
+            "libopenvino_intel_gpu_plugin.so",
+            "libopenvino_intel_myriad_plugin.so",
+            "libopenvino_auto_plugin.so",
+            "libopenvino_hetero_plugin.so",
+            "libtbb.so.2",
+            "libtbbmalloc.so.2",
+            "libopenvino.so",
+            "libopenvino_c.so",
+            "libopenvino_onnx_frontend.so",
+        ]
       for x in ov_libs:
-             y = 'onnxruntime/capi/' + x
-             result = subprocess.run(['patchelf', '--set-rpath', '$ORIGIN', y, '--force-rpath'],
-                                     check=True, stdout=subprocess.PIPE, universal_newlines=True)
-             dl_libs.append(x)
-      dl_libs.append(providers_openvino)
-      dl_libs.append('plugins.xml')
-      dl_libs.append('usb-ma2x8x.mvcmd')
+            y = "onnxruntime/capi/" + x
+            result = subprocess.run(
+                ["patchelf", "--set-rpath", "$ORIGIN", y, "--force-rpath"],
+                check=True,
+                stdout=subprocess.PIPE,
+                universal_newlines=True,
+            )
+            dl_libs.append(x)
+        dl_libs.append(providers_openvino)
+        dl_libs.append("plugins.xml")
+        dl_libs.append("usb-ma2x8x.mvcmd")
     data = ["capi/libonnxruntime_pywrapper.so"] if nightly_build else []
     data += [path.join("capi", x) for x in dl_libs if path.isfile(path.join("onnxruntime", "capi", x))]
     ext_modules = [
@@ -379,15 +388,15 @@ extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 
 # Description
 if(is_openvino):
-  README = path.join(getcwd(), "docs/python/ReadMeOV.rst")
-  if not path.exists(README):
-    this = path.dirname(__file__)
-    README = path.join(this, "docs/python/ReadMeOV.rst")
+    README = path.join(getcwd(), "docs/python/ReadMeOV.rst")
+    if not path.exists(README):
+        this = path.dirname(__file__)
+        README = path.join(this, "docs/python/ReadMeOV.rst")
 else:
-  README = path.join(getcwd(), "docs/python/README.rst")
-  if not path.exists(README):
-    this = path.dirname(__file__)
-    README = path.join(this, "docs/python/README.rst")
+    README = path.join(getcwd(), "docs/python/README.rst")
+    if not path.exists(README):
+        this = path.dirname(__file__)
+        README = path.join(this, "docs/python/README.rst")
 
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
@@ -398,10 +407,14 @@ with open(README) as f:
 # line option is specified.
 # If the options is not specified this following condition fails as onnxruntime/external folder is not created in the
 # build flow under the build binary directory.
-if (path.isdir(path.join("onnxruntime", "external"))):
+if path.isdir(path.join("onnxruntime", "external")):
     # Gather all files under onnxruntime/external directory.
-    extra.extend(list(str(Path(*Path(x).parts[1:])) for x in list(iglob(
-        path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))))
+    extra.extend(
+        list(
+            str(Path(*Path(x).parts[1:]))
+            for x in list(iglob(path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))
+        )
+    )
 
 packages = [
     "onnxruntime",
@@ -494,7 +507,7 @@ if enable_training:
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
     if not is_openvino : 
-        package_name = 'onnxruntime-training'
+        package_name = "onnxruntime-training"
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
     if not default_training_package_device or nightly_build:
@@ -596,8 +609,8 @@ if wheel_name_suffix:
 
 cmd_classes = {}
 if bdist_wheel is not None:
-    cmd_classes['bdist_wheel'] = bdist_wheel
-cmd_classes['install'] = InstallCommand
+    cmd_classes["bdist_wheel"] = bdist_wheel
+cmd_classes["install"] = InstallCommand
 cmd_classes["build_ext"] = build_ext
 
 requirements_path = path.join(getcwd(), requirements_file)
