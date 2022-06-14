@@ -27,7 +27,7 @@ struct ParameterOptimizerState {
  */
 struct GroupOptimizerState {
   int64_t step = 0;
-  float initial_lr = 0.001;         // Default value used in torch AdamW
+  float initial_lr = 0.001f;         // Default value used in torch AdamW
   float learning_rate{initial_lr};  // Adaptive learning rate as training proceeds.
   std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states;
 };

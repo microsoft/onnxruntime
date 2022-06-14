@@ -44,7 +44,7 @@ struct Parameter {
   std::string gradient_name_;
 
   bool requires_grad_{true};
-  friend class Module;
+  friend struct Module;
 };
 
 struct ModuleCheckpointState {
