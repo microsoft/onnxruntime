@@ -96,23 +96,23 @@ Status CreateTensorProtosFromOrtValues(
 }
 
 PathString GetTensorProtoFilePath(const PathString& checkpoint_directory, const PathString& filename_prefix) {
-  std::basic_ostringstream<PathString> oss;
+  std::basic_ostringstream<PathChar> oss;
   oss << filename_prefix << k_name_seperator << k_tensor_proto_file_name;
-  return ConcatPathComponent<PathString>(checkpoint_directory, oss.str());
+  return ConcatPathComponent<PathChar>(checkpoint_directory, oss.str());
 }
 
 PathString GetTensorProtoPropertiesFilePath(
     const PathString& checkpoint_directory, const PathString& filename_prefix) {
-  std::basic_ostringstream<PathString> oss;
+  std::basic_ostringstream<PathChar> oss;
   oss << filename_prefix << k_name_seperator << k_tensor_proto_properties_file_name;
-  return ConcatPathComponent<PathString>(checkpoint_directory, oss.str());
+  return ConcatPathComponent<PathChar>(checkpoint_directory, oss.str());
 }
 
 PathString StringConcat(
     const PathString& s_a, const PathString& s_b,
     const PathString& del = k_name_seperator) {
-  std::basic_ostringstream<PathString> oss;
-  oss << s_a << k_name_seperator << s_b;
+  std::basic_ostringstream<PathChar> oss;
+  oss << s_a << del << s_b;
   return oss.str();
 }
 
@@ -168,7 +168,7 @@ void LoadTensorProtoFromFile(const PathString& file_path,
 
 template <typename Func>
 void FilterFilesFromDirectory(const PathString& folder_path, Func func) {
-  LoopDir(folder_path, [&func](const PathString* filename, OrtFileType file_type) -> bool {
+  LoopDir(folder_path, [&func](const PathChar* filename, OrtFileType file_type) -> bool {
     if (filename[0] == '.' || file_type == OrtFileType::TYPE_DIR) {
       return true;
     }
@@ -368,7 +368,7 @@ Status OrtLoadModuleStatesInternal(
   std::vector<std::pair<PathString, bool>> param_filenames;
   FilterFilesFromDirectory(
       parameter_folder_path,
-      [&param_filenames](const PathString* filename) -> bool {
+      [&param_filenames](const PathChar* filename) -> bool {
         PathString filename_str = filename;
         if (StringStartsWith(filename_str, k_trainable_param_root_prefix)) {
           param_filenames.push_back(std::make_pair(filename_str, true));
@@ -400,7 +400,7 @@ Status OrtLoadModuleStatesInternal(
   };
 
   for (auto& pair : param_filenames) {
-    auto param_file_path = ConcatPathComponent<PathString>(parameter_folder_path, pair.first);
+    auto param_file_path = ConcatPathComponent<PathChar>(parameter_folder_path, pair.first);
     ORT_RETURN_IF_ERROR(load_model_proto_into_module(param_file_path, pair.second));
   }
 
@@ -414,7 +414,7 @@ Status OrtLoadOptimizerStatesInternal(const PathString& optimizer_folder_path,
   std::vector<PathString> optim_property_filenames;
   FilterFilesFromDirectory(
       optimizer_folder_path,
-      [&optim_state_filenames, &optim_property_filenames](const PathString* filename) -> bool {
+      [&optim_state_filenames, &optim_property_filenames](const PathChar* filename) -> bool {
         PathString filename_str = filename;
         if (StringStartsWith(filename_str, k_optimizer_root_prefix)) {
           if (StringEndsWith(filename_str, k_tensor_proto_file_name)) {
@@ -503,7 +503,7 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
   std::vector<PathString> custom_property_filenames;
   FilterFilesFromDirectory(
       property_folder_path,
-      [&custom_property_filenames](const PathString* filename) -> bool {
+      [&custom_property_filenames](const PathChar* filename) -> bool {
         PathString filename_str = filename;
         if (StringStartsWith(filename_str, k_property_root_prefix)) {
           custom_property_filenames.push_back(filename_str);
@@ -517,7 +517,7 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
 
   for (auto& property_file_path : custom_property_filenames) {
     std::vector<ONNX_NAMESPACE::TensorProto> property_protos{};
-    auto property_file_full_path = ConcatPathComponent<PathString>(property_folder_path, property_file_path);
+    auto property_file_full_path = ConcatPathComponent<PathChar>(property_folder_path, property_file_path);
     LoadTensorProtoFromFile(property_file_full_path, property_protos, "[custom_property]");
 
     for (auto& property_proto : property_protos) {
