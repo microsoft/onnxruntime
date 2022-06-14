@@ -60,7 +60,7 @@ stages:
 
   jobs:
   - ${{ if eq(parameters.enable_ubuntu_cpu, true) }}:
-    - job: Linux_Ubuntu_py_Wheels
+    - job: Linux_Ubuntu_CPU_py_Wheels
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -75,6 +75,9 @@ stages:
             PythonVersion: '3.9'
           Python310:
             PythonVersion: '3.10'
+      variables:
+      - name: cachedimage
+        value: onnxruntimecpu227build
       steps:
       - checkout: self
         clean: true
@@ -87,7 +90,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux_2_27_cpu
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecpu227build
+          Repository: ${{ variables.cachedimage }}
 
       - task: CmdLine@2
         displayName: 'Build Python Wheel'
@@ -102,7 +105,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecpu227build\
+              ${{ variables.cachedimage }} \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release --update --build \
