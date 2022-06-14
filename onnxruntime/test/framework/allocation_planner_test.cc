@@ -1613,11 +1613,12 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
-  so.optimized_model_filepath = L"./optimized_ssd.onnx";
+  // so.optimized_model_filepath = L"./optimized_ssd.onnx";
   InferenceSession sess{so, GetEnvironment()};
 
   /*auto*/ status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(model.Save(model, "./simplified_ssd.onnx").IsOK());
 
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);

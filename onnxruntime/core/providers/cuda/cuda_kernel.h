@@ -30,8 +30,11 @@ class CudaKernel : public OpKernel {
     // this avoid change too much files so make our sync with master branch difficult.
     // Need to remove this hack when prepare PR.
     std::lock_guard<OrtMutex> lock(stream_mutex_);
-    stream_ = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->handle);
-
+    if (p_op_kernel_context->GetComputeStream()) {
+      stream_ = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->handle);
+    } else {
+      stream_ = static_cast<cudaStream_t>(provider_->GetComputeStream());
+    }
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
