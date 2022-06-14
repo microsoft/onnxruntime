@@ -118,7 +118,7 @@ try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
     class bdist_wheel(_bdist_wheel):
-        if is_openvino :
+        if is_openvino and is_manylinux:
             def get_tag(self):
                 _, _, plat = _bdist_wheel.get_tag(self)
                 if platform.system() == "Linux":
