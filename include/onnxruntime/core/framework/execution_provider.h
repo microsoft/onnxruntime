@@ -14,7 +14,6 @@
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
-enum class DataLayout;
 class GraphViewer;
 class Node;
 struct ComputeCapability;
@@ -37,8 +36,6 @@ namespace onnxruntime {
 /**
    Logical device representation.
 */
-using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
-using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
 // use std function to give execution provider some chance to capture some state.
@@ -50,6 +47,12 @@ struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
   ComputeFunc compute_func;
   DestroyFunctionStateFunc release_state_func;
+};
+
+enum class DataLayout {
+  NCHW,
+  NHWC,
+  NCHWC,
 };
 
 class IExecutionProvider {
@@ -74,7 +77,7 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -194,51 +197,16 @@ class IExecutionProvider {
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
-  // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
-  void TryInsertAllocator(AllocatorPtr allocator);
 
-  // creation of a fused node is not supported in a minimal build, so any EP enabled in that scenario must support
-  // compilation via GraphViewer instances.
-#if !defined(ORT_MINIMAL_BUILD)
-  /**
-  Given a list of fused_node, return create_state/compute/release_state func for each node.
-  */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
-
-  /**
-  Given a list of fused_node, return a dll that expose functions for each node.
-  For each node, there should be three symbols:
-     Create_State_${node_name}
-     Compute_${node_name}
-     Release_State_${node_name}
-  */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::string& dll_path);
-
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'
     const std::reference_wrapper<GraphViewer> filtered_graph;
   };
 
-  /**
-  Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
-  return create_state/compute/release_state func for each node.
-  @remarks This is an optional interface that is only needed if the execution provider compiles nodes
-           in a scenario involving the minimal build. i.e. on a mobile or embedded device with ORT format model.
-
-           Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
-           as it is only valid for the duration of the call to Compile.
-  */
-  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
-#endif
-
   // Fusion approach that is suppported
+  // !!! The "Function" FusionStyle will be deprecated soon.
+  // !!! If your EP is using this fusion style, please migrate it to "FilteredGraphViewer" style.
   enum class FusionStyle {
     // The node fusion will create an onnxruntime::Function based Node that contains a completely new Graph instance
     // in the Node body. The original nodes and initializers are copied to the new Graph instance in Function::Body().
@@ -254,11 +222,34 @@ class IExecutionProvider {
   };
 
   virtual FusionStyle GetFusionStyle() const {
-    // existing EPs use this mode so default to it.
-    // newer EPs that can use the cheaper approach, or need to run in a minimal build, should override to return
-    // FilteredGraphViewer
-    return FusionStyle::Function;
+    // All the ORT build in EP has migrate to FilteredGraphViewer style except Nuphar.
+    // For newer EPs, please avoid use Function style as it will be deprecated soon.
+    return FusionStyle::FilteredGraphViewer;
   }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  /**
+  * !!!! This API will be deprecated soon. If your execution provider overrides this API
+  * !!!! Please migrate it to the "Compile" API with FusedNodeAndGraph type.
+  Given a list of fused_node, return create_state/compute/release_state func for each node.
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  /**
+  Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
+  return create_state/compute/release_state func for each node.
+  @remarks This is now the default interface when execution provider wants to compile nodes
+           for both minimal build and complete ort build.
+
+           Do NOT cache the GraphViewer in FusedNodeAndGraph.filtered_graph in any of the NodeComputeInfo functions
+           as it is only valid for the duration of the call to Compile.
+  */
+  virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+
+#endif
 
   void SetLogger(const logging::Logger* logger) {
     logger_ = logger;
@@ -268,25 +259,24 @@ class IExecutionProvider {
     return logger_;
   }
 
-  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance. 
+  /** Generate a unique id that can be used in a MetaDef name. Values are unique for a model instance.
    The model hash is also returned if you wish to include that in the MetaDef name to ensure uniqueness across models.
    @param graph_viewer[in] Graph viewer that GetCapability was called with. Can be for the main graph or nested graph.
-   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model. 
-                          This is created using the model path if available, 
+   @param model_hash[out] Returns the hash for the main (i.e. top level) graph in the model.
+                          This is created using the model path if available,
                           or the model input names and the output names from all nodes in the main graph.
    @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
             compiled kernels, so the name must be unique and deterministic across models and sessions.
-            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
+            NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
   /**
-     Register allocators used for EP
-     TODO: Used for CUDA & TRT only for now, will have one more PR to apply this for all EPs.
-     EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
+     Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
+     If the EP implements this it should generally delay creating any allocators until this is called.
   */
-  virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
+  virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
 
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
@@ -295,14 +285,24 @@ class IExecutionProvider {
   virtual DataLayout GetPreferredLayout() const {
     // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return static_cast<DataLayout>(0);
+    return DataLayout::NCHW;
   }
+
+  /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
+   */
+  virtual bool ConcurrentRunSupported() const { return true; }
 
  private:
   const std::string type_;
+
+  // allocator lookup is done by combining the device id and OrtMemType.
+  // there's also an implicit connection to the underlying OrtDevice involved that is dependent on the EP.
+  // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
+  // GPU device.
+  using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
   AllocatorMap allocators_;
-  MemoryInfoSet mem_info_set_;  // to ensure only allocators with unique OrtMemoryInfo are registered in the provider.
-  //It will be set when this object is registered to a session
+
+  // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_

@@ -1242,12 +1242,9 @@ TEST(ExecutionProviderTest, FunctionTest) {
   InferenceSession session_object_2{so, GetEnvironment()};
   ASSERT_STATUS_OK(
       session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
-  status = session_object_2.Load(model_file_name);
-  ASSERT_TRUE(status.IsOK());
-  status = session_object_2.Initialize();
-  ASSERT_TRUE(status.IsOK());
-  status = session_object_2.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(session_object_2.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object_2.Initialize());
+  ASSERT_STATUS_OK(session_object_2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
@@ -2014,7 +2011,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats
-  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
   auto cuda_alloc = session_object.GetAllocator(mem_info);
 
   AllocatorStats alloc_stats;

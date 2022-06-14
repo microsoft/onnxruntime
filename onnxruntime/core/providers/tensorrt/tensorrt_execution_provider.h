@@ -131,12 +131,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
 
-  common::Status Compile(const std::vector<Node*>& fused_nodes,
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
   Status OnRunEnd(bool sync_stream) override;
 

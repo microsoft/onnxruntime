@@ -9,7 +9,10 @@ namespace ort_dnnl {
 
 class DnnlGraphTransformer {
  public:
-  void Apply(DnnlSubgraph& subgraph);
+  // The passed in onnx subgraph viewer is only valid during "Compile" phase, 
+  // so keep a reference to that onnx subgraph in DnnlSubgraph is risky.
+  // passed in the onnx subgraph viewer explicitly to make sure we manage the lifetime correctly.
+  void Apply(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer_);
   DnnlGraphTransformer() {
     const std::string debug_log_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_DEBUG_LOG");
     if (!debug_log_env.empty()) {
@@ -18,15 +21,16 @@ class DnnlGraphTransformer {
   }
 
  private:
-  void Gelu(DnnlSubgraph& subgraph);
-  void FastGelu(DnnlSubgraph& subgraph);
-  bool FastGeluFirstFormula(DnnlSubgraph& subgraph, DnnlNode* node, int& fastgelu_index);
-  void FastGeluSecondFormula(DnnlSubgraph& subgraph, DnnlNode* node, int& fastgelu_index);
-  bool FastGeluFormulaCommon(DnnlSubgraph& subgraph, DnnlNode* gelu_start_node, int32_t x_input_index, DnnlNode* tanh_node, std::vector<size_t>& gelu_indices, int& fastgelu_index);
-  bool IsInitilizedWithExpectedValue(DnnlSubgraph& subgraph, DnnlTensor& input_arg, float expected_value);
+  void Gelu(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer);
+  void FastGelu(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer);
+  bool FastGeluFirstFormula(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlNode* node, int& fastgelu_index);
+  void FastGeluSecondFormula(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlNode* node, int& fastgelu_index);
+  bool FastGeluFormulaCommon(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlNode* gelu_start_node, int32_t x_input_index, DnnlNode* tanh_node, std::vector<size_t>& gelu_indices, int& fastgelu_index);
+  bool IsInitilizedWithExpectedValue(const onnxruntime::GraphViewer& onnx_subgraph_viewer, DnnlTensor& input_arg, float expected_value);
   void ConvRelu(DnnlSubgraph& subgraph);
+  void MatMulBinaryEltwise(DnnlSubgraph& subgraph);
   void MatMulAdd(DnnlSubgraph& subgraph);
-  void RemoveMatMulIntegerZP(DnnlSubgraph& subgraph);
+  void RemoveMatMulIntegerZP(DnnlSubgraph& subgraph, const onnxruntime::GraphViewer& onnx_subgraph_viewer);
   // This function checks a few things
   //   - the node in question has a single output
   //   - The output of the node is only consumed by a one other node

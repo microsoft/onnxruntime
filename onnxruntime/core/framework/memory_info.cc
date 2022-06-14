@@ -28,7 +28,7 @@ void MemoryInfo::GenerateTensorMap(const SequentialExecutionPlan* execution_plan
       continue;
     AllocInfoPerTensor mem_info;
     mem_info.mlvalue_index = value_idx;
-    value_name_idx_map.GetName(mem_info.mlvalue_index, mem_info.mlvalue_name);
+    ORT_THROW_IF_ERROR(value_name_idx_map.GetName(mem_info.mlvalue_index, mem_info.mlvalue_name));
     mem_info.lifetime_interval = execution_plan->allocation_plan[value_idx].life_interval;
     mem_info.reused_buffer = (execution_plan->allocation_plan[value_idx].alloc_kind != AllocKind::kReuse) ? value_idx : execution_plan->allocation_plan[value_idx].reused_buffer;
     //If the tensor is using memory outside of the scope, do not store it

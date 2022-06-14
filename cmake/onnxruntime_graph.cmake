@@ -30,6 +30,12 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/function*"
   )
 
+  # remove graph proto serializer
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.h"
+  )
+
   # no optimizer support in base minimal build
   # some optimizer support in extended minimal build
   if (NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
@@ -120,11 +126,15 @@ if (WIN32)
   set_target_properties(onnxruntime_graph PROPERTIES
       STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
 
-  if (NOT onnxruntime_DISABLE_EXCEPTIONS)  
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
-  endif()  
+  endif()
+endif()
+
+if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_graph PRIVATE ENABLE_ATEN)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

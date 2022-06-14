@@ -21,9 +21,6 @@
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
-
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
-
 #include "orttraining/python/orttraining_pybind_common.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -118,7 +115,6 @@ struct TrainingParameters {
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill;
-  bool allow_layer_norm_mod_precision = false;
 
   // graph dumping
   std::string model_after_graph_transforms_path;
@@ -294,7 +290,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
   config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
   config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
-  config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
     config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
@@ -548,8 +543,7 @@ for every transfered tensor.
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
       .def_readwrite("propagate_cast_ops_level", &TrainingParameters::propagate_cast_ops_level)
-      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingParameters::allow_layer_norm_mod_precision);
+      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -558,16 +552,6 @@ for every transfered tensor.
   m.def("get_mpi_context_world_size", []() -> int { return MPIContext::GetInstance().GetWorldSize(); });
 #endif
 
-  m.def("register_aten_op_executor",
-        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
-          ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
-          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
-          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
-        });
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
@@ -787,7 +771,6 @@ for every transfered tensor.
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(
