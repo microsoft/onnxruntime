@@ -223,9 +223,10 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
   run_test(true);
 }
 
-#if defined(USE_NNAPI)
-TEST(GatherOpTest, Gather_axis0_indicesInt32_nnapi) {
+TEST(GatherOpTest, Gather_axis0_indicesInt32) {
   // To test for NNAPI EP, we need the indices to be initializers
+  // NNAPI EP only supports float input data for now,
+  // the following two test cases cover int32_t indices with float input other than int64_t type for Nnapi
   auto run_test = [](bool indices_is_initializer) {
     OpTester test("Gather");
     test.AddAttribute<int64_t>("axis", 0LL);
@@ -241,15 +242,15 @@ TEST(GatherOpTest, Gather_axis0_indicesInt32_nnapi) {
                           {10.0f, 10.1f, 10.2f, 10.3f,
                            11.0f, 11.1f, 11.2f, 11.3f,
                            12.0f, 12.1f, 12.2f, 12.3f});
-    // NNAPI EP only supports float input data for now,
-    // this test case separately tests int32_t indices case with Nnapi
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNnapiExecutionProvider});
+
+    test.Run();
   };
 
+  run_test(false);
   run_test(true);
 }
 
-TEST(GatherOpTest, Gather_axis0_indices2dInt32_nnapi) {
+TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
   // To test for NNAPI EP, we need the indices to be initializers
   auto run_test = [](bool indices_is_initializer) {
     OpTester test("Gather");
@@ -266,12 +267,12 @@ TEST(GatherOpTest, Gather_axis0_indices2dInt32_nnapi) {
                           {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
                            2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
 
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNnapiExecutionProvider});
+    test.Run();
   };
 
+  run_test(false);
   run_test(true);
 }
-#endif
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int32) {
   OpTester test("Gather");
