@@ -36,10 +36,6 @@ from perf_utils import (
     trt_fp16,
 )
 
-# database connection strings
-CLUSTER_INGEST = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
-DATABASE_NAME = "ep_perf_dashboard"
-
 
 def parse_arguments():
     """
@@ -54,6 +50,8 @@ def parse_arguments():
     parser.add_argument("-u", "--report_url", help="Report Url", required=True)
     parser.add_argument("-t", "--trt_version", help="Tensorrt Version", required=True)
     parser.add_argument("-b", "--branch", help="Branch", required=True)
+    parser.add_argument("--kusto_conn", help="Kusto connection URL", required=True)
+    parser.add_argument("--database", help="Database name", required=True)
     parser.add_argument(
         "-d",
         "--commit_datetime",
@@ -234,7 +232,7 @@ def get_session(session, model_group):
     return session
 
 
-def write_table(ingest_client, table, table_name, upload_time, identifier):
+def write_table(ingest_client, database_name, table, table_name, upload_time, identifier):
     """
     Uploads the provided table to the database. This function also appends the upload time and unique run identifier
     to the table.
@@ -253,7 +251,7 @@ def write_table(ingest_client, table, table_name, upload_time, identifier):
     table = table.assign(UploadTime=str(upload_time))
     table = table.assign(Identifier=identifier)
     ingestion_props = IngestionProperties(
-        database=DATABASE_NAME,
+        database=database_name,
         table=table_name,
         data_format=DataFormat.CSV,
         report_level=ReportLevel.FailuresAndSuccesses,
@@ -286,7 +284,7 @@ def main():
     args = parse_arguments()
 
     # connect to database
-    kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(CLUSTER_INGEST)
+    kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(args.kusto_conn)
     ingest_client = QueuedIngestClient(kcsb_ingest)
     identifier = get_identifier(args.commit_datetime, args.commit_hash, args.trt_version, args.branch)
     upload_time = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
@@ -355,6 +353,7 @@ def main():
             db_table_name = "ep_model_" + table
             write_table(
                 ingest_client,
+                args.database,
                 table_results[table],
                 db_table_name,
                 upload_time,

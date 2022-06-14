@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include <cuda_runtime_api.h>
 #include "core/providers/cuda/cuda_common.h"
-#include "dump_cuda_tensor.h"
 #include "core/framework/print_tensor_utils.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -38,11 +39,13 @@ class PinnedHostBuffer {
 };
 
 template <typename T>
-void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1) {
+void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool is_gpu_tensor) {
+  // Occasionally, user will need dump CPU tensor in CUDA EP.
+  // In that case, we copy tensor data as well. It is not needed, but it keeps code simple.
   int num_items = dim0 * dim1;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   cudaDeviceSynchronize();
-  cudaMemcpy(*data, tensor, num_items * sizeof(T), cudaMemcpyDeviceToHost);
+  cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost);
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
@@ -56,11 +59,11 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1) {
 }
 
 template <typename T>
-void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2) {
+void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2, bool is_gpu_tensor) {
   int num_items = dim0 * dim1 * dim2;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
   cudaDeviceSynchronize();
-  cudaMemcpy(*data, tensor, num_items * sizeof(T), cudaMemcpyDeviceToHost);
+  cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost);
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
@@ -75,14 +78,15 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
 
 void DumpGpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1, int dim2) {
   MLDataType dataType = tensor.DataType();
+  bool is_gpu_tensor = (tensor.Location().device.Type() == OrtDevice::GPU);
   if (dataType == DataTypeImpl::GetType<float>()) {
-    DumpGpuTensor<float>(name, tensor.Data<float>(), dim0, dim1, dim2);
+    DumpGpuTensor<float>(name, tensor.Data<float>(), dim0, dim1, dim2, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<MLFloat16>()) {
-    DumpGpuTensor<MLFloat16>(name, tensor.Data<MLFloat16>(), dim0, dim1, dim2);
+    DumpGpuTensor<MLFloat16>(name, tensor.Data<MLFloat16>(), dim0, dim1, dim2, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<int32_t>()) {
-    DumpGpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1, dim2);
+    DumpGpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1, dim2, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
-    DumpGpuTensor<int64_t>(name, tensor.Data<int64_t>(), dim0, dim1, dim2);
+    DumpGpuTensor<int64_t>(name, tensor.Data<int64_t>(), dim0, dim1, dim2, is_gpu_tensor);
   } else {
     assert(0);
   }
@@ -90,14 +94,15 @@ void DumpGpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1, i
 
 void DumpGpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1) {
   MLDataType dataType = tensor.DataType();
+  bool is_gpu_tensor = (tensor.Location().device.Type() == OrtDevice::GPU);
   if (dataType == DataTypeImpl::GetType<float>()) {
-    DumpGpuTensor<float>(name, tensor.Data<float>(), dim0, dim1);
+    DumpGpuTensor<float>(name, tensor.Data<float>(), dim0, dim1, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<MLFloat16>()) {
-    DumpGpuTensor<MLFloat16>(name, tensor.Data<MLFloat16>(), dim0, dim1);
+    DumpGpuTensor<MLFloat16>(name, tensor.Data<MLFloat16>(), dim0, dim1, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<int32_t>()) {
-    DumpGpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1);
+    DumpGpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1, is_gpu_tensor);
   } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
-    DumpGpuTensor<int64_t>(name, tensor.Data<int64_t>(), dim0, dim1);
+    DumpGpuTensor<int64_t>(name, tensor.Data<int64_t>(), dim0, dim1, is_gpu_tensor);
   } else {
     assert(0);
   }
@@ -106,12 +111,18 @@ void DumpGpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1) {
 void DumpGpuTensor(const char* name, const Tensor& tensor) {
   const auto& shape = tensor.Shape();
 
+  if (nullptr != name) {
+    std::cout << std::string(name) << std::endl;
+  }
+  std::cout << "Shape:" << shape << std::endl;
+  std::cout << tensor.Location().ToString() << std::endl;
+
   size_t num_dims = shape.NumDimensions();
   if (num_dims >= 3) {
     int dim0 = static_cast<int>(shape.SizeToDimension(num_dims - 2));
     int dim1 = static_cast<int>(shape[num_dims - 2]);
     int dim2 = static_cast<int>(shape[num_dims - 1]);
-    DumpGpuTensor(name, tensor, dim0, dim1, dim2);
+    DumpGpuTensor(nullptr, tensor, dim0, dim1, dim2);
     return;
   }
 
@@ -121,47 +132,47 @@ void DumpGpuTensor(const char* name, const Tensor& tensor) {
     num_rows = static_cast<size_t>(shape[0]);
   }
   size_t row_size = num_items / num_rows;
-  DumpGpuTensor(name, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
+  DumpGpuTensor(nullptr, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1) const {
   if (is_enabled_)
-    DumpGpuTensor<float>(name, tensor, dim0, dim1);
+    DumpGpuTensor<float>(name, tensor, dim0, dim1, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const {
   if (is_enabled_)
-    DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1);
+    DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1) const {
   if (is_enabled_)
-    DumpGpuTensor<int64_t>(name, tensor, dim0, dim1);
+    DumpGpuTensor<int64_t>(name, tensor, dim0, dim1, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1) const {
   if (is_enabled_)
-    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1);
+    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const {
   if (is_enabled_)
-    DumpGpuTensor<float>(name, tensor, dim0, dim1, dim2);
+    DumpGpuTensor<float>(name, tensor, dim0, dim1, dim2, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const {
   if (is_enabled_)
-    DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, dim2);
+    DumpGpuTensor<MLFloat16>(name, tensor, dim0, dim1, dim2, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const {
   if (is_enabled_)
-    DumpGpuTensor<int64_t>(name, tensor, dim0, dim1, dim2);
+    DumpGpuTensor<int64_t>(name, tensor, dim0, dim1, dim2, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const {
   if (is_enabled_)
-    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1, dim2);
+    DumpGpuTensor<int32_t>(name, tensor, dim0, dim1, dim2, true);
 }
 
 void CudaTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {
