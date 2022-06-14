@@ -11,8 +11,6 @@ namespace onnxruntime {
 namespace training {
 namespace api {
 using namespace common;
-//#ifdef ENABLE_ON_DEVICE_TRAINING
-
 
 // Wrapper on top of module and optimizer classes and is the only class exposed via capis
 class TrainingSession {
@@ -52,8 +50,6 @@ class TrainingSession {
    std::unique_ptr<Module> module_;
    std::unique_ptr<Optimizer> optimizer_;
 };
-
-//#endif
 }
 }
 }

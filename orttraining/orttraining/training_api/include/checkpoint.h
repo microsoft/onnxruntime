@@ -55,6 +55,7 @@ struct CheckpointState {
  * @param state parameter/optimizer and other user defined training states.
  * @param checkpoint_path folder where checkpoint is saved.
  * @return Status
+ * TODO: change state to const ref
  */
 Status SaveCheckpoint(CheckpointState& state,
                       const PathString& checkpoint_path);

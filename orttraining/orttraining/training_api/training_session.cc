@@ -1,14 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//#ifdef ENABLE_ON_DEVICE_TRAINING
 #include "orttraining/training_api/include/training_session.h"
 
 namespace onnxruntime {
 namespace training {
 namespace api {
-
-using namespace onnxruntime;
 
 TrainingSession::TrainingSession(const Environment& session_env,
                                  const SessionOptions& session_options,
@@ -69,4 +66,3 @@ Status TrainingSession::CreateCheckpointState(CheckpointState& chkpt_state, bool
 }
 }
 }
-//#endif

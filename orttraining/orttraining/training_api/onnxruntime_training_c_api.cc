@@ -1,4 +1,5 @@
-//#include "core/session/onnxruntime_c_api.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #include "core/framework/error_code_helper.h"
 
@@ -209,10 +210,8 @@ ORT_API_STATUS_IMPL(OrtApis::OptimizerStep, _Inout_ OrtTrainingSession* sess,
 
 ORT_API_STATUS_IMPL(OrtApis::LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Outptr_ OrtCheckpointState** checkpoint_state) {
   API_IMPL_BEGIN
-  std::unique_ptr<onnxruntime::training::api::CheckpointState> chkpt_state;
   *checkpoint_state = nullptr;
-
-  chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
+  auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
   ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, *chkpt_state.get()));
   *checkpoint_state = reinterpret_cast<OrtCheckpointState*>(chkpt_state.release());
 
