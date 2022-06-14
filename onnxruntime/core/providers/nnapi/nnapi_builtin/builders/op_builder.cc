@@ -2485,6 +2485,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
 
   std::vector<int32_t> indices(size);
+  // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     for (uint32_t i = 0; i < size; i++) {
       int64_t index_i64;
