@@ -192,8 +192,8 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
     V = InlinedVector<std::complex<T>>(dft_length);  // e^(i *2*pi / N * k)
     for (size_t i = 0; i < dft_length; i++) {
       size_t bit_reversed_index = bit_reverse(i, significant_bits);
-      V[bit_reversed_index] = std::complex<T>(cos(static_cast<T>(i) * angular_velocity),
-                                              sin(static_cast<T>(i) * angular_velocity));
+      const T angle = static_cast<T>(i) * angular_velocity;
+      V[bit_reversed_index] = std::complex<T>(cos(angle), sin(angle));
     }
   }
 
@@ -270,9 +270,8 @@ static Status dft_naive(const Tensor* X, Tensor* Y, size_t X_offset, size_t X_st
     out.imag(0);
 
     for (size_t j = 0; j < dft_length; j++) {  // vectorize over this loop
-      auto exponential = std::complex<T>(
-          cos(static_cast<T>(i) * static_cast<T>(j) * angular_velocity),
-          sin(static_cast<T>(i) * static_cast<T>(j) * angular_velocity));
+      const T angle = static_cast<T>(i) * static_cast<T>(j) * angular_velocity;
+      auto exponential = std::complex<T>(cos(angle), sin(angle));
       auto window_element = window_data ? *(window_data + j) : 1;
       auto x = (j < number_of_samples) ? *(X_data + j * X_stride) : 0;
       auto element = x * window_element;
@@ -355,15 +354,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   const auto& X_shape = X->Shape();
   const auto is_real_valued = is_real_valued_signal(X_shape);
   const auto is_complex_valued = is_complex_valued_signal(X_shape);
-
-  // Get the rank of the input tensor
-  // Ensure that the axis is in the valid range of [-rank, rank)
-  auto rank = static_cast<int64_t>(X_shape.GetDims().size());
-  if (!(-rank <= axis && axis < rank)) {
-    ORT_RETURN_IF(!(-rank <= axis && axis < rank), "axis attribute value ", axis, " is invalid for a tensor of rank ",
-                  rank);
-  }
-  axis = (axis >= 0 ? axis : axis + rank);
+  axis = HandleNegativeAxis(axis, X_shape.NumDimensions());
 
   int64_t number_of_samples = static_cast<int64_t>(X_shape[axis]);
   if (dft_length) {
@@ -402,7 +393,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
           ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
       ORT_THROW(
-          "Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second "
+          "Unsupported input signal shape. The signal's first dimension must be the batch dimension and its second "
           "dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for "
           "complex inputs.",
           data_type);
@@ -418,7 +409,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
           ctx, X, Y, axis, number_of_samples, nullptr, is_onesided, inverse, V, temp_output)));
     } else {
       ORT_THROW(
-          "Unsupported input signal shape. The signal's first dimenstion must be the batch dimension and its second "
+          "Unsupported input signal shape. The signal's first dimension must be the batch dimension and its second "
           "dimension must be the signal length dimension. It may optionally include a 3rd dimension of size 2 for "
           "complex inputs.",
           data_type);
@@ -457,7 +448,8 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   const auto signal_components = signal_shape.NumDimensions() == 2   ? 1
                                  : signal_shape.NumDimensions() == 3 ? signal_shape[2]
                                                                      : 0;  // error
-  ORT_ENFORCE(signal_components == 1 || signal_components == 2, "Ensure that the signal has either 1 or 2 components.");
+  ORT_ENFORCE(signal_components == 1 || signal_components == 2,
+              "signal shape must end in 1 (real) or 2 (real, imaginary).");
 
   // Get the frame length
   int64_t frame_length = std::numeric_limits<int64_t>::min();
