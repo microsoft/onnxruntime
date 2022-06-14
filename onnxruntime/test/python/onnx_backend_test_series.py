@@ -15,7 +15,7 @@ import onnx
 import onnx.backend.test.case.test_case
 import onnx.backend.test.runner
 
-import onnxruntime.backend as backend
+import onnxruntime.backend as backend  # pylint: disable=consider-using-from-import
 
 pytest_plugins = ("onnx.backend.test.report",)
 
