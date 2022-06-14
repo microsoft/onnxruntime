@@ -5,6 +5,14 @@
 
 #include "TestCase.h"
 
+#include <cctype>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <map>
+#include <regex>
+#include <string>
+
 #include "callback.h"
 #include "heap_buffer.h"
 #include "mem_buffer.h"
@@ -21,14 +29,6 @@
 #include "core/framework/allocator.h"
 #include "core/framework/TensorSeq.h"
 #include "re2/re2.h"
-
-#include <cctype>
-#include <fstream>
-#include <memory>
-#include <sstream>
-#include <map>
-#include <regex>
-#include <string>
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;

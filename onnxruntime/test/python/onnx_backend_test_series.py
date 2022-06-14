@@ -15,7 +15,7 @@ import onnx
 import onnx.backend.test.case.test_case
 import onnx.backend.test.runner
 
-from onnxruntime import backend
+import onnxruntime.backend as backend
 
 pytest_plugins = ("onnx.backend.test.report",)
 
