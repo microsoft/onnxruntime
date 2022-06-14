@@ -5,7 +5,7 @@
 
 import sys
 
-sys.path.append('../build')
+sys.path.append("../build")
 
 import kernel_explorer as ke
 import numpy as np
@@ -14,16 +14,16 @@ import pytest
 
 def dtype_to_bytes(dtype):
     type_map = {
-        'float16': 2,
-        'float32': 4,
+        "float16": 2,
+        "float32": 4,
     }
     return type_map[dtype]
 
 
 def dtype_to_funcs(dtype):
     type_map = {
-        'float16': list(filter(lambda x: "VectorAdd_half" in x, dir(ke))),
-        'float32': list(filter(lambda x: "VectorAdd_float" in x, dir(ke))),
+        "float16": list(filter(lambda x: "VectorAdd_half" in x, dir(ke))),
+        "float32": list(filter(lambda x: "VectorAdd_float" in x, dir(ke))),
     }
     return type_map[dtype]
 
