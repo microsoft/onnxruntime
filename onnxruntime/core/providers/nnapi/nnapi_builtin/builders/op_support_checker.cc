@@ -397,7 +397,7 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
 bool BaseOpSupportChecker::HasSupportedInputOutputs(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                     const OpSupportCheckParams& params) const {
   // We do not support unknown(null) input shape
-  auto has_supported_shape = [](const NodeArg& node_arg, const std::string& name, const std::string op_type) {
+  auto has_supported_shape = [](const NodeArg& node_arg, const std::string& name, const std::string& op_type) {
     const auto* shape_proto = node_arg.Shape();
     if (!shape_proto) {
       LOGS_DEFAULT(VERBOSE) << "Node [" << name << "] type [" << op_type
@@ -2183,6 +2183,62 @@ bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initia
 
 #pragma endregion
 
+#pragma region op_pad
+
+class PadOpSupportChecker : public BaseOpSupportChecker {
+ private:
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_3;  // for ANEURALNETWORKS_PAD_V2
+  }
+
+  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override {
+    return 11;  // before Pad-11, inputs `pads` and `constant_value` were attributes
+  }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+};
+
+bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                            const OpSupportCheckParams& params) const {
+  const auto& inputs = node_unit.Inputs();
+
+  // only support 1-4d input shape
+  {
+    Shape input_shape;
+    if (!GetShape(inputs[0].node_arg, input_shape)) {
+      return false;
+    }
+
+    if (input_shape.size() > 4 || input_shape.empty()) {
+      LOGS_DEFAULT(VERBOSE) << "Pad only supports up to 1-4d shape, input is "
+                            << input_shape.size() << "d shape";
+      return false;
+    }
+  }
+
+  // only support "constant" mode
+  {
+    NodeAttrHelper helper{node_unit};
+    const auto mode = helper.Get("mode", "constant");
+    if (mode != "constant") {
+      LOGS_DEFAULT(VERBOSE) << "Mode is not supported: " << mode;
+      return false;
+    }
+  }
+
+  // only support if `pads` input is known
+  if (const auto& pads_arg = inputs[1].node_arg; !Contains(initializers, pads_arg.Name())) {
+    LOGS_DEFAULT(VERBOSE) << "Padding element counts must be known";
+    return false;
+  }
+
+  return true;
+}
+
+#pragma endregion op_pad
+
 #pragma region CreateGetOpSupportCheckers
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -2193,10 +2249,10 @@ bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initia
 
 // This is for ops with dedicated OpSupportChecker
 #define NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME)                                 \
-  {                                                                                                           \
+  do {                                                                                                        \
     op_registrations.support_checkers.push_back(std::make_unique<SUPPORT_CHECKER_NAME>());                    \
     op_registrations.op_support_checker_map.emplace(OP_TYPE, op_registrations.support_checkers.back().get()); \
-  }
+  } while (0)
 
 static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   OpSupportCheckerRegistrations op_registrations;
@@ -2211,6 +2267,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Elu", EluOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Flatten", FlattenOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("LRN", LRNOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Pad", PadOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("QuantizeLinear", QuantizeLinearOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Reshape", ReshapeOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Resize", ResizeOpSupportChecker);
