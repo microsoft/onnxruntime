@@ -953,10 +953,12 @@ TEST(QOrderedTest, LongformerAttention_2) {
 
   // Input
   std::vector<MLFloat16> input_data = GenData<MLFloat16>({batch, sequence, hidden}, 1.f, -1, 1);
+  //std::vector<MLFloat16> input_data = GenOnesData<MLFloat16>({batch, sequence, hidden});
   std::vector<int8_t> input;
   float input_scale;
 
   QuantizeAndFindScale(input_data, input, input_scale);
+  auto input_data_qdq = QDQ(input_data, input_scale);
 
   test_qorder.AddInput<int8_t>("input", {batch, sequence, hidden}, input);
 
@@ -964,11 +966,14 @@ TEST(QOrderedTest, LongformerAttention_2) {
 
   // Weight
   std::vector<MLFloat16> weight_data = GenData<MLFloat16>({hidden, hidden * 3}, 1.f, -1, 1);
+  //std::vector<MLFloat16> weight_data = GenOnesData<MLFloat16>({hidden, hidden * 3});
 
   std::vector<int8_t> weight;
   float weight_scale;
 
   QuantizeAndFindScale(weight_data, weight, weight_scale);
+
+  auto weight_data_qdq = QDQ(weight_data, weight_scale);
 
   auto weight_reordered = Reorder({hidden, hidden * 3}, weight, ORDER_ROW, ORDER_COL);
 
@@ -984,7 +989,7 @@ TEST(QOrderedTest, LongformerAttention_2) {
 
   // QKV Gemm scale
   float qkv_gemm_scale = 0.1f;
-  QKVGemmScale(input_data.data(), weight_data.data(), batch, sequence, hidden, qkv_gemm_scale);
+  QKVGemmScale(input_data_qdq.data(), weight_data_qdq.data(), batch, sequence, hidden, qkv_gemm_scale);
   test_qorder.AddInput<float>("scale_qkv_gemm", {1}, {qkv_gemm_scale});
 
   // Mask
@@ -993,11 +998,14 @@ TEST(QOrderedTest, LongformerAttention_2) {
 
   // Global Weight
   std::vector<MLFloat16> global_weight_data = GenData<MLFloat16>({hidden, hidden * 3}, 1.f, -1, 1);
+  //std::vector<MLFloat16> global_weight_data = GenOnesData<MLFloat16>({hidden, hidden * 3});
 
   std::vector<int8_t> global_weight;
   float global_weight_scale;
 
   QuantizeAndFindScale(global_weight_data, global_weight, global_weight_scale);
+
+  auto global_weight_data_qdq = QDQ(global_weight_data, global_weight_scale);
 
   auto global_weight_data_reordered = Reorder({hidden, hidden * 3}, global_weight, ORDER_ROW, ORDER_COL);
 
@@ -1012,8 +1020,8 @@ TEST(QOrderedTest, LongformerAttention_2) {
 
   // Scale global gemm
   float global_qkv_gemm_scale = 0.1f;
-  QKVGemmScale(input_data.data(), global_weight_data.data(), batch, sequence, hidden, global_qkv_gemm_scale);
-  test_qorder.AddInput<float>("scale_global_gemm", {1}, {0.1});
+  QKVGemmScale(input_data_qdq.data(), global_weight_data_qdq.data(), batch, sequence, hidden, global_qkv_gemm_scale);
+  test_qorder.AddInput<float>("scale_global_gemm", {1}, {01.f});
 
   // Global
   std::vector<int> global = {1, 1, 0, 0};
@@ -1025,12 +1033,12 @@ TEST(QOrderedTest, LongformerAttention_2) {
   OpTester test_nonq("LongformerAttention", 1, onnxruntime::kMSDomain);
   test_nonq.AddAttribute("num_heads", (int64_t)2);
   test_nonq.AddAttribute("window", (int64_t)2);
-  test_nonq.AddInput<MLFloat16>("input", {batch, sequence, hidden}, QDQ(input_data, input_scale));
-  test_nonq.AddInput<MLFloat16>("weight", {hidden, 3 * hidden}, QDQ(weight_data, weight_scale));
+  test_nonq.AddInput<MLFloat16>("input", {batch, sequence, hidden}, input_data_qdq);
+  test_nonq.AddInput<MLFloat16>("weight", {hidden, 3 * hidden}, weight_data_qdq);
   test_nonq.AddInput<MLFloat16>("bias", {3 * hidden}, CastFloatToFp16(bias));
 
   test_nonq.AddInput<MLFloat16>("mask", {batch, sequence}, mask);
-  test_nonq.AddInput<MLFloat16>("global_weight", {hidden, 3 * hidden}, QDQ(global_weight_data, global_weight_scale));
+  test_nonq.AddInput<MLFloat16>("global_weight", {hidden, 3 * hidden}, global_weight_data_qdq);
   test_nonq.AddInput<MLFloat16>("global_bias", {3 * hidden}, CastFloatToFp16(global_bias));
   test_nonq.AddInput<int32_t>("global", {batch, sequence}, global);
   std::vector<MLFloat16> dummy_output(size, MLFloat16(0.f));
