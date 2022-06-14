@@ -63,11 +63,18 @@ Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, O
   auto element_type = param_tensor.DataType();
   auto p_tensor = std::make_unique<Tensor>(element_type, shape, allocator);
 
-  // TODO: handle CUDA memset
   if (tensor_location.device.Type() == OrtDevice::CPU ||
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
     memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
+  } else {
+    // Use a tensor on cpu and copy it over to the desired device using
+    // the data transfer manager.
+    AllocatorPtr cpu_allocator = sess_state.GetAllocator(OrtDevice());
+    auto p_cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_allocator);
+    memset(p_cpu_tensor->MutableDataRaw(), 0, p_cpu_tensor->SizeInBytes());
+    // No need to free the cpu buffer, tensor destructor takes care of it using the cpu_allocator
+    ORT_THROW_IF_ERROR(sess_state.GetDataTransferMgr().CopyTensor(*p_cpu_tensor, *p_tensor));
   }
   output_val.Init(p_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),

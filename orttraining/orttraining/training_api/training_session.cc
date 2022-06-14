@@ -9,19 +9,21 @@ namespace api {
 
 TrainingSession::TrainingSession(const Environment& session_env,
                                  const SessionOptions& session_options,
+                                 const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                                  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters)
     : environment_(session_env),
       session_options_{session_options},
+      providers_{providers},
       named_parameters_{parameters} {}
 
 Status TrainingSession::Initialize(const std::string& train_model_uri, const std::optional<std::string>& eval_model_uri,
                                    const std::optional<std::string>& optim_model_uri) {
-  module_ = std::move(std::make_unique<Module>(train_model_uri, named_parameters_, session_options_,
-                                               environment_, eval_model_uri));
+  module_ = std::make_unique<Module>(train_model_uri, named_parameters_, session_options_,
+                                     environment_, providers_, eval_model_uri);
 
   if (optim_model_uri.has_value()) {
-    optimizer_ = std::move(std::make_unique<Optimizer>(optim_model_uri.value(), named_parameters_,
-                                                       session_options_, environment_));
+    optimizer_ = std::make_unique<Optimizer>(optim_model_uri.value(), named_parameters_,
+                                             session_options_, environment_, providers_);
   }
 
   return Status::OK();

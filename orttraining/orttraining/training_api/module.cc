@@ -55,10 +55,14 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
-               const std::optional<std::string>& eval_model_path_or_bytes) : named_parameters_{named_parameters} {
-  // Create session for training model
+               const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+               const std::optional<std::string>& eval_model_path_or_bytes)
+    : named_parameters_{named_parameters} {
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
+  for (const auto& provider : providers) {
+    ORT_THROW_IF_ERROR(train_sess_->RegisterExecutionProvider(provider));
+  }
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
 
   // Extract model input and output names
@@ -123,7 +127,6 @@ Module::Module(const std::string& train_model_path_or_bytes,
       auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(), target_allocator);
       ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(param_data_tensor, *target_tensor.get()));
       auto ml_tensor_type = DataTypeImpl::GetType<Tensor>();
-      // TODO test the original buffer is released.
       param_data.Init(target_tensor.release(), ml_tensor_type, ml_tensor_type->GetDeleteFunc());
     }
 

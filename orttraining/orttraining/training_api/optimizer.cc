@@ -97,7 +97,6 @@ Status Optimizer::ConstructInputs() {
         ORT_ENFORCE(
             false, "This is an invalid graph. Optimizer graph contains unknown user input:", input_names_[i]);
       }
-      ORT_ENFORCE(inputs_.back().IsAllocated() && inputs_.back().IsTensor(), "Uninitialized tensor data for ", name);
     }
 
     const auto tensorseq_inserter = [](auto& tensors, auto* inputs) {
@@ -127,16 +126,21 @@ Status Optimizer::ConstructInputs() {
 Optimizer::Optimizer(const std::string& optim_path_or_bytes,
                      const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
                      const onnxruntime::SessionOptions& session_options,
-                     const Environment& env) : named_parameters_(named_parameters) {
+                     const Environment& env,
+                     const std::vector<std::shared_ptr<IExecutionProvider>>& providers)
+    : named_parameters_(named_parameters) {
   optim_sess_ = std::move(std::make_unique<InferenceSession>(session_options, env));
+  for (const auto& execution_provider : providers) {
+    ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
+  }
 
   ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
-  ORT_ENFORCE(input_names_[0] == LearningRateName);        // TODO: make this better
-  ORT_ENFORCE(input_names_[1] == StepName);                // TODO: make this better
-  ORT_ENFORCE(input_names_[2] == ParamsName);              // TODO: make this better
+  ORT_ENFORCE(input_names_[0] == LearningRateName);  // TODO: make this better
+  ORT_ENFORCE(input_names_[1] == StepName);          // TODO: make this better
+  ORT_ENFORCE(input_names_[2] == ParamsName);        // TODO: make this better
 
   if (optimizer_type_ == OptimizerType::AdamW) {
     ORT_ENFORCE(input_names_[3] == FirstOrderMomentsName);   // TODO: make this better
@@ -152,7 +156,10 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 Status Optimizer::Step() {
   OrtValue learning_rate_input, step_input;
   utils::WrapInOrtValue<float>(optimizer_state_.learning_rate, &learning_rate_input);
-  utils::WrapInOrtValue<int64_t>(optimizer_state_.step, &step_input);
+  // Use step count + 1 before running optimizer step.
+  // This is necessary since bias correction uses the step
+  // as a power. Using power of 0 is wrong.
+  utils::WrapInOrtValue<int64_t>(optimizer_state_.step + 1, &step_input);
   std::vector<OrtValue> feeds({learning_rate_input, step_input});
   feeds.insert(feeds.end(), inputs_.begin(), inputs_.end());
 
@@ -161,8 +168,9 @@ Status Optimizer::Step() {
   ORT_THROW_IF_ERROR(status);
 
   // extract step output and update
-  if (utils::GetValue<int64_t>(outputs[0]) == 1LL)
+  if (utils::GetValue<int64_t>(outputs[0]) == 1LL) {
     optimizer_state_.step++;
+  }
 
   return Status::OK();
 }

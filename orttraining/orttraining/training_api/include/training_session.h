@@ -17,6 +17,7 @@ class TrainingSession {
  public:
   TrainingSession(const Environment& session_env,
                   const SessionOptions& session_options,
+                  const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters);
 
   Status Initialize(const std::string& train_model_uri,
@@ -46,6 +47,7 @@ class TrainingSession {
 
   const Environment& environment_;
   SessionOptions session_options_;
+  std::vector<std::shared_ptr<IExecutionProvider>> providers_;
   const std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::unique_ptr<Module> module_;
   std::unique_ptr<Optimizer> optimizer_;

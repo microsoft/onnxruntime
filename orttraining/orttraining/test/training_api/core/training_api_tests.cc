@@ -11,8 +11,13 @@
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/include/utils.h"
-#include "orttraining/training_api/include/interfaces.h"
+#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/include/checkpoint_property.h"
+#include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/include/lr_scheduler.h"
 #include "orttraining/test/training_api/core/data_utils.h"
+#include "default_providers.h"
 
 using json = nlohmann::json;
 using namespace onnxruntime::training;
@@ -53,7 +58,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
-                                        *env);
+                                        *env, std::vector<std::shared_ptr<IExecutionProvider>>());
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -95,9 +100,9 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   }
 }
 
-// TODO: enable this test once Set Execution Provider functionality is
-//       available.
-TEST(TrainingApiTest, DISABLED_OptimStep) {
+#if defined(USE_CUDA) || defined(USE_ROCM)
+
+TEST(TrainingApiTest, OptimStep) {
   auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
@@ -106,11 +111,16 @@ TEST(TrainingApiTest, DISABLED_OptimStep) {
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
 
   onnxruntime::SessionOptions session_option;
+  session_option.optimized_model_filepath = "/home/bmeswani/github/onnxruntime/build/adamw_final.onnx";
   std::unique_ptr<Environment> env;
+  std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
+  std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();
+  std::shared_ptr<IExecutionProvider> cpu_provider = onnxruntime::test::DefaultCpuExecutionProvider();
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
-                                        *env);
-  auto optim = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
+                                        *env, providers);
+  auto optim = std::make_unique<Optimizer>(optim_uri, model->NamedParameters(), session_option,
+                                           *env, providers);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -127,8 +137,10 @@ TEST(TrainingApiTest, DISABLED_OptimStep) {
       optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
 
+  std::vector<float> param_vec_before_optimizer_step;
+  OrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step, cuda_provider, cpu_provider);
   std::vector<float> moment_1_vec;
-  OrtValueToVec(moment_1, moment_1_vec);
+  OrtValueToVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
   for (size_t i = 0; i < moment_1_vec.size(); i++) {
     ORT_ENFORCE(moment_1_vec[i] == 0.0f);
   }
@@ -138,14 +150,23 @@ TEST(TrainingApiTest, DISABLED_OptimStep) {
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
     ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
+    std::vector<float> grads;
+    OrtValueToVec(model->NamedParameters().at(param_name)->Gradient(), grads, cuda_provider, cpu_provider);
     ORT_ENFORCE(optim->Step().IsOK());
 
     // get optim state and check if it is updated
-    OrtValueToVec(moment_1, moment_1_vec);
+    OrtValueToVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
     for (size_t i = 0; i < moment_1_vec.size(); i++) {
-      if (moment_1_vec[i] != 0.0f) {
-        // moment was updated
-        break;
+      if (grads[i] != 0.0f) {
+        ORT_ENFORCE(moment_1_vec[i] != 0.0f);
+      }
+    }
+
+    std::vector<float> param_vec_after_optimizer_step;
+    OrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step, cuda_provider, cpu_provider);
+    for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
+      if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
+        ORT_ENFORCE(param_vec_after_optimizer_step[i] != param_vec_before_optimizer_step[i]);
       }
     }
   }
@@ -169,9 +190,11 @@ void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t
   onnxruntime::SessionOptions session_option;
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  const std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
-                                        *env);
-  auto optim = std::make_shared<Optimizer>(optim_uri, model->NamedParameters(), session_option, *env);
+                                        *env, providers);
+  auto optim = std::make_shared<Optimizer>(optim_uri, model->NamedParameters(), session_option,
+                                           *env, providers);
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
@@ -260,6 +283,8 @@ TEST(TrainingApiTest, LinearLRScheduler_WarmUp200Step_ResumeFromCheckpoint_Test)
   // All steps are in warm-up phase.
   TestLRSchduler("warmup_linear_scheduler_warmupstep-200_restored.json", initial_lr, total_step_count, 200);
 }
+
+#endif
 
 }  // namespace
 }  // namespace test
