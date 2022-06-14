@@ -1757,7 +1757,7 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
 }
 
 // Some op should be optimized any time there is a transpose as input and a handler is available.
-static bool isOpSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& node) {
+static bool CanNodeSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& node) {
   if (node.IsOp("Transpose")) {
     return true;
   }
@@ -1767,7 +1767,7 @@ static bool isOpSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& node)
   }
 #if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
   if (node.IsOp("Resize")) {
-    // Inclusion of Resize is a hack because it has higher perf in the NHWC variant when
+    // Resize is included because it has higher perf in the NHWC variant when
     // the input X is 4D int8 tensor and the mode is linear on ARM
     auto X_value_info = ctx.graph.GetValueInfo(node.Inputs()[0]);
     auto X_shape = X_value_info->Shape();
@@ -1798,7 +1798,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
     return false;
   }
 
-  if (!ctx.skip_cost_check && !isOpSkipCostCheck(ctx, node)) {
+  if (!ctx.skip_cost_check && !CanNodeSkipCostCheck(ctx, node)) {
     // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
     // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
     // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
