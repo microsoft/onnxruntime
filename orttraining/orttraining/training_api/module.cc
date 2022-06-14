@@ -52,24 +52,27 @@ Status Parameter::ResetGrad() {
 }
 
 Module::Module(const std::string& train_model_path_or_bytes,
-               std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
+               const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
-               const std::optional<std::string>& eval_model_path_or_bytes) {
+               const std::optional<std::string>& eval_model_path_or_bytes) : named_parameters_{named_parameters} {
+  // create session for training model
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
 
+  // extract model input and output names
   utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
 
-  auto& train_sess_state = train_sess_->GetSessionState();
-  std::vector<std::string> param_input_names, grad_input_names, user_input_names, reset_grad_name;
+  // reorder the extracted input names in the following order:
+  // user inputs, weights, gradients, reset_grad
+  std::vector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
   std::string param_name;
 
   std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names_) {
-    auto it = named_parameters.find(input_name);
-    if (it != named_parameters.end()) {
+    auto it = named_parameters_.find(input_name);
+    if (it != named_parameters_.end()) {
       param_input_names.emplace_back(input_name);
     } else if (input_name == ACCUMULATE_GRAD_CONTROL_INPUT_NAME) {
       reset_grad_name.emplace_back(input_name);
@@ -89,12 +92,11 @@ Module::Module(const std::string& train_model_path_or_bytes,
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
 
   // Loop each parameter, allocate it's memory based on user specified device.
+  auto& train_sess_state = train_sess_->GetSessionState();
   for (auto& param_name : param_input_names) {
-    ORT_ENFORCE(named_parameters.find(param_name) != named_parameters.end());
-    OrtValue& source_ortvalue = named_parameters[param_name]->Data();
-    ORT_ENFORCE(source_ortvalue.IsTensor());
-    const Tensor& source_tensor = source_ortvalue.Get<Tensor>();
+    ORT_ENFORCE(named_parameters_.find(param_name) != named_parameters_.end());
 
+    // retrieve the target device for "param_name"
     std::vector<SessionState::NodeInfo> node_info_vec;
     ORT_THROW_IF_ERROR(train_sess_state.GetInputNodeInfo(param_name, node_info_vec));
     const auto& node_info = node_info_vec.front();
@@ -103,39 +105,45 @@ Module::Module(const std::string& train_model_path_or_bytes,
       ORT_ENFORCE(target_device == *(it->device), "Inconsistent device requirements found for input: ", param_name);
     }
 
-    // Create parameter value copy with corresponding device user sets the session on.
-    // We did not re-use the data even CPU tensor is needed.
     // TODO(pengwa): consider whether we should alloc contiguous buffer for parameters or gradients.
-    OrtValue target_ortvalue;
-    auto allocator = train_sess_state.GetAllocator(target_device);
-    ORT_ENFORCE(allocator != nullptr);
+    // Copy ortvalue buffer from CPU to target_device for this "param_name" (based on graph partitioning)
+    // Only copies data if target device is not the same as the current device the buffer is placed on
+    auto params_iter = named_parameters_.find(param_name);
+    ORT_ENFORCE(params_iter != named_parameters_.end());
+    OrtValue& param_data = params_iter->second->Data();
 
-    Tensor::InitOrtValue(source_tensor.DataType(),
-                         source_tensor.Shape(),
-                         allocator, target_ortvalue);
-    Tensor* target_tensor_ptr = target_ortvalue.GetMutable<Tensor>();
-    ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(source_tensor, *target_tensor_ptr));
+    ORT_ENFORCE(param_data.IsTensor());
+    const Tensor& param_data_tensor = param_data.Get<Tensor>();
+    // if the source device type is already same as target device skip copy
+    if (param_data_tensor.Location().device.Type() != target_device.Type()) {
+      // TODO: move this outside of the for loop?
+      auto target_allocator = train_sess_state.GetAllocator(target_device);
+      ORT_ENFORCE(target_allocator != nullptr);
 
-    auto param_share_ptr =
-        std::make_shared<Parameter>(param_name, target_ortvalue, named_parameters[param_name]->RequiresGrad());
-    named_parameters_.insert({param_name, param_share_ptr});
-    weights_.push_back(param_share_ptr->Data());
+      // create a new tensor on the target_device and switch the source_ortvalue to point to this new tensor
+      auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(), target_allocator);
+      ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(param_data_tensor, *target_tensor.get()));
+      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+      param_data.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+    }
+
+    weights_.push_back(param_data);
 
     // Create gradient buffer when parameter requires gradient.
-    if (param_share_ptr->RequiresGrad()) {
+    if (params_iter->second->RequiresGrad()) {
       // Create gradient accumulation buffer.
       auto it = param_name_to_grad_input_index_map.find(param_name);
       ORT_ENFORCE(it != param_name_to_grad_input_index_map.end(), "Gradient buffer input not providered for param: ",
                   param_name);
 
       const size_t grad_input_index = it->second;
-      auto& param_grad_buffer_name = grad_input_names[grad_input_index];
+      auto& param_grad_name = grad_input_names[grad_input_index];
       // TODO: don't pre-allocate the gradient buffer.
       // Gradient usually stays on the same device of its parameter.
-      OrtValue param_grad_buffer_ortvalue;
-      ORT_THROW_IF_ERROR(utils::OrtValueLike(train_sess_state, target_ortvalue, param_grad_buffer_ortvalue));
-      ORT_THROW_IF_ERROR(param_share_ptr->SetGrad(param_grad_buffer_name, param_grad_buffer_ortvalue));
-      gradients_[grad_input_index] = param_share_ptr->Gradient();
+      OrtValue param_grad;
+      ORT_THROW_IF_ERROR(utils::OrtValueLike(train_sess_state, param_data, param_grad));
+      ORT_THROW_IF_ERROR(params_iter->second->SetGrad(param_grad_name, param_grad));
+      gradients_[grad_input_index] = params_iter->second->Gradient();
     }
   }
 
@@ -149,6 +157,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     // We are making certain assumptions: Like the order in which parameters
     // occur will be same between train and eval graphs,
     // and all the weights present in both graphs match.
+    // TODO: Add the checks instead of making assumptions??
     std::vector<std::string> eval_user_input_names, param_input_names;
     for (const auto& input_name : eval_input_names_) {
       if (named_parameters_.find(input_name) != named_parameters_.end()) {
@@ -166,6 +175,14 @@ Module::Module(const std::string& train_model_path_or_bytes,
     eval_input_names_ = eval_user_input_names;
     eval_input_names_.insert(eval_input_names_.end(), param_input_names.begin(), param_input_names.end());
   }
+}
+
+size_t Module::GetTrainModeOutputCount() const noexcept {
+  return train_output_names_.size();
+}
+
+size_t Module::GetEvalModeOutputCount() const noexcept {
+  return eval_output_names_.size();
 }
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
@@ -187,7 +204,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   feeds.insert(feeds.end(), gradients_.begin(), gradients_.end());
   // TODO: consider maintaining this as ortvalue instead of bool
   OrtValue do_update_input;
-  utils::WarpInOrtValue<bool>(accumulate_gradient_, &do_update_input);
+  utils::WrapInOrtValue<bool>(accumulate_gradient_, &do_update_input);
   feeds.push_back(do_update_input);
 
   // TODO: need to filter out the grads from the output ortvalues

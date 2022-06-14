@@ -29,16 +29,18 @@
 #include "core/session/abi_session_options_impl.h"
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
-                  _Outptr_ OrtTrainingSession** out) {
+                    _Inout_ OrtCheckpointState* checkpoint_state, _Outptr_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
+  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
   OrtStatus* status = nullptr;
   *out = nullptr;
 
   ORT_TRY {
       train_sess = std::make_unique<onnxruntime::training::api::TrainingSession>(
+        env->GetEnvironment(),
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        env->GetEnvironment());
+        chkpt_state->module_checkpoint_state.named_parameters);
 
       *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }
@@ -53,20 +55,33 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_
 }
 
 ORT_API_STATUS_IMPL(OrtApis::InitializeTrainingSession, _Inout_ OrtTrainingSession* session,
-                    _Inout_ OrtCheckpointState* checkpoint_state,
                     _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
                     _In_ const ORTCHAR_T* optimizer_model_path) {
   API_IMPL_BEGIN
 
   auto train_sess = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
-  auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(train_sess->Initialize(chkpt_state->module_checkpoint_state.named_parameters,
-                                                         train_model_path,
+  ORT_API_RETURN_IF_STATUS_NOT_OK(train_sess->Initialize(train_model_path,
                                                          eval_model_path ? std::optional<std::string>{eval_model_path}
                                                                          : std::nullopt,
                                                          optimizer_model_path ? std::optional<std::string>{optimizer_model_path}
                                                                               : std::nullopt));
 
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetTrainModeOutputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::TrainingSessionGetEvalModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetEvalModeOutputCount();
   return nullptr;
   API_IMPL_END
 }
@@ -81,8 +96,8 @@ ORT_API_STATUS_IMPL(OrtApis::ResetGrad, _Inout_ OrtTrainingSession* session) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                  _In_reads_(inputs_len) const OrtValue* const* inputs, size_t inputs_len,
-                  size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs) {
+                    size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
+                    size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs) {
 
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
@@ -130,8 +145,8 @@ ORT_API_STATUS_IMPL(OrtApis::TrainStep, _Inout_ OrtTrainingSession* sess, _In_op
 }
 
 ORT_API_STATUS_IMPL(OrtApis::EvalStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
-                  _In_reads_(inputs_len) const OrtValue* const* inputs, size_t inputs_len,
-                  size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs) {
+                    size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
+                    size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs) {
 
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);

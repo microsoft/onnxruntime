@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <onnxruntime_cxx_api.h>
-#include "orttraining/training_api/include/interfaces.h"
+#include <onnxruntime_c_api.h>
+#include "orttraining/training_api/include/utils.h"
 
 #include "cxxopts.hpp"
 #include "../common/synthetic_data_loader.h"
@@ -15,6 +15,8 @@
 
 using namespace onnxruntime::training::api;
 using namespace std;
+
+const OrtApi* g_ort_api = nullptr;
 
 struct TestRunnerParameters {
   // Models configs.
@@ -152,38 +154,62 @@ void InitSyntheticDataLoader(
   }
 }
 
-void RunTraining(const TestRunnerParameters& params) {
-  const auto& api = Ort::GetApi();
+#define ORT_RETURN_ON_ERROR(expr)                            \
+  do {                                                       \
+    OrtStatus* onnx_status = (expr);                         \
+    if (onnx_status != NULL) {                               \
+      auto code = g_ort_api->GetErrorCode(onnx_status);          \
+      const char* msg = g_ort_api->GetErrorMessage(onnx_status); \
+      g_ort_api->ReleaseStatus(onnx_status);                     \
+      printf("Run failed with error code :%d\n", code);          \
+      printf("Error message :%s\n", msg); \
+      return -1; \
+    }                                                        \
+  } while (0);
 
-  CheckpointState state;
-  // TODO: update using public API's calling pattern, e.g. api.LoadCheckpoint().
-  EnforceCheck(LoadCheckpoint(params.checkpoint_to_load_path, state).IsOK(), "Failed to load checkpoint");
+int RunTraining(const TestRunnerParameters& params) {
+  g_ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
-  OrtSessionOptions* session_options = nullptr;
-  EnforceCheck(api.CreateSessionOptions(&session_options) == nullptr, "Failed to create session options.");
+  // Create Env
+  OrtEnv* env;
+  OrtThreadingOptions* threading_options = nullptr;
+  ORT_RETURN_ON_ERROR(g_ort_api->CreateThreadingOptions(&threading_options));
+  //ORT_RETURN_ON_ERROR(g_ort_api->SetGlobalInterOpNumThreads(threading_options, 0 /*default == logical cpus*/));
+  //ORT_RETURN_ON_ERROR(g_ort_api->SetGlobalIntraOpNumThreads(threading_options, 1 /*default == logical cpus*/));
+  ORT_RETURN_ON_ERROR(g_ort_api->CreateEnvWithGlobalThreadPools(
+          ORT_LOGGING_LEVEL_VERBOSE, "log", threading_options, &env));
+  g_ort_api->ReleaseThreadingOptions(threading_options);
+
+  // Load Checkpoint State
+  OrtCheckpointState* checkpoint_state;
+  ORT_RETURN_ON_ERROR(g_ort_api->LoadCheckpoint(params.checkpoint_to_load_path.c_str(), &checkpoint_state));
+
+    // Create TrainingSession
+  OrtSessionOptions* soptions;
+  ORT_RETURN_ON_ERROR(g_ort_api->CreateSessionOptions(&soptions));
+  //ORT_RETURN_ON_ERROR(g_ort_api->DisablePerSessionThreads(soptions));
 
 #ifdef USE_CUDA
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-  EnforceCheck(api.CreateCUDAProviderOptions(&cuda_options) == nullptr, "Failed to create cuda provider options");
-  EnforceCheck(api.SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options) == nullptr,
-               "Failed to append cuda ep.");
+  ORT_RETURN_ON_ERROR(g_ort_api->CreateCUDAProviderOptions(&cuda_options));
+  ORT_RETURN_ON_ERROR(g_ort_api->SessionOptionsAppendExecutionProvider_CUDA_V2(soptions, cuda_options));
 #endif
 
-  OrtEnv* env = nullptr;
-  EnforceCheck(api.CreateEnv(ORT_LOGGING_LEVEL_WARNING, "e2e_test_runner", &env) == nullptr, "Failed to create env");
+  OrtTrainingSession* session;
+  ORT_RETURN_ON_ERROR(g_ort_api->CreateTrainingSession(env, soptions, checkpoint_state, &session));
 
-  // TODO: update using public API's calling pattern, e.g. api.CreateModule().
-  Ort::OrtModule module(env, session_options,
-                        params.model_training_graph_path,
-                        state.module_checkpoint_state.named_parameters,
-                        params.model_evaluation_graph_path);
-
+  // Initialize Training Session
   bool do_eval = params.model_evaluation_graph_path.has_value();
+  ORT_RETURN_ON_ERROR(g_ort_api->InitializeTrainingSession(session, params.model_training_graph_path.c_str(),
+                                                           do_eval ? params.model_evaluation_graph_path.value().c_str() : nullptr,
+                                                           params.optimizer_training_graph_path.size() > 0 ? params.optimizer_training_graph_path.c_str() : nullptr));
 
-  // TODO: update using public API's calling pattern, e.g. api.CreateOptimizer().
-  Ort::OrtOptimizer optimizer(env, session_options,
-                              params.optimizer_training_graph_path,
-                              module.NamedParameters());
+  size_t train_mode_output_count, eval_mode_output_count = 0;
+  ORT_RETURN_ON_ERROR(g_ort_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
+
+  if(do_eval) {
+    ORT_RETURN_ON_ERROR(g_ort_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
+  }
 
   int64_t sample_batch_count_per_epoch = 4;
   if (sample_batch_count_per_epoch < params.train_batch_size || sample_batch_count_per_epoch % params.train_batch_size != 0) {
@@ -194,12 +220,12 @@ void RunTraining(const TestRunnerParameters& params) {
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
   InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
 
-  int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
-  int64_t warmup_step_count = total_step_count / 3;
+  // TODO: Add C API for LRScheduler
+  //int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
+  //int64_t warmup_step_count = total_step_count / 3;
+  //Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
 
-  // TODO: update using public API's calling pattern, e.g. api.CreateLinearLRScheduler().
-  Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
-
+  std::cout<< "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;
   double stabilized_total_end_to_end_time{0};
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
@@ -210,7 +236,7 @@ void RunTraining(const TestRunnerParameters& params) {
         end_to_end_start = std::chrono::high_resolution_clock::now();
       }
 
-      std::vector<Ort::Value> inputs;
+      std::vector<OrtValue*> inputs;
       data_loader.GetNextSampleBatch(inputs);
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
@@ -220,14 +246,15 @@ void RunTraining(const TestRunnerParameters& params) {
       train_step_range.Begin();
 #endif
 
-      std::vector<Ort::Value> fetches;
-      EnforceCheck(module.TrainStep(inputs, fetches), "Failed during module.TrainStep.");
-
+      std::vector<OrtValue*> fetches(train_mode_output_count);
+      ORT_RETURN_ON_ERROR(g_ort_api->TrainStep(session, nullptr,
+                                               inputs.size(), (const OrtValue* const*)inputs.data(),
+                                               train_mode_output_count, fetches.data()));
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
       train_step_range.End();
 #endif
 
-      float loss = *(fetches[0].GetTensorMutableData<float>());
+      float loss = onnxruntime::training::api::utils::GetValue<float>(*fetches[0]);
       std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
 
       if ((batch_idx + 1) % params.gradient_accumulation_steps == 0) {
@@ -238,14 +265,14 @@ void RunTraining(const TestRunnerParameters& params) {
             onnxruntime::profile::Color::Blue);
         opt_step_range.Begin();
 #endif
-        EnforceCheck(optimizer.Step(), "Failed during optimizer.Step().");
+        ORT_RETURN_ON_ERROR(g_ort_api->OptimizerStep(session, nullptr));
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         opt_step_range.End();
 #endif
 
         // Update learning rate.
-        EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
+        //EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         onnxruntime::profile::NvtxRangeCreator resetgrad_range(
@@ -254,7 +281,7 @@ void RunTraining(const TestRunnerParameters& params) {
         resetgrad_range.Begin();
 #endif
 
-        EnforceCheck(module.ResetGrad(), "Failed during module.ResetGrad().");
+        ORT_RETURN_ON_ERROR(g_ort_api->ResetGrad(session));
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         resetgrad_range.End();
@@ -262,26 +289,37 @@ void RunTraining(const TestRunnerParameters& params) {
       }
 
       if (do_eval && (batch_idx + 1) % params.eval_interval == 0) {
-        std::vector<Ort::Value> eval_results;
-        EnforceCheck(module.EvalStep(inputs, eval_results), "Failed during Module.EvalStep().");
+        std::vector<OrtValue*> eval_results(eval_mode_output_count);
+        ORT_RETURN_ON_ERROR(g_ort_api->EvalStep(session, nullptr,
+                                                inputs.size(), (const OrtValue* const*)inputs.data(),
+                                                train_mode_output_count, eval_results.data()));
       }
 
       if ((batch_idx + 1) % params.checkpoint_interval == 0) {
         // Save trained weights
-        CheckpointState state_to_save;
-        EnforceCheck(module.GetStateDict(state_to_save.module_checkpoint_state), "Failed to load module states.");
-        EnforceCheck(optimizer.GetStateDict(state_to_save.optimizer_checkpoint_state), "Failed to load optimizer states.");
-        state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
+        ORT_RETURN_ON_ERROR(g_ort_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
-        // TODO: update using public API's calling pattern, e.g. api.SaveCheckpoint().
-        EnforceCheck(SaveCheckpoint(state_to_save, ckpt_file).IsOK(), "Failed to save checkpoint.");
+        // TODO: enable adding more properties to checkpoint
+        // state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
       }
       batch_idx++;
+
+      // release input ortvalues
+      for(size_t i = 0; i < inputs.size(); i++) {
+        g_ort_api->ReleaseValue(inputs[i]);
+      }
+
+      // TODO(askhade): release output values. Need to find out which ones to release and when
+      // as some output values may be needed through out the training loop
     }
 
     data_loader.ResetIterateIndex();
   }
+
+  // Save trained weights
+  std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name;
+  ORT_RETURN_ON_ERROR(g_ort_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - end_to_end_start;
@@ -289,14 +327,18 @@ void RunTraining(const TestRunnerParameters& params) {
 
   std::cout << "Training completed - end to end latency: " << stabilized_total_end_to_end_time << "(s)" << std::endl;
 
-  api.ReleaseEnv(env);
+  // Delete all the ptrs
+  g_ort_api->ReleaseTrainingSession(session);
 
 #ifdef USE_CUDA
   // Finally, don't forget to release the provider options
-  api.ReleaseCUDAProviderOptions(cuda_options);
+  g_ort_api->ReleaseCUDAProviderOptions(cuda_options);
 #endif
+  g_ort_api->ReleaseSessionOptions(soptions);
+  g_ort_api->ReleaseCheckpointState(checkpoint_state);
+  g_ort_api->ReleaseEnv(env);
 
-  api.ReleaseSessionOptions(session_options);
+  return 0;
 }
 
 int main(int argc, char* argv[]) {
@@ -309,6 +351,5 @@ int main(int argc, char* argv[]) {
   EnforceCheck(ParseArguments(argc, argv, params), "Parse arguments failed.");
 
   // Start training session
-  RunTraining(params);
-  return 0;
+  return RunTraining(params);
 }

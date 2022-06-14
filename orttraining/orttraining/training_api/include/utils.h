@@ -29,7 +29,7 @@ Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, O
 
 // Create OrtValue from a single value of type T
 template <typename T>
-void WarpInOrtValue(T value,
+void WrapInOrtValue(T value,
                     OrtValue* p_ortvalue,
                     AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;

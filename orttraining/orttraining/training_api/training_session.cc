@@ -10,40 +10,32 @@ namespace api {
 
 using namespace onnxruntime;
 
-TrainingSession::TrainingSession(const SessionOptions& session_options,
-                                 const Environment& session_env)
-                                 : session_options_{session_options},
-                                 environment_(session_env) {}
+TrainingSession::TrainingSession(const Environment& session_env,
+                                 const SessionOptions& session_options,
+                                 const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters)
+                                 : environment_(session_env),
+                                 session_options_{session_options},
+                                 named_parameters_ {parameters} {}
 
-#ifdef _WIN32
-
-#endif
-
-Status TrainingSession::Initialize(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-                            const std::string& train_model_uri, const std::optional<std::string>& eval_model_uri,
+Status TrainingSession::Initialize(const std::string& train_model_uri, const std::optional<std::string>& eval_model_uri,
                             const std::optional<std::string>& optim_model_uri) {
-    module_.reset(new Module(train_model_uri, parameters, eval_model_uri));
+
+    module_.reset(new Module(train_model_uri, named_parameters_, session_options_, environment_, eval_model_uri));
 
     if(optim_model_uri.has_value()) {
-        optimizer_.reset(new Optimizer(optim_model_uri.value(), parameters));
+        optimizer_.reset(new Optimizer(optim_model_uri.value(), named_parameters_, session_options_, environment_));
     }
 
     return Status::OK();
 }
 
-Status TrainingSession::InitializeTrainingSession(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-                                                  const std::string& train_model_uri,
-                                                  const std::optional<std::string>& eval_model_uri) {
-    module_.reset(new Module(train_model_uri, parameters, eval_model_uri));
-    return Status::OK();
+size_t TrainingSession::GetTrainModeOutputCount() const noexcept {
+    return module_->GetTrainModeOutputCount();
 }
 
-Status TrainingSession::InitializeOptimizerSession(std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
-                                                   const std::string& optim_model_uri) {
-    optimizer_.reset(new Optimizer(optim_model_uri, parameters));
-    return Status::OK();
+size_t TrainingSession::GetEvalModeOutputCount() const noexcept {
+    return module_->GetEvalModeOutputCount();
 }
-
 
 Status TrainingSession::TrainStep(const RunOptions& ,
                                   const std::vector<OrtValue>& inputs,

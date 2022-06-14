@@ -2533,6 +2533,8 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::SaveCheckpoint,
     &OrtApis::CreateTrainingSession,
     &OrtApis::InitializeTrainingSession,
+    &OrtApis::TrainingSessionGetTrainModeOutputCount,
+    &OrtApis::TrainingSessionGetEvalModeOutputCount,
     &OrtApis::ResetGrad,
     &OrtApis::TrainStep,
     &OrtApis::EvalStep,
