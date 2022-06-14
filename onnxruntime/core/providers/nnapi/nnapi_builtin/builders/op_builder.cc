@@ -2470,11 +2470,11 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
   // Add indices operand into nnapi
-  const auto& indices_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
+  const auto& indices_tensor = *initializers.at(input2);
   std::vector<uint8_t> unpacked_tensor;
   ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
-  const int64_t* raw_indices_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
 
+  const auto data_type = indices_tensor.data_type();
   const auto indices_shape = indices_tensor.dims();
   uint32_t size = 1;
   Shape indices_dimen;
@@ -2483,9 +2483,21 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     size *= indices_shape[i];
     indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
   }
+
   std::vector<int32_t> indices(size);
-  for (uint32_t i = 0; i < size; i++) {
-    indices[i] = SafeInt<int32_t>(raw_indices_data[i]);
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    // const int64_t* raw_indices_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+    for (uint32_t i = 0; i < size; i++) {
+      int64_t index_i64;
+      memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
+      indices[i] = SafeInt<int32_t>(index_i64);
+    }
+  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    for (uint32_t i = 0; i < size; i++) {
+      int32_t index;
+      memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
+      indices[i] = SafeInt<int32_t>(index);
+    }
   }
 
   OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
