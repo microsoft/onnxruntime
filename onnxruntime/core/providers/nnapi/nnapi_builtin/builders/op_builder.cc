@@ -2486,7 +2486,6 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   std::vector<int32_t> indices(size);
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    // const int64_t* raw_indices_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
     for (uint32_t i = 0; i < size; i++) {
       int64_t index_i64;
       memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
