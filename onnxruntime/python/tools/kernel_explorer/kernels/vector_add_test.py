@@ -4,24 +4,26 @@
 # --------------------------------------------------------------------------
 
 import sys
+
 sys.path.append('../build')
 
 import kernel_explorer as ke
 import numpy as np
 import pytest
 
+
 def dtype_to_bytes(dtype):
     type_map = {
-      'float16': 2,
-      'float32': 4,
+        'float16': 2,
+        'float32': 4,
     }
     return type_map[dtype]
 
 
 def dtype_to_funcs(dtype):
     type_map = {
-      'float16': list(filter(lambda x: "VectorAdd_half" in x, dir(ke))),
-      'float32': list(filter(lambda x: "VectorAdd_float" in x, dir(ke))),
+        'float16': list(filter(lambda x: "VectorAdd_half" in x, dir(ke))),
+        'float32': list(filter(lambda x: "VectorAdd_float" in x, dir(ke))),
     }
     return type_map[dtype]
 
@@ -32,7 +34,7 @@ def test_vector_add(size, dtype, func):
     x = np.random.rand(size).astype(dtype)
     y = np.random.rand(size).astype(dtype)
     z = np.random.rand(size).astype(dtype)
- 
+
     x_d = ke.DeviceArray(x)
     y_d = ke.DeviceArray(y)
     z_d = ke.DeviceArray(z)
@@ -40,7 +42,7 @@ def test_vector_add(size, dtype, func):
     va = f(x_d, y_d, z_d, size)
     va.Run()
     z_d.UpdateHostNumpyArray()
- 
+
     z_ref = x + y
     np.testing.assert_allclose(z_ref, z)
 
