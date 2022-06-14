@@ -192,7 +192,7 @@ ORT_API_STATUS_IMPL(OrtApis::LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_pa
   API_IMPL_BEGIN
   *checkpoint_state = nullptr;
   auto chkpt_state = std::make_unique<onnxruntime::training::api::CheckpointState>();
-  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, *chkpt_state.get()));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_path, *chkpt_state));
   *checkpoint_state = reinterpret_cast<OrtCheckpointState*>(chkpt_state.release());
 
   return nullptr;

@@ -17,10 +17,12 @@ TrainingSession::TrainingSession(const Environment& session_env,
 Status TrainingSession::Initialize(const std::string& train_model_uri, const std::optional<std::string>& eval_model_uri,
                             const std::optional<std::string>& optim_model_uri) {
 
-    module_.reset(new Module(train_model_uri, named_parameters_, session_options_, environment_, eval_model_uri));
+    module_ = std::move(std::make_unique<Module>(train_model_uri, named_parameters_, session_options_,
+                                                 environment_, eval_model_uri));
 
     if(optim_model_uri.has_value()) {
-        optimizer_.reset(new Optimizer(optim_model_uri.value(), named_parameters_, session_options_, environment_));
+        optimizer_ = std::move(std::make_unique<Optimizer>(optim_model_uri.value(), named_parameters_,
+                                                           session_options_, environment_));
     }
 
     return Status::OK();
