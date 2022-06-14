@@ -60,7 +60,7 @@ def profile_vector_add_func(size, dtype, func):
     x = np.random.rand(size).astype(dtype)
     y = np.random.rand(size).astype(dtype)
     z = np.random.rand(size).astype(dtype)
- 
+
     x_d = ke.DeviceArray(x)
     y_d = ke.DeviceArray(y)
     z_d = ke.DeviceArray(z)
