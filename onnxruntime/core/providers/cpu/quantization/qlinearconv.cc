@@ -644,6 +644,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       group_col_buffer_size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
       auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
       col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+      memset(col_data, 0, SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
     }
   }
   if (use_indirection_buffer) {
