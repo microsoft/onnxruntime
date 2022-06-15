@@ -1773,7 +1773,8 @@ static bool CanNodeSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& no
     auto X_shape = X_value_info->Shape();
     auto X_dtype = X_value_info->DType();
     auto mode = node.GetAttributeString("mode");
-    if (X_shape && X_shape->size() == 4 && X_dtype == api::DataType::INT8 && mode && *mode == "linear") {
+    if (X_shape && X_shape->size() == 4 && (X_dtype == api::DataType::UINT8 || X_dtype == api::DataType::INT8) &&
+        mode && *mode == "linear") {
       return true;
     }
   }
