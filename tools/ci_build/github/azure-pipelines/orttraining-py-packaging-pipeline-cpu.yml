@@ -77,7 +77,6 @@ stages:
                   --build_shared_lib \
                   --parallel \
                   --build_wheel \
-                  --use_openmp \
                   --enable_onnx_tests \
                   --enable_pybind --build_java --build_nodejs --enable_training
           workingDirectory: $(Build.SourcesDirectory)

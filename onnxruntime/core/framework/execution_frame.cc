@@ -38,18 +38,23 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
 
 IExecutionFrame::~IExecutionFrame() = default;
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
 Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   int ort_value_idx = GetNodeIdxToMLValueIdx(index);
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
-  all_values_[ort_value_idx] = ort_value;
+  if (all_values_[ort_value_idx].IsAllocated()) {
+    ORT_RETURN_IF_ERROR(CopyTensor(ort_value.Get<Tensor>(), *all_values_[ort_value_idx].GetMutable<Tensor>()));
+  } else {
+    all_values_[ort_value_idx] = ort_value;
+  }
   return Status::OK();
 }
+#endif
 
+#ifdef ENABLE_TRAINING
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
   ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
 

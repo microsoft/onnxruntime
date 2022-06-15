@@ -41,6 +41,9 @@ parameters:
   
 - name: ORT_EP_NAME
   type: string
+  
+- name: MachinePool
+  type: string
 
 - name: DocUpdateNeeded
   displayName: Run Tests?
@@ -58,7 +61,7 @@ jobs:
     DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}    
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
+  pool: ${{ parameters.MachinePool }}
   timeoutInMinutes:  300  
   steps:
   - task: UsePythonVersion@0
