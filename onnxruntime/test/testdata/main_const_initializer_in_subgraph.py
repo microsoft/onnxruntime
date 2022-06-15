@@ -3,7 +3,7 @@ from onnx import helper
 from onnx import TensorProto
 
 # Loop body graph and usage of main_graph_initializer on this level
-# (Note: When running the model, we may need to disable graph optimization so that main_graph_initializer won't go away afer constant folding)
+# (Note: When running the model, we may need to disable graph optimization so that main_graph_initializer won't go away after constant folding)
 body = helper.make_graph(
     [
         helper.make_node("Add", ["sub_graph_initializer", "main_graph_initializer"], ["initializer_sum"], "Add1"),
