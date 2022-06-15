@@ -1863,7 +1863,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Set execution context memory
       if (trt_state->context_memory_sharing_enable) {
-	    size_t mem_size = trt_engine->getDeviceMemorySize();
+        size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > *max_context_mem_size_ptr) {
           *max_context_mem_size_ptr = mem_size;
 		  *context_memory = IAllocator::MakeUniquePtr<void>(alloc, *max_context_mem_size_ptr).get();
