@@ -39,10 +39,7 @@ RUN v="8.4.1-1+cuda11.6" &&\
     apt-get update &&\
     sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} \
         libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
-        python3-libnvinfer=${v}
-
-RUN cd /usr/src/tensorrt/samples/trtexec && make &&\
-    cp /usr/src/tensorrt/bin/trtexec /usr/local/bin/
+        python3-libnvinfer=${v} libnvinfer-samples=${v}
 
 WORKDIR /code
 
