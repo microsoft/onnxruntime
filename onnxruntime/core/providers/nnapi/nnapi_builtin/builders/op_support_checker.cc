@@ -785,9 +785,6 @@ class UnsqueezeOpSupportChecker : public BaseOpSupportChecker {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
-
-  // Unsqueeze opset 10- uses attributes for axes which we do not support for now
-  // int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 10; }
 };
 
 bool UnsqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
@@ -804,8 +801,8 @@ bool UnsqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& in
     return false;
   }
 
-  // Unsqueeze opset 11+ uses input 1 as axes, if we have input 1 then it need to be an initializer
-  if (node_unit.SinceVersion() > 10 && inputs.size() > 1) {
+  // Unsqueeze opset 13 uses input 1 as axes, if we have input 1 then it needs to be an initializer
+  if (node_unit.SinceVersion() > 12 && inputs.size() > 1) {
     const auto& axes_name = inputs[1].node_arg.Name();
     if (!Contains(initializers, axes_name)) {
       LOGS_DEFAULT(VERBOSE) << "Input axes of Unsqueeze must be known";
