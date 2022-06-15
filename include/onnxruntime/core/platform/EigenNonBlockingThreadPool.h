@@ -1278,11 +1278,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   }
 
   void EnableSpinning() {
-    spin_loop_status_ = kBusy;
+    spin_loop_status_ = SpinLoopStatus::kBusy;
   }
 
   void DisableSpinning() {
-    spin_loop_status_ = kIdle;
+    spin_loop_status_ = SpinLoopStatus::kIdle;
   }
 
  private:
@@ -1435,13 +1435,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
 
-  enum SpinLoopStatus {
+  enum class SpinLoopStatus {
     kIdle,
     kBusy
   };
 
   // Default is no control over spinning
-  std::atomic<SpinLoopStatus> spin_loop_status_{kBusy};
+  std::atomic<SpinLoopStatus> spin_loop_status_{SpinLoopStatus::kBusy};
 
   // Wake any blocked workers so that they can cleanly exit WorkerLoop().  For
   // a clean exit, each thread will observe (1) done_ set, indicating that the
@@ -1482,7 +1482,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           } else {
             t = q.PopFront();
           }
-          if (spin_loop_status_.load(std::memory_order_relaxed) == kIdle) {
+          if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
           onnxruntime::concurrency::SpinPause();

@@ -1827,6 +1827,45 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 }
 #endif
 
+namespace {
+// Concurrent runs counting and thread-pool spin control
+struct ThreadPoolSpinningSwitch {
+  using PS = onnxruntime::concurrency::ThreadPool::ParallelSection;
+  concurrency::ThreadPool* intra_tp_{nullptr};
+  concurrency::ThreadPool* inter_tp_{nullptr};
+  std::atomic<int>& concurrent_num_runs_;
+  // Use this to jump start threads and amortize the costs
+  // of initialization between the kernels
+  // note this prevents using explicit PS in the nodes
+  // or an additional PS for inter op thread-pool
+  std::optional<PS> ps_intra_;
+  // __Ctor ref-counting only
+  explicit ThreadPoolSpinningSwitch(std::atomic<int>& ref) : concurrent_num_runs_(ref) {
+    concurrent_num_runs_.fetch_add(1, std::memory_order_relaxed);
+  }
+  // __Ctor Refcounting and spinning control
+  ThreadPoolSpinningSwitch(concurrency::ThreadPool* intra_tp,
+                           concurrency::ThreadPool* inter_tp,
+                           std::atomic<int>& ref) noexcept
+      : intra_tp_(intra_tp), inter_tp_(inter_tp), concurrent_num_runs_(ref) {
+    if (concurrent_num_runs_.fetch_add(1, std::memory_order_relaxed) == 0) {
+      if (intra_tp_) intra_tp_->EnableSpinning();
+      if (inter_tp_) inter_tp_->EnableSpinning();
+    }
+    if (intra_tp_) {
+      ps_intra_.emplace(intra_tp_);
+    }
+  }
+  ~ThreadPoolSpinningSwitch() {
+    ps_intra_.reset();
+    if (1 == concurrent_num_runs_.fetch_sub(1, std::memory_order_acq_rel)) {
+      if (intra_tp_) intra_tp_->DisableSpinning();
+      if (inter_tp_) inter_tp_->DisableSpinning();
+    }
+  }
+};
+}  // namespace
+
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
@@ -1844,12 +1883,22 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
+  // Increment/decrement concurrent_num_runs_ and control
+  // threads spinning as configured. Do nothing for graph replay except the counter
+  std::optional<ThreadPoolSpinningSwitch> tp_starter;
+  if (force_spinning_stop_between_runs_ && !cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
+    concurrency::ThreadPool* intra_tp_ = (use_per_session_threads_) ? thread_pool_.get() : intra_op_thread_pool_from_env_;
+    concurrency::ThreadPool* inter_tp = (use_per_session_threads_) ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
+    tp_starter.emplace(intra_tp_, inter_tp, current_num_runs_);
+  } else {
+    tp_starter.emplace(current_num_runs_);
+  }
+
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
     LOGS(*session_logger_, INFO) << "Replaying the captured "
                                  << cached_execution_provider_for_graph_replay_.Type()
                                  << " CUDA Graph for this model with tag: " << run_options.run_tag;
-    ++current_num_runs_;
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
   } else {
     std::vector<IExecutionProvider*> exec_providers_to_stop;
@@ -1894,8 +1943,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
         LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
       }
 
-      ++current_num_runs_;
-
       // scope of owned_run_logger is just the call to Execute.
       // If Execute ever becomes async we need a different approach
       std::unique_ptr<logging::Logger> owned_run_logger;
@@ -1932,43 +1979,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
       session_state_->IncrementGraphExecutionCounter();
 #endif
 
-      struct ThreadPoolSpinningSwitch {
-        using PS = onnxruntime::concurrency::ThreadPool::ParallelSection;
-        concurrency::ThreadPool* intra_tp_;
-        concurrency::ThreadPool* inter_tp_;
-        std::atomic_int32_t& counter_ref_;
-        // Use this to jump start threads and amortize the costs
-        // of initialization between the kernels
-        // note this prevents using explicit PS in the nodes
-        // or an additional PS for inter op thread-pool
-        std::optional<PS> ps_intra_;
-        ThreadPoolSpinningSwitch(concurrency::ThreadPool* intra_tp,
-                                 concurrency::ThreadPool* inter_tp,
-                                 std::atomic_int32_t& ref) noexcept
-            : intra_tp_(intra_tp), inter_tp_(inter_tp), counter_ref_(ref) {
-          if (counter_ref_.fetch_add(1, std::memory_order_relaxed) == 0) {
-            if (intra_tp_) intra_tp_->EnableSpinning();
-            if (inter_tp_) inter_tp_->EnableSpinning();
-          }
-          if (intra_tp_) {
-            ps_intra_.emplace(intra_tp_);
-          }
-        }
-        ~ThreadPoolSpinningSwitch() {
-          ps_intra_.reset();
-          if (1 == counter_ref_.fetch_sub(1, std::memory_order_acq_rel)) {
-            if (intra_tp_) intra_tp_->DisableSpinning();
-            if (inter_tp_) inter_tp_->DisableSpinning();
-          }
-        }
-      };
-
-      std::optional<ThreadPoolSpinningSwitch> tp_starter;
-      if (force_spinning_stop_between_runs_) {
-        concurrency::ThreadPool* intra_tp_ = (use_per_session_threads_) ? thread_pool_.get() : intra_op_thread_pool_from_env_;
-        concurrency::ThreadPool* inter_tp = (use_per_session_threads_) ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
-        tp_starter.emplace(intra_tp_, inter_tp, invocation_refcounter_);
-      }
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                    session_options_.execution_mode, run_options.terminate, run_logger,
                                                    run_options.only_execute_path_to_fetches));
@@ -1992,7 +2002,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
       ShrinkMemoryArenas(arenas_to_shrink);
     }
   }
-  --current_num_runs_;
 
   // keep track of telemetry
   ++telemetry_.total_runs_since_last_;

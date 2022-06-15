@@ -119,7 +119,7 @@ static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dyn
 // concurrent Run() call returns.
 // Spinning is restarted on the next Run() call.
 // Applies only to internal thread-pools
-static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.force_spinning_stop_between_runs";
+static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.force_spinning_stop";
 
 // "1": all inconsistencies encountered during shape and type inference
 // will result in failures.
