@@ -12,7 +12,7 @@ ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -40,6 +40,9 @@ RUN v="8.4.1-1+cuda11.6" &&\
     sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} \
         libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
         python3-libnvinfer=${v}
+
+RUN cd /usr/src/tensorrt/samples/trtexec && make &&\
+    cp /usr/src/tensorrt/bin/trtexec /usr/local/bin/
 
 WORKDIR /code
 
