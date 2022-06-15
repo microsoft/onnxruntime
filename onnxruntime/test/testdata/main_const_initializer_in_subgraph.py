@@ -21,14 +21,12 @@ body = helper.make_graph(
     ],
     [
         helper.make_tensor("sub_graph_initializer", TensorProto.FLOAT, [1], [1.0]),
-    ]
+    ],
 )
 
 # Create the main graph
 graph_proto = helper.make_graph(
-    [
-        helper.make_node("Loop", ["max_trip_count", "keep_going", "state_var_in"], ["state_var_out"], "Loop1", body=body)
-    ],
+    [helper.make_node("Loop", ["max_trip_count", "keep_going", "state_var_in"], ["state_var_out"], "Loop1", body=body)],
     "Main_graph",
     [
         helper.make_tensor_value_info("state_var_in", TensorProto.FLOAT, [1]),
@@ -40,7 +38,7 @@ graph_proto = helper.make_graph(
         helper.make_tensor("max_trip_count", TensorProto.INT64, [1], [1]),
         helper.make_tensor("main_graph_initializer", TensorProto.FLOAT, [1], [1.0]),
         helper.make_tensor("keep_going", TensorProto.BOOL, [1], [True]),
-    ]
+    ],
 )
 
 model = helper.make_model(graph_proto)
