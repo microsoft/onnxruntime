@@ -148,7 +148,7 @@ void TvmSoExecutionProvider::printOptions() {
   LOGS(*GetLogger(), INFO) << options_;
 }
 
-bool TvmSoExecutionProvider::checkHash(const std::string& onnx_path) {
+bool TvmSoExecutionProvider::checkHash(const std::string& onnx_path) const {
   auto hasher = Hasher("sha256");
   std::string onnx_str = readFromFile(onnx_path);
   std::string onnx_hash = hasher.hash(onnx_str.c_str(), onnx_str.size());
