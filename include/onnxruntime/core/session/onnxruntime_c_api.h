@@ -270,6 +270,11 @@ ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
+ORT_RUNTIME_CLASS(TrainingSession);
+ORT_RUNTIME_CLASS(CheckpointState);
+#endif
+
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 #else
@@ -3343,13 +3348,13 @@ struct OrtApi {
                   _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 
   /** \brief: Create attribute of onnxruntime operator
-  * 
+  *
   * \param[in] name of the attribute
   * \param[in] data of the attribute
   * \param[in] data length
   * \param[in] data type
   * \param[out] attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOpAttr,
@@ -3362,14 +3367,14 @@ struct OrtApi {
   /* \brief: Release op attribute
   *
   * \param[in] attribute created by OrtApi::CreateOpAttr
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(OpAttr);
 
   /** \brief: Create onnxruntime native operator
-  * 
-  * \param[in] kernel info 
+  *
+  * \param[in] kernel info
   * \param[in] operator name
   * \param[in] operator domain
   * \param[in] operator opset
@@ -3379,7 +3384,7 @@ struct OrtApi {
   * \param[in] attributes used to initialize the operator
   * \param[in] number of the attributes
   * \param[out] operator that has been created
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOp,
@@ -3396,14 +3401,14 @@ struct OrtApi {
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp
   * The inputs must follow the order as specified in onnx specification
-  * 
+  *
   * \param[in] kernel context
   * \param[in] operator that has been created
   * \param[in] inputs
   * \param[in] number of inputs
   * \param[in] outputs
   * \param[in] number of outputs
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(InvokeOp,
@@ -3417,10 +3422,15 @@ struct OrtApi {
   /* \brief: Release an onnxruntime operator
   *
   * \param[in] operator created by OrtApi::CreateOp
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(Op);
+
+#ifdef ENABLE_TRAINING_ON_DEVICE
+  // defines c apis for on device training scenarios
+  #include "../../../orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h"
+#endif
 };
 
 /*

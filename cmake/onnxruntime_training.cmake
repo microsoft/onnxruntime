@@ -17,14 +17,6 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/agent/*.cc"
     )
 
-if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-  file(GLOB_RECURSE onnxruntime_training_api_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_api/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_api/*.cc"
-  )
-
-  list(APPEND onnxruntime_training_srcs ${onnxruntime_training_api_srcs})
-endif()
 
 # This needs to be built in framework.cmake
 file(GLOB_RECURSE onnxruntime_training_framework_excluded_srcs CONFIGURE_DEPENDS

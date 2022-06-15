@@ -106,8 +106,8 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
 
 Status Optimizer::Step() {
   OrtValue learning_rate_input, step_input;
-  utils::WarpInOrtValue<float>(optimizer_state_.learning_rate, &learning_rate_input);
-  utils::WarpInOrtValue<int64_t>(optimizer_state_.step, &step_input);
+  utils::WrapInOrtValue<float>(optimizer_state_.learning_rate, &learning_rate_input);
+  utils::WrapInOrtValue<int64_t>(optimizer_state_.step, &step_input);
   std::vector<OrtValue> feeds({learning_rate_input, step_input});
   feeds.insert(feeds.end(), inputs_.begin(), inputs_.end());
 
