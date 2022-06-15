@@ -963,6 +963,7 @@ class UnsqueezeOpBuilder : public BaseOpBuilder {
 };
 
 void UnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  // Unsqueeze opset 13 uses input 1 as axes, add it to initializer skip list
   if (node_unit.SinceVersion() > 12 && node_unit.Inputs().size() > 1) {
     model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());  // "axes"
   }
@@ -972,14 +973,13 @@ Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   auto& shaper(model_builder.GetShaper());
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
-  // Since NNAPI does not support unsqueeze, here we utilize unsqueeze's axes input to compute output shape
+  // NNAPI does not support unsqueeze, here we utilize unsqueeze's axes input to compute output shape
   // And add equivalent operation as ANEURALNETWORKS_RESHAPE to nnapi model
   std::vector<int32_t> axes;
   ORT_RETURN_IF_ERROR(GetAxes(model_builder, node_unit, axes));
 
   Shape input_shape = shaper[input];
   auto input_dims = input_shape.size();
-
   std::vector<int32_t> shape;
   const auto size = SafeInt<uint32_t>(input_dims + axes.size());  // "output rank"
   shape.reserve(size);
