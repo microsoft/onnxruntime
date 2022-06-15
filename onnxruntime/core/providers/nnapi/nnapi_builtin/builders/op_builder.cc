@@ -2707,14 +2707,12 @@ class PadOpBuilder : public BaseOpBuilder {
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // pads
+  if (inputs.size() > 2) {
+    model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());  // constant_value
+  }
 }
 
 Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  // Limitations:
-  // 1. only handling "constant" mode
-  // 2. only handling float32 `data` input
-  // 3. `pads` input must be known (a constant initializer)
-
   auto& shaper = model_builder.GetShaper();
   const auto& operand_indices = model_builder.GetOperandIndices();
   const auto& operand_types = model_builder.GetOperandTypes();
