@@ -13,7 +13,7 @@ parameters:
 - name: RunNvidiaContainer
   displayName: Run in Nvidia Container (or set trtContainer Variable)
   type: boolean
-  default: true
+  default: false
 
 - name: TrtVersion
   displayName: TensorRT Version
