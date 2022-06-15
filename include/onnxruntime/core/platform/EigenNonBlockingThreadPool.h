@@ -1017,11 +1017,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   void InitializePreferredWorkers(std::vector<int>& preferred_workers) {
     static std::atomic<unsigned> next_worker;
 
-  // preferred_workers[0] isn't supposed to be used, so initializng it with -1 to:
-  // a) fault if inapropriately accessed
-  // b) avoid wasting next_worker value
-  if (preferred_workers.size() == 0)
-    preferred_workers.push_back(-1);
+    // preferred_workers[0] isn't supposed to be used, so initializing it with -1 to:
+    // a) fault if inappropriately accessed
+    // b) avoid wasting next_worker value
+    if (preferred_workers.empty()) {
+      preferred_workers.push_back(-1);
+    }
 
     // preferred_workers maps from a par_idx to a q_idx, hence we
     // initialize slots in the range [0,num_threads_]
@@ -1563,7 +1564,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         }
       }
 
-      if(t) {
+      if (t) {
         td.SetActive();
         t();
         profiler_.LogRun(thread_id);
