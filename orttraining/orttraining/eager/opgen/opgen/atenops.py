@@ -124,8 +124,8 @@ hand_implemented = {
     "aten::softshrink": Shrink("self", bias="lambd", lambd="lambd"),  # yes, bias is set to 'lambd'
     "aten::hardshrink": Shrink("self", bias=0, lambd="lambd"),
     "aten::gelu": Gelu("self"),
-    "aten::max": ReduceMax("self", keepdims=1),
-    "aten::min": ReduceMin("self", keepdims=1),
+    "aten::max": ReduceMax("self", keepdims=0),
+    "aten::min": ReduceMin("self", keepdims=0),
     "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
     "aten::ne.Scalar": MakeTorchFallback(),
