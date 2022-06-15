@@ -2201,7 +2201,7 @@ class PadOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                            const OpSupportCheckParams& params) const {
+                                            const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
 
   // only support 1-4d input shape
