@@ -2205,6 +2205,7 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
   const auto& inputs = node_unit.Inputs();
 
   // only support 1-4d input shape
+  // only support input with more than 0 elements
   {
     Shape input_shape;
     if (!GetShape(inputs[0].node_arg, input_shape)) {
@@ -2214,6 +2215,11 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
     if (input_shape.size() > 4 || input_shape.empty()) {
       LOGS_DEFAULT(VERBOSE) << "Pad only supports up to 1-4d shape, input is "
                             << input_shape.size() << "d shape";
+      return false;
+    }
+
+    if (std::find(input_shape.begin(), input_shape.end(), uint32_t{0}) != input_shape.end()) {
+      LOGS_DEFAULT(VERBOSE) << "Pad input with zero elements is not supported";
       return false;
     }
   }
@@ -2228,10 +2234,32 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
     }
   }
 
-  // only support if `pads` input is known
-  if (!Contains(initializers, inputs[1].node_arg.Name())) {
-    LOGS_DEFAULT(VERBOSE) << "pads must be known";
-    return false;
+  // only support if `pads` input is known and does not contain negative values
+  {
+    const auto pads_initializer_it = initializers.find(inputs[1].node_arg.Name());
+    if (pads_initializer_it == initializers.end()) {
+      LOGS_DEFAULT(VERBOSE) << "pads must be known";
+      return false;
+    }
+
+    const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
+    std::vector<uint8_t> unpacked_tensor;
+    auto status = onnxruntime::utils::UnpackInitializerData(pads_initializer, unpacked_tensor);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Error while unpacking pads initializer: " << status.ErrorMessage();
+      return false;
+    }
+
+    int64_t pad_value;
+    ORT_ENFORCE(unpacked_tensor.size() % sizeof(pad_value) == 0);
+    for (size_t i = 0; i < unpacked_tensor.size(); i += sizeof(pad_value)) {
+      memcpy(&pad_value, &unpacked_tensor[i], sizeof(pad_value));
+      if (pad_value < 0) {
+        LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["
+                              << i / sizeof(pad_value) << "] = " << pad_value;
+        return false;
+      }
+    }
   }
 
   // only support if `constant_value` input is known
