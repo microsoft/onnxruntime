@@ -1174,7 +1174,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         } else {
           if (use_extrapolation_) {
 #if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
-            if (!is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+            if (!is_2D &&
+                (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                 Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
               NhwcUpsampleBilinearInteger<T, true>(
                   batch_size, num_channels, input_height, input_width, output_height, output_width,
                   height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
@@ -1192,7 +1194,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 #endif
           } else {
 #if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
-            if (!is_2D && Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+            if (!is_2D &&
+                (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                 Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
               NhwcUpsampleBilinearInteger<T, false>(
                   batch_size, num_channels, input_height, input_width, output_height, output_width,
                   height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
