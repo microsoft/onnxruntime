@@ -712,7 +712,7 @@ struct GraphViewer final {
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->GraphViewer__GetInputsIncludingInitializers(this); }
 
-  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) const { g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args); }
+  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args, bool include_outer_scope_values) const { g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, include_outer_scope_values); }
 
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;

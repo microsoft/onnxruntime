@@ -154,7 +154,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
   auto model_proto = model->ToProto();
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+  subgraph.ToProto(*model_proto->mutable_graph(), true, true, false);
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {

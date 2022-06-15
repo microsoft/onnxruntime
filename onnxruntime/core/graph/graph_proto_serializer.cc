@@ -8,7 +8,8 @@ namespace onnxruntime {
 void GraphViewerToProto(const GraphViewer& graph_view, 
                         ONNX_NAMESPACE::GraphProto& graph_proto, 
                         bool include_initializer,
-                        bool include_outer_scope_args) {
+                        bool include_outer_scope_args,
+                        bool include_outer_scope_values) {
   graph_proto.set_name(graph_view.Name());
   graph_proto.set_doc_string(graph_view.Description());
 
@@ -52,16 +53,20 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       current_scope_initializer_set.insert(it.first);
     }
 
+
     // handle outer scope value which is a constant initializer
-    for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
-      const auto& node = graph_view.GetNode(node_idx);
-      for (const auto& input : node->InputDefs()) {
-        if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
-          continue;
-        }
-        if (graph_view.IsConstantInitializer(input->Name(), true)) {
-          auto* p_initializer = graph_proto.add_initializer();
-          *p_initializer = *(graph_view.GetConstantInitializer(input->Name(), true));
+    if (include_outer_scope_values) {
+      for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+        const auto& node = graph_view.GetNode(node_idx);
+        for (const auto& input : node->InputDefs()) {
+          if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
+            continue;
+          }
+          if (graph_view.IsConstantInitializer(input->Name(), true)) {
+            auto* p_initializer = graph_proto.add_initializer();
+            *p_initializer = *(graph_view.GetConstantInitializer(input->Name(), true));
+            current_scope_initializer_set.insert(input->Name());
+          }
         }
       }
     }
