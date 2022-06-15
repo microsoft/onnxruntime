@@ -13,9 +13,9 @@ apt-get update && apt-get install -y --no-install-recommends \
 # Dependencies: conda
 wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-py38_4.12.0-Linux-x86_64.sh --no-check-certificate && /bin/bash ~/miniconda.sh -b -p /opt/miniconda
 rm ~/miniconda.sh
-conda clean -ya
+/opt/miniconda/bin/conda clean -ya
 
-conda install numpy
+/opt/miniconda/bin/conda install numpy
 
 # Dependencies: cmake
 wget --quiet https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x86_64.tar.gz
