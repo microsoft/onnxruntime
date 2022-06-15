@@ -1793,7 +1793,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "10800"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
