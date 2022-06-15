@@ -737,7 +737,6 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
-extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
@@ -804,22 +803,17 @@ MlasConvDepthwiseKernelAvx2(
 
 #define MLAS_CONV_SYM_FLAG_INPUT_DIRECT             0x00000001
 #define MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE        0x00000002
-#define MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE        0x00000004    // Only available on ARM64
 
 //
 // Define the post-processing parameters for conv sym: bias and re-quant params
 //
 
 struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
-    const int32_t* Bias{nullptr};
-    const float* Scale{nullptr};
+    const int32_t* Bias;
+    const float* Scale;
     float MinimumValue;
     float MaximumValue;
     int32_t OutputZeroPoint;
-    int32_t Padding;
-    const int32_t* Multiplier{nullptr};
-    const int32_t* PreShift{nullptr};
-    const int32_t* PostShift{nullptr};
 };
 
 //
@@ -993,7 +987,7 @@ MlasPartitionWork(
 #if defined(_MSC_VER) && !defined(__clang__)
   #pragma warning(push)
   // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
-  #pragma warning(disable:26497)
+  #pragma warning(disable:26497) 
 #endif
 
 MLAS_FORCEINLINE

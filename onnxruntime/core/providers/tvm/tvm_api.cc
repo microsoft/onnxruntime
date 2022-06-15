@@ -193,10 +193,19 @@ void TVM_VM_SetInputs(TvmModule& mod,
                       std::vector<size_t>& inds,
                       std::vector<DLTensor>& inputs)
 {
-  TvmPackedFunc set_input = mod.GetFunction("set_one_input", false);
-  for (size_t i = 0; i < inds.size(); ++i) {
-    set_input("main", inds[i], &inputs[i]);
+  size_t num_total_args = inputs.size() + 1;
+  std::vector<TVMValue> tvm_values(num_total_args);
+  std::vector<int> tvm_type_codes(num_total_args);
+  ::tvm::runtime::TVMArgsSetter setter(tvm_values.data(), tvm_type_codes.data());
+  const std::string func_name = "main";
+  setter(0, func_name.c_str());
+  for (size_t k = 0; k < num_total_args - 1; ++k) {
+    setter(inds[k]+1, &inputs[k]);
   }
+
+  TvmPackedFunc set_input = mod.GetFunction("set_input", false);
+  ::tvm::runtime::TVMRetValue rv;
+  set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), num_total_args), &rv);
 }
 
 void TVMGetOutputs(TvmModule& mod,

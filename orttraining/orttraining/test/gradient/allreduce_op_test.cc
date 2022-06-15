@@ -50,6 +50,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensors) {
 
   allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/,
                      {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
+                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
                      {} /*resolve_options*/);
 }
 
@@ -92,6 +93,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensorsFP16) {
 
   allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/,
                      {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
+                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
                      {} /*resolve_options*/);
 }
 
@@ -117,6 +119,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestFailTensorCountMismatch) {
 
   allreduce_test.Run(OpTester::ExpectResult::kExpectFailure /*expect_result*/, "" /*expected_failure_string*/,
                      {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
+                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
                      {} /*resolve_options*/);
 }
 

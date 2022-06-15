@@ -329,28 +329,6 @@ class ONNXQuantizer:
             return self.parent.find_initializer_in_path(initializer_name)
         return False
 
-    def should_quantize(self, node):
-        if (
-            self.nodes_to_quantize is not None
-            and len(self.nodes_to_quantize) != 0
-            and node.name not in self.nodes_to_quantize
-        ):
-            return False
-
-        if node.op_type not in self.op_types_to_quantize:
-            return False
-
-        if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
-            return False
-
-        # do not quantize non-constant B matrices for matmul
-        if self.q_matmul_const_b_only:
-            if node.op_type == "MatMul" and (not self.find_initializer_in_path(node.input[1])):
-                print("Ignore MatMul due to non constant B: {}[{}]".format(self.graph_scope, node.name))
-                return False
-
-        return True
-
     def add_new_nodes(self, nodes):
         self.new_nodes.extend(nodes)
         for node in nodes:
@@ -370,11 +348,7 @@ class ONNXQuantizer:
                 node = self.quantize_node_with_sub_graph(node)
 
             number_of_existing_new_nodes = len(self.new_nodes)
-            if self.should_quantize(node):
-                op_quantizer = CreateOpQuantizer(self, node)
-            else:
-                op_quantizer = CreateDefaultOpQuantizer(self, node)
-
+            op_quantizer = CreateOpQuantizer(self, node)
             op_quantizer.quantize()
             for i in range(number_of_existing_new_nodes, len(self.new_nodes)):
                 for output_name in self.new_nodes[i].output:
@@ -424,6 +398,40 @@ class ONNXQuantizer:
         if (not self.enable_subgraph_quantization) or (self.parent is None):
             return False
         return self.parent.is_valid_quantize_weight(weight_name)
+
+    def is_float_tensor(self, tensor_name):
+        if self.is_input_a_weight(tensor_name):
+            return self.is_valid_quantize_weight(tensor_name)
+
+        if tensor_name in self.value_infos.keys():
+            vi = self.value_infos[tensor_name]
+            if vi.type.HasField("tensor_type") and vi.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                return True
+        elif self.enable_subgraph_quantization and self.parent:
+            return self.parent.is_float_tensor(tensor_name)
+        else:
+            logging.warning(
+                "Failed to infer data type of tensor: {}. Please add data type info for this tensor "
+                "if your model has customized operators.".format(tensor_name)
+            )
+
+        return False
+
+    def should_quantize_node(self, node):
+        if (
+            self.nodes_to_quantize is not None
+            and len(self.nodes_to_quantize) != 0
+            and node.name not in self.nodes_to_quantize
+        ):
+            return False
+
+        if node.op_type not in self.op_types_to_quantize:
+            return False
+
+        if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
+            return False
+
+        return True
 
     def _get_dynamic_input_quantization_params(self, input_name, nodes_list, qType):
         """
@@ -1091,7 +1099,9 @@ class ONNXQuantizer:
         for node in self.model.nodes():
             if node.op_type not in ["Clip", "Relu"]:
                 continue
-            if not self.should_quantize(node):
+            if self.is_activation_symmetric:
+                continue
+            if not self.should_quantize_node(node):
                 continue
             if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:
                 continue

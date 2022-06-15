@@ -372,6 +372,10 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);   ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptions& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
+  /// \brief Wraps OrtApi::SessionOptionsAppendExecutionProvider_SNPE
+  SessionOptions& AppendExecutionProvider_SNPE(const char* const* provider_options_keys,
+                                               const char* const* provider_options_values,
+                                               size_t num_keys);
 };
 
 /** \brief Wrapper around ::OrtModelMetadata

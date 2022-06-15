@@ -3,17 +3,13 @@
 
 
 #include "matmul_integer_base.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
 
 namespace onnxruntime {
 
 // Allow subclassing for test only
 class QLinearMatMul : public MatMulIntegerBase {
  public:
-  QLinearMatMul(const OpKernelInfo& info) : MatMulIntegerBase(info) {
-    const CPUExecutionProvider* ep = static_cast<const CPUExecutionProvider*>(info.GetExecutionProvider());
-    use_fixed_point_requant_ = ep->UseFixedPointRequantOnARM64();
-  }
+  QLinearMatMul(const OpKernelInfo& info) : MatMulIntegerBase(info) {}
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -40,8 +36,6 @@ class QLinearMatMul : public MatMulIntegerBase {
   int GetBIdx() const override {
     return IN_B;
   }
-
-  bool use_fixed_point_requant_{false};
 };
 
 }  // namespace onnxruntime
