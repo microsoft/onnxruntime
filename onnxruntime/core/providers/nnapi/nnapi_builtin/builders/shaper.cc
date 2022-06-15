@@ -136,6 +136,13 @@ Status Shaper::DepthToSpace(const std::string& input_name,
   SHAPER_FUNC(DepthToSpace, input_name, blocksize, nchw, output_name);
 }
 
+Status Shaper::Gather(const std::string& input_name1,
+                      const std::string& input_name2,
+                      const int32_t axis,
+                      const std::string& output_name) {
+  SHAPER_FUNC(Gather, input_name1, input_name2, axis, output_name);
+}
+
 Status Shaper::ResizeUsingScales(const std::string& input_name,
                                  const float scale_h, const float scale_w,
                                  bool nchw,
@@ -429,6 +436,30 @@ Status Shaper::DepthToSpaceImpl(const std::string& input_name,
     output_dimen[2] = input_dimen[2] * blocksize;
     output_dimen[3] = input_dimen[3] / (blocksize * blocksize);
   }
+
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::GatherImpl(const std::string& input_name1,
+                          const std::string& input_name2,
+                          const int32_t axis,
+                          const std::string& output_name) {
+  const Shape& input_dimen = shape_map_.at(input_name1);
+  const Shape& indices_dimen = shape_map_.at(input_name2);
+
+  std::vector<uint32_t> output_dimen;
+  output_dimen.reserve(indices_dimen.size() + input_dimen.size() - 1);
+
+  // Calculate the output dim
+  for (int32_t i = 0; i < axis; ++i)
+    output_dimen.push_back(input_dimen[i]);
+
+  for (const auto dim : indices_dimen)
+    output_dimen.push_back(dim);
+
+  for (size_t i = axis + 1; i < input_dimen.size(); ++i)
+    output_dimen.push_back(input_dimen[i]);
 
   shape_map_[output_name] = output_dimen;
   return Status::OK();

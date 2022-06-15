@@ -2067,6 +2067,50 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
 
 #pragma endregion
 
+#pragma region op_gather
+
+class GatherOpSupportChecker : public BaseOpSupportChecker {
+ private:
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_3;
+  }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+};
+
+bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                               const OpSupportCheckParams& /* params */) const {
+  const auto& inputs = node_unit.Inputs();
+  Shape input_shape;
+
+  if (!GetShape(inputs[0].node_arg, input_shape)) {
+    return false;
+  }
+
+  if (input_shape.size() > 4 || input_shape.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "Gather only supports up to 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  if (std::any_of(input_shape.cbegin(), input_shape.cend(), [](int32_t i) { return i == 0; })) {
+    LOGS_DEFAULT(VERBOSE) << "Gather doesn't support dynamic input shape";
+    return false;
+  }
+
+  const auto& indices_name = inputs[1].node_arg.Name();
+  if (!Contains(initializers, indices_name)) {
+    LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known";
+    return false;
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region op_minmax
 
 class MinMaxOpSupportChecker : public BaseOpSupportChecker {
@@ -2302,6 +2346,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("DequantizeLinear", DequantizeLinearOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Elu", EluOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Flatten", FlattenOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Gather", GatherOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("LRN", LRNOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Pad", PadOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("QuantizeLinear", QuantizeLinearOpSupportChecker);

@@ -64,6 +64,11 @@ class Shaper {
                               bool nchw,
                               const std::string& output_name);
 
+  common::Status Gather(const std::string& input_name1,
+                        const std::string& input_name2,
+                        const int32_t axis,
+                        const std::string& output_name);
+
   common::Status ResizeUsingScales(const std::string& input_name,
                                    const float scale_h, const float scale_w,
                                    bool nchw,
@@ -122,6 +127,10 @@ class Shaper {
                                   const int32_t blocksize,
                                   bool nchw,
                                   const std::string& output_name);
+  common::Status GatherImpl(const std::string& input_name1,
+                            const std::string& input_name2,
+                            const int32_t axis,
+                            const std::string& output_name);
   common::Status ResizeUsingScalesImpl(const std::string& input_name,
                                        const float scale_h, const float scale_w,
                                        bool nchw,
