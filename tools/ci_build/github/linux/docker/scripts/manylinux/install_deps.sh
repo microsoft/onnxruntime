@@ -4,10 +4,8 @@ set -e -x
 # Development tools and libraries
 if [ -f /etc/redhat-release ]; then
   yum update && yum -y install graphviz
-  os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 elif [ -f /etc/os-release ]; then
   apt-get update && apt-get install -y graphviz
-  os_major_version=$(cat /etc/os-release | tr -dc '0-9.'|cut -d \. -f1)
 else
   echo "Unsupported OS"
   exit 1
@@ -31,18 +29,18 @@ function GetFile {
     fi
   fi
 
-  if [[ -f $uri ]]; then
+  if [[ -f "$uri" ]]; then
     echo "'$uri' is a file path, copying file to '$path'"
     cp $uri $path
-    return $?
+    return "$?"
   fi
 
   echo "Downloading $uri"
   # Use aria2c if available, otherwise use curl
   if command -v aria2c > /dev/null; then
-    aria2c -q -d $(dirname $path) -o $(basename $path) "$uri"
+    aria2c -q -d $(dirname "$path") -o $(basename "$path") "$uri"
   else
-    curl "$uri" -sSL --retry $download_retries --retry-delay $retry_wait_time_seconds --create-dirs -o "$path" --fail
+    curl "$uri" -sSL --retry "$download_retries" --retry-delay "$retry_wait_time_seconds" --create-dirs -o "$path" --fail
   fi
 
   return $?
@@ -54,16 +52,7 @@ else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
 
-SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
-GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
-
-if [[ $SYS_LONG_BIT = "64" ]]; then
-  LIBDIR="lib64"
-else
-  LIBDIR="lib"
-fi
-
 cd /tmp/src
 
 echo "Installing azcopy"
