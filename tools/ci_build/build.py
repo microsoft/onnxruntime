@@ -486,6 +486,12 @@ def parse_arguments():
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
 
     parser.add_argument(
+        "--llvm_config",
+        type=str,
+        default="",
+        help="Path to llvm-config.exe for LLVM buit from sources. It is strongly needed for build on Windows",
+    )
+    parser.add_argument(
         "--skip_onnx_tests",
         action="store_true",
         help="Explicitly disable all onnx related tests. Note: Use --skip_tests to skip all tests.",
@@ -915,6 +921,8 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
     if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+    if args.llvm_config:
+        cmake_args.append("-Donnxruntime_TVM_USE_LLVM=" + args.llvm_config)
 
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
