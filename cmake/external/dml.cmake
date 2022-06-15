@@ -77,18 +77,31 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
         ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
         ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
         ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.dll
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.lib
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.pdb
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.dll
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.lib
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.pdb
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.dll
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.lib
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.pdb
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.dll
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.lib
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.pdb
+
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib          ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll          ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb          ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.Debug.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.Debug.pdb
+
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib          ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll          ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb          ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.Debug.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.Debug.pdb
+
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib          ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll          ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb          ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.Debug.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.Debug.pdb
+
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib        ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll        ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb        ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.dll  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.Debug.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.Debug${DML_PREVIEW_FILENAME_SUFFIX}.pdb  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.Debug.pdb
+
       VERBATIM
     )
   endif()
