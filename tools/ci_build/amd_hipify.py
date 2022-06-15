@@ -19,8 +19,6 @@ contrib_ops_excluded_files = [
     "bert/attention.cc",
     "bert/attention_impl.cu",
     "bert/attention_softmax.h",
-    "bert/decoder_attention.h",
-    "bert/decoder_attention.cc",
     "bert/embed_layer_norm.cc",
     "bert/embed_layer_norm.h",
     "bert/embed_layer_norm_impl.cu",

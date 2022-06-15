@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/providers/rocm/shared_inc/rocm_utils.h"
+
+#include <hip/hip_fp16.h>
 #include <rocblas.h>
+#include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -131,8 +133,6 @@ bool LaunchConcatPastToPresent(hipStream_t stream,
                                const half* k_v,
                                half* present);
 
-namespace {
-
 inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle     handle,
                                                               rocblas_operation  transa,
                                                               rocblas_operation  transb,
@@ -155,8 +155,7 @@ inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle    
                                                               rocblas_stride     stride_c,
                                                               rocblas_int        batch_count,
                                                               rocblas_datatype   compute_type,
-                                                              rocblas_gemm_algo  algo)
-{
+                                                              rocblas_gemm_algo  algo) {
     return rocblas_gemm_strided_batched_ex(handle,
                                            transa,
                                            transb,
@@ -189,15 +188,12 @@ inline rocblas_status _compat_rocblas_gemm_strided_batched_ex(rocblas_handle    
 
 // Compatible for CublasMathModeSetter
 class CompatRocblasMathModeSetter {
-public:
-    CompatRocblasMathModeSetter(const hipDeviceProp_t&,
-                                rocblas_handle,
-                                int)
-    {
-    }
+ public:
+  CompatRocblasMathModeSetter(const hipDeviceProp_t&,
+                              rocblas_handle,
+                              int) {
+  }
 };
-
-}  // Anonymous namespace
 
 }  // namespace rocm
 }  // namespace contrib
