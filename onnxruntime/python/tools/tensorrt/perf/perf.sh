@@ -53,11 +53,12 @@ download_files() {
 setup() {
     apt update
     apt-get install -y --no-install-recommends pciutils
-    /opt/miniconda/bin/conda install -r requirements.txt    
+    pip install --upgrade pip
+    pip install -r requirements.txt    
     if [ "$BUILD_ORT" = "False" ]
     then
         echo 'installing the nightly wheel file'
-        ls Release/dist/* | xargs -n 1 /opt/miniconda/bin/conda install
+        ls Release/dist/* | xargs -n 1 pip install
     fi
     cleanup_files
     download_files
