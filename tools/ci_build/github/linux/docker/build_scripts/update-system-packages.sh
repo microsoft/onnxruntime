@@ -8,6 +8,8 @@ set -exuo pipefail
 MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 
 # Get build utilities
+# https://github.com/koalaman/shellcheck/issues/769
+# shellcheck source=/dev/null
 source "$MY_DIR"/build_utils.sh
 
 fixup-mirrors
@@ -66,10 +68,10 @@ if [ "${BASE_POLICY}" == "manylinux" ]; then
 fi
 
 if [ -d /usr/share/locale ]; then
-	find /usr/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) | xargs rm -rf
+	find /usr/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) -print0 | xargs -0 rm -rf
 fi
 if [ -d /usr/local/share/locale ]; then
-	find /usr/local/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) | xargs rm -rf
+	find /usr/local/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) -print0 | xargs -0 rm -rf
 fi
 
 # Fix libc headers to remain compatible with C99 compilers.
@@ -81,7 +83,7 @@ if [ "${DEVTOOLSET_ROOTPATH:-}" != "" ]; then
 		rm -rf "$DEVTOOLSET_ROOTPATH"/usr/share/man
 	fi
 	if [ -d "$DEVTOOLSET_ROOTPATH"/usr/share/locale ]; then
-		find "$DEVTOOLSET_ROOTPATH"/usr/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) | xargs rm -rf
+		find "$DEVTOOLSET_ROOTPATH"/usr/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) -print0 | xargs -0 rm -rf
 	fi
 fi
 
