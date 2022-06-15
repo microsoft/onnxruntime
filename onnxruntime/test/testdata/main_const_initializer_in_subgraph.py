@@ -1,6 +1,5 @@
 import onnx
-from onnx import helper
-from onnx import TensorProto
+from onnx import TensorProto, helper
 
 # Loop body graph and usage of main_graph_initializer on this level
 # (Note: When running the model, we may need to disable graph optimization so that main_graph_initializer won't go away after constant folding)
