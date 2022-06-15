@@ -9,16 +9,13 @@
 
 ORT_API2_STATUS(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Outptr_ OrtCheckpointState** checkpoint_state);
 
-
 ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Inout_ OrtTrainingSession* session,
-                  bool save_optimizer_state);
+                bool save_optimizer_state);
 
 ORT_API2_STATUS(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
-                _Inout_ OrtCheckpointState* checkpoint_state, _Outptr_ OrtTrainingSession** out);
-
-ORT_API2_STATUS(InitializeTrainingSession, _Inout_ OrtTrainingSession* session,
-                _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
-                _In_ const ORTCHAR_T* optimizer_model_path);
+                _Inout_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* train_model_path,
+                _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
+                _Outptr_ OrtTrainingSession** out);
 
 ORT_API2_STATUS(TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 

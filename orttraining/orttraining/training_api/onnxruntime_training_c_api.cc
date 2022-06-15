@@ -10,7 +10,9 @@
 #include "core/session/abi_session_options_impl.h"
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_ const OrtSessionOptions* options,
-                    _Inout_ OrtCheckpointState* checkpoint_state, _Outptr_ OrtTrainingSession** out) {
+                    _Inout_ OrtCheckpointState* checkpoint_state, _In_ const ORTCHAR_T* train_model_path,
+                    _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
+                    _Outptr_ OrtTrainingSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::training::api::TrainingSession> train_sess;
   auto chkpt_state = reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
@@ -23,6 +25,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         chkpt_state->module_checkpoint_state.named_parameters);
 
+    ORT_API_RETURN_IF_STATUS_NOT_OK(train_sess->Initialize(train_model_path,
+                                                           eval_model_path ? std::optional<std::string>{eval_model_path}
+                                                                           : std::nullopt,
+                                                           optimizer_model_path ? std::optional<std::string>{optimizer_model_path}
+                                                                                : std::nullopt));
+
     *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }
   ORT_CATCH(const std::exception& e) {
@@ -32,22 +40,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_
   }
 
   return status;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::InitializeTrainingSession, _Inout_ OrtTrainingSession* session,
-                    _In_ const ORTCHAR_T* train_model_path, _In_ const ORTCHAR_T* eval_model_path,
-                    _In_ const ORTCHAR_T* optimizer_model_path) {
-  API_IMPL_BEGIN
-
-  auto train_sess = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(train_sess->Initialize(train_model_path,
-                                                         eval_model_path ? std::optional<std::string>{eval_model_path}
-                                                                         : std::nullopt,
-                                                         optimizer_model_path ? std::optional<std::string>{optimizer_model_path}
-                                                                              : std::nullopt));
-
-  return nullptr;
   API_IMPL_END
 }
 
