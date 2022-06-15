@@ -4,6 +4,8 @@
 
 - [Introduction](#introduction)
 - [Build](#build-onnx-runtime-with-the-tvm-execution-provider)
+    - [Linux](#linux)
+    - [Windows](#windows)
 - [Configuration options](#configuration-options)
 - [Performance Tuning](#performance-tuning)
     - [Using precompiled model](#using-precompiled-model)
@@ -14,10 +16,11 @@
 ## Introduction
 
 TVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
-TVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux, but not on Windows or MacOS.
+TVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux or Windows, but not on MacOS.
 
 ## Build ONNX Runtime with the TVM Execution Provider
 
+### **Linux**
 Install the minimal pre-requisites on Ubuntu/Debian like linux operating systems:
 ```bash
 apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtinfo-dev zlib1g-dev build-essential cmake libedit-dev libxml2-dev llvm-12
@@ -81,6 +84,68 @@ export PYTHONPATH=<path_to_onnx_runtime>/build/<OS_NAME>/Release:${PYTHONPATH}
 export PYTHONPATH=<path_to_onnx_runtime>/build/<OS_NAME>/Release/_deps/tvm-src/python:${PYTHONPATH}
 ```
 
+### **Windows**
+Install the minimal prerequisites on Windows: Git, CMake, Visual Studio, Python, LLVM
+- Git: Download Git for Windows from [here](https://git-scm.com/download/win) and install it. Please make sure that the git.exe path is included in the environment variable. By default, it should be added. To check git after the installation use `git --version` in command line (cmd).
+- CMake: use [the link](https://cmake.org/download/) to download and install CMake. msi-file is recommended for it. To verify CMake installation use `cmake --version` in cmd.
+- Visual Studio: Download from [here](https://visualstudio.microsoft.com/ru/downloads/) and install Visual Studio 20** Community & Visual Studio Build Tools respectively. It is recommended not to change the default installation path. Chose "Desktop development with C++" workload and make sure that both options of “MSVC [contemporary version] C++ build tools” and “Windows 10 SDK” are selected.
+- Python: Download Python 3.* from [here](https://www.python.org/downloads/windows/) and install it. Please have a check on the option of “Add Python to PATH”, so the installer will include the Python directory into the environment variable directly. To check python after the installation use `python` from cmd. The expected output is similar to the following:
+```cmd
+Python 3.10.5 (tags/v3.10.5:f377153, Jun  6 2022, 16:14:13) [MSC v.1929 64 bit (AMD64)] on win32
+Type "help", "copyright", "credits" or "license" for more information.
+>>>
+```
+Use `quit()` to exit from python interface.
+- LLVM: the compiler is not neccessary for pure ONNX Runtime installation but it is needed for TVM EP by default.
+```cmd
+git clone --depth 1 --branch release/11.x https://github.com/llvm/llvm-project.git
+cmake -S llvm -B build -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" -DLLVM_TARGETS_TO_BUILD=X86 -Thost=x64 -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022"
+cmake --build ./build --config Release
+```
+
+For using NVIDIA GPU (optional) CUDA and cuDNN should be installed.
+- CUDA: Install CUDA by the [link](https://developer.nvidia.com/cuda-11.0-download-archive).
+- cuDNN: download cuDNN installer from [here](https://developer.nvidia.com/rdp/cudnn-archive). Choose v8.* for corresponding CUDA v11.*, unzip it, and move cuDNN files as following:
+1. [unzipped dir]\bin\ → C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0\bin
+2. [unzipped dir]\include\ → C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0\include
+3. [unzipped dir]\lib\ → C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0\lib
+
+To verify the CUDA installation use `nvcc --version` in cmd.
+<br>
+<br>
+
+Build ONNX Runtime with TVM Execution Provider from source:
+- Use command line and clone sources from github:
+```cmd
+git clone --recursive https://github.com/Microsoft/onnxruntime
+cd onnxruntime
+```
+- CPU build:
+```
+build.bat --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_tvm --skip_onnx_tests --cmake_generator "Visual Studio 17 2022"
+```
+- GPU build:
+```
+build.bat --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_tvm --skip_onnx_tests --cmake_generator "Visual Studio 17 2022" ---use_cuda --cudnn_home “C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.*” --cuda_home “C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.*”
+```
+In both cases (CPU, GPU) there are the following options for cmake generator: "Visual Studio 15 2017", "Visual Studio 16 2019", "Visual Studio 17 2022" and "Ninja"
+- Install python wheel package for ONNX Runtime:<br>
+Default path to the package is `<path_to_onnxruntime_root>/build/Windows/Release/Release/dist`. Before installation check names of wheel packages and use corresponding one.
+```cmd
+pip install .\onnxruntime\build\Windows\Release\Release\dist\onnxruntime_tvm-1.6.0-cp37-cp37m-win_amd64.whl
+```
+- Verify result by python script:
+```python
+import onnxruntime
+print(onnxruntime.__version__)
+print(onnxruntime.get_device())
+print(onnxruntime.get_available_providers())
+```
+- Uninstall procedure:
+```cmd
+pip uninstall onnxruntime-tvm
+```
+
 ## Configuration options
 TVM Executor Provider can be configured with the following provider options:
 ```python
@@ -138,18 +203,18 @@ so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 
-### Using precompiled model
+### **Using precompiled model**
 It is also possible to use a precompiled model.
 
-The compiled model can be obtained using the [OctoML platform](https://onnx.octoml.ai) 
+The compiled model can be obtained using the [OctoML platform](https://onnx.octoml.ai)
 or compiled directly (see **Support precompiled model** section in
 [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 for more information on model compilation).
 
 In order to use the precompiled model, only need to pass two options:
-* **executor** - `vm` (`VirtualMachine`) must be used as a value 
+* **executor** - `vm` (`VirtualMachine`) must be used as a value
 (this functionality is not supported for `GraphExecutor`);
-* **so_folder** - as a value, you must pass the path to the directory where 
+* **so_folder** - as a value, you must pass the path to the directory where
 the files of the precompiled model are located.
 * **check_hash** - (optional) if you want to check hash, you must pass `True` as the value.
 * **hash_file_path** - (optional) by default, the file containing the hash for the tuned model will be searched in the directory that is passed in the `so_folder` parameter.
