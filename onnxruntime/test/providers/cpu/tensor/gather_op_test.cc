@@ -13,58 +13,76 @@ namespace test {
 // Those tests will fallback to other EPs
 
 TEST(GatherOpTest, Gather_axis0) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<float>("data", {2, 3, 4},
-                       {0.0f, 0.1f, 0.2f, 0.3f,
-                        1.0f, 1.1f, 1.2f, 1.3f,
-                        2.0f, 2.1f, 2.2f, 2.3f,
-                        10.0f, 10.1f, 10.2f, 10.3f,
-                        11.0f, 11.1f, 11.2f, 11.3f,
-                        12.0f, 12.1f, 12.2f, 12.3f});
-  test.AddInput<int64_t>("indices", {1}, {1LL});
-  test.AddOutput<float>("output", {1, 3, 4},
-                        {10.0f, 10.1f, 10.2f, 10.3f,
-                         11.0f, 11.1f, 11.2f, 11.3f,
-                         12.0f, 12.1f, 12.2f, 12.3f});
-  test.Run();
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 0LL);
+    test.AddInput<float>("data", {2, 3, 4},
+                         {0.0f, 0.1f, 0.2f, 0.3f,
+                          1.0f, 1.1f, 1.2f, 1.3f,
+                          2.0f, 2.1f, 2.2f, 2.3f,
+                          10.0f, 10.1f, 10.2f, 10.3f,
+                          11.0f, 11.1f, 11.2f, 11.3f,
+                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
+    test.AddOutput<float>("output", {1, 3, 4},
+                          {10.0f, 10.1f, 10.2f, 10.3f,
+                           11.0f, 11.1f, 11.2f, 11.3f,
+                           12.0f, 12.1f, 12.2f, 12.3f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_negative_axis) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", -3LL);
-  test.AddInput<float>("data", {2, 3, 4},
-                       {0.0f, 0.1f, 0.2f, 0.3f,
-                        1.0f, 1.1f, 1.2f, 1.3f,
-                        2.0f, 2.1f, 2.2f, 2.3f,
-                        10.0f, 10.1f, 10.2f, 10.3f,
-                        11.0f, 11.1f, 11.2f, 11.3f,
-                        12.0f, 12.1f, 12.2f, 12.3f});
-  test.AddInput<int64_t>("indices", {1}, {1LL});
-  test.AddOutput<float>("output", {1, 3, 4},
-                        {10.0f, 10.1f, 10.2f, 10.3f,
-                         11.0f, 11.1f, 11.2f, 11.3f,
-                         12.0f, 12.1f, 12.2f, 12.3f});
-  test.Run();
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", -3LL);
+    test.AddInput<float>("data", {2, 3, 4},
+                         {0.0f, 0.1f, 0.2f, 0.3f,
+                          1.0f, 1.1f, 1.2f, 1.3f,
+                          2.0f, 2.1f, 2.2f, 2.3f,
+                          10.0f, 10.1f, 10.2f, 10.3f,
+                          11.0f, 11.1f, 11.2f, 11.3f,
+                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
+    test.AddOutput<float>("output", {1, 3, 4},
+                          {10.0f, 10.1f, 10.2f, 10.3f,
+                           11.0f, 11.1f, 11.2f, 11.3f,
+                           12.0f, 12.1f, 12.2f, 12.3f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_invalid_axis) {
-  OpTester test("Gather");
-  // Invalid axis not in range [-r, r-1]
-  test.AddAttribute<int64_t>("axis", -10LL);
-  test.AddInput<float>("data", {2, 3, 4},
-                       {0.0f, 0.1f, 0.2f, 0.3f,
-                        1.0f, 1.1f, 1.2f, 1.3f,
-                        2.0f, 2.1f, 2.2f, 2.3f,
-                        10.0f, 10.1f, 10.2f, 10.3f,
-                        11.0f, 11.1f, 11.2f, 11.3f,
-                        12.0f, 12.1f, 12.2f, 12.3f});
-  test.AddInput<int64_t>("indices", {1}, {1LL});
-  test.AddOutput<float>("output", {1, 3, 4},
-                        {10.0f, 10.1f, 10.2f, 10.3f,
-                         11.0f, 11.1f, 11.2f, 11.3f,
-                         12.0f, 12.1f, 12.2f, 12.3f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "axis must be in [-r, r-1]");
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    // Invalid axis not in range [-r, r-1]
+    test.AddAttribute<int64_t>("axis", -10LL);
+    test.AddInput<float>("data", {2, 3, 4},
+                         {0.0f, 0.1f, 0.2f, 0.3f,
+                          1.0f, 1.1f, 1.2f, 1.3f,
+                          2.0f, 2.1f, 2.2f, 2.3f,
+                          10.0f, 10.1f, 10.2f, 10.3f,
+                          11.0f, 11.1f, 11.2f, 11.3f,
+                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
+    test.AddOutput<float>("output", {1, 3, 4},
+                          {10.0f, 10.1f, 10.2f, 10.3f,
+                           11.0f, 11.1f, 11.2f, 11.3f,
+                           12.0f, 12.1f, 12.2f, 12.3f});
+    test.Run(OpTester::ExpectResult::kExpectFailure, "axis must be in [-r, r-1]");
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_invalid_index_cpu) {
@@ -107,76 +125,153 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
 #endif
 
 TEST(GatherOpTest, Gather_axis1) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<float>("data", {2, 3, 4},
-                       {0.0f, 0.1f, 0.2f, 0.3f,
-                        1.0f, 1.1f, 1.2f, 1.3f,
-                        2.0f, 2.1f, 2.2f, 2.3f,
-                        10.0f, 10.1f, 10.2f, 10.3f,
-                        11.0f, 11.1f, 11.2f, 11.3f,
-                        12.0f, 12.1f, 12.2f, 12.3f});
-  test.AddInput<int64_t>("indices", {2}, {2LL, 0LL});
-  test.AddOutput<float>("output", {2, 2, 4},
-                        {2.0f, 2.1f, 2.2f, 2.3f,
-                         0.0f, 0.1f, 0.2f, 0.3f,
-                         12.0f, 12.1f, 12.2f, 12.3f,
-                         10.0f, 10.1f, 10.2f, 10.3f});
-  test.Run();
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 1LL);
+    test.AddInput<float>("data", {2, 3, 4},
+                         {0.0f, 0.1f, 0.2f, 0.3f,
+                          1.0f, 1.1f, 1.2f, 1.3f,
+                          2.0f, 2.1f, 2.2f, 2.3f,
+                          10.0f, 10.1f, 10.2f, 10.3f,
+                          11.0f, 11.1f, 11.2f, 11.3f,
+                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<int64_t>("indices", {2}, {2LL, 0LL}, indices_is_initializer);
+    test.AddOutput<float>("output", {2, 2, 4},
+                          {2.0f, 2.1f, 2.2f, 2.3f,
+                           0.0f, 0.1f, 0.2f, 0.3f,
+                           12.0f, 12.1f, 12.2f, 12.3f,
+                           10.0f, 10.1f, 10.2f, 10.3f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis2) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 2LL);
-  test.AddInput<float>("data", {2, 3, 4},
-                       {0.0f, 0.1f, 0.2f, 0.3f,
-                        1.0f, 1.1f, 1.2f, 1.3f,
-                        2.0f, 2.1f, 2.2f, 2.3f,
-                        10.0f, 10.1f, 10.2f, 10.3f,
-                        11.0f, 11.1f, 11.2f, 11.3f,
-                        12.0f, 12.1f, 12.2f, 12.3f});
-  test.AddInput<int64_t>("indices", {3}, {1LL, 0LL, 2LL});
-  test.AddOutput<float>("output", {2, 3, 3},
-                        {0.1f, 0.0f, 0.2f,
-                         1.1f, 1.0f, 1.2f,
-                         2.1f, 2.0f, 2.2f,
-                         10.1f, 10.0f, 10.2f,
-                         11.1f, 11.0f, 11.2f,
-                         12.1f, 12.0f, 12.2f});
-  test.Run();
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 2LL);
+    test.AddInput<float>("data", {2, 3, 4},
+                         {0.0f, 0.1f, 0.2f, 0.3f,
+                          1.0f, 1.1f, 1.2f, 1.3f,
+                          2.0f, 2.1f, 2.2f, 2.3f,
+                          10.0f, 10.1f, 10.2f, 10.3f,
+                          11.0f, 11.1f, 11.2f, 11.3f,
+                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<int64_t>("indices", {3}, {1LL, 0LL, 2LL}, indices_is_initializer);
+    test.AddOutput<float>("output", {2, 3, 3},
+                          {0.1f, 0.0f, 0.2f,
+                           1.1f, 1.0f, 1.2f,
+                           2.1f, 2.0f, 2.2f,
+                           10.1f, 10.0f, 10.2f,
+                           11.1f, 11.0f, 11.2f,
+                           12.1f, 12.0f, 12.2f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis0_indices2d) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<float>("data", {3, 3},
-                       {0.0f, 0.1f, 0.2f,
-                        1.0f, 1.1f, 1.2f,
-                        2.0f, 2.1f, 2.2f});
-  test.AddInput<int64_t>("indices", {2LL, 2LL},
-                         {1LL, 0LL,
-                          2LL, 1LL});
-  test.AddOutput<float>("output", {2, 2, 3},
-                        {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
-                         2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
-  test.Run();
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 0LL);
+    test.AddInput<float>("data", {3, 3},
+                         {0.0f, 0.1f, 0.2f,
+                          1.0f, 1.1f, 1.2f,
+                          2.0f, 2.1f, 2.2f});
+    test.AddInput<int64_t>("indices", {2LL, 2LL},
+                           {1LL, 0LL,
+                            2LL, 1LL},
+                           indices_is_initializer);
+    test.AddOutput<float>("output", {2, 2, 3},
+                          {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
+                           2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d) {
-  OpTester test("Gather");
-  test.AddAttribute<int64_t>("axis", 1LL);
-  test.AddInput<float>("data", {3, 3},
-                       {0.0f, 0.1f, 0.2f,
-                        1.0f, 1.1f, 1.2f,
-                        2.0f, 2.1f, 2.2f});
-  test.AddInput<int64_t>("indices", {2LL, 2LL},
-                         {1LL, 0LL,
-                          2LL, 1LL});
-  test.AddOutput<float>("output", {3, 2, 2},
-                        {0.1f, 0.0f, 0.2f, 0.1f,
-                         1.1f, 1.0f, 1.2f, 1.1f,
-                         2.1f, 2.0f, 2.2f, 2.1f});
-  test.Run();
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 1LL);
+    test.AddInput<float>("data", {3, 3},
+                         {0.0f, 0.1f, 0.2f,
+                          1.0f, 1.1f, 1.2f,
+                          2.0f, 2.1f, 2.2f});
+    test.AddInput<int64_t>("indices", {2LL, 2LL},
+                           {1LL, 0LL,
+                            2LL, 1LL},
+                           indices_is_initializer);
+    test.AddOutput<float>("output", {3, 2, 2},
+                          {0.1f, 0.0f, 0.2f, 0.1f,
+                           1.1f, 1.0f, 1.2f, 1.1f,
+                           2.1f, 2.0f, 2.2f, 2.1f});
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(GatherOpTest, Gather_axis0_indicesInt32) {
+  // To test for NNAPI EP, we need the indices to be initializers
+  // NNAPI EP only supports float input data for now,
+  // the following two test cases cover int32_t indices with float input other than int64_t type for Nnapi
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 0LL);
+    test.AddInput<float>("data", {2, 3, 4},
+                         {0.0f, 0.1f, 0.2f, 0.3f,
+                          1.0f, 1.1f, 1.2f, 1.3f,
+                          2.0f, 2.1f, 2.2f, 2.3f,
+                          10.0f, 10.1f, 10.2f, 10.3f,
+                          11.0f, 11.1f, 11.2f, 11.3f,
+                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<int32_t>("indices", {1}, {1}, indices_is_initializer);
+    test.AddOutput<float>("output", {1, 3, 4},
+                          {10.0f, 10.1f, 10.2f, 10.3f,
+                           11.0f, 11.1f, 11.2f, 11.3f,
+                           12.0f, 12.1f, 12.2f, 12.3f});
+
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
+  // To test for NNAPI EP, we need the indices to be initializers
+  auto run_test = [](bool indices_is_initializer) {
+    OpTester test("Gather");
+    test.AddAttribute<int64_t>("axis", 0LL);
+    test.AddInput<float>("data", {3, 3},
+                         {0.0f, 0.1f, 0.2f,
+                          1.0f, 1.1f, 1.2f,
+                          2.0f, 2.1f, 2.2f});
+    test.AddInput<int32_t>("indices", {2, 2},
+                           {1, 0,
+                            2, 1},
+                           indices_is_initializer);
+    test.AddOutput<float>("output", {2, 2, 3},
+                          {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
+                           2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
+
+    test.Run();
+  };
+
+  run_test(false);
+  run_test(true);
 }
 
 TEST(GatherOpTest, Gather_axis1_indices2d_int32) {

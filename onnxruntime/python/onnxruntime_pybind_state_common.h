@@ -10,7 +10,6 @@
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
-
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
 #endif
