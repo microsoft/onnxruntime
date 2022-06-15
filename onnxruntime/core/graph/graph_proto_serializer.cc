@@ -48,6 +48,17 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       auto* p_initializer = graph_proto.add_initializer();
       *p_initializer = *(it.second);
     }
+
+    // handle initializer for outer scope values
+    for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
+      const auto& node = graph_view.GetNode(node_idx);
+      for (const auto& input : node->InputDefs()) {
+        if (graph_view.IsConstantInitializer(input->Name(), true)) {
+          auto* p_initializer = graph_proto.add_initializer();
+          *p_initializer = *(graph_view.GetConstantInitializer(input->Name(), true));
+        }
+      }
+    }
   }
 }
 
