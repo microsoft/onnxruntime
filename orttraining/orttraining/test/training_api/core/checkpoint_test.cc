@@ -181,15 +181,14 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
   sample->AddFloatInput(fc2_bias_shape);
   data_loader.AddSyntheticSampleBatch(std::move(sample));
 
-  std::vector<Ort::Value> all_weights_values;
+  std::vector<OrtValue*> all_weights_values;
   data_loader.GetNextSampleBatch(all_weights_values);
   ASSERT_EQ(all_weights_values.size(), 4);
-  Ort::Value* data_ptr = all_weights_values.data();
   NameMLValMap name_to_ort_value{
-      {"fc1.weight", **reinterpret_cast<::OrtValue**>(data_ptr)},
-      {"fc1.bias", **reinterpret_cast<::OrtValue**>(data_ptr + 1)},
-      {"fc2.weight", **reinterpret_cast<::OrtValue**>(data_ptr + 2)},
-      {"fc2.bias", **reinterpret_cast<::OrtValue**>(data_ptr + 3)},
+      {"fc1.weight", *all_weights_values[0]},
+      {"fc1.bias", *all_weights_values[1]},
+      {"fc2.weight", *all_weights_values[2]},
+      {"fc2.bias", *all_weights_values[3]},
   };
 
   // Module/Optimizer creation and trainable parameter name definitions.
