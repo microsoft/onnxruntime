@@ -803,7 +803,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   return ort_layout_senstive_ops;
 }
 
-Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
+Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
@@ -887,6 +887,14 @@ Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecut
   }
 
   return Status::OK();
+}
+
+bool IsSupportedOpset(const Graph& graph) {
+  const auto& version_map = graph.DomainToVersionMap();
+  const auto& onnx_version = version_map.find(kOnnxDomain);
+  return (onnx_version != version_map.end() &&
+          onnx_version->second >= onnx_layout_transformation::kMinSupportedOpset &&
+          onnx_version->second <= kMaxSupportedOpset);
 }
 
 }  // namespace layout_transformer

@@ -7,11 +7,11 @@
 
 #include "core/providers/providers.h"
 
-struct OrtROCMProviderOptions;
+struct OrtOpenVINOProviderOptions;
 
 namespace onnxruntime {
 // defined in provider_bridge_ort.cc
-struct RocmProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const OrtROCMProviderOptions* provider_options);
+struct OpenVINOProviderFactoryCreator {
+  static std::shared_ptr<IExecutionProviderFactory> Create(const OrtOpenVINOProviderOptions* provider_options);
 };
 }  // namespace onnxruntime
