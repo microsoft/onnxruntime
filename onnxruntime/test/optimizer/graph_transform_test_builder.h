@@ -282,7 +282,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        double per_sample_tolerance = 0.0,
                        double relative_per_sample_tolerance = 0.0,
                        std::unique_ptr<GraphTransformer> transformer = nullptr,
-                       const std::function<void(SessionOptions&)>* add_session_options = nullptr);
+                       const std::function<void(SessionOptions&)>& add_session_options = {},
+                       const InlinedHashSet<std::string>& disabled_optimizers = {});
 
 }  // namespace test
 }  // namespace onnxruntime

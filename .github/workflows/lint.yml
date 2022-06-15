@@ -1,0 +1,103 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+jobs:
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: flake8
+        uses: reviewdog/action-flake8@v3
+        with:
+          github_token: ${{ secrets.github_token }}
+          # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
+          reporter: github-pr-check
+          # Change reporter level if you need.
+          # GitHub Status Check won't become failure with a warning.
+          level: error
+          filter_mode: file
+      - name: pyflakes
+        uses: reviewdog/action-pyflakes@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+      - name: misspell # Check spellings as well
+        uses: reviewdog/action-misspell@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          locale: "US"
+          reporter: github-pr-check
+          level: info
+          filter_mode: diff_context
+      - name: shellcheck # Static check shell scripts
+        uses: reviewdog/action-shellcheck@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: info
+          filter_mode: file
+      - name: pyright
+        uses: jordemort/action-pyright@v1
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          filter_mode: diff_context
+          lib: true
+      - name: pylint
+        uses: dciborow/action-pylint@0.0.7
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          filter_mode: diff_context
+          glob_pattern: "**/*.py"
+
+  lint-python-format:
+    # Separated black/isort from other Python linters because we want this job to
+    # fail and not affect other linters
+    name: Python format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+      - uses: psf/black@stable
+        with:
+          options: "--check --diff --color"
+      - uses: isort/isort-action@master
+
+  lint-cpp:
+    name: Lint C++
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - uses: reviewdog/action-cpplint@master
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          flags: --linelength=120
+          filter: "-runtime/references"
+
+  lint-js:
+    name: Lint JavaScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: reviewdog/action-eslint@v1
+        with:
+          reporter: github-pr-check
+          level: error
+          filter_mode: file
+          eslint_flags: "--ext .ts --ext .tsx"
+          workdir: "js/"

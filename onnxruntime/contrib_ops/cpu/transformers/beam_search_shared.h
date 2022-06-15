@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "gsl/gsl"
@@ -23,10 +26,10 @@ struct IBeamSearchState {
   gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
   gsl::span<int32_t> next_tokens;      // shape (batch_size, 2 * num_beams)
   gsl::span<int32_t> next_indices;     // shape (batch_size, 2 * num_beams)
-  gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams), empty for T5. Next position for position_ids.
   gsl::span<float> beam_scores;        // shape (batch_size, num_beams)
   gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
-  gsl::span<float> remaining_scores;   // portion of scores that is avaiable for appending next token scores.
+  gsl::span<float> remaining_scores;   // portion of scores that is available for appending next token scores.
 };
 
 struct IBeamSearchCpuState {
@@ -72,10 +75,14 @@ class IBeamScorer {
 };
 
 struct IBeamSearchParameters {
+  static constexpr int kModelTypeGpt = 0;
+  static constexpr int kModelTypeT5 = 1;
+
   // Parameters from node attributes
-  int model_type;
+  int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5
   int eos_token_id;
   int pad_token_id;
+  int decoder_start_token_id;
   int no_repeat_ngram_size;
   bool early_stopping;
 
@@ -88,7 +95,7 @@ struct IBeamSearchParameters {
   float length_penalty;
   float repetition_penalty;
   int batch_size;       // deduce from first dimension of input_ids
-  int sequence_length;  // deduce from second dimension of input_ids
+  int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;

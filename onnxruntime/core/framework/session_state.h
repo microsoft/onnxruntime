@@ -276,9 +276,6 @@ class SessionState {
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
-  bool ExportDll() const noexcept { return export_fused_dll_; }
-  void SetExportDllFlag(bool flag) noexcept { export_fused_dll_ = flag; }
-
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() noexcept { return fused_funcs_mgr_; }
 
@@ -397,7 +394,7 @@ class SessionState {
   // KernelCreateInfo for each node so we do kernel lookup once
   KernelCreateInfoMap kernel_create_info_map_;
 
-  //fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
+  // fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
   FuncManager fused_funcs_mgr_;
 
   // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
@@ -411,20 +408,29 @@ class SessionState {
 
   const ExecutionProviders& execution_providers_;
 
-  // currently the allocator type is an implementation detail and we don't make any  behavioral choices based on it,
+  // currently the allocator type is an implementation detail and we don't make any behavioral choices based on it,
   // so exclude it from the key comparison for allocator_idx_map_.
   // we also don't expect to have two allocators with the same name, one using an arena and one not.
-  struct OrtMemoryInfoLessThanIgnoreAllocType {
+  struct OrtMemoryInfoLessThanIgnoreNameAndAllocType {
     bool operator()(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) const {
-      //if (lhs.alloc_type != rhs.alloc_type)
-      //  return lhs.alloc_type < rhs.alloc_type;
+      // if (lhs.alloc_type != rhs.alloc_type)
+      //   return lhs.alloc_type < rhs.alloc_type;
       if (lhs.mem_type != rhs.mem_type)
         return lhs.mem_type < rhs.mem_type;
 
       if (lhs.id != rhs.id)
         return lhs.id < rhs.id;
 
-      return strcmp(lhs.name, rhs.name) < 0;
+      if (lhs.device != rhs.device) {
+        // id should always == device.id so ignore that
+        if (lhs.device.Type() != rhs.device.Type())
+          return lhs.device.Type() < rhs.device.Type();
+
+        // this is the allocator mem type and not the kernel mem type that OrtMemoryInfo.mem_type represents
+        return lhs.device.MemType() < rhs.device.MemType();
+      }
+
+      return false;
     }
   };
 
@@ -442,7 +448,7 @@ class SessionState {
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
   std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreAllocType>
+           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
       allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
@@ -488,7 +494,6 @@ class SessionState {
   concurrency::ThreadPool* const thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
-  bool export_fused_dll_ = false;
   const DataTransferManager& data_transfer_mgr_;
 
   bool use_deterministic_compute_;
@@ -503,11 +508,15 @@ class SessionState {
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #if !defined(ORT_MINIMAL_BUILD)
+#ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
+#else
+  std::map<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
+#endif
 #endif
 
   SessionState* parent_ = nullptr;
-  //Assign each graph in each session an unique id.
+  // Assign each graph in each session an unique id.
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   int graph_id_ = 0;
   int next_graph_id_ = 1;

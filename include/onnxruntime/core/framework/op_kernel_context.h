@@ -21,10 +21,10 @@ class OpKernelContext {
   @param arg_num The operator argument number.
   @returns Number of inputs the argument has.
   */
-  int NumVariadicInputs(size_t arg_num) const;
+  virtual int NumVariadicInputs(size_t arg_num) const;
 
-  MLDataType InputType(int index) const;
-  MLDataType OutputType(int index) const;
+  virtual MLDataType InputType(int index) const;
+  virtual MLDataType OutputType(int index) const;
 
   const OrtValue* GetInputOrtValue(int index) const {
     return GetInputMLValue(index);
@@ -98,29 +98,29 @@ class OpKernelContext {
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
   // false.
-  bool TryGetInferredInputShape(int index, TensorShape& shape) const;
+  virtual bool TryGetInferredInputShape(int index, TensorShape& shape) const;
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
   // false.
-  bool TryGetInferredOutputShape(int index, TensorShape& shape) const;
+  virtual bool TryGetInferredOutputShape(int index, TensorShape& shape) const;
 
   const logging::Logger& Logger() const {
     return *logger_;
   }
 
   // always >= 0
-  int InputCount() const {
+  virtual int InputCount() const {
     return static_cast<int>(kernel_->Node().InputDefs().size());
   }
 
   // always >= 0
-  int ImplicitInputCount() const {
+  virtual int ImplicitInputCount() const {
     return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());
   }
 
   // always >= 0
-  int OutputCount() const {
+  virtual int OutputCount() const {
     return static_cast<int>(kernel_->Node().OutputDefs().size());
   }
 
@@ -128,7 +128,7 @@ class OpKernelContext {
    Return an allocator on device 0, with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
+  virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
    Return the allocator associated with the CPU EP with memtype of OrtMemTypeDefault.
@@ -142,7 +142,7 @@ class OpKernelContext {
   @returns Point to the Fence of the input OrtValue.
   It is null if the input OrtValue doesn't have fence or the input is optional.
   */
-  Fence_t InputFence(int index) const;
+  virtual Fence_t InputFence(int index) const;
 
   /**
   Return the fence of current node's implicit input.
@@ -150,7 +150,7 @@ class OpKernelContext {
   @returns Point to the Fence of the implicit input OrtValue.
   It is null if the input OrtValue doesn't have fence or the input is optional.
   */
-  Fence_t ImplicitInputFence(int index) const;
+  virtual Fence_t ImplicitInputFence(int index) const;
 
   /**
   Return the fence of current node's output identifed by index.
@@ -158,12 +158,12 @@ class OpKernelContext {
   @returns Point to the Fence of the output OrtValue.
   It is null if the output OrtValue doesn't have fence or the output is optional.
   */
-  Fence_t OutputFence(int index) const;
+  virtual Fence_t OutputFence(int index) const;
 
   /**
   Return the device id that current kernel runs on.
   */
-  int GetDeviceId() const {
+  virtual int GetDeviceId() const {
     return kernel_->Info().GetExecutionProvider()->GetDeviceId();
   }
 
@@ -171,7 +171,7 @@ class OpKernelContext {
   Return the compute stream associated with the EP that the kernel is partitioned to.
   For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
   */
-  void* GetComputeStream() const {
+  virtual void* GetComputeStream() const {
     return kernel_->Info().GetExecutionProvider()->GetComputeStream();
   }
 
@@ -203,32 +203,34 @@ class OpKernelContext {
   }
 
  protected:
+
+  OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger);
+
   onnxruntime::NodeIndex GetNodeIndex() const;
 
-  const OrtValue* GetInputMLValue(int index) const;
+  virtual const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
 #endif
 
   // Creates the OrtValue* based on the shape, if it does not exist
-  OrtValue* OutputMLValue(int index, const TensorShape& shape);
+  virtual OrtValue* OutputMLValue(int index, const TensorShape& shape);
+
+  virtual OrtValue* GetOrCreateOutputMLValue(int index);
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
-
-  OrtValue* GetOrCreateOutputMLValue(int index);
-
   int GetInputArgIndex(int index) const;
   int GetImplicitInputArgIndex(int index) const;
   int GetOutputArgIndex(int index) const;
 
-  IExecutionFrame* const execution_frame_;
-  const OpKernel* const kernel_;
-  concurrency::ThreadPool* const threadpool_;
-  const logging::Logger* const logger_;
+  IExecutionFrame* const execution_frame_{};
+  const OpKernel* const kernel_{};
+  concurrency::ThreadPool* const threadpool_{};
+  const logging::Logger* const logger_{};
 
   // The argument starting index in ExecutionFrame.
   int node_input_start_index_{-1};

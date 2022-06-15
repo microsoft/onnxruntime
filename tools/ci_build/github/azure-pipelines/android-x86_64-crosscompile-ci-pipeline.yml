@@ -1,8 +1,8 @@
 # Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
-# 2. Nested Virutalizaiton isn't supported in Azure pipeline
-# https://developercommunity.visualstudio.com/t/enable-nested-virtualization-on-azure-pipelines/466384
+# 2. today most cloud-based CI services are still lacking hardware acceleration support from the host VM, 
+# which is the no.1 blocker for running tests on modern Android Emulators (especially on recent API levels) on CI.
 
 jobs:
 - job: Build_CPU_EP
@@ -103,6 +103,11 @@ jobs:
     clean: all
   condition: succeeded()
   steps:
+    - script: |
+        set -ex
+        system_profiler SPSoftwareDataType SPHardwareDataType
+      displayName: 'Mac Agent Info'
+
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
@@ -228,11 +233,17 @@ jobs:
 - job: Test_NNAPI_EP
   pool:
     vmImage: 'macOS-11'
+  timeoutInMinutes: 90
   workspace:
     clean: all
   dependsOn: Build_NNAPI_EP
   condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   steps:
+    - script: |
+        set -ex
+        system_profiler SPSoftwareDataType SPHardwareDataType
+      displayName: 'Mac Agent Info'
+
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
@@ -306,11 +317,16 @@ jobs:
 - job: NNAPI_EP_MASTER
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   workspace:
     clean: all
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   steps:
+    - script: |
+        set -ex
+        system_profiler SPSoftwareDataType SPHardwareDataType
+      displayName: 'Mac Agent Info'
+
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
       inputs:
@@ -358,6 +374,7 @@ jobs:
         --skip_submodule_sync \
         --parallel \
         --use_nnapi \
+        --build_shared_lib \
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \

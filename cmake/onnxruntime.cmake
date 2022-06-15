@@ -135,6 +135,16 @@ if (NOT WIN32)
 endif()
 
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
+  # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
+  # affecting downstream ort library users with the behaviour of dummy __cxa_demangle. So the dummy
+  # __cxa_demangle must not expose to libonnxruntime_common.a. It works as when the linker is
+  # creating the DSO, our dummy __cxa_demangle always comes before libc++abi.a so the
+  # __cxa_demangle in libc++abi.a is discarded, thus, huge binary size reduction.
+  target_sources(onnxruntime PRIVATE "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc")
+  target_compile_definitions(onnxruntime PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+endif()
+
 # strip binary on Android, or for a minimal build on Unix
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
   if (onnxruntime_MINIMAL_BUILD AND ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
@@ -167,11 +177,13 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
+  ${PROVIDERS_SNPE}
   ${PROVIDERS_NUPHAR}
   ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_ROCM}
   ${PROVIDERS_VITISAI}
+  ${PROVIDERS_XNNPACK}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}
   onnxruntime_optimizer

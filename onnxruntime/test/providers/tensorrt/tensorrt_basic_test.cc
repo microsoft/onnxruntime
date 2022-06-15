@@ -106,7 +106,7 @@ void RunWithOneSessionSingleThreadInference(std::string model_name, std::string 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
-  auto allocator_manager = session_object.GetAllocatorManager();
+  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
@@ -175,7 +175,7 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
-  auto allocator_manager = session_object.GetAllocatorManager();
+  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
@@ -245,6 +245,8 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       th.join();
 }
 
+void CreateAndRunInferenceSession() {}
+
 TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionSingleThreadInference) {
   std::vector<std::thread> threads;
   std::string model_name = "trt_execution_provider_multithreading_test.onnx";
@@ -292,38 +294,51 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
   CreateBaseModel(model_name, cache_type + "cachingtest", dims);
 
-  SessionOptions so;
-  so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-  InferenceSession session_object{so, GetEnvironment()};
-  auto allocator_manager = session_object.GetAllocatorManager();
-  auto cuda_provider = DefaultCudaExecutionProvider();
-  cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
-  std::vector<int64_t> dims_mul_x = {1, 3, 2};
-  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  OrtValue ml_value_x;
-  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
-  OrtValue ml_value_y;
-  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
-  OrtValue ml_value_z;
-  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("X", ml_value_x));
-  feeds.insert(std::make_pair("Y", ml_value_y));
-  feeds.insert(std::make_pair("Z", ml_value_z));
+  /* If cache_type is "engine", following code will test the functionality of engine and optimization profile of ORT TRT, including:
+   * - engine cache serialization/de-serialization
+   * - profile cache serialization/de-serialization
+   * - engine/profile cache should be updated when the input shape changes
+   * - min/max shape ranges of dynamic shape dimensions saved in profile cache
+   * - if engine cache is present, trt ep should load the engine cache and run inference
+   * - read corrupted profile cache #TODO
+   */
 
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("M");
-  std::vector<OrtValue> fetches;
+  /*
+   * First inference run
+   */
+  {
+    SessionOptions so;
+    so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
+    RunOptions run_options;
+    run_options.run_tag = so.session_logid;
+    InferenceSession session_object{so, GetEnvironment()};
+    onnxruntime::AllocatorManager allocator_manager;
+    auto cuda_provider = DefaultCudaExecutionProvider();
+    cuda_provider->RegisterAllocator(allocator_manager);
+    auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+    std::vector<int64_t> dims_mul_x = {1, 3, 2};
+    std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    OrtValue ml_value_x;
+    CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+    OrtValue ml_value_y;
+    CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+    OrtValue ml_value_z;
+    CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("X", ml_value_x));
+    feeds.insert(std::make_pair("Y", ml_value_y));
+    feeds.insert(std::make_pair("Z", ml_value_z));
 
-  // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
-  std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+    // prepare outputs
+    std::vector<std::string> output_names;
+    output_names.push_back("M");
+    std::vector<OrtValue> fetches;
 
-  OrtTensorRTProviderOptionsV2 params{
+    // prepare expected inputs and outputs
+    std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
+    std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+
+    OrtTensorRTProviderOptionsV2 params{
       0,
       0,
       nullptr,
@@ -343,35 +358,40 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       nullptr,
       0};
 
+    if (cache_type.compare("engine") == 0) {
+      params.trt_engine_cache_enable = 1;
+      std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+      EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+      auto status = session_object.Load(model_name);
+      ASSERT_TRUE(status.IsOK());
+      status = session_object.Initialize();
+      ASSERT_TRUE(status.IsOK());
+
+      // run inference
+      // TRT engine will be created and cached
+      // TRT profile will be created and cached only for dynamic input shape
+      // Data in profile,
+      // X: 1, 3, 3, 2, 2, 2
+      // Y: 1, 3, 3, 2, 2, 2
+      // Z: 1, 3, 3, 2, 2, 2
+      status = session_object.Run(run_options, feeds, output_names, &fetches);
+      ASSERT_TRUE(status.IsOK());
+      VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+
+    } else if (cache_type.compare("timing") == 0) {
+      // add test code here for timing cache
+    }
+  } // end of first inference run scope
+
+
+  /* Validate engine cache counts and engine profile content after first inference run.
+   *  
+   * Note: Cache won't be saved to file until destructor of inference session is called,
+   * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
+   * At this point, all the cache are saved becasue inference run scope ends.
+   * 
+   */ 
   if (cache_type.compare("engine") == 0) {
-
-    /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
-     * - engine cache serialization/de-serialization
-     * - profile cache serialization/de-serialization
-     * - engine/profile cache should be updated when the input shape changes
-     * - min/max shape ranges of dynamic shape dimensions saved in profile cache
-     * - read corrupted profile cache #TODO
-     *
-     */
-
-    params.trt_engine_cache_enable = 1;
-    std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-    auto status = session_object.Load(model_name);
-    ASSERT_TRUE(status.IsOK());
-    status = session_object.Initialize();
-    ASSERT_TRUE(status.IsOK());
-
-    // run inference
-    // TRT engine will be created and cached
-    // TRT profile will be created and cached only for dynamic input shape
-    // Data in profile,
-    // X: 1, 3, 3, 2, 2, 2
-    // Y: 1, 3, 3, 2, 2, 2
-    // Z: 1, 3, 3, 2, 2, 2
-    status = session_object.Run(run_options, feeds, output_names, &fetches);
-    ASSERT_TRUE(status.IsOK());
-    VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
     ASSERT_TRUE(IsCacheExistedByType("./", ".engine"));
 
     std::vector<fs::path> profile_files;
@@ -387,8 +407,13 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       std::ifstream profile_file(profile_files[0], std::ios::binary | std::ios::in);
       auto shape_ranges = DeserializeProfile(profile_file);
 
+      // Data in profile,
+      // X: 1, 3, 3, 2, 2, 2
+      // Y: 1, 3, 3, 2, 2, 2
+      // Z: 1, 3, 3, 2, 2, 2
+
       // check min/max shape ranges of dynamic shape dimensions
-      for(auto it = shape_ranges.cbegin(); it != shape_ranges.cend(); ++it) {
+      for (auto it = shape_ranges.cbegin(); it != shape_ranges.cend(); ++it) {
         auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
@@ -401,59 +426,131 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
         }
       }
     }
+  }
 
-    // another inference run with input shape {1, 1, 6}
-    // TRT engine and profile will be updated
-    // Data in profile,
-    // X: 1, 1, 3, 2, 2, 6
-    // Y: 1, 1, 3, 2, 2, 6
-    // Z: 1, 1, 3, 2, 2, 6
-    dims_mul_x = {1, 1, 6};
-    CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
-    CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
-    CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
-    feeds.clear();
-    feeds.insert(std::make_pair("X", ml_value_x));
-    feeds.insert(std::make_pair("Y", ml_value_y));
-    feeds.insert(std::make_pair("Z", ml_value_z));
 
-    // prepare outputs
-    fetches.clear();
+  for (int i = 0; i < 2; ++i) {
+    /*
+     * Second/Third inference run
+     */
+    {
+      SessionOptions so;
+      so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
+      RunOptions run_options;
+      run_options.run_tag = so.session_logid;
+      InferenceSession session_object{so, GetEnvironment()};
+      onnxruntime::AllocatorManager allocator_manager;
+      auto cuda_provider = DefaultCudaExecutionProvider();
+      cuda_provider->RegisterAllocator(allocator_manager);
+      auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+      std::vector<int64_t> dims_mul_x = {1, 1, 6};
+      std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+      OrtValue ml_value_x;
+      CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+      OrtValue ml_value_y;
+      CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+      OrtValue ml_value_z;
+      CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+      NameMLValMap feeds;
+      feeds.insert(std::make_pair("X", ml_value_x));
+      feeds.insert(std::make_pair("Y", ml_value_y));
+      feeds.insert(std::make_pair("Z", ml_value_z));
 
-    // prepare expected inputs and outputs
-    expected_dims_mul_m = {1, 1, 6};
+      // prepare outputs
+      std::vector<std::string> output_names;
+      output_names.push_back("M");
+      std::vector<OrtValue> fetches;
 
-    status = session_object.Run(run_options, feeds, output_names, &fetches);
+      // prepare expected inputs and outputs
+      std::vector<int64_t> expected_dims_mul_m = {1, 1, 6};
+      std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
-    if (input_type.compare("static") == 0) {
-      // Can't run inference since input shape changes but the engine is built with static input
-      ASSERT_FALSE(status.IsOK());
-    } else {
-      ASSERT_TRUE(status.IsOK());
-      VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+      OrtTensorRTProviderOptionsV2 params{
+          0,
+          0,
+          nullptr,
+          1000,
+          1,
+          1 << 30,
+          0,
+          0,
+          nullptr,
+          0,
+          0,
+          0,
+          0,
+          0,
+          nullptr,
+          0,
+          nullptr,
+          0};
 
-      profile_files = GetCachesByType("./", ".profile");
-      ASSERT_EQ(profile_files.size(), 1);
-      std::ifstream profile_file2(profile_files[0], std::ios::binary | std::ios::in);
-      auto shape_ranges2 = DeserializeProfile(profile_file2);
+      if (cache_type.compare("engine") == 0) {
+        params.trt_engine_cache_enable = 1;
+        std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+        EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+        auto status = session_object.Load(model_name);
+        ASSERT_TRUE(status.IsOK());
+        status = session_object.Initialize();
+        ASSERT_TRUE(status.IsOK());
 
-      // check min/max shape ranges of dynamic shape dimensions
-      for(auto it = shape_ranges2.cbegin(); it != shape_ranges2.cend(); ++it) {
-        auto ranges = it->second;
-        for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
-          if (it2->first == 1) {
-            ASSERT_EQ(it2->second.first, 1);
-            ASSERT_EQ(it2->second.second, 3);
-          } else if (it2->first == 2) {
-            ASSERT_EQ(it2->second.first, 2);
-            ASSERT_EQ(it2->second.second, 6);
+        // another inference run with input shape {1, 1, 6}
+        // TRT engine and profile will be updated
+        // Data in profile,
+        // X: 1, 1, 3, 2, 2, 6
+        // Y: 1, 1, 3, 2, 2, 6
+        // Z: 1, 1, 3, 2, 2, 6
+        status = session_object.Run(run_options, feeds, output_names, &fetches);
+        if (input_type.compare("static") == 0) {
+          // Can't run inference since input shape changes but the engine is built with static input
+          ASSERT_FALSE(status.IsOK());
+        } else {
+          ASSERT_TRUE(status.IsOK());
+          VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+        }
+      }
+    }  // end of second/third inference run scope
+
+    /* Validate engine cache counts and engine profile content after second/third inference run.
+     *  
+     * Note: Cache won't be saved to file until destructor of inference session is called,
+     * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
+     * At this point, all the cache are saved becasue inference run scope ends.
+     * 
+     */
+    if (cache_type.compare("engine") == 0) {
+      ASSERT_TRUE(IsCacheExistedByType("./", ".engine"));
+
+      std::vector<fs::path> profile_files;
+
+      // profile cache only being generated for dynamic input shape
+      if (input_type.compare("static") == 0) {
+        ASSERT_TRUE(!IsCacheExistedByType("./", ".profile"));
+      } else {
+        ASSERT_TRUE(IsCacheExistedByType("./", ".profile"));
+
+        profile_files = GetCachesByType("./", ".profile");
+        ASSERT_EQ(profile_files.size(), 1);
+        std::ifstream profile_file2(profile_files[0], std::ios::binary | std::ios::in);
+        auto shape_ranges2 = DeserializeProfile(profile_file2);
+
+        // check min/max shape ranges of dynamic shape dimensions
+        for (auto it = shape_ranges2.cbegin(); it != shape_ranges2.cend(); ++it) {
+          auto ranges = it->second;
+          for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
+            if (it2->first == 1) {
+              ASSERT_EQ(it2->second.first, 1);
+              ASSERT_EQ(it2->second.second, 3);
+            } else if (it2->first == 2) {
+              ASSERT_EQ(it2->second.first, 2);
+              ASSERT_EQ(it2->second.second, 6);
+            }
           }
         }
       }
     }
-  } else if (cache_type.compare("timing") == 0) {
-     // add test code here
   }
+
 
   // clean up caches
   RemoveCachesByType("./", ".engine");
@@ -518,7 +615,7 @@ TEST(TensorrtExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
 
-  auto allocator_manager = session_object.GetAllocatorManager();
+  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
@@ -622,7 +719,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
 
-  auto allocator_manager = session_object.GetAllocatorManager();
+  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
@@ -743,7 +840,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
 
-  auto allocator_manager = session_object.GetAllocatorManager();
+  onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
   auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);

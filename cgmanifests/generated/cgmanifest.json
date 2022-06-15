@@ -104,10 +104,30 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a104e0cf23be4fe848f7ef1f3e8996fe429b06bb",
+          "commitHash": "0a92994d729ff76a58f692d3028ca1b64b145d91",
+          "repositoryUrl": "https://github.com/Maratyszcza/FP16.git"
+        },
+        "comments": "git submodule at cmake/external/FP16"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "ff15c6ada150a5018c5ef2172401cb4529eac9c0",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
         "comments": "git submodule at cmake/external/SafeInt/safeint"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "510b8e0f9af1891588c52bef64248cb72f04c30e",
+          "repositoryUrl": "https://github.com/google/XNNPACK.git"
+        },
+        "comments": "git submodule at cmake/external/XNNPACK"
       }
     },
     {
@@ -164,7 +184,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "3acac70a551c321574732e5bfd67930244bb7151",
+          "commitHash": "fc645b7626ebf86530dbd82fbece74d457e7ae07",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -284,7 +304,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e9456d57605c883cdf985e634ab483e2c1500bb1",
+          "commitHash": "f42daeee49f2517a954c5601f0f76bef9ed94b62",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -364,6 +384,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
+        },
+        "comments": "git submodule at cmake/external/pthreadpool"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
@@ -398,16 +428,6 @@
           "repositoryUrl": "https://github.com/microsoft/wil.git"
         },
         "comments": "git submodule at cmake/external/wil"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "352281313fe1c4313bc222cb9de222afd50c822f",
-          "repositoryUrl": "https://github.com/gabime/spdlog.git"
-        },
-        "comments": "git submodule at server/external/spdlog"
       }
     }
   ]

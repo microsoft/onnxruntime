@@ -1,7 +1,10 @@
-import onnx
 import itertools
-from .quant_utils import find_by_name, attribute_to_kwarg
 from pathlib import Path
+
+import onnx
+
+from .quant_utils import attribute_to_kwarg, find_by_name
+
 
 class ONNXModel:
     def __init__(self, model):
@@ -121,19 +124,19 @@ class ONNXModel:
         return output_name_to_node[input]
 
     def find_node_by_name(self, node_name, new_nodes_list, graph):
-        '''
+        """
         Find out if a node exists in a graph or a node is in the
         new set of nodes created during quantization. Return the node found.
-        '''
-        graph_nodes_list = list(graph.node)  #deep copy
+        """
+        graph_nodes_list = list(graph.node)  # deep copy
         graph_nodes_list.extend(new_nodes_list)
         node = find_by_name(node_name, graph_nodes_list)
         return node
 
     def find_nodes_by_initializer(self, graph, initializer):
-        '''
+        """
         Find all nodes with given initializer as an input.
-        '''
+        """
         nodes = []
         for node in graph.node:
             for node_input in node.input:
@@ -174,19 +177,19 @@ class ONNXModel:
                     kwargs.update(kv)
                 node = onnx.helper.make_node(node.op_type, node.input, node.output, name=node.name, **kwargs)
 
-            if node.op_type == 'Gemm':
+            if node.op_type == "Gemm":
                 alpha = 1.0
                 beta = 1.0
                 transA = 0
                 transB = 0
                 for attr in node.attribute:
-                    if attr.name == 'alpha':
+                    if attr.name == "alpha":
                         alpha = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'beta':
+                    elif attr.name == "beta":
                         beta = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'transA':
+                    elif attr.name == "transA":
                         transA = onnx.helper.get_attribute_value(attr)
-                    elif attr.name == 'transB':
+                    elif attr.name == "transB":
                         transB = onnx.helper.get_attribute_value(attr)
                 if alpha == 1.0 and beta == 1.0 and transA == 0:
                     inputB = node.input[1]
@@ -204,25 +207,30 @@ class ONNXModel:
                                     break
                             Bs_graph.initializer.extend([B_trans])
                         else:
-                            inputB += '_Transposed'
-                            transpose_node = onnx.helper.make_node('Transpose',
-                                                                   inputs=[node.input[1]],
-                                                                   outputs=[inputB],
-                                                                   name=node.name + '_Transpose' if node.name != "" else "")
+                            inputB += "_Transposed"
+                            transpose_node = onnx.helper.make_node(
+                                "Transpose",
+                                inputs=[node.input[1]],
+                                outputs=[inputB],
+                                name=node.name + "_Transpose" if node.name != "" else "",
+                            )
                             new_nodes.append(transpose_node)
 
                     matmul_node = onnx.helper.make_node(
-                        'MatMul',
+                        "MatMul",
                         inputs=[node.input[0], inputB],
-                        outputs=[node.output[0] + ('_MatMul' if len(node.input) > 2 else '')],
-                        name=node.name + '_MatMul' if node.name != "" else "")
+                        outputs=[node.output[0] + ("_MatMul" if len(node.input) > 2 else "")],
+                        name=node.name + "_MatMul" if node.name != "" else "",
+                    )
                     new_nodes.append(matmul_node)
 
                     if len(node.input) > 2:
-                        add_node = onnx.helper.make_node('Add',
-                                                         inputs=[node.output[0] + '_MatMul', node.input[2]],
-                                                         outputs=node.output,
-                                                         name=node.name + '_Add' if node.name != "" else "")
+                        add_node = onnx.helper.make_node(
+                            "Add",
+                            inputs=[node.output[0] + "_MatMul", node.input[2]],
+                            outputs=node.output,
+                            name=node.name + "_Add" if node.name != "" else "",
+                        )
                         new_nodes.append(add_node)
 
                 # unsupported
@@ -233,7 +241,7 @@ class ONNXModel:
             else:
                 new_nodes.append(node)
 
-        graph.ClearField('node')
+        graph.ClearField("node")
         graph.node.extend(new_nodes)
         graph_path.pop()
         return graph
@@ -243,14 +251,16 @@ class ONNXModel:
         ONNXModel.__replace_gemm_with_matmul(graph_path)
 
     def save_model_to_file(self, output_path, use_external_data_format=False):
-        '''
+        """
         Save model to external data, which is needed for model size > 2GB
-        '''
+        """
         self.topological_sort()
         if use_external_data_format:
-            onnx.external_data_helper.convert_model_to_external_data(self.model,
-                                                                     all_tensors_to_one_file=True,
-                                                                     location=Path(output_path).name + ".data")
+            onnx.external_data_helper.convert_model_to_external_data(
+                self.model,
+                all_tensors_to_one_file=True,
+                location=Path(output_path).name + ".data",
+            )
         onnx.save_model(self.model, output_path)
 
     @staticmethod
@@ -278,12 +288,15 @@ class ONNXModel:
     def remove_unused_constant(self):
         input_name_to_nodes = self.input_name_to_nodes()
 
-        #remove unused constant
+        # remove unused constant
         unused_nodes = []
         nodes = self.nodes()
         for node in nodes:
-            if node.op_type == "Constant" and not self.is_graph_output(
-                    node.output[0]) and node.output[0] not in input_name_to_nodes:
+            if (
+                node.op_type == "Constant"
+                and not self.is_graph_output(node.output[0])
+                and node.output[0] not in input_name_to_nodes
+            ):
                 unused_nodes.append(node)
 
         self.remove_nodes(unused_nodes)
@@ -308,13 +321,13 @@ class ONNXModel:
     # TODO:use OnnxModel.graph_topological_sort(self.model.graph) from transformers.onnx_model
     # Currently it breaks Openvino/Linux training gpu pipeline so hold off for 1.8 release
     def topological_sort(self):
-        deps_count = [0]*len(self.nodes()) # dependency count of each node
-        deps_to_nodes = {} # input to node indice
+        deps_count = [0] * len(self.nodes())  # dependency count of each node
+        deps_to_nodes = {}  # input to node indice
         sorted_nodes = []  # initialize sorted_nodes
         for node_idx, node in enumerate(self.nodes()):
             # CANNOT use len(node.input) directly because input can be optional
-            deps_count[node_idx] = sum(1 for _ in node.input if _ )
-            if deps_count[node_idx] == 0: # Constant doesn't depend on any inputs
+            deps_count[node_idx] = sum(1 for _ in node.input if _)
+            if deps_count[node_idx] == 0:  # Constant doesn't depend on any inputs
                 sorted_nodes.append(self.nodes()[node_idx])
                 continue
 
@@ -353,6 +366,6 @@ class ONNXModel:
                             end = end + 1
             start = start + 1
 
-        assert(end == len(self.graph().node)), "Graph is not a DAG"
-        self.graph().ClearField('node')
+        assert end == len(self.graph().node), "Graph is not a DAG"
+        self.graph().ClearField("node")
         self.graph().node.extend(sorted_nodes)

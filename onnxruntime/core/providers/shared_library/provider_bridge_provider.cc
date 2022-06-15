@@ -31,10 +31,12 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "contrib_ops/cpu/transformers/beam_search.h"
+#ifdef ENABLE_ATEN
+#include "contrib_ops/cpu/aten_ops/aten_op.h"
+#endif
 #endif
 
 #ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 
@@ -106,8 +108,8 @@ void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
   return g_host->AllocatorManager__InsertAllocator(this, allocator);
 }
 
-AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
-  return g_host->AllocatorManager__GetAllocator(this, id, mem_type);
+AllocatorPtr AllocatorManager::GetAllocator(OrtMemType mem_type, OrtDevice device) const {
+  return g_host->AllocatorManager__GetAllocator(this, mem_type, device);
 }
 
 template <>
@@ -241,7 +243,7 @@ void TensorShape::Allocate(size_t size) {
 
 int64_t TensorShape::Size() const {
   int64_t size = SizeHelper(0, values_.size());
-  //should we cache the size? as multiple operation may be expensive.
+  // should we cache the size? as multiple operation may be expensive.
   return size;
 }
 
@@ -283,25 +285,15 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   g_host->IExecutionProvider__InsertAllocator(this, allocator);
 }
 
-void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
-  g_host->IExecutionProvider__TryInsertAllocator(this, allocator);
-}
-
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
 }
-
+// !!! This API will be deprecated soon.
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes, node_compute_funcs);
 }
-
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                           std::string& dll_path) {
-  return g_host->IExecutionProvider__Compile(this, fused_nodes, dll_path);
-}
-
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
@@ -311,7 +303,7 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
-void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
 }
 
@@ -510,8 +502,8 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
 Status ScatterND::ValidateShapes(const TensorShape& input_shape,
-                                     const TensorShape& indice_shape,
-                                     const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
+                                 const TensorShape& indice_shape,
+                                 const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
 
@@ -551,6 +543,10 @@ void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(th
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 }  // namespace transformers
+
+#ifdef ENABLE_ATEN
+Status ATen::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATen__Compute(this, p_ctx); }
+#endif
 }  // namespace contrib
 #endif
 
@@ -577,7 +573,6 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 
 #ifdef ENABLE_TRAINING
 namespace contrib {
-Status ATen::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATen__Compute(this, p_ctx); }
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }

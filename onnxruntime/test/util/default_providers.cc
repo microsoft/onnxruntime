@@ -133,8 +133,8 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
 // }
 
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
-// For any non - Android system, NNAPI will only be used for ort model converter
-// Make it unavailable here, you can still manually append NNAPI EP to session for model conversion
+// The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
+// Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.
 #if defined(USE_NNAPI) && defined(__ANDROID__)
   return CreateExecutionProviderFactory_Nnapi(0, {})->CreateProvider();
 #else
@@ -186,6 +186,23 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
   return CreateExecutionProviderFactory_CoreML(coreml_flags)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
+#if defined(USE_SNPE)
+  ProviderOptions provider_options_map;
+  return CreateExecutionProviderFactory_SNPE(provider_options_map)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
+#ifdef USE_XNNPACK
+  return CreateExecutionProviderFactory_Xnnpack()->CreateProvider();
 #else
   return nullptr;
 #endif

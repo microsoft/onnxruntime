@@ -470,6 +470,24 @@ MlasConvSymFixupInputZeroPoint(
     return zero_point_value;
 }
 
+int32_t
+MlasConvSymGetKernelOutputCount(
+    bool InputIsSigned
+    )
+{
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
+    return ConvSymDispatch->KernelOutputCount;
+}
+
+int32_t
+MlasConvSymDepthwiseGetKernelOutputCnt(
+    bool InputIsSigned
+    )
+{
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
+    return ConvSymDispatch->KernelDepthwiseOutputCount;
+}
+
 
 void
 MlasConvSym(
@@ -482,7 +500,7 @@ MlasConvSym(
     // s8s8 under ARM64
 #if defined(MLAS_TARGET_ARM64)
     const auto Kernel =
-        (Params.InputIsSigned && (GetMlasPlatform().GetCoreType() == mlas_core_little))
+        (Params.InputIsSigned && MLAS_CPUIDINFO::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd())
             ? ConvSymDispatch->KernelLittle
             : ConvSymDispatch->Kernel;
 #else

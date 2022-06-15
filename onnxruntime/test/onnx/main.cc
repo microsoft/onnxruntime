@@ -4,6 +4,8 @@
 #include <set>
 #include <iostream>
 #include <fstream>
+#include <string>
+#include <unordered_map>
 #ifdef _WIN32
 #include "getopt.h"
 #else
@@ -20,6 +22,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "nlohmann/json.hpp"
 
 using namespace onnxruntime;
 
@@ -36,11 +39,17 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi' or 'coreml'. "
+      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
+      "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
+      "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
+      "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
+      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
+      "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
       "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\n"
@@ -48,6 +57,28 @@ void usage() {
       "\n"
       "onnxruntime version: %s\n",
       OrtGetApiBase()->GetVersionString());
+}
+
+static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino) {
+  TestTolerances::Map absolute_overrides;
+  TestTolerances::Map relative_overrides;
+  std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
+      ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
+  if (!overrides_ifstream.good()) {
+    const double absolute = 1e-3;
+    // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
+    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                  : 1e-3;
+    return TestTolerances(absolute, relative, absolute_overrides, relative_overrides);
+  }
+  const auto overrides_json = nlohmann::json::parse(
+      overrides_ifstream,
+      /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
+  overrides_json["atol_overrides"].get_to(absolute_overrides);
+  overrides_json["rtol_overrides"].get_to(relative_overrides);
+  return TestTolerances(
+      overrides_json["atol_default"], overrides_json["rtol_default"], absolute_overrides, relative_overrides);
 }
 
 #ifdef _WIN32
@@ -99,6 +130,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_mem_pattern = true;
   bool enable_nnapi = false;
   bool enable_coreml = false;
+  bool enable_snpe = false;
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
@@ -108,6 +140,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
   bool set_denormal_as_zero = false;
+  std::basic_string<ORTCHAR_T> ep_runtime_config_string;
 
   OrtLoggingLevel logging_level = ORT_LOGGING_LEVEL_ERROR;
   bool verbose_logging_required = false;
@@ -115,7 +148,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:i:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -169,6 +202,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
             enable_coreml = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
+            enable_snpe = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
@@ -224,6 +259,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
+          break;
+        case 'i':
+          ep_runtime_config_string = optarg;
           break;
         case 'z':
           set_denormal_as_zero = true;
@@ -288,12 +326,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   std::vector<std::unique_ptr<ITestCase>> owned_tests;
   {
-    double per_sample_tolerance = 1e-3;
-    // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                                 : 1e-3;
-
     Ort::SessionOptions sf;
 
     if (enable_cpu_mem_arena)
@@ -323,7 +355,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      //Setting default optimization level for OpenVINO can be overriden with -o option
+      // Setting default optimization level for OpenVINO can be overridden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
 #else
@@ -371,6 +403,67 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sf, 0));
 #else
       fprintf(stderr, "CoreML is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_snpe) {
+#ifdef USE_SNPE
+#ifdef _MSC_VER
+      std::string option_string = ToUTF8String(ep_runtime_config_string);
+#else
+      std::string option_string = ep_runtime_config_string;
+#endif
+      std::istringstream ss(option_string);
+      std::string token;
+
+      std::vector<const char*> snpe_option_keys;
+      std::vector<const char*> snpe_option_values;
+      std::vector<std::string> values;
+
+      while (ss >> token) {
+        if (token == "") {
+          continue;
+        }
+        auto pos = token.find("|");
+        if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+          ORT_THROW(R"(Use a '|' to separate the key and value for
+the run-time option you are trying to use.\n)");
+        }
+
+        std::string key(token.substr(0, pos));
+        std::string value(token.substr(pos + 1));
+
+        if (key == "runtime") {
+          std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
+          if (supported_runtime.find(value) != supported_runtime.end()) {
+            snpe_option_keys.push_back("runtime");
+            values.push_back(value);
+          } else {
+            ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
+select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
+          }
+        } else if (key == "priority") {
+          snpe_option_keys.push_back("priority");
+          values.push_back(value);
+        } else if (key == "buffer_type") {
+          std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
+          if (supported_buffer_type.find(value) != supported_buffer_type.end()) {
+            snpe_option_keys.push_back("buffer_type");
+            values.push_back(value);
+          } else {
+            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
+select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
+          }
+        } else {
+          ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
+        }
+      }
+      for (auto& it : values) {
+        snpe_option_values.push_back(it.c_str());
+      }
+      sf.AppendExecutionProvider_SNPE(snpe_option_keys.data(), snpe_option_values.data(), snpe_option_keys.size());
+#else
+      fprintf(stderr, "SNPE is not supported in this build");
       return -1;
 #endif
     }
@@ -427,6 +520,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
+    // TODO: Get these from onnx_backend_test_series_filters.jsonc.
     // Permanently exclude following tests because ORT support only opset staring from 7,
     // Please make no more changes to the list
     static const ORTCHAR_T* immutable_broken_tests[] =
@@ -491,13 +585,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
 #if !defined(__amd64__) && !defined(_M_AMD64)
-    //out of memory
+    // out of memory
     static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19"), ORT_TSTR("coreml_VGG16_ImageNet")};
     all_disabled_tests.insert(std::begin(x86_disabled_tests), std::end(x86_disabled_tests));
 #endif
 
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+    LoadTests(data_dirs, whitelisted_test_cases,
+              LoadTestTolerances(enable_cuda, enable_openvino),
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());
@@ -821,7 +916,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"mlperf_ssd_mobilenet_300", "unknown error"});
     broken_tests.insert({"mlperf_ssd_resnet34_1200", "unknown error"});
-    broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
+    broken_tests.insert({"tf_inception_v1", "flaky test"});  // TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
   }

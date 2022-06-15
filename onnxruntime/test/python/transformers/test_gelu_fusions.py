@@ -1,9 +1,10 @@
+import math
 import os
 import unittest
-import math
-import torch
 
+import torch
 from parity_utilities import find_transformers_source
+
 if find_transformers_source():
     from optimizer import optimize_model
 else:
@@ -32,8 +33,12 @@ class MegatronFastGelu(torch.nn.Module):
         return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
 
-test_cases = [('huggingface', 'Gelu', HuggingfaceGelu), ('huggingface', 'FastGelu', HuggingfaceFastGelu),
-              ('megatron', 'Gelu', MegatronGelu), ('megatron', 'FastGelu', MegatronFastGelu)]
+test_cases = [
+    ("huggingface", "Gelu", HuggingfaceGelu),
+    ("huggingface", "FastGelu", HuggingfaceFastGelu),
+    ("megatron", "Gelu", MegatronGelu),
+    ("megatron", "FastGelu", MegatronFastGelu),
+]
 
 
 class TestGeluFusions(unittest.TestCase):
@@ -52,13 +57,19 @@ class TestGeluFusions(unittest.TestCase):
             dummy_input = torch.ones(3, dtype=torch.float32)
             test_name = f"{operator}_{source}"
             onnx_path = f"{test_name}.onnx"
-            torch.onnx.export(model, (dummy_input), onnx_path, input_names=['input'], output_names=['output'])
-            optimizer = optimize_model(onnx_path, 'bert')
+            torch.onnx.export(
+                model,
+                (dummy_input),
+                onnx_path,
+                input_names=["input"],
+                output_names=["output"],
+            )
+            optimizer = optimize_model(onnx_path, "bert")
             # optimizer.save_model_to_file(f"{operator}_{source}_opt.onnx")
             os.remove(onnx_path)
             expected_node_count = {operator: 1}
             self.verify_node_count(optimizer, expected_node_count, test_name)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

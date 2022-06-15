@@ -1,34 +1,43 @@
 import onnx
-from .base_operator import QuantOperatorBase
-from ..quant_utils import attribute_to_kwarg, ms_domain
 from onnx import onnx_pb as onnx_proto
-'''
+
+from ..quant_utils import attribute_to_kwarg, ms_domain
+from .base_operator import QuantOperatorBase
+
+"""
     Quantize Attention
-'''
+"""
 
 
 class AttentionQuant(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
+    def should_quantize(self):
+        return self.quantizer.should_quantize_node(self.node)
+
     def quantize(self):
-        '''
-            parameter node: Attention node.
-            parameter new_nodes_list: List of new nodes created before processing this node.
-            return: a list of nodes in topological order that represents quantized Attention node.
-        '''
+        """
+        parameter node: Attention node.
+        parameter new_nodes_list: List of new nodes created before processing this node.
+        return: a list of nodes in topological order that represents quantized Attention node.
+        """
         node = self.node
-        assert (node.op_type == "Attention")
+        assert node.op_type == "Attention"
 
         # TODO This is a temporary fix to stop exporting QAttention with qkv_hidden_sizes
         # attribute. This needs to be removed once the QAttention for varied q,k,v sizes
         # is implemented
         for attr in node.attribute:
-            if 'qkv_hidden_sizes' == attr.name:
+            if "qkv_hidden_sizes" == attr.name:
                 return super().quantize()
 
-        (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
+        (
+            quantized_input_names,
+            zero_point_names,
+            scale_names,
+            nodes,
+        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
         if quantized_input_names is None:
             return super().quantize()
 

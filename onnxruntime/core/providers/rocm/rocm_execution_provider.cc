@@ -2119,23 +2119,19 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
 
 }  // namespace rocm
 
-static std::shared_ptr<KernelRegistry>& RocmKernelRegistry() {
-  // static local variable ensures thread-safe initialization
-  static std::shared_ptr<KernelRegistry> rocm_kernel_registry = []() {
-    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
-    ORT_THROW_IF_ERROR(rocm::RegisterRocmKernels(*registry));
-    return registry;
-  }();
+static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
-  return rocm_kernel_registry;
+void InitializeRegistry() {
+  s_kernel_registry = KernelRegistry::Create();
+  ORT_THROW_IF_ERROR(rocm::RegisterRocmKernels(*s_kernel_registry));
 }
 
-void Shutdown_DeleteRegistry() {
-  RocmKernelRegistry().reset();
+void DeleteRegistry() {
+  s_kernel_registry.reset();
 }
 
 std::shared_ptr<KernelRegistry> ROCMExecutionProvider::GetKernelRegistry() const {
-  return RocmKernelRegistry();
+  return s_kernel_registry;
 }
 
 static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
@@ -2227,52 +2223,75 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
-  // Try to get a ROCM allocator from allocator manager first
-  // Used to allocate ROCM device memory
-  auto rocm_alloc = allocator_manager->GetAllocator(info_.device_id, OrtMemTypeDefault);
-  if (nullptr == rocm_alloc) {
-    rocm_alloc = CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                     info_.external_allocator_info, info_.default_memory_arena_cfg);
-    allocator_manager->InsertAllocator(rocm_alloc);
+void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
+  OrtDevice::DeviceId short_device_id = gsl::narrow<OrtDevice::DeviceId>(info_.device_id);
+  OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
+  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+
+  // setup ROCM allocator
+  // NOTE: We call IExecutionProvider::GetAllocator as ROCMExecutionProvider::GetAllocator will return
+  //       a per-thread allocator for OrtMemTypeDefault.
+  auto rocm_alloc = IExecutionProvider::GetAllocator(gpu_device.Id(), OrtMemTypeDefault);
+  if (!rocm_alloc) {
+    // use shared allocator if available
+    rocm_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
+
+    if (!rocm_alloc) {
+      rocm_alloc = CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                                       info_.external_allocator_info, info_.default_memory_arena_cfg);
+
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(rocm_alloc);
+    }
+
+    InsertAllocator(rocm_alloc);
   }
-  TryInsertAllocator(std::move(rocm_alloc));
 
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto rocm_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
-  if (nullptr == rocm_pinned_alloc) {
-    AllocatorCreationInfo pinned_memory_info(
-        [](OrtDevice::DeviceId device_id) {
-          return std::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
-        },
-        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  if (!rocm_pinned_alloc) {
+    rocm_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
-    rocm_pinned_alloc = CreateAllocator(pinned_memory_info);
-    allocator_manager->InsertAllocator(rocm_pinned_alloc);
+    if (!rocm_pinned_alloc) {
+      AllocatorCreationInfo pinned_memory_info(
+          [](OrtDevice::DeviceId device_id) {
+            return std::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
+          },
+          pinned_device.Id());
+      rocm_pinned_alloc = CreateAllocator(pinned_memory_info);
+      allocator_manager.InsertAllocator(rocm_pinned_alloc);
+    }
+
+    InsertAllocator(rocm_pinned_alloc);
   }
-  TryInsertAllocator(std::move(rocm_pinned_alloc));
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
-  auto rocm_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
-  if (nullptr == rocm_cpu_alloc) {
-    // TODO: this is actually used for the rocm kernels which explicitly ask for inputs from CPU.
-    // This will be refactored/removed when allocator and execution provider are decoupled.
-    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
-    // CPUAllocator is OrtMemTypeDefault for CPU EP
-    AllocatorCreationInfo cpu_memory_info(
-        [](int device_id) {
-          return std::make_unique<CPUAllocator>(
-              OrtMemoryInfo("ROCM_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                            OrtMemTypeCPUInput));
-        },
-        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  if (!rocm_cpu_alloc) {
+    rocm_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
-    rocm_cpu_alloc = CreateAllocator(cpu_memory_info);
-    allocator_manager->InsertAllocator(rocm_cpu_alloc);
+    if (!rocm_cpu_alloc) {
+      // TODO: this is actually used for the rocm kernels which explicitly ask for inputs from CPU.
+      // This will be refactored/removed when allocator and execution provider are decoupled.
+      // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+      // CPUAllocator is OrtMemTypeDefault for CPU EP
+      AllocatorCreationInfo cpu_memory_info(
+          [](int device_id) {
+            return std::make_unique<CPUAllocator>(
+                OrtMemoryInfo("ROCM_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                              OrtMemTypeCPUInput));
+          },
+          cpu_device.Id());
+
+      rocm_cpu_alloc = CreateAllocator(cpu_memory_info);
+      allocator_manager.InsertAllocator(rocm_cpu_alloc);
+    }
+
+    InsertAllocator(rocm_cpu_alloc);
   }
-  TryInsertAllocator(std::move(rocm_cpu_alloc));
 }
 
 }  // namespace onnxruntime

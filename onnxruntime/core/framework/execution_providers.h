@@ -69,6 +69,10 @@ class ExecutionProviders {
 
   size_t NumProviders() const { return exec_providers_.size(); }
 
+  using iterator = typename std::vector<std::shared_ptr<IExecutionProvider>>::iterator;
+  iterator begin() noexcept { return exec_providers_.begin(); }
+  iterator end() noexcept { return exec_providers_.end(); }
+
   using const_iterator = typename std::vector<std::shared_ptr<IExecutionProvider>>::const_iterator;
   const_iterator begin() const noexcept { return exec_providers_.cbegin(); }
   const_iterator end() const noexcept { return exec_providers_.cend(); }
