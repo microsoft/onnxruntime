@@ -377,6 +377,13 @@ ThreadPool::ThreadPool(Env* env,
   assert(degree_of_parallelism >= 1);
   if (degree_of_parallelism >= 2) {
     int threads_to_create = degree_of_parallelism - 1;
+
+    if (!thread_options_.affinity.empty()) {
+      // Remove first affinity element as designated for the caller thread
+      thread_options_.affinity.erase(thread_options_.affinity.begin());
+      assert(thread_options_.affinity.size() >= size_t(threads_to_create));
+    }
+
     extended_eigen_threadpool_ =
         std::make_unique<ThreadPoolTempl<Env> >(name,
                                                 threads_to_create,

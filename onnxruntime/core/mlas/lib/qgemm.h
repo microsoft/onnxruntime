@@ -799,6 +799,7 @@ struct MLAS_GEMM_QUANT_DISPATCH {
     MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t PackedK;
     size_t PackedStrideK;
+    size_t StrideM;
 };
 
 struct MLAS_SYMM_QGEMM_DISPATCH {

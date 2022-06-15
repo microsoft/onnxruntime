@@ -1016,6 +1016,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   void InitializePreferredWorkers(std::vector<int>& preferred_workers) {
     static std::atomic<unsigned> next_worker;
+
+  // preferred_workers[0] isn't supposed to be used, so initializng it with -1 to:
+  // a) fault if inapropriately accessed
+  // b) avoid wasting next_worker value
+  if (preferred_workers.size() == 0)
+    preferred_workers.push_back(-1);
+
     // preferred_workers maps from a par_idx to a q_idx, hence we
     // initialize slots in the range [0,num_threads_]
     while (preferred_workers.size() <= num_threads_) {
@@ -1476,12 +1483,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Task t = q.PopFront();
       if (!t) {
         // Spin waiting for work.
-        for (int i = 0; i < spin_count && !t && !done_; i++) {
+        for (int i = 0; i < spin_count && !done_; i++) {
           if (((i + 1) % steal_count == 0)) {
             t = Steal(StealAttemptKind::TRY_ONE);
           } else {
             t = q.PopFront();
           }
+          if (t) break;
+
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
