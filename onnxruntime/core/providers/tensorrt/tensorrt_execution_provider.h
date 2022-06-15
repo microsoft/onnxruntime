@@ -170,7 +170,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
-  bool context_memory_sharing_enable_ = true;
+  bool context_memory_sharing_enable_ = false;
   size_t max_ctx_mem_size_ = 0;  
   void* context_memory_ = nullptr;
   mutable char model_path_[4096];  // Reserved for max path length

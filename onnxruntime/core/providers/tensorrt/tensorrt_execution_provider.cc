@@ -283,6 +283,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       engine_decryption_lib_path_ = info.engine_decryption_lib_path;
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
+    context_memory_sharing_enable_ = info.context_memory_sharing_enable;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -1199,7 +1200,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       if (trt_engine != nullptr) {
         // Build context
-        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        if (context_memory_sharing_enable_) {
+          size_t mem_size = trt_engine->getDeviceMemorySize();
+          if (mem_size > max_ctx_mem_size_) {
+            max_ctx_mem_size_ = mem_size;
+            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_).get();
+          }
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+        } else {
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        }
         if (trt_context == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
@@ -1248,7 +1258,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         if (context_memory_sharing_enable_) {
           size_t mem_size = trt_engine->getDeviceMemorySize();
           if (mem_size > max_ctx_mem_size_) {
-            //max_ctx_mem_size_ = mem_size % 512 ? (mem_size / 512 + 1) * 512 : mem_size;
             max_ctx_mem_size_ = mem_size;
             context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_).get();
           }
@@ -1856,7 +1865,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       if (trt_state->context_memory_sharing_enable) {
 	    size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > *max_context_mem_size_ptr) {
-          //*max_context_mem_size_ptr = mem_size % 512 ? (mem_size / 512 + 1) * 512 : mem_size;
           *max_context_mem_size_ptr = mem_size;
 		  *context_memory = IAllocator::MakeUniquePtr<void>(alloc, *max_context_mem_size_ptr).get();
         }
