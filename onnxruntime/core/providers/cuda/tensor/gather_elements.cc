@@ -51,7 +51,7 @@ void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indic
   // Reverse for better calculation.
   std::reverse(input_shape.begin(), input_shape.end());
   std::reverse(indices_shape.begin(), indices_shape.end());
-  if (axis < 0 || axis >= rank) ORT_THROW("Invalid axis in CoalesceDimensions: ", axis);
+  if (axis < 0 || axis >= static_cast<int64_t>(rank)) ORT_THROW("Invalid axis in CoalesceDimensions: ", axis);
   size_t reverse_axis = rank - 1 - static_cast<size_t>(axis);
   size_t curr = 0, next = 0;
   while (curr < reverse_axis && CanSkip(input_shape, indices_shape, curr)) ++curr;
