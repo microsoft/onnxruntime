@@ -43,15 +43,66 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.Preview.1.9.0-dev2b57b4f738b1d0dcc2dd31ecd502e36f4e3ea5a0)
   set(DML_SHARED_LIB DirectML.dll)
 
-  # Restore nuget packages, which will pull down the DirectML redist package
+  # If using the preview package, extract the SHA-1 from the path so we can unmangle the filenames later.
+  # e.g. "Microsoft.AI.DirectML.Preview.1.9.0-dev2b57b4f738b1d0dcc2dd31ecd502e36f4e3ea5a0"
+  if(DML_PACKAGE_DIR MATCHES ".*Preview.*-dev(.*)")
+    set(DML_PREVIEW_FILENAME_SUFFIX ".${CMAKE_MATCH_1}")
+  endif()
+
+  # Restore nuget packages, which will pull down the DirectML redist package.
   add_custom_command(
-    OUTPUT ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.lib ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.lib ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.lib ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.lib
-    DEPENDS ${PACKAGES_CONFIG} ${NUGET_CONFIG}
+    OUTPUT
+      ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+      ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+      ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+      ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+    DEPENDS
+      ${PACKAGES_CONFIG}
+      ${NUGET_CONFIG}
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/nuget/src/nuget restore ${PACKAGES_CONFIG} -PackagesDirectory ${PACKAGES_DIR} -ConfigFile ${NUGET_CONFIG}
-    VERBATIM)
+    VERBATIM
+  )
+
+  # If using a preview package, unmangle the filenames from the nuget so they're useable.
+  # e.g. Map DirectML.2b57b4f738b1d0dcc2dd31ecd502e36f4e3ea5a0.dll -> DirectML.dll
+  if(DEFINED DML_PREVIEW_FILENAME_SUFFIX)
+    add_custom_command(
+      OUTPUT
+        ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.lib
+        ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.lib
+        ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.lib
+        ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.lib
+      DEPENDS
+        ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+        ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+        ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+        ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/x86-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb    ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.pdb
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.dll  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.dll
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.lib  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.lib
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML${DML_PREVIEW_FILENAME_SUFFIX}.pdb  ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.pdb
+      VERBATIM
+    )
+  endif()
 
   include_directories(BEFORE "${DML_PACKAGE_DIR}/include")
-  add_custom_target(RESTORE_PACKAGES ALL DEPENDS ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.lib ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.lib ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.lib ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.lib)
+  add_custom_target(
+    RESTORE_PACKAGES ALL
+    DEPENDS
+      ${DML_PACKAGE_DIR}/bin/x64-win/DirectML.lib
+      ${DML_PACKAGE_DIR}/bin/x86-win/DirectML.lib
+      ${DML_PACKAGE_DIR}/bin/arm-win/DirectML.lib
+      ${DML_PACKAGE_DIR}/bin/arm64-win/DirectML.lib
+  )
+
   add_dependencies(RESTORE_PACKAGES nuget)
 else()
   if (dml_EXTERNAL_PROJECT)
