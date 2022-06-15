@@ -878,8 +878,30 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
 
 TEST(TensorrtExecutionProviderTest, main_const_initializer_in_subgraph) {
   SessionOptions so;
-  so.graph_optimization_level = TransformerLevel::Level2;  // we need constant folding to run
+  so.graph_optimization_level = TransformerLevel::Default;
   InferenceSession session_object{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params{
+      0,
+      0,
+      nullptr,
+      1000,
+      1,
+      1 << 30,
+      0,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      0};
+
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/main_const_initializer_in_subgraph.onnx");
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
