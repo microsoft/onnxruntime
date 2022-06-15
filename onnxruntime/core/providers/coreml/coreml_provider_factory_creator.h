@@ -7,11 +7,8 @@
 
 #include "core/providers/providers.h"
 
-struct OrtROCMProviderOptions;
-
 namespace onnxruntime {
-// defined in provider_bridge_ort.cc
-struct RocmProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const OrtROCMProviderOptions* provider_options);
+struct CoreMLProviderFactoryCreator {
+  static std::shared_ptr<IExecutionProviderFactory> Create(uint32_t coreml_flags);
 };
 }  // namespace onnxruntime

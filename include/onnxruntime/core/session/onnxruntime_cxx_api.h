@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <utility>
 #include <type_traits>
 
@@ -357,25 +358,24 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
-  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
-  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);         ///< Wraps OrtApi::AddInitializer
+  SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);                                      ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptions& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
-  SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
-  SessionOptions& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
-  SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
-  SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
-  SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
-  SessionOptions& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
-  SessionOptions& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options); ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+  SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);               ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
+  SessionOptions& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
+  SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);               ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM
+  SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
+  SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
+  SessionOptions& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
+  SessionOptions& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports SNPE and XNNPACK.
+  SessionOptions& AppendExecutionProvider(const std::string& provider_name,
+                                          const std::unordered_map<std::string, std::string>& provider_options = {});
 
   SessionOptions& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
-  SessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);   ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
+  SessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptions& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
-  /// \brief Wraps OrtApi::SessionOptionsAppendExecutionProvider_SNPE
-  SessionOptions& AppendExecutionProvider_SNPE(const char* const* provider_options_keys,
-                                               const char* const* provider_options_values,
-                                               size_t num_keys);
 };
 
 /** \brief Wrapper around ::OrtModelMetadata
