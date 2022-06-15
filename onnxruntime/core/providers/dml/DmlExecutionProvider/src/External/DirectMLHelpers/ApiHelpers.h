@@ -28,6 +28,7 @@ union ActivationOperatorDescUnion
     DML_ACTIVATION_TANH_OPERATOR_DESC tanh;
     DML_ACTIVATION_THRESHOLDED_RELU_OPERATOR_DESC thresholdedRelu;
     DML_ACTIVATION_SHRINK_OPERATOR_DESC shrink;
+    DML_ACTIVATION_GELU_OPERATOR_DESC gelu;
 };
 
 struct ActivationOperatorDesc
@@ -64,6 +65,7 @@ struct ActivationOperatorDesc
         case DML_OPERATOR_ACTIVATION_TANH: return { activationType, &params.tanh };
         case DML_OPERATOR_ACTIVATION_THRESHOLDED_RELU: return { activationType, &params.thresholdedRelu };
         case DML_OPERATOR_ACTIVATION_SHRINK: return { activationType, &params.shrink };
+        case DML_OPERATOR_ACTIVATION_GELU: return { activationType, &params.gelu };
         default:
             ORT_THROW_HR(E_INVALIDARG);
             return { activationType, &params.relu };
