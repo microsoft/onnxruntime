@@ -77,11 +77,11 @@ find /usr/include/ -type f -exec sed -i 's/\bextern _*inline_*\b/extern __inline
 
 if [ "${DEVTOOLSET_ROOTPATH:-}" != "" ]; then
 	# remove useless things that have been installed/updated by devtoolset
-	if [ -d $DEVTOOLSET_ROOTPATH/usr/share/man ]; then
-		rm -rf $DEVTOOLSET_ROOTPATH/usr/share/man
+	if [ -d "$DEVTOOLSET_ROOTPATH"/usr/share/man ]; then
+		rm -rf "$DEVTOOLSET_ROOTPATH"/usr/share/man
 	fi
-	if [ -d $DEVTOOLSET_ROOTPATH/usr/share/locale ]; then
-		find $DEVTOOLSET_ROOTPATH/usr/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) | xargs rm -rf
+	if [ -d "$DEVTOOLSET_ROOTPATH"/usr/share/locale ]; then
+		find "$DEVTOOLSET_ROOTPATH"/usr/share/locale -mindepth 1 -maxdepth 1 -not \( -name 'en*' -or -name 'locale.alias' \) | xargs rm -rf
 	fi
 fi
 

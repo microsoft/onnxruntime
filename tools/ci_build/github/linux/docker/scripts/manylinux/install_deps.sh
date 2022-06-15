@@ -20,25 +20,26 @@ function GetFile {
   local download_retries=${4:-5}
   local retry_wait_time_seconds=${5:-30}
 
-  if [[ -f $path ]]; then
-    if [[ $force = false ]]; then
+  if [[ -f "$path" ]]; then
+    if [[ "$force" = false ]]; then
       echo "File '$path' already exists. Skipping download"
       return 0
     else
-      rm -rf $path
+      rm -rf "$path"
     fi
   fi
 
   if [[ -f "$uri" ]]; then
     echo "'$uri' is a file path, copying file to '$path'"
-    cp $uri $path
+    cp "$uri" "$path"
     return "$?"
   fi
 
   echo "Downloading $uri"
   # Use aria2c if available, otherwise use curl
   if command -v aria2c > /dev/null; then
-    aria2c -q -d $(dirname "$path") -o $(basename "$path") "$uri"
+    # https://unix.stackexchange.com/questions/289574/nested-double-quotes-in-assignment-with-command-substitution
+    aria2c -q -d "$(dirname "$path")" -o "$(basename "$path")" "$uri"
   else
     curl "$uri" -sSL --retry "$download_retries" --retry-delay "$retry_wait_time_seconds" --create-dirs -o "$path" --fail
   fi
@@ -77,8 +78,8 @@ GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/sr
 unzip /tmp/src/gradle-6.3-bin.zip
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
-if ! [ -x "$(command -v protoc)" ]; then
-  source ${0/%install_deps.sh/..\/install_protobuf.sh}
+if ! [ -x $(command -v protoc) ]; then
+  source "${0/%install_deps.sh/..\/install_protobuf.sh}"
 fi
 
 export ONNX_ML=1
@@ -86,11 +87,11 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
-  ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-  if ![[ ${PYTHON_EXE} = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
-    ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu\/requirements.txt}
+  "${PYTHON_EXE}" -m pip install -r "${0/%install_deps\.sh/requirements\.txt}"
+  if ! [[ "${PYTHON_EXE}" = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
+    "${PYTHON_EXE}" -m pip install -r "${0/%install_deps\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu\/requirements.txt}"
   else
-    ${PYTHON_EXE} -m pip install torch==1.11.0
+    "${PYTHON_EXE}" -m pip install torch==1.11.0
   fi
 done
 
@@ -99,7 +100,7 @@ GetFile 'https://sourceware.org/pub/valgrind/valgrind-3.16.1.tar.bz2' /tmp/src/v
 tar -jxvf valgrind-3.16.1.tar.bz2
 cd valgrind-3.16.1
 ./configure --prefix=/usr --libdir=/usr/lib64 --enable-only64bit --enable-tls
-make -j$(getconf _NPROCESSORS_ONLN)
+make -j"$(getconf _NPROCESSORS_ONLN)"
 make install
 
 cd /
