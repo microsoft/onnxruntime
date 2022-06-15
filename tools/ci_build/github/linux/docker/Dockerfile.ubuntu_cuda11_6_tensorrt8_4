@@ -41,6 +41,9 @@ RUN v="8.4.1-1+cuda11.6" &&\
         libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
         python3-libnvinfer=${v} libnvinfer-samples=${v}
 
+# Compile trtexec
+RUN cd /usr/src/tensorrt/samples/trtexec && make
+
 WORKDIR /code
 
 # Prepare onnxruntime repository & build onnxruntime with TensorRT
