@@ -96,6 +96,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    *
    * @param env The OrtEnvironment.
    * @param tensor The Java side representation.
+   * @param <T> The buffer type.
    * @return The sparse tensor in ORT.
    * @throws OrtException If the tensor could not be created or was invalid.
    */
@@ -106,7 +107,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
 
   static <T extends Buffer> OnnxSparseTensor createSparseTensor(
       OrtEnvironment env, OrtAllocator allocator, SparseTensor<T> tensor) throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       TensorInfo info = TensorInfo.constructFromSparseTensor(tensor);
       OnnxJavaType indicesType = tensor.getIndicesType();
       OrtUtil.BufferTuple indicesTuple = OrtUtil.prepareBuffer(tensor.getIndices(), indicesType);

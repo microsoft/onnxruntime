@@ -301,6 +301,7 @@ public class TensorInfo implements ValueInfo {
    * Constructs a TensorInfo from the supplied {@link OnnxSparseTensor.SparseTensor}.
    *
    * @param tensor The sparse tensor.
+   * @param <T> The buffer type.
    * @return A TensorInfo for a sparse tensor.
    * @throws OrtException If the supplied tensor has too many elements for it's shape.
    */
