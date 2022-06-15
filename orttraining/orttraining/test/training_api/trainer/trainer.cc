@@ -46,6 +46,19 @@ void EnforceCheck(bool run_ret, std::string err_msg) {
   }
 }
 
+#define ORT_RETURN_ON_ERROR(expr)                                \
+  do {                                                           \
+    OrtStatus* onnx_status = (expr);                             \
+    if (onnx_status != NULL) {                                   \
+      auto code = g_ort_api->GetErrorCode(onnx_status);          \
+      const char* msg = g_ort_api->GetErrorMessage(onnx_status); \
+      g_ort_api->ReleaseStatus(onnx_status);                     \
+      printf("Run failed with error code :%d\n", code);          \
+      printf("Error message :%s\n", msg);                        \
+      return -1;                                                 \
+    }                                                            \
+  } while (0);
+
 bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
   cxxopts::Options options("Training API Test", "Main Program to test training C++ APIs.");
   // clang-format off
@@ -154,40 +167,25 @@ void InitSyntheticDataLoader(
   }
 }
 
-#define ORT_RETURN_ON_ERROR(expr)                            \
-  do {                                                       \
-    OrtStatus* onnx_status = (expr);                         \
-    if (onnx_status != NULL) {                               \
-      auto code = g_ort_api->GetErrorCode(onnx_status);          \
-      const char* msg = g_ort_api->GetErrorMessage(onnx_status); \
-      g_ort_api->ReleaseStatus(onnx_status);                     \
-      printf("Run failed with error code :%d\n", code);          \
-      printf("Error message :%s\n", msg); \
-      return -1; \
-    }                                                        \
-  } while (0);
-
 int RunTraining(const TestRunnerParameters& params) {
   g_ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
   // Create Env
   OrtEnv* env;
+  // TODO: enable global threadpool
   OrtThreadingOptions* threading_options = nullptr;
   ORT_RETURN_ON_ERROR(g_ort_api->CreateThreadingOptions(&threading_options));
-  //ORT_RETURN_ON_ERROR(g_ort_api->SetGlobalInterOpNumThreads(threading_options, 0 /*default == logical cpus*/));
-  //ORT_RETURN_ON_ERROR(g_ort_api->SetGlobalIntraOpNumThreads(threading_options, 1 /*default == logical cpus*/));
   ORT_RETURN_ON_ERROR(g_ort_api->CreateEnvWithGlobalThreadPools(
-          ORT_LOGGING_LEVEL_VERBOSE, "log", threading_options, &env));
+      ORT_LOGGING_LEVEL_VERBOSE, "log", threading_options, &env));
   g_ort_api->ReleaseThreadingOptions(threading_options);
 
   // Load Checkpoint State
   OrtCheckpointState* checkpoint_state;
   ORT_RETURN_ON_ERROR(g_ort_api->LoadCheckpoint(params.checkpoint_to_load_path.c_str(), &checkpoint_state));
 
-    // Create TrainingSession
+  // Create TrainingSession
   OrtSessionOptions* soptions;
   ORT_RETURN_ON_ERROR(g_ort_api->CreateSessionOptions(&soptions));
-  //ORT_RETURN_ON_ERROR(g_ort_api->DisablePerSessionThreads(soptions));
 
 #ifdef USE_CUDA
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
@@ -207,7 +205,7 @@ int RunTraining(const TestRunnerParameters& params) {
   size_t train_mode_output_count, eval_mode_output_count = 0;
   ORT_RETURN_ON_ERROR(g_ort_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
 
-  if(do_eval) {
+  if (do_eval) {
     ORT_RETURN_ON_ERROR(g_ort_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
   }
 
@@ -225,7 +223,7 @@ int RunTraining(const TestRunnerParameters& params) {
   //int64_t warmup_step_count = total_step_count / 3;
   //Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
 
-  std::cout<< "Initialization completed. Now starting training loop." << std::endl;
+  std::cout << "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;
   double stabilized_total_end_to_end_time{0};
   auto end_to_end_start = std::chrono::high_resolution_clock::now();
@@ -306,12 +304,11 @@ int RunTraining(const TestRunnerParameters& params) {
       batch_idx++;
 
       // release input ortvalues
-      for(size_t i = 0; i < inputs.size(); i++) {
+      for (size_t i = 0; i < inputs.size(); i++) {
         g_ort_api->ReleaseValue(inputs[i]);
       }
 
-      // TODO(askhade): release output values. Need to find out which ones to release and when
-      // as some output values may be needed through out the training loop
+      // TODO(askhade): release output values. Needs changes from Aishwarya's PR.
     }
 
     data_loader.ResetIterateIndex();

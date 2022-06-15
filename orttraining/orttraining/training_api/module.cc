@@ -56,15 +56,15 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const onnxruntime::SessionOptions& session_options,
                const Environment& env,
                const std::optional<std::string>& eval_model_path_or_bytes) : named_parameters_{named_parameters} {
-  // create session for training model
+  // Create session for training model
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
 
-  // extract model input and output names
+  // Extract model input and output names
   utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
 
-  // reorder the extracted input names in the following order:
+  // Reorder the extracted input names in the following order:
   // user inputs, weights, gradients, reset_grad
   std::vector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
   std::string param_name;
@@ -94,9 +94,10 @@ Module::Module(const std::string& train_model_path_or_bytes,
   // Loop each parameter, allocate it's memory based on user specified device.
   auto& train_sess_state = train_sess_->GetSessionState();
   for (auto& param_name : param_input_names) {
-    ORT_ENFORCE(named_parameters_.find(param_name) != named_parameters_.end());
+    auto params_iter = named_parameters_.find(param_name);
+    ORT_ENFORCE(params_iter != named_parameters_.end());
 
-    // retrieve the target device for "param_name"
+    // Retrieve the target device for "param_name"
     std::vector<SessionState::NodeInfo> node_info_vec;
     ORT_THROW_IF_ERROR(train_sess_state.GetInputNodeInfo(param_name, node_info_vec));
     const auto& node_info = node_info_vec.front();
@@ -108,23 +109,22 @@ Module::Module(const std::string& train_model_path_or_bytes,
     // TODO(pengwa): consider whether we should alloc contiguous buffer for parameters or gradients.
     // Copy ortvalue buffer from CPU to target_device for this "param_name" (based on graph partitioning)
     // Only copies data if target device is not the same as the current device the buffer is placed on
-    auto params_iter = named_parameters_.find(param_name);
-    ORT_ENFORCE(params_iter != named_parameters_.end());
-    OrtValue& param_data = params_iter->second->Data();
 
+    OrtValue& param_data = params_iter->second->Data();
     ORT_ENFORCE(param_data.IsTensor());
     const Tensor& param_data_tensor = param_data.Get<Tensor>();
-    // if the source device type is already same as target device skip copy
+    // If the source device type is already same as target device skip copy
     if (param_data_tensor.Location().device.Type() != target_device.Type()) {
       // TODO: move this outside of the for loop?
       auto target_allocator = train_sess_state.GetAllocator(target_device);
       ORT_ENFORCE(target_allocator != nullptr);
 
-      // create a new tensor on the target_device and switch the source_ortvalue to point to this new tensor
+      // Create a new tensor on the target_device and switch the source_ortvalue to point to this new tensor
       auto target_tensor = std::make_unique<Tensor>(param_data_tensor.DataType(), param_data_tensor.Shape(), target_allocator);
       ORT_THROW_IF_ERROR(train_sess_state.GetDataTransferMgr().CopyTensor(param_data_tensor, *target_tensor.get()));
-      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-      param_data.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+      auto ml_tensor_type = DataTypeImpl::GetType<Tensor>();
+      // TODO test the original buffer is released.
+      param_data.Init(target_tensor.release(), ml_tensor_type, ml_tensor_type->GetDeleteFunc());
     }
 
     weights_.push_back(param_data);
@@ -154,9 +154,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
     utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
 
     // Eval model validation
-    // We are making certain assumptions: Like the order in which parameters
-    // occur will be same between train and eval graphs,
-    // and all the weights present in both graphs match.
+    // We are making certain assumptions: Like the order in which parameters occur will be same between train and eval
+    // graphs, and all the weights present in both graphs match.
     // TODO: Add the checks instead of making assumptions??
     std::vector<std::string> eval_user_input_names, param_input_names;
     for (const auto& input_name : eval_input_names_) {

@@ -106,7 +106,7 @@ bool SyntheticDataLoader::GetNextSampleBatch(std::vector<OrtValue*>& batches) {
 
     auto ptr_int32 = dynamic_cast<TypedSynctheticInput<int32_t>*>(input_ptr);
     if (ptr_int32) {
-      OrtValue* value = NULL;
+      OrtValue* value = nullptr;
       ORT_RETURN_ON_ERROR(ort_api->CreateTensorWithDataAsOrtValue(memory_info,
       input_ptr->GetData<int32_t>().data(), (input_ptr->NumOfBytesPerSample() * sizeof(int32_t)),
       shape_vector.data(), shape_vector.size(),

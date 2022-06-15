@@ -18,12 +18,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_
   *out = nullptr;
 
   ORT_TRY {
-      train_sess = std::make_unique<onnxruntime::training::api::TrainingSession>(
+    train_sess = std::make_unique<onnxruntime::training::api::TrainingSession>(
         env->GetEnvironment(),
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         chkpt_state->module_checkpoint_state.named_parameters);
 
-      *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
+    *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -79,7 +79,6 @@ ORT_API_STATUS_IMPL(OrtApis::ResetGrad, _Inout_ OrtTrainingSession* session) {
 ORT_API_STATUS_IMPL(OrtApis::TrainStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
                     size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs) {
-
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
   constexpr int queue_id = 0;
@@ -128,7 +127,6 @@ ORT_API_STATUS_IMPL(OrtApis::TrainStep, _Inout_ OrtTrainingSession* sess, _In_op
 ORT_API_STATUS_IMPL(OrtApis::EvalStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
                     size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs) {
-
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
   constexpr int queue_id = 0;
@@ -200,7 +198,7 @@ ORT_API_STATUS_IMPL(OrtApis::LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_pa
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Inout_ OrtTrainingSession* sess,
-                  bool save_optimizer_state) {
+                    bool save_optimizer_state) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
   onnxruntime::training::api::CheckpointState chkpt_state;
