@@ -28,7 +28,7 @@ const PathString k_trainable_param_root_prefix = ORT_TSTR("paramtrain");
 const PathString k_non_trainable_param_root_prefix = ORT_TSTR("paramfrozen");
 const PathString k_optimizer_root_prefix = ORT_TSTR("optim");
 const PathString k_property_root_prefix = ORT_TSTR("custom");
-const PathString k_name_seperator = ORT_TSTR("_");
+const PathString k_name_separator = ORT_TSTR("_");
 
 const std::string builtin_lr_property_name("builtin.initial_learning_rate");
 const std::string builtin_step_property_name("builtin.step");
@@ -58,8 +58,8 @@ Status CreateTensorProtosFromOrtValues(
 
   saved_tensor_protos.reserve(ordered_tensor_names.size());
 
-  unsigned long total_bytes = 0;
-  constexpr unsigned long PROTOBUF_UPPER_LIMIT = 2 * 1000 * 1000 * 1000;
+  unsigned int64_t total_bytes = 0;
+  constexpr unsigned int64_t PROTOBUF_UPPER_LIMIT = 2 * 1000 * 1000 * 1000;
   for (const auto& tensor_name : ordered_tensor_names) {
     const OrtValue& ort_value = name_to_ort_value.at(tensor_name);
     ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
@@ -68,7 +68,7 @@ Status CreateTensorProtosFromOrtValues(
 
     // Currently large model size not considered, so exception thrown here
     // when protobuf upper limit hit.
-    total_bytes += static_cast<unsigned long>(src_tensor.SizeInBytes());
+    total_bytes += static_cast<unsigned int64_t>(src_tensor.SizeInBytes());
     if (total_bytes >= PROTOBUF_UPPER_LIMIT) {
       ORT_THROW("checkpoint file size hit upper limit.");
     }
@@ -97,27 +97,27 @@ Status CreateTensorProtosFromOrtValues(
 
 PathString GetTensorProtoFilePath(const PathString& checkpoint_directory, const PathString& filename_prefix) {
   std::basic_ostringstream<PathChar> oss;
-  oss << filename_prefix << k_name_seperator << k_tensor_proto_file_name;
+  oss << filename_prefix << k_name_separator << k_tensor_proto_file_name;
   return ConcatPathComponent<PathChar>(checkpoint_directory, oss.str());
 }
 
 PathString GetTensorProtoPropertiesFilePath(
     const PathString& checkpoint_directory, const PathString& filename_prefix) {
   std::basic_ostringstream<PathChar> oss;
-  oss << filename_prefix << k_name_seperator << k_tensor_proto_properties_file_name;
+  oss << filename_prefix << k_name_separator << k_tensor_proto_properties_file_name;
   return ConcatPathComponent<PathChar>(checkpoint_directory, oss.str());
 }
 
 PathString StringConcat(
     const PathString& s_a, const PathString& s_b,
-    const PathString& del = k_name_seperator) {
+    const PathString& del = k_name_separator) {
   std::basic_ostringstream<PathChar> oss;
   oss << s_a << del << s_b;
   return oss.str();
 }
 
 void StringSplit(const PathString& s, std::vector<PathString>& results,
-                 const PathString& del = k_name_seperator) {
+                 const PathString& del = k_name_separator) {
   ORT_ENFORCE(!s.empty(), "String to split is empty");
   size_t start = 0;
   size_t end = s.find(del);
