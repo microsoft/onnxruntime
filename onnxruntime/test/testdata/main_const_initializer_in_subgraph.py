@@ -2,11 +2,10 @@ import onnx
 from onnx import helper
 from onnx import TensorProto
 
-# Loop body graph with If node and usage of main_graph_initializer on this level
+# Loop body graph and usage of main_graph_initializer on this level
+# (Note: When running the model, we may need to disable graph optimization so that main_graph_initializer won't go away afer constant folding)
 body = helper.make_graph(
     [
-        # Add node that can be constant folded. Creates NodeArg when created but that implicit usage of an outer scope
-        # value main_graph_initializer goes away after constant folding
         helper.make_node("Add", ["sub_graph_initializer", "main_graph_initializer"], ["initializer_sum"], "Add1"),
         helper.make_node("Add", ["initializer_sum", "loop_state_in"], ["loop_state_out"], "Add2"),
     ],
@@ -21,7 +20,6 @@ body = helper.make_graph(
         helper.make_tensor_value_info('loop_state_out', TensorProto.FLOAT, [1]),
     ],
     [
-        # helper.make_tensor('subgraph_keep_going_out', TensorProto.BOOL, [1], [True]),
         helper.make_tensor('sub_graph_initializer', TensorProto.FLOAT, [1], [1.]),
     ]
 )

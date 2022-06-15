@@ -876,9 +876,13 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
+// The GraphProto that TRT consumes much be a self-contained GraphProto.
+// In this test case, one of the initializer of the subgraph is outer scope value, 
+// so TRT EP should make sure outer scope value is being copied into the subgraph when doing GraphViewer to GraphProto.
+// (Note: We disable graph optimization so that initializer won't go away afer constant folding)
 TEST(TensorrtExecutionProviderTest, main_const_initializer_in_subgraph) {
   SessionOptions so;
-  so.graph_optimization_level = TransformerLevel::Default;
+  so.graph_optimization_level = TransformerLevel::Default; // disable optimization
   InferenceSession session_object{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params{
       0,
