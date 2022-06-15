@@ -7,11 +7,10 @@ import datetime
 import platform
 import subprocess
 import sys
-import os
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
-from os import environ, getcwd, path, remove
+from os import environ, getcwd, path, remove, popen
 from pathlib import Path
 from shutil import copyfile
 
@@ -124,7 +123,7 @@ try:
                 _, _, plat = _bdist_wheel.get_tag(self)
                 if platform.system() == "Linux":
                     # Get the right platform tag by querying the linker version
-                    glibc_major, glibc_minor = os.popen("ldd --version | head -1").read().split()[-1].split(".")
+                    glibc_major, glibc_minor = popen("ldd --version | head -1").read().split()[-1].split(".")
                     # See https://github.com/mayeut/pep600_compliance/blob/master/pep600_compliance/tools/manylinux-policy.json
                     if glibc_major == "2" and glibc_minor == "17":
                         plat = "manylinux_2_17_x86_64.manylinux2014_x86_64"
@@ -257,7 +256,7 @@ try:
 
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
-                    result = subprocess.run(
+                    subprocess.run(
                         ["patchelf", "--set-rpath", "$ORIGIN", dest, "--force-rpath"],
                         check=True,
                         stdout=subprocess.PIPE,
@@ -279,17 +278,18 @@ try:
                     logger.info("removing %s", file)
                     remove(file)
 
-    class InstallCommand(InstallCommandBase):
-
-        def finalize_options(self):
-            ret = InstallCommandBase.finalize_options(self)
-            self.install_lib = self.install_platlib
-            return ret
-
 except ImportError as error:
     print("Error importing dependencies:")
     print(error)
     bdist_wheel = None
+
+
+class InstallCommand(InstallCommandBase):
+
+    def finalize_options(self):
+        ret = InstallCommandBase.finalize_options(self)
+        self.install_lib = self.install_platlib
+        return ret
 
 providers_cuda_or_rocm = "libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
 providers_tensorrt_or_migraphx = "libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
@@ -342,7 +342,7 @@ else:
         libs.extend(["onnxruntime_pywrapper.dll"])
 
 if is_manylinux:
-    if(is_openvino):
+    if is_openvino:
         ov_libs =[
             "libopenvino_intel_cpu_plugin.so",
             "libopenvino_intel_gpu_plugin.so",
@@ -355,9 +355,9 @@ if is_manylinux:
             "libopenvino_c.so",
             "libopenvino_onnx_frontend.so",
         ]
-      for x in ov_libs:
+        for x in ov_libs:
             y = "onnxruntime/capi/" + x
-            result = subprocess.run(
+            subprocess.run(
                 ["patchelf", "--set-rpath", "$ORIGIN", y, "--force-rpath"],
                 check=True,
                 stdout=subprocess.PIPE,
@@ -387,16 +387,11 @@ examples = [path.join("datasets", x) for x in examples_names]
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 
 # Description
-if(is_openvino):
-    README = path.join(getcwd(), "docs/python/ReadMeOV.rst")
-    if not path.exists(README):
-        this = path.dirname(__file__)
-        README = path.join(this, "docs/python/ReadMeOV.rst")
-else:
-    README = path.join(getcwd(), "docs/python/README.rst")
-    if not path.exists(README):
-        this = path.dirname(__file__)
-        README = path.join(this, "docs/python/README.rst")
+readme_file = "docs/python/ReadMeOV.rst" if is_openvino else "docs/python/README.rst"
+README = path.join(getcwd(), readme_file)
+if not path.exists(README):
+    this = path.dirname(__file__)
+    README = path.join(this, readme_file)
 
 if not path.exists(README):
     raise FileNotFoundError("Unable to find 'README.rst'")
@@ -507,6 +502,7 @@ if enable_training:
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
     if not is_openvino : 
+        # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
