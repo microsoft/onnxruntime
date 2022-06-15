@@ -5,6 +5,10 @@
 #define ONNXRUNTIME_CORE_PROVIDERS_TVM_HASH_ALG_HASHER_IMPL_H_
 
 #include <string>
+#include <iomanip>
+#include <sstream>
+#include <memory>
+#include <ippcp.h>
 
 
 namespace onnxruntime {
@@ -24,6 +28,11 @@ class HasherSHA256Impl : public HasherImpl {
   virtual ~HasherSHA256Impl() = default;
 
   std::string hash(const char* src, size_t size) const final;
+
+ private:
+  static void digest(const Ipp8u* src, int size, Ipp8u* dst);
+  static std::string digest(const char* src, size_t size);
+  static std::string hexdigest(const char* src, size_t size);
 };
 
 }   // namespace tvm
