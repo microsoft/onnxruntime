@@ -4,6 +4,8 @@
 #include <set>
 #include <iostream>
 #include <fstream>
+#include <string>
+#include <unordered_map>
 #ifdef _WIN32
 #include "getopt.h"
 #else
@@ -21,6 +23,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "nlohmann/json.hpp"
 
 using namespace onnxruntime;
 
@@ -55,6 +58,28 @@ void usage() {
       "\n"
       "onnxruntime version: %s\n",
       OrtGetApiBase()->GetVersionString());
+}
+
+static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino) {
+  TestTolerances::Map absolute_overrides;
+  TestTolerances::Map relative_overrides;
+  std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
+      ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
+  if (!overrides_ifstream.good()) {
+    const double absolute = 1e-3;
+    // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
+    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+    const double relative = enable_cuda ? 0.017 : enable_openvino ? 0.009
+                                                                  : 1e-3;
+    return TestTolerances(absolute, relative, absolute_overrides, relative_overrides);
+  }
+  const auto overrides_json = nlohmann::json::parse(
+      overrides_ifstream,
+      /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
+  overrides_json["atol_overrides"].get_to(absolute_overrides);
+  overrides_json["rtol_overrides"].get_to(relative_overrides);
+  return TestTolerances(
+      overrides_json["atol_default"], overrides_json["rtol_default"], absolute_overrides, relative_overrides);
 }
 
 #ifdef _WIN32
@@ -305,12 +330,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
   std::vector<std::unique_ptr<ITestCase>> owned_tests;
   {
-    double per_sample_tolerance = 1e-3;
-    // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-    // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                                 : 1e-3;
-
     Ort::SessionOptions sf;
 
     if (enable_cpu_mem_arena)
@@ -340,7 +359,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_openvino) {
 #ifdef USE_OPENVINO
-      // Setting default optimization level for OpenVINO can be overriden with -o option
+      // Setting default optimization level for OpenVINO can be overridden with -o option
       sf.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
       sf.AppendExecutionProvider_OpenVINO(OrtOpenVINOProviderOptions{});
 #else
@@ -504,6 +523,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       sf.SetGraphOptimizationLevel(graph_optimization_level);
     }
 
+    // TODO: Get these from onnx_backend_test_series_filters.jsonc.
     // Permanently exclude following tests because ORT support only opset staring from 7,
     // Please make no more changes to the list
     static const ORTCHAR_T* immutable_broken_tests[] =
@@ -574,7 +594,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
 
     std::vector<ITestCase*> tests;
-    LoadTests(data_dirs, whitelisted_test_cases, per_sample_tolerance, relative_per_sample_tolerance,
+    LoadTests(data_dirs, whitelisted_test_cases,
+              LoadTestTolerances(enable_cuda, enable_openvino),
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());

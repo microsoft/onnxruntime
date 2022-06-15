@@ -33,6 +33,7 @@ function fetch_source {
     if [ -f ${file} ]; then
         echo "${file} exists, skipping fetch"
     else
+        apt-get update && apt-get install -y curl gpg-agent
         curl -fsSL -o ${file} ${url}/${file}
     fi
 }
