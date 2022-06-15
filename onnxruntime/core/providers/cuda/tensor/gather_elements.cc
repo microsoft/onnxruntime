@@ -51,6 +51,7 @@ void CoalesceDimensions(TensorShapeVector& input_shape, TensorShapeVector& indic
   // Reverse for better calculation.
   std::reverse(input_shape.begin(), input_shape.end());
   std::reverse(indices_shape.begin(), indices_shape.end());
+  if (axis < 0 || axis >= rank) ORT_THROW("Invalid axis in CoalesceDimensions: ", axis);
   size_t reverse_axis = rank - 1 - static_cast<size_t>(axis);
   size_t curr = 0, next = 0;
   while (curr < reverse_axis && CanSkip(input_shape, indices_shape, curr)) ++curr;
@@ -126,11 +127,11 @@ ONNX_NAMESPACE::TensorProto_DataType GetElementType(size_t element_size) {
   switch (element_size) {
     case sizeof(int8_t):
       return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-    case sizeof(int16_t):
+    case sizeof(MLFloat16):
       return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-    case sizeof(int32_t):
+    case sizeof(float):
       return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    case sizeof(int64_t):
+    case sizeof(double):
       return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
     // should not reach here as we validate if the all relevant types are supported in the Compute method
     default:
