@@ -200,7 +200,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         // XXX: Add support for SparseTensors outputs when we have sparse outputs
         if (!utils::HasTensorType(*constant_arg_out.TypeAsProto())) {
           LOGS(logger, INFO) << "Unsupported output type of " << constant_arg_out.Type()
-                                << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+                             << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
           converted_to_constant = false;
           break;
         }
