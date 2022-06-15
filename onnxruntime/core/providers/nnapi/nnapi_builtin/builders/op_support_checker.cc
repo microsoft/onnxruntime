@@ -2229,9 +2229,17 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
   }
 
   // only support if `pads` input is known
-  if (const auto& pads_arg = inputs[1].node_arg; !Contains(initializers, pads_arg.Name())) {
-    LOGS_DEFAULT(VERBOSE) << "Padding element counts must be known";
+  if (!Contains(initializers, inputs[1].node_arg.Name())) {
+    LOGS_DEFAULT(VERBOSE) << "pads must be known";
     return false;
+  }
+
+  // only support if `constant_value` input is known
+  if (inputs.size() > 2) {
+    if (!Contains(initializers, inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "constant_value must be known";
+      return false;
+    }
   }
 
   return true;

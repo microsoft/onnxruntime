@@ -2740,7 +2740,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
   std::vector<uint8_t> pads_initializer_raw_data{};
   ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*pads_initializer, pads_initializer_raw_data));
-  ORT_RETURN_IF_NOT(pads_initializer_raw_data.size() != 2 * data_rank * sizeof(int64_t),
+  ORT_RETURN_IF_NOT(pads_initializer_raw_data.size() == 2 * data_rank * sizeof(int64_t),
                     "Expected pads initializer size in bytes: ", 2 * data_rank * sizeof(int64_t),
                     ", actual: ", pads_initializer_raw_data.size());
 
@@ -2769,12 +2769,22 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   input_indices.push_back(operand_indices.at(pads));
 
   // `constant_value` input
+  float pad_value = 0.0f;
   if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
-    input_indices.push_back(operand_indices.at(inputs[2].node_arg.Name()));
-  } else {
-    // optional for ONNX, required for NNAPI
-    ADD_SCALAR_OPERAND(model_builder, input_indices, 0.0f);
+    const auto constant_value = inputs[2].node_arg.Name();
+    const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
+    ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
+    ORT_ENFORCE(constant_value_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+    std::vector<uint8_t> pad_value_raw_data{};
+    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*constant_value_initializer, pad_value_raw_data));
+    ORT_RETURN_IF_NOT(pad_value_raw_data.size() == sizeof(float),
+                      "Expected constant_value initializer size in bytes: ", sizeof(float),
+                      ", actual size: ", pad_value_raw_data.size());
+    memcpy(&pad_value, pad_value_raw_data.data(), sizeof(float));
   }
+
+  ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);
 
   const auto& output = outputs[0].node_arg.Name();
 
