@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -19,14 +19,17 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxMap_getStringKeys
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract key
     OrtValue* keys;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
+    if (code == ORT_OK) {
+      // Convert to Java String array
+      jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
 
-    // Convert to Java String array
-    jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
+      api->ReleaseValue(keys);
 
-    api->ReleaseValue(keys);
-
-    return output;
+      return output;
+    } else {
+      return NULL;
+    }
 }
 
 /*
@@ -41,13 +44,16 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxMap_getLongKeys
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract key
     OrtValue* keys;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,0,allocator,&keys));
+    if (code == ORT_OK) {
+      jlongArray output = createLongArrayFromTensor(jniEnv, api, keys);
 
-    jlongArray output = createLongArrayFromTensor(jniEnv, api, keys);
+      api->ReleaseValue(keys);
 
-    api->ReleaseValue(keys);
-
-    return output;
+      return output;
+    } else {
+      return NULL;
+    }
 }
 
 /*
@@ -62,14 +68,17 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxMap_getStringValues
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    if (code == ORT_OK) {
+      // Convert to Java String array
+      jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, values);
 
-    // Convert to Java String array
-    jobjectArray output = createStringArrayFromTensor(jniEnv, api, allocator, values);
+      api->ReleaseValue(values);
 
-    api->ReleaseValue(values);
-
-    return output;
+      return output;
+    } else {
+      return NULL;
+    }
 }
 
 /*
@@ -84,13 +93,16 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OnnxMap_getLongValues
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    if (code == ORT_OK) {
+      jlongArray output = createLongArrayFromTensor(jniEnv, api, values);
 
-    jlongArray output = createLongArrayFromTensor(jniEnv, api, values);
+      api->ReleaseValue(values);
 
-    api->ReleaseValue(values);
-
-    return output;
+      return output;
+    } else {
+      return NULL;
+    }
 }
 
 /*
@@ -105,13 +117,16 @@ JNIEXPORT jfloatArray JNICALL Java_ai_onnxruntime_OnnxMap_getFloatValues
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    if (code == ORT_OK) {
+      jfloatArray output = createFloatArrayFromTensor(jniEnv, api, values);
 
-    jfloatArray output = createFloatArrayFromTensor(jniEnv, api, values);
+      api->ReleaseValue(values);
 
-    api->ReleaseValue(values);
-
-    return output;
+      return output;
+    } else {
+      return NULL;
+    }
 }
 
 /*
@@ -126,13 +141,16 @@ JNIEXPORT jdoubleArray JNICALL Java_ai_onnxruntime_OnnxMap_getDoubleValues
     OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
     // Extract value
     OrtValue* values;
-    checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetValue((OrtValue*)handle,1,allocator,&values));
+    if (code == ORT_OK) {
+      jdoubleArray output = createDoubleArrayFromTensor(jniEnv, api, values);
 
-    jdoubleArray output = createDoubleArrayFromTensor(jniEnv, api, values);
+      api->ReleaseValue(values);
 
-    api->ReleaseValue(values);
-
-    return output;
+      return output;
+    } else {
+      return NULL;
+    }
 }
 
 /*
