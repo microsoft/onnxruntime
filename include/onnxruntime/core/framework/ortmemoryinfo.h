@@ -38,17 +38,17 @@ struct OrtMemoryInfo {
     return strcmp(name, other.name) < 0;
   }
 
-  static void hash_combine(size_t h, size_t& seed) {
+  static void HashCombine(size_t h, size_t& seed) {
     seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
   }
 
   // This is to make OrtMemoryInfo a valid key in hash tables
   // we ignore device id
-  size_t hash() const {
+  size_t Hash() const {
     auto h = std::hash<int>()(alloc_type);
-    hash_combine(std::hash<int>()(mem_type), h);
-    hash_combine(std::hash<int>()(id), h);
-    hash_combine(std::hash<const char*>()(name), h);
+    HashCombine(std::hash<int>()(mem_type), h);
+    HashCombine(std::hash<int>()(id), h);
+    HashCombine(std::hash<const char*>()(name), h);
     return h;
   }
 
@@ -81,7 +81,7 @@ namespace std {
 template<>
 struct hash<OrtMemoryInfo> {
   size_t operator()(const OrtMemoryInfo& i) const {
-    return i.hash();
+    return i.Hash();
   }
 };
 }

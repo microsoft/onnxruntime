@@ -490,7 +490,11 @@ class SessionState {
   mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
   // This is mutable under mutex in training scenarios so execution frame would make a copy
   // of the value when created.
+#ifdef ENABLE_TRAINING
   mutable NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
+#else
+  NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
+#endif
 
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;
