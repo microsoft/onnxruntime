@@ -70,8 +70,8 @@ static void RunAllOpsetAllDomainPadTests(
     bool pads_is_initializer;
     bool value_is_initializer;
   };
-  std::vector<TestParams> test_params{{true, true}, {false, false}};
-  for (const auto& test_params : test_params) {
+  std::vector<TestParams> all_test_params{{true, true}, {false, false}};
+  for (const auto& test_params : all_test_params) {
     // opset 10
     if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
       RunOnnxOpsetTypedTest<T, 10>(input_dims,
