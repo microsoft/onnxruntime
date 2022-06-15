@@ -195,8 +195,15 @@ def run_migraphx(
 
                     model.compile(migraphx.get_target("gpu" if use_gpu else "ref"))
                     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-
-                    inputs = {"input_ids": numpy.random.randint(low=0, high=1, size=(batch_size,sequence_length), dtype=numpy.int64)}
+                    inputs = create_onnxruntime_input(
+                        vocab_size,
+                        batch_size,
+                        sequence_length,
+                        input_names,
+                        config,
+                        input_value_type,
+                    )
+                    # inputs = {"input_ids": numpy.random.randint(low=0, high=1, size=(batch_size,sequence_length), dtype=numpy.int64)}
                     try:
                         runtimes = timeit.repeat(lambda: model.run(inputs), repeat=repeat_times, number=1)
                         result = {
