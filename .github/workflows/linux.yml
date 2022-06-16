@@ -4,7 +4,12 @@ on:
     branches:
       - master
       - main
+      - snnn/linuxci
   pull_request:
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   Onnxruntime-TVM:
@@ -26,3 +31,16 @@ jobs:
        - name: 'Build and Test'
          run: |
            python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm --ctest_path ""
+  Onnxruntime-CPU:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-ubuntu-20-04-cpu"]
+    steps:
+       - uses: actions/checkout@v3
+         with:
+           submodules: true
+       - uses: actions/setup-python@v3
+         with:
+           python-version: '3.8.x'
+           architecture: 'x64'
+       - name: 'Setup docker'
+         run: |
+            az acr login -n onnxruntimebuildcache
