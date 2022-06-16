@@ -794,6 +794,8 @@ bool UnsqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& in
   if (!GetShape(inputs[0].node_arg, input_shape))
     return false;
 
+  // This limitation actually comes from Reshape op.
+  // We are adding ANEURALNETWORKS_RESHAPE as an equivalent operation for Unsqueeze as it's not supported by nnapi
   const auto input_rank = input_shape.size();
   if (input_rank > 4 || input_rank == 0) {
     LOGS_DEFAULT(VERBOSE) << "Unsqueeze only supports 1-4d shape, input is "
