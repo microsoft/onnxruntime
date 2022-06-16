@@ -1204,7 +1204,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           size_t mem_size = trt_engine->getDeviceMemorySize();
           if (mem_size > max_ctx_mem_size_) {
             max_ctx_mem_size_ = mem_size;
-            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_).get();
+            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
           }
           trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
         } else {
@@ -1259,7 +1259,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           size_t mem_size = trt_engine->getDeviceMemorySize();
           if (mem_size > max_ctx_mem_size_) {
             max_ctx_mem_size_ = mem_size;
-            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_).get();
+            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
           }
           trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
         } else {
@@ -1866,9 +1866,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         size_t mem_size = trt_engine->getDeviceMemorySize();
         if (mem_size > *max_context_mem_size_ptr) {
           *max_context_mem_size_ptr = mem_size;
-		  *context_memory = IAllocator::MakeUniquePtr<void>(alloc, *max_context_mem_size_ptr).get();
+          *context_memory = IAllocator::MakeUniquePtr<void>(alloc, *max_context_mem_size_ptr);
         }
-        trt_context->setDeviceMemory(*context_memory);
+        trt_context->setDeviceMemory((*context_memory).get());
       }
 
       // Run TRT inference

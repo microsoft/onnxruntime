@@ -106,7 +106,7 @@ struct TensorrtFuncState {
   AllocatorPtr scratch_allocator;
   bool context_memory_sharing_enable;
   size_t* max_context_mem_size_ptr = nullptr;
-  void** context_memory = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
@@ -172,7 +172,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   AllocatorPtr allocator_;
   bool context_memory_sharing_enable_ = false;
   size_t max_ctx_mem_size_ = 0;  
-  void* context_memory_ = nullptr;
+  IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
