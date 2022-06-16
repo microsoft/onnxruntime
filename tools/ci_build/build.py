@@ -1877,7 +1877,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
-
                 run_subprocess(
                     [sys.executable, "onnxruntime_test_python_backend.py"],
                     cwd=cwd,
