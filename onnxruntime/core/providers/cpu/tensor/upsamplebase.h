@@ -3,10 +3,11 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
-#include <vector>
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // Chance of arithmetic overflow could be reduced
@@ -22,7 +23,7 @@ using GetNearestPixelFunc = int64_t (*)(float, bool);
 using GetOriginalCoordinateFunc = float (*)(float, float, float, float, float, float);
 
 enum UpsampleMode {
-  NN = 0,      // nearest neighbour
+  NN = 0,      // nearest neighbor
   LINEAR = 1,  // linear interpolation
   CUBIC = 2,   // cubic interpolation
 };
@@ -48,7 +49,8 @@ enum ResizeNearestMode {
 
 class UpsampleBase {
  protected:
-  UpsampleBase(const OpKernelInfo& info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
+  explicit UpsampleBase(const OpKernelInfo& info)
+      : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();
     is_resize_ = (opset >= 10);
@@ -215,7 +217,8 @@ class UpsampleBase {
       case TF_CROP_AND_RESIZE:
         return [](float x_resized, float, float length_resized, float length_original, float roi_start, float roi_end) {
           auto orig = length_resized > 1
-                          ? roi_start * (length_original - 1) + (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1)
+                          ? roi_start * (length_original - 1) +
+                                (x_resized * (roi_end - roi_start) * (length_original - 1)) / (length_resized - 1)
                           : 0.5 * (roi_start + roi_end) * (length_original - 1);
           return static_cast<float>(orig);
         };
@@ -301,9 +304,7 @@ class UpsampleBase {
                   "  * 5-D inputs with the corresponding outermost 2 scale values being 1"
                   "in the ",
                   is_resize_ ? "Resize operator" : "Upsample operator");
-    }
-
-    else if (UpsampleMode::CUBIC == mode) {
+    } else if (UpsampleMode::CUBIC == mode) {
       ORT_ENFORCE(scales.size() == 2 || (scales.size() == 4 && scales[0] == 1 && scales[1] == 1),
                   "'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
                   "with the corresponding outermost 2 scale values being 1 in the ",

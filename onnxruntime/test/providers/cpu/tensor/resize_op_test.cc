@@ -121,8 +121,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_with_extr
                             10, 10, 10};
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  //CUDA: result mismatch due to not implementing NHWC support
-  //ROCm: results mismatch
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
@@ -206,8 +206,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_tf_crop_and_resize_without_e
                             0, 0, 0};
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  //CUDA: result mismatch due to not implementing NHWC support
-  //ROCm: results mismatch
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
@@ -331,8 +331,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_uint8) {
   std::vector<uint8_t> Y = {2, 4};
 
   test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-  //CUDA: result mismatch due to not implementing NHWC support
-  //ROCm: results mismatch
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
@@ -501,8 +501,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_align_corners_uin
     std::vector<uint8_t> Y = {1, 4};
 
     test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-    //CUDA: result mismatch due to not implementing NHWC support
-    //ROCm: results mismatch
+    // CUDA: result mismatch due to not implementing NHWC support
+    // ROCm: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
   };
 
@@ -623,8 +623,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
   std::vector<uint8_t> Y = {1, 7, 12};
 
   test.AddOutput<uint8_t>("Y", {N, sizes[1], sizes[2], C}, Y);
-  //CUDA: result mismatch due to not implementing NHWC support
-  //ROCm: results mismatch
+  // CUDA: result mismatch due to not implementing NHWC support
+  // ROCm: results mismatch
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
@@ -757,8 +757,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
         7, 8, 9, 10, 11, 11, 11, 11};
 
     test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
-    //CUDA: result mismatch due to not implementing NHWC support
-    //ROCm: results mismatch
+    // CUDA: result mismatch due to not implementing NHWC support
+    // ROCm: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
   };
 
