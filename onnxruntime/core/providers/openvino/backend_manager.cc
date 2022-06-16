@@ -259,15 +259,15 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
 }
 
 void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
-  bool run_dynamic_backend = true;
+  bool use_dynamic_backend = true;
   if (GetGlobalContext().enable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
       GetGlobalContext().device_type.find("CPU") != std::string::npos) {
     #if (defined OV_API_20)
       concrete_backend_->Infer(api, context);
-      run_dynamic_backend = false;
+      use_dynamic_backend = false;
     #endif
   }
-  if (run_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
+  if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
