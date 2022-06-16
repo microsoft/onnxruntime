@@ -299,6 +299,7 @@ private:
   }
 
   void rename(std::string& name) {
+    if (name.empty()) return;
     for (auto i = rename_scopes.size(); i > 0; --i) {
       const auto& map = rename_scopes[i - 1];
       auto iter = map.find(name);
@@ -322,20 +323,20 @@ private:
     int i = 0;
     for (; i < actuals.size(); ++i) {
       std::string& formal = *formals.Mutable(i);
-      std::string rename = actuals.Get(i);
+      std::string rename_as = actuals.Get(i);
       if constexpr (isOutput)
-        if (rename.empty())
-          rename = prefix + formal;
-      current_scope[formal] = rename;
-      if (!rename.empty())
-        formal = rename;
+        if (rename_as.empty())
+          rename_as = prefix + formal;
+      current_scope[formal] = rename_as;
+      if (!rename_as.empty())
+        formal = rename_as;
     }
     for (; i < formals.size(); ++i) {
       std::string& formal = *formals.Mutable(i);
-      std::string rename = isOutput ? prefix + formal : std::string("");
-      current_scope[formal] = rename;
-      if (!rename.empty())
-        formal = rename;
+      std::string rename_as = isOutput ? prefix + formal : std::string("");
+      current_scope[formal] = rename_as;
+      if (!rename_as.empty())
+        formal = rename_as;
     }
   }
 
