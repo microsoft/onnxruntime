@@ -173,7 +173,7 @@ struct ExecutionContext {
 
 void LogicStream::RunSince(ExecutionContext& ctx, size_t since) {
   while (since < commands_.size()) {
-    if (!commands_[since])
+    if (!commands_[since](ctx))
       return;
     since++;
   }
@@ -364,7 +364,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           // push a barrier
           int barrier_id = num_barriers_++;
           downstream_map_[notification_index].push_back({i, static_cast<int>(logic_streams_[i]->commands_.size())});
-          logic_streams_[i]->commands_.push_back([&](ExecutionContext& ctx) {
+          logic_streams_[i]->commands_.push_back([barrier_id](ExecutionContext& ctx) {
             return ctx.DecBarrier(barrier_id);
           });
           // push a wait command if has EP registered it.
