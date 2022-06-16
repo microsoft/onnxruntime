@@ -41,6 +41,9 @@ jobs:
          with:
            python-version: '3.8.x'
            architecture: 'x64'
-       - name: 'Setup docker'
-         run: |
-            az acr login -n onnxruntimebuildcache
+       - name: Azure CLI script
+         uses: azure/CLI@v1
+         with:
+              inlineScript: |
+                az login --identity
+                az acr login -n onnxruntimebuildcache
