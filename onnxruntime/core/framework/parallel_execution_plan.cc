@@ -46,13 +46,7 @@ struct LogicStream {
   std::vector<CommandFn> commands_;
   const IExecutionProvider* ep_ = nullptr;
 
-  void RunSince(ExecutionContext& ctx, size_t since) {
-    while (since < commands_.size()) {
-      if (!commands_[since])
-        return;
-      since++;
-    }
-  }
+  void RunSince(ExecutionContext& ctx, size_t since);
 
   ~LogicStream() {}
 };
@@ -70,6 +64,7 @@ class CountDown {
   bool Dec() {
     return v_.load(std::memory_order_acquire) == 1 || v_.fetch_sub(1) == 1;
   }
+  int32_t Get() { return v_.load(std::memory_order_acquire); }
 
  private:
   std::atomic_int_fast32_t v_;
@@ -86,6 +81,8 @@ struct ExecutionContext {
   std::unique_ptr<ReleasePlan> release_plan;
   std::vector<std::unique_ptr<Stream> > device_streams;
   std::vector<CountDown> barriers;
+  CountDown remain_tasks;
+  bool job_complete{false};
 
 
   ExecutionContext(const SessionState& sess_state,
@@ -97,13 +94,16 @@ struct ExecutionContext {
                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
                    const logging::Logger& sess_logger) : session_state(&sess_state),
-                                                         logger(&sess_logger) {
+                                                         logger(&sess_logger),
+                                                         barriers(num_barriers) {
+    int32_t valid_streams = 0;
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
       if (logic_stream->commands_.size() > 0) {
         auto& stream_handle_registry = sess_state.GetStreamHandleRegistryInstance();
         auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->ep_->Type());
         device_streams.emplace_back(create_stream_fn(logic_stream->ep_));
+        valid_streams++;
       } else {
         device_streams.push_back(nullptr);
       }
@@ -116,11 +116,11 @@ struct ExecutionContext {
 
     // create frame
     frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
-    // create barreris
-    barriers.resize(num_barriers);
+    // init barreris
     for (auto i = 0; i < num_barriers; ++i) {
       barriers[i].Set(2);
     }
+    remain_tasks.Set(valid_streams);
 
     auto* para_exe_plan = const_cast<SessionState&>(sess_state).GetParalllelExecutionPlan();
     release_plan = para_exe_plan->GenerateReleasePlan();
@@ -128,6 +128,11 @@ struct ExecutionContext {
 
   bool DecBarrier(size_t barrier_id) {
     return barriers[barrier_id].Dec();
+  }
+
+  void CompleteTask() {
+    if (remain_tasks.Dec())
+      job_complete = true;
   }
 
   ~ExecutionContext() {
@@ -165,6 +170,15 @@ struct ExecutionContext {
     }
   }
 };
+
+void LogicStream::RunSince(ExecutionContext& ctx, size_t since) {
+  while (since < commands_.size()) {
+    if (!commands_[since])
+      return;
+    since++;
+  }
+  ctx.CompleteTask();
+}
 
 struct ParallelExecutionPlanImpl {
   ParallelExecutionPlanImpl(const SessionState& session_state,
@@ -526,6 +540,10 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
 
   for (int i = 0; i < num_logic_streams_-1; ++i) {
     barriers[i].wait();
+  }
+
+  while (!execution_context.job_complete) {
+    onnxruntime::concurrency::SpinPause();
   }
 
   //TODO: we might need to flush all the stream before return the result.

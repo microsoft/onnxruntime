@@ -2161,16 +2161,16 @@ struct CPUNotification : synchronize::Notification {
   CPUNotification(Stream* s) : Notification(s) {}
 
   void Activate() override {
-    ready_.store(true);
+    /*ready_.store(true);*/
   }
 
   void wait() {
-    while (!ready_.load()) {
+    /*while (!ready_.load()) {
       onnxruntime::concurrency::SpinPause();
-    }
+    }*/
   };
 
-  std::atomic_bool ready_{};
+  //std::atomic_bool ready_{};
 };
 
 struct CPUStream : Stream {
@@ -2185,7 +2185,7 @@ struct CPUStream : Stream {
 
 // CPU Stream command handles
 void WaitCPUNotification(Stream& /*stream*/, synchronize::Notification& notification) {
-  static_cast<CPUNotification*>(&notification)->wait();
+  /*static_cast<CPUNotification*>(&notification)->wait();*/
 }
 
 std::unique_ptr<Stream> CreateCPUStream(const IExecutionProvider* provider) {
@@ -2195,9 +2195,9 @@ std::unique_ptr<Stream> CreateCPUStream(const IExecutionProvider* provider) {
 
 
 void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
+  //stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
   //TODO: move it to cuda ep?
-  stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCudaExecutionProvider, WaitCPUNotification);
+  //stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCudaExecutionProvider, WaitCPUNotification);
   stream_handle_registry.RegisterCreateStreamFn(kCpuExecutionProvider, CreateCPUStream);
 }
 
