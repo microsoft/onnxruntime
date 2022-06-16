@@ -16,7 +16,7 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == 
 	else
 		COMPILE_DEPS="${COMPILE_DEPS} libdb-devel"
 	fi
-elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
 	PACKAGE_MANAGER=apt
 	COMPILE_DEPS="libbz2-dev libncurses5-dev libreadline-dev tk-dev libgdbm-dev libdb-dev libpcap-dev liblzma-dev openssl libssl-dev libkeyutils-dev libkrb5-dev comerr-dev libidn2-0-dev libcurl4-openssl-dev uuid-dev libffi-dev linux-kernel-headers"
 elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then

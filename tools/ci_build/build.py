@@ -477,8 +477,9 @@ def parse_arguments():
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
-    parser.add_argument("--tensorrt_placeholder_builder", action="store_true",
-                        help="Instantiate Placeholder TensorRT Builder")
+    parser.add_argument(
+        "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
+    )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
@@ -1793,13 +1794,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "10800"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
-            # Disable python tests for TensorRT because many tests are
-            # not supported yet.
-            if args.use_tensorrt:
+            # Disable python tests for TensorRT on Windows due to need to enable placeholder builder
+            # to reduce test times.
+            if args.use_tensorrt and is_windows():
                 return
 
             python_path = None
@@ -1836,7 +1837,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
 
-            if not args.disable_ml_ops:
+            if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
             # The following test has multiple failures on Windows
@@ -1876,6 +1877,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
+                # Disable python onnx tests for TensorRT because many tests are
+                # not supported yet.
+                if args.use_tensorrt:
+                    return
+
                 run_subprocess(
                     [sys.executable, "onnxruntime_test_python_backend.py"],
                     cwd=cwd,
