@@ -1798,10 +1798,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
-            # Disable python tests for TensorRT because many tests are
-            # not supported yet.
-            if args.use_tensorrt:
-                return
 
             python_path = None
             if args.use_tvm:
@@ -1837,7 +1833,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
 
-            if not args.disable_ml_ops:
+            if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
             # The following test has multiple failures on Windows
@@ -1877,6 +1873,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
+                # Disable python onnx tests for TensorRT because many tests are
+                # not supported yet.
+                if args.use_tensorrt:
+                    return
+
                 run_subprocess(
                     [sys.executable, "onnxruntime_test_python_backend.py"],
                     cwd=cwd,
