@@ -3,6 +3,12 @@ class QuantOperatorBase:
         self.quantizer = onnx_quantizer
         self.node = onnx_node
 
+    def should_quantize(self):
+        if not self.quantizer.should_quantize_node(self.node):
+            return False
+
+        return self.quantizer.is_float_tensor(self.node.input[0])
+
     def quantize(self):
         """
         Given a node which does not support quantization, this method checks whether the input to
@@ -11,8 +17,7 @@ class QuantOperatorBase:
             parameter new_nodes_list: List of new nodes created before processing current node
             return: List of new nodes created
         """
-        nodes = []
-        for index, node_input in enumerate(self.node.input):
+        for _, node_input in enumerate(self.node.input):
             dequantize_node = self.quantizer._dequantize_value(node_input)
             if dequantize_node is not None:
                 self.quantizer.new_nodes.append(dequantize_node)

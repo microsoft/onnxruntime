@@ -1,0 +1,13 @@
+{
+    "rtol_default": 1e-3,
+    "atol_default": 1e-5,
+    // Key: str, the name of the test as defined by ONNX without any device suffix.
+    // Val: float, max absolute difference between expected and actual.
+    "atol_overrides": {
+        "test_dft": 1e-4,
+        "test_dft_axis": 1e-4
+    },
+    // Key: str, the name of the test as defined by ONNX without any device suffix.
+    // Val: float, max relative difference between expected and actual.
+    "rtol_overrides": {}
+}
