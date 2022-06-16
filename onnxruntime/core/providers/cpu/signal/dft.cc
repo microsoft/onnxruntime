@@ -155,6 +155,12 @@ static T compute_angular_velocity(size_t number_of_samples, bool inverse) {
   return angular_velocity;
 }
 
+template <typename T>
+static std::complex<T> compute_exponential(size_t index, const T angular_velocity) {
+  const T angle = static_cast<T>(index) * angular_velocity;
+  return std::complex<T>(cos(angle), sin(angle));
+}
+
 template <typename T, typename U>
 static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, size_t X_offset, size_t X_stride,
                          size_t Y_offset, size_t Y_stride, int64_t axis, size_t dft_length, const Tensor* window,
@@ -192,8 +198,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
     V = InlinedVector<std::complex<T>>(dft_length);  // e^(i *2*pi / N * k)
     for (size_t i = 0; i < dft_length; i++) {
       size_t bit_reversed_index = bit_reverse(i, significant_bits);
-      const T angle = static_cast<T>(i) * angular_velocity;
-      V[bit_reversed_index] = std::complex<T>(cos(angle), sin(angle));
+      V[bit_reversed_index] = compute_exponential(i, angular_velocity);
     }
   }
 
@@ -270,8 +275,7 @@ static Status dft_naive(const Tensor* X, Tensor* Y, size_t X_offset, size_t X_st
     out.imag(0);
 
     for (size_t j = 0; j < dft_length; j++) {  // vectorize over this loop
-      const T angle = static_cast<T>(i) * static_cast<T>(j) * angular_velocity;
-      auto exponential = std::complex<T>(cos(angle), sin(angle));
+      auto exponential = compute_exponential(i * j, angular_velocity);
       auto window_element = window_data ? *(window_data + j) : 1;
       auto x = (j < number_of_samples) ? *(X_data + j * X_stride) : 0;
       auto element = x * window_element;
