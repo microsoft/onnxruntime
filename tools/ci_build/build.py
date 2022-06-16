@@ -477,8 +477,8 @@ def parse_arguments():
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
-    parser.add_argument("--tensorrt_placeholder_builder", action="store_true",
-                        help="Instantiate Placeholder TensorRT Builder")
+    parser.add_argument(
+        "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder")
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
@@ -1797,10 +1797,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
-            # Disable python tests for TensorRT because many tests are
-            # not supported yet.
-            if args.use_tensorrt:
-                return
 
             python_path = None
             if args.use_tvm:
@@ -1876,6 +1872,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
+                # Disable python tests for TensorRT because many tests are
+                # not supported yet.
+                if args.use_tensorrt:
+                    return
+
                 run_subprocess(
                     [sys.executable, "onnxruntime_test_python_backend.py"],
                     cwd=cwd,
