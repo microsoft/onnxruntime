@@ -22,7 +22,6 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
-#include "core/framework/allocatormgr.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -132,8 +131,20 @@ class InferenceSession {
   explicit InferenceSession(const SessionOptions& session_options,
                             const Environment& session_env);
 
-#if !defined(ORT_MINIMAL_BUILD)
+  /**
+    Create a new InferenceSession that accepts thread pools for intra and inter op thread execution.
+    Used by WinML only!
+    @param session_options Session options.
+    @param session_env This represents the context for the session and contains the logger and the global threadpools.
+    @param external_intra_op_thread_pool This represents the intra op threadpool.
+    @param external_inter_op_thread_pool This represents the inter op threadpool.
+    */
+  explicit InferenceSession(const SessionOptions& session_options,
+                            const Environment& session_env,
+                            onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool,
+                            onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool);
 
+#if !defined(ORT_MINIMAL_BUILD)
   /**
     Create a new InferenceSession
     @param session_options Session options.
@@ -438,10 +449,6 @@ class InferenceSession {
    */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
-  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
-    return allocator_manager_;
-  }
-
   /**
    *Get InferenceSession logger.
    */
@@ -489,11 +496,27 @@ class InferenceSession {
   // specific flags in session options
   // These methods assume that session options have been finalized before the call.
   onnxruntime::concurrency::ThreadPool* GetIntraOpThreadPoolToUse() const {
-    return session_options_.use_per_session_threads ? thread_pool_.get() : intra_op_thread_pool_from_env_;
+    if (session_options_.use_per_session_threads) {
+      if (external_intra_op_thread_pool_) {
+        return external_intra_op_thread_pool_;
+      } else {
+        return thread_pool_.get();
+      }
+    } else {
+      return intra_op_thread_pool_from_env_;
+    }
   }
 
   onnxruntime::concurrency::ThreadPool* GetInterOpThreadPoolToUse() const {
-    return session_options_.use_per_session_threads ? inter_op_thread_pool_.get() : inter_op_thread_pool_from_env_;
+    if (session_options_.use_per_session_threads) {
+      if (external_inter_op_thread_pool_) {
+        return external_inter_op_thread_pool_;
+      } else {
+        return inter_op_thread_pool_.get();
+      }
+    } else {
+      return inter_op_thread_pool_from_env_;
+    }
   }
 
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
@@ -649,6 +672,10 @@ class InferenceSession {
   onnxruntime::concurrency::ThreadPool* intra_op_thread_pool_from_env_{};
   onnxruntime::concurrency::ThreadPool* inter_op_thread_pool_from_env_{};
 
+  // External threadpools.
+  onnxruntime::concurrency::ThreadPool* external_intra_op_thread_pool_{};
+  onnxruntime::concurrency::ThreadPool* external_inter_op_thread_pool_{};
+
   // initialized from session options
   // Determines which threadpools will be intialized and used for the duration of this session.
   // If true, use the per session ones, or else the global threadpools.
@@ -686,11 +713,12 @@ class InferenceSession {
   DataTransferManager data_transfer_mgr_;
 
   // Number of concurrently running executors
-  std::atomic<int> current_num_runs_;
+  std::atomic<int> current_num_runs_ = 0;
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
   bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
+  bool is_concurrent_run_supported_ = true;      // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
@@ -747,8 +775,6 @@ class InferenceSession {
   // specifies that ORT should use the model bytes directly by setting the session config option
   // "session.use_ort_model_bytes_directly" to "1", this will be empty
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
-
-  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 
   // Container to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure

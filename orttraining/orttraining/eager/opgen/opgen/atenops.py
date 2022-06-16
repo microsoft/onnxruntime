@@ -138,6 +138,7 @@ hand_implemented = {
     "aten::_local_scalar_dense": MakeTorchFallback(),
     "aten::gt.Scalar_out": MakeTorchFallback(),
     "aten::equal": MakeTorchFallback(),
+    "aten::_softmax": Softmax("self", axis="dim"),
 }
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439

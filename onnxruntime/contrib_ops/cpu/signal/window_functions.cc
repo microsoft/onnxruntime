@@ -24,7 +24,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
-        .TypeConstraint("T1", BuildKernelDefConstraints<int64_t>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
         .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     HannWindow);
 
@@ -34,7 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
-        .TypeConstraint("T1", BuildKernelDefConstraints<int64_t>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
         .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     HammingWindow);
 
@@ -44,7 +44,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
-        .TypeConstraint("T1", BuildKernelDefConstraints<int64_t>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
         .TypeConstraint("T2", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     BlackmanWindow);
 
@@ -55,7 +55,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0)
-        .TypeConstraint("T1", BuildKernelDefConstraints<int64_t>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<int32_t, int64_t>())
         .TypeConstraint("T2", BuildKernelDefConstraints<float>())
         .TypeConstraint("T3", BuildKernelDefConstraints<float, double, uint8_t, uint16_t, uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t>()),
     MelWeightMatrix);
@@ -102,7 +102,7 @@ static Status create_cosine_sum_window(
     OpKernelContext* ctx,
     onnx::TensorProto_DataType output_datatype,
     float a0, float a1, float a2) {
-  
+
   // Get the size of the window
   auto size = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(0));
 

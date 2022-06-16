@@ -34,7 +34,7 @@ source $MY_DIR/build_utils.sh
 # MANYLINUX_DEPS: Install development packages (except for libgcc which is provided by gcc install)
 if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	MANYLINUX_DEPS="glibc-devel libstdc++-devel glib2-devel libX11-devel libXext-devel libXrender-devel mesa-libGL-devel libICE-devel libSM-devel zlib-devel expat-devel"
-elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
 	MANYLINUX_DEPS="libc6-dev libstdc++-6-dev libglib2.0-dev libx11-dev libxext-dev libxrender-dev libgl1-mesa-dev libice-dev libsm-dev libz-dev libexpat1-dev"
 elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
 	MANYLINUX_DEPS="musl-dev libstdc++ glib-dev libx11-dev libxext-dev libxrender-dev mesa-dev libice-dev libsm-dev zlib-dev expat-dev"
@@ -53,6 +53,9 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ] || [ "${AUDITWHEEL_POLICY}" == 
 	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	RUNTIME_DEPS="zlib1g libbz2-1.0 libexpat1 libncurses5 libreadline7 tk libgdbm3 libdb5.3 libpcap0.8 liblzma5 libssl1.1 libkeyutils1 libkrb5-3 libcomerr2 libidn2-0 libcurl3 uuid libffi6"
+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
+    # remove libgdbm3
+	RUNTIME_DEPS="zlib1g libbz2-1.0 libexpat1 libncurses5 libreadline7 tk libdb5.3 libpcap0.8 liblzma5 libssl1.1 libkeyutils1 libkrb5-3 libcomerr2 libidn2-0 libcurl3 uuid libffi6"
 elif [ "${AUDITWHEEL_POLICY}" == "musllinux_1_1" ]; then
 	RUNTIME_DEPS="zlib bzip2 expat ncurses5-libs readline tk gdbm db xz openssl keyutils-libs krb5-libs libcom_err libidn2 libcurl libuuid libffi"
 else
@@ -96,7 +99,7 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	yum -y update
 	yum -y install yum-utils curl
 	yum-config-manager --enable extras
-	
+
  	#Added by @snnn
  	if [ -d "/usr/local/cuda-10.2" ]; then
  	  TOOLCHAIN_DEPS="devtoolset-8-binutils devtoolset-8-gcc devtoolset-8-gcc-c++ devtoolset-8-gcc-gfortran"
@@ -121,7 +124,7 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 		# Install mayeut/devtoolset-10 repo to get devtoolset-10
 		curl -fsSLo /etc/yum.repos.d/mayeut-devtoolset-10.repo https://copr.fedorainfracloud.org/coprs/mayeut/devtoolset-10/repo/custom-1/mayeut-devtoolset-10-custom-1.repo
 	fi
-elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
+elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ] || [ "${AUDITWHEEL_POLICY}" == "manylinux_2_27" ]; then
 	PACKAGE_MANAGER=apt
 	BASETOOLS="${BASETOOLS} hardlink hostname"
 	export DEBIAN_FRONTEND=noninteractive
