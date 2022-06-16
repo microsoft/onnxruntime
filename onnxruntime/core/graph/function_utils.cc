@@ -267,9 +267,10 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
         std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
                                                                                        model_local_functions.end());
         std::unordered_map<std::string, TensorShapeProto> empty_map;
+        ONNX_NAMESPACE::shape_inference::SymbolTableImpl symbolTable;
         ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
                                                                    schema_registry, ctx, options, map_copy,
-                                                                   nullptr, &empty_map);
+                                                                   &symbolTable, &empty_map);
       });
 
   op_schema->Finalize();
