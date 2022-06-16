@@ -546,9 +546,17 @@ namespace Dml
             printf("\n");
 #endif
 
-            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
+            // These nodeArgNames will be used in while creating DML Graph inside FusedGraphKernel.cpp
+            // Ordering of input/output nodeArgs in below vector will be same as Node::Definitions::input_defs because
+            // ORT is populating these args as it is while creating the FusedNode at Graph::CreateFusedSubGraphNode()
+            // Why we need these names?
+            //      After Partitioning and before reaching to FusedGraphKernel, ORT may modify the input/output nodeArg names
+            //      as part of some transformers like memcopy, or L1/L2/L3 transformers.
+            std::vector<std::string> fusedNodeInputArgOriginalNames = def->inputs;
+            std::vector<std::string> fusedNodeOutputArgOriginalNames = def->outputs;
+            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap, fusedNodeInputArgOriginalNames, fusedNodeOutputArgOriginalNames](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
             {
-                out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap));
+                out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap, fusedNodeInputArgOriginalNames, fusedNodeOutputArgOriginalNames));
 				return Status::OK();
             };
 
