@@ -2237,7 +2237,9 @@ class PadOpSupportChecker : public BaseOpSupportChecker {
   }
 
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override {
-    return 11;  // before Pad-11, inputs `pads` and `constant_value` were attributes
+    // before Pad-11, inputs `pads` and `constant_value` were attributes
+    // only support inputs now, but we could add support for attributes later
+    return 11;
   }
 
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,

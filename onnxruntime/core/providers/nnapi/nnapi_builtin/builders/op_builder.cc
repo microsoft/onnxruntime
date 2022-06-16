@@ -2845,7 +2845,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   // `constant_value` input
   float pad_value = 0.0f;
   if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
-    const auto constant_value = inputs[2].node_arg.Name();
+    const auto& constant_value = inputs[2].node_arg.Name();
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
 
