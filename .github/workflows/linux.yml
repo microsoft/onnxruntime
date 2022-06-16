@@ -49,5 +49,6 @@ jobs:
          uses: azure/CLI@v1
          with:
               inlineScript: |
+                which -a docker
                 az login --identity
                 az acr login -n onnxruntimebuildcache
