@@ -20,6 +20,10 @@ static void RunOnnxOpsetTypedTest(
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& error_msg = "",
     const std::unordered_set<std::string>& excluded_provider_types = {}) {
+  SCOPED_TRACE(MakeString("opset: ", opset,
+                          ", pads_is_initializer: ", pads_is_initializer,
+                          ", value_is_initializer: ", value_is_initializer));
+
   // ONNX domain opset
   OpTester test("Pad", opset);
   if (mode != "constant")
@@ -29,14 +33,12 @@ static void RunOnnxOpsetTypedTest(
     test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, pads_is_initializer);
     test.AddInput<T>("value", {}, {value}, value_is_initializer);
   } else {
-    ORT_UNUSED_PARAMETER(pads_is_initializer);
-    ORT_UNUSED_PARAMETER(value_is_initializer);
     test.AddAttribute("pads", pads);
     test.AddAttribute("value", static_cast<float>(value));
   }
   test.AddOutput<T>("output", output_dims, output);
   std::unordered_set<std::string> provider_types(excluded_provider_types.begin(), excluded_provider_types.end());
-  if (std::is_same<T, int8_t>::value) {
+  if constexpr (std::is_same_v<T, int8_t>) {
     provider_types.insert(kTensorrtExecutionProvider);
   }
   SessionOptions so;
