@@ -2810,10 +2810,10 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& pads = inputs[1].node_arg.Name();
   const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
   ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
-  ORT_ENFORCE(pads_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
 
   std::vector<uint8_t> pads_initializer_raw_data{};
   ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*pads_initializer, pads_initializer_raw_data));
+  // assume pads_initializer has int64 data, per ONNX spec
   ORT_RETURN_IF_NOT(pads_initializer_raw_data.size() == 2 * data_rank * sizeof(int64_t),
                     "Expected pads initializer size in bytes: ", 2 * data_rank * sizeof(int64_t),
                     ", actual: ", pads_initializer_raw_data.size());
@@ -2848,10 +2848,11 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     const auto constant_value = inputs[2].node_arg.Name();
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
-    ORT_ENFORCE(constant_value_initializer->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
     std::vector<uint8_t> pad_value_raw_data{};
     ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*constant_value_initializer, pad_value_raw_data));
+    // assume constant_value_initializer has float data
+    // ONNX spec says it matches `data` input type, and op support checker limits that to float
     ORT_RETURN_IF_NOT(pad_value_raw_data.size() == sizeof(float),
                       "Expected constant_value initializer size in bytes: ", sizeof(float),
                       ", actual size: ", pad_value_raw_data.size());

@@ -502,7 +502,7 @@ Status Shaper::PadImpl(const std::string& input_name,
                        const std::string& output_name) {
   Shape padded_shape = shape_map_.at(input_name);
   const size_t rank = padded_shape.size();
-  ORT_RETURN_IF_NOT(pads.size() == 2 * rank, "Expected 2*rank pad values");
+  ORT_RETURN_IF_NOT(pads.size() == 2 * rank, "Expected 2*rank (", 2 * rank, ") pad values but got ", pads.size());
   for (size_t i = 0; i < rank; ++i) {
     padded_shape[i] += pads[2*i] + pads[2*i + 1];
   }
