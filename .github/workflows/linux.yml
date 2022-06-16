@@ -44,11 +44,6 @@ jobs:
        - name: 'Setup TVM EP requirements'
          run: |
            id
+           az login --identity
+           az acr login -n onnxruntimebuildcache
 
-       - name: Azure CLI script
-         uses: azure/CLI@v1
-         with:
-              inlineScript: |
-                which -a docker
-                az login --identity
-                az acr login -n onnxruntimebuildcache
