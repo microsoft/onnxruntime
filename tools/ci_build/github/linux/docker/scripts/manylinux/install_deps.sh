@@ -2,17 +2,8 @@
 set -e -x
 
 # Development tools and libraries
-if [ -f /etc/redhat-release ]; then
-  yum update && yum -y install graphviz
-  os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
-elif [ -f /etc/os-release ]; then
-  apt-get update && apt-get install -y graphviz
-  os_major_version=$(cat /etc/os-release | tr -dc '0-9.'|cut -d \. -f1)
-else
-  echo "Unsupported OS"
-  exit 1
-fi
-
+yum -y install \
+    graphviz
 
 # Download a file from internet
 function GetFile {
@@ -54,11 +45,15 @@ else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
 
+os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
+
 SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
 GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
 
-if [[ $SYS_LONG_BIT = "64" ]]; then
+DISTRIBUTOR=$(lsb_release -i -s)
+
+if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
   LIBDIR="lib64"
 else
   LIBDIR="lib"
