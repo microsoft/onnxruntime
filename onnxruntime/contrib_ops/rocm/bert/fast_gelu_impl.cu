@@ -98,9 +98,9 @@ __global__ void FastGeluKernelVec(int input_length, int bias_length, const T* in
 template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
                           const float* input, const float* bias, float* output, bool /*use_half2*/) {
-  constexpr int blockSize = 256;
-  const int gridSize = (input_length + blockSize - 1) / blockSize;
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<float, blockSize>), dim3(gridSize), dim3(blockSize), 0,
+  constexpr int block_size = 256;
+  const int grid_size = (input_length + block_size - 1) / block_size;
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<float, block_size>), dim3(grid_size), dim3(block_size), 0,
                      stream, input_length, bias_length, input, bias, output);
   return HIP_CALL(hipPeekAtLastError());
 }
@@ -108,57 +108,57 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
 template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
                           const half* input, const half* bias, half* output, bool use_half2) {
-  constexpr int blockSize = 256;
+  constexpr int block_size = 256;
   if (use_half2 && prop.major >= 7) {
       if (bias != nullptr) {
         if (0 == (bias_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
-          const int gridSize = (input_length / 8 + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 8>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length / 8 + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, block_size, 8>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         } else if (0 == (bias_length % 4)) {
-          const int gridSize = (input_length / 4 + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 4>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length / 4 + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, block_size, 4>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         } else if (0 == (bias_length % 2)) {
-          const int gridSize = (input_length / 2 + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 2>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length / 2 + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, block_size, 2>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         } else {
-          const int gridSize = (input_length + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, block_size>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         }
       } else {
         if (0 == (input_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
-          const int gridSize = (input_length / 8 + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 8>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length / 8 + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, block_size, 8>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         } else if (0 == (input_length % 4)) {
-          const int gridSize = (input_length / 4 + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 4>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length / 4 + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, block_size, 4>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         } else if (0 == (input_length % 2)) {
-          const int gridSize = (input_length / 2 + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 2>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length / 2 + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, block_size, 2>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         } else {
-          const int gridSize = (input_length + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length,
+          const int grid_size = (input_length + block_size - 1) / block_size;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, block_size>), dim3(grid_size),
+                                             dim3(block_size), 0, stream, input_length, bias_length,
                                              input, bias, output);
         }
       }
   } else {
-    const int gridSize = (input_length + blockSize - 1) / blockSize;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize),
-                                       dim3(blockSize), 0, stream, input_length, bias_length,
+    const int grid_size = (input_length + block_size - 1) / block_size;
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, block_size>), dim3(grid_size),
+                                       dim3(block_size), 0, stream, input_length, bias_length,
                                        input, bias, output);
   }
   return HIP_CALL(hipPeekAtLastError());
@@ -167,9 +167,9 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
 template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
                           const BFloat16* input, const BFloat16* bias, BFloat16* output, bool /*use_half2*/) {
-  constexpr int blockSize = 256;
-  const int gridSize = (input_length + blockSize - 1) / blockSize;
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<BFloat16, blockSize>), dim3(gridSize), dim3(blockSize), 0,
+  constexpr int block_size = 256;
+  const int grid_size = (input_length + block_size - 1) / block_size;
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<BFloat16, block_size>), dim3(grid_size), dim3(block_size), 0,
                      stream, input_length, bias_length, input, bias, output);
   return HIP_CALL(hipPeekAtLastError());
 }
