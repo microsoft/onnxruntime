@@ -99,11 +99,14 @@ using UpdateGptFeedsFunc = std::function<Status(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper)>;
 
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
     const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     int start_token_id,
@@ -123,6 +126,11 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
 }  // namespace BeamSearchDeviceHelper
 
@@ -194,6 +202,8 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper);
 
 // ---------------------------------------------------------------
@@ -201,6 +211,7 @@ Status UpdateGptFeeds(
 // ---------------------------------------------------------------
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     int start_token_id,
@@ -220,6 +231,11 @@ Status UpdateDecoderFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 // ---------------------------------------------------------------

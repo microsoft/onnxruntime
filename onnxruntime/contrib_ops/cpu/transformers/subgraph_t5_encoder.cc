@@ -43,7 +43,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(num_subgraph_inputs != 3, "expect 3 inputs, got:", num_subgraph_inputs);
 
   ORT_RETURN_IF(num_subgraph_outputs < 6, "expect >=6 outputs, got:", num_subgraph_outputs);
-  ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - kFirstPresentOutputIndex) % 4 != 0,
+  ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) % 4 != 0,
                 "number of outputs expected to be 2 + 4 * layers, got:", num_subgraph_outputs);
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids",
@@ -67,7 +67,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
-  num_layers = (static_cast<int>(subgraph_outputs.size()) - kFirstPresentOutputIndex) / 4;
+  num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / 4;
 
   constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
@@ -97,6 +97,7 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 // Create inputs for first inference of subgraph.
 Status T5EncoderSubgraph::CreateInitialFeeds(
     const Tensor& encoder_input_ids,
+    const OrtValue* attn_mask_value,
     const std::vector<const OrtValue*>& implicit_inputs,
     int num_beams,
     int pad_token_id,
@@ -118,6 +119,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   OrtValue expanded_encoder_input_ids;
   OrtValue expanded_encoder_attention_mask;
   ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids,
+                                                 attn_mask_value,
                                                  num_beams,
                                                  pad_token_id,
                                                  start_token_id,
