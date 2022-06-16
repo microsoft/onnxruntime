@@ -117,6 +117,8 @@ try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
     class bdist_wheel(_bdist_wheel):
+        """Helper functions to create wheel package"""
+
         if is_openvino and is_manylinux:
 
             def get_tag(self):
@@ -124,11 +126,12 @@ try:
                 if platform.system() == "Linux":
                     # Get the right platform tag by querying the linker version
                     glibc_major, glibc_minor = popen("ldd --version | head -1").read().split()[-1].split(".")
-                    # See https://github.com/mayeut/pep600_compliance/blob/master/pep600_compliance/tools/manylinux-policy.json
+                    """# See https://github.com/mayeut/pep600_compliance/blob/master/
+                    pep600_compliance/tools/manylinux-policy.json"""
                     if glibc_major == "2" and glibc_minor == "17":
                         plat = "manylinux_2_17_x86_64.manylinux2014_x86_64"
                     else:  # For manylinux2014 and above, no alias is required
-                        plat = "manylinux_%s_%s_x86_64"%(glibc_major, glibc_minor)
+                        plat = "manylinux_%s_%s_x86_64" % (glibc_major, glibc_minor)
                 tags = next(sys_tags())
                 return (tags.interpreter, tags.abi, plat)
 
@@ -268,6 +271,7 @@ try:
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
+                assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 try:
@@ -294,7 +298,11 @@ class InstallCommand(InstallCommandBase):
 providers_cuda_or_rocm = "libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
 providers_tensorrt_or_migraphx = "libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
 providers_openvino = "libonnxruntime_providers_openvino.so"
+
 # Additional binaries
+dl_libs = []
+libs = []
+
 if platform.system() == "Linux":
     libs = [
         "onnxruntime_pybind11_state.so",
