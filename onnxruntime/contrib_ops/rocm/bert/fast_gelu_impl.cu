@@ -21,6 +21,12 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Modifications: Add FastGeluKernelVec to leverage vectorized load/write 
+//                and modify FastGeluKernel to get better performance.
+// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
+// Licensed under the MIT License.
+ 
+
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
@@ -32,21 +38,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
-// constants for approximating the normal cdf
-constexpr float A = 0.5;
-
-constexpr float B = 0.7978845608028654;  // sqrt(2.0/M_PI)
-
-constexpr float C = 0.035677408136300125;  // 0.044715 * sqrt(2.0/M_PI)
-
-constexpr float one = 1.0;
-constexpr float two = 2.0;
-
 template <typename T, unsigned TPB>
-__global__ void FastGeluKernel(const T a, const T b, const T c, const T oneT, const T twoT,
-                               int input_length, int bias_length, const T* input, const T* bias, T* output) {
+__global__ void FastGeluKernel(int input_length, int bias_length, const T* input, const T* bias, T* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
-
+  // constants for approximating the normal cdf
+  const T a = T(0.5f);
+  const T b = T(0.7978845608028654f);  // sqrt(2.0/M_PI)
+  const T c = T(0.035677408136300125f);  // 0.044715 * sqrt(2.0/M_PI)
+  const T oneT = T(1.0f);
+  const T twoT = T(2.0f);
   if (idx < input_length) {
     const T x = input[idx];
     const T in = (bias == nullptr) ? x : (x + bias[idx % bias_length]);
@@ -61,52 +61,32 @@ __global__ void FastGeluKernel(const T a, const T b, const T c, const T oneT, co
 }
 
 template <typename T, unsigned TPB, int ILP>
-__global__ void FastGeluBiasKernelVec(const T a, const T b, const T c, const T oneT, const T twoT,
-                                      int input_length, int bias_length, const T* input, const T* bias,
+__global__ void FastGeluKernelVec(int input_length, int bias_length, const T* input, const T* bias,
                                       T* output) {
   using VecT = aligned_vector<T, ILP>;
+  const T a = T(0.5f);
+  const T b = T(0.7978845608028654f);
+  const T c = T(0.035677408136300125f);
+  const T oneT = T(1.0f);
+  const T twoT = T(2.0f);
+
   const int idx = (blockIdx.x * TPB + threadIdx.x) * ILP;
   if (idx < input_length) {
     using VecT = aligned_vector<T, ILP>;
     T input_v[ILP];
     VecT* input_val = reinterpret_cast<VecT*>(&input_v);
+    *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
+    T output_v[ILP];
+    VecT* output_val = reinterpret_cast<VecT*>(&output_v);
     T bias_v[ILP];
-    VecT* bias_val = reinterpret_cast<VecT*>(&bias_v); // when ILP > bias_length, this will cause undefined behavior.
-    T output_v[ILP];
-    VecT* output_val = reinterpret_cast<VecT*>(&output_v);
-
-    *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
-    *bias_val = *reinterpret_cast<const VecT*>(&bias[idx % bias_length]);
-
-    #pragma unroll
-    for (int i = 0; i < ILP; i++) {
-      const T x = input_v[i] + bias_v[i];
-      const T u = twoT * x * (c * x * x + b);
-      const T emu = __expf(-u);
-      const T cdf = a + a * (twoT/(oneT + emu) - oneT);
-      output_v[i] = x * cdf;
+    if (bias != nullptr) {
+        VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+        *bias_val = *reinterpret_cast<const VecT*>(&bias[idx % bias_length]);
     }
-    *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
-  }
-}
-
-template <typename T, unsigned TPB, int ILP>
-__global__ void FastGeluKernelVec(const T a, const T b, const T c, const T oneT, const T twoT,
-                                      int input_length, const T* input, T* output) {
-  using VecT = aligned_vector<T, ILP>;
-  const int idx = (blockIdx.x * TPB + threadIdx.x) * ILP;
-  if (idx < input_length) {
-    using VecT = aligned_vector<T, ILP>;
-    T input_v[ILP];
-    VecT* input_val = reinterpret_cast<VecT*>(&input_v);
-    T output_v[ILP];
-    VecT* output_val = reinterpret_cast<VecT*>(&output_v);
-
-    *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
 
     #pragma unroll
     for (int i = 0; i < ILP; i++) {
-      const T x = input_v[i];
+      const T x = (bias == nullptr) ? input_v[i] : input_v[i] + bias_v[i];
       const T u = twoT * x * (c * x * x + b);
       const T emu = __expf(-u);
       const T cdf = a + a * (twoT/(oneT + emu) - oneT);
@@ -122,8 +102,7 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
   constexpr int blockSize = 256;
   const int gridSize = (input_length + blockSize - 1) / blockSize;
   hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<float, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                     stream, A, B, C, one, two, input_length, bias_length, input, bias, output);
-
+                     stream, input_length, bias_length, input, bias, output);
   return HIP_CALL(hipPeekAtLastError());
 }
 
@@ -131,48 +110,48 @@ template <>
 bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
                           const half* input, const half* bias, half* output, bool use_half2) {
   constexpr int blockSize = 256;
-  const int gridSize = (input_length + blockSize - 1) / blockSize;
-  const half oneT = half(one);
-  const half twoT = half(two);
   if (use_half2 && prop.major >= 7) {
       if (bias != nullptr) {
-        if (0 == (bias_length % 8) && (input_length >= 3145728)) {
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluBiasKernelVec<half, blockSize, 8>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, A, B, C, oneT, twoT, input_length, bias_length,
-                                             input, bias, output);
+        if (0 == (bias_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
+          const int gridSize = (input_length / 8 + blockSize - 1) / blockSize;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 8>), dim3(gridSize),
+                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
         } else if (0 == (bias_length % 4)) {
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluBiasKernelVec<half, blockSize, 4>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, A, B, C, oneT, twoT, input_length, bias_length,
-                                             input, bias, output);
+          const int gridSize = (input_length / 4 + blockSize - 1) / blockSize;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 4>), dim3(gridSize),
+                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
         } else if (0 == (bias_length % 2)) {
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluBiasKernelVec<half, blockSize, 2>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, A, B, C, oneT, twoT, input_length, bias_length,
-                                             input, bias, output);
+          const int gridSize = (input_length / 2 + blockSize - 1) / blockSize;
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 2>), dim3(gridSize),
+                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
         } else {
+          const int gridSize = (input_length + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                                             stream, A, B, C, oneT, twoT, input_length, bias_length, input, bias, output);
+                                             stream, input_length, bias_length, input, bias, output);
         }
       } else {
-        if (0 == (input_length % 8) && (input_length >= 3145728)) {
+        if (0 == (input_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
+          const int gridSize = (input_length / 8 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 8>), dim3(gridSize),
-                                            dim3(blockSize), 0, stream, A, B, C, oneT, twoT, input_length,
-                                            input, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
         } else if (0 == (input_length % 4)) {
+          const int gridSize = (input_length / 4 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 4>), dim3(gridSize),
-                                            dim3(blockSize), 0, stream, A, B, C, oneT, twoT, input_length,
-                                            input, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
         } else if (0 == (input_length % 2)) {
+          const int gridSize = (input_length / 2 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 2>), dim3(gridSize),
-                                            dim3(blockSize), 0, stream, A, B, C, oneT, twoT, input_length,
-                                            input, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
         } else {
+          const int gridSize = (input_length + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                                             stream, A, B, C, oneT, twoT, input_length, bias_length, input, bias, output);
+                                             stream, input_length, bias_length, input, bias, output);
         }
       }
   } else {
+    const int gridSize = (input_length + blockSize - 1) / blockSize;
     hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                                       stream, A, B, C, oneT, twoT, input_length, bias_length, input, bias, output);
+                                       stream, input_length, bias_length, input, bias, output);
   }
   return HIP_CALL(hipPeekAtLastError());
 }
@@ -182,10 +161,8 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
                           const BFloat16* input, const BFloat16* bias, BFloat16* output, bool /*use_half2*/) {
   constexpr int blockSize = 256;
   const int gridSize = (input_length + blockSize - 1) / blockSize;
-  const BFloat16 oneT = BFloat16(one);
-  const BFloat16 twoT = BFloat16(two);
   hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<BFloat16, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                     stream, A, B, C, oneT, twoT, input_length, bias_length, input, bias, output);
+                     stream, input_length, bias_length, input, bias, output);
   return HIP_CALL(hipPeekAtLastError());
 }
 
