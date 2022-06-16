@@ -29,6 +29,7 @@ fi
 
 
 if [ "${PACKAGE_MANAGER}" == "yum" ]; then
+	yum -y update
 	yum -y install ${COMPILE_DEPS}
 	yum clean all
 	rm -rf /var/cache/yum
