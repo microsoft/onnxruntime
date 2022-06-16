@@ -37,7 +37,7 @@ available_providers_without_tvm = [
 ]
 
 available_providers_without_tvm_and_tensorrt = [
-    provider for provider in onnxrt.get_available_providers() if provider not in {"TvmExecutionProvider", "TensorrtExecutionProvider}
+    provider for provider in onnxrt.get_available_providers() if provider not in {"TvmExecutionProvider", "TensorrtExecutionProvider"}
 ]
 
 
