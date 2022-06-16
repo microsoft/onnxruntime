@@ -21,11 +21,10 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Modifications: Add FastGeluKernelVec to leverage vectorized load/write 
+// Modifications: Add FastGeluKernelVec to leverage vectorized load/write
 //                and modify FastGeluKernel to get better performance.
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
- 
 
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
@@ -115,43 +114,52 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
         if (0 == (bias_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
           const int gridSize = (input_length / 8 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 8>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         } else if (0 == (bias_length % 4)) {
           const int gridSize = (input_length / 4 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 4>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         } else if (0 == (bias_length % 2)) {
           const int gridSize = (input_length / 2 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 2>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         } else {
           const int gridSize = (input_length + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                                             stream, input_length, bias_length, input, bias, output);
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize),
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         }
       } else {
         if (0 == (input_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
           const int gridSize = (input_length / 8 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 8>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         } else if (0 == (input_length % 4)) {
           const int gridSize = (input_length / 4 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 4>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         } else if (0 == (input_length % 2)) {
           const int gridSize = (input_length / 2 + blockSize - 1) / blockSize;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, blockSize, 2>), dim3(gridSize),
-                                             dim3(blockSize), 0, stream, input_length, bias_length, input, bias, output);
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         } else {
           const int gridSize = (input_length + blockSize - 1) / blockSize;
-          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                                             stream, input_length, bias_length, input, bias, output);
+          hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize),
+                                             dim3(blockSize), 0, stream, input_length, bias_length,
+                                             input, bias, output);
         }
       }
   } else {
     const int gridSize = (input_length + blockSize - 1) / blockSize;
-    hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize), dim3(blockSize), 0,
-                                       stream, input_length, bias_length, input, bias, output);
+    hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<half, blockSize>), dim3(gridSize),
+                                       dim3(blockSize), 0, stream, input_length, bias_length,
+                                       input, bias, output);
   }
   return HIP_CALL(hipPeekAtLastError());
 }
