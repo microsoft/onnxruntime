@@ -143,11 +143,13 @@ enum DataLayout {
   L_1230 = 1,
 };
 
-static Status GetAxes(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                      std::vector<int32_t>& axes) {
+static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                            std::vector<int32_t>& axes) {
   // Squeeze/Unsqueeze opset 13 uses input1 as axes
   if (node_unit.SinceVersion() > 12) {
-    // If axes is not supplied, return an empty axes as default to squeeze all
+    // For squeeze, axes is an optional input.If it is not supplied, return an empty axes as default to squeeze all
+    // For unsqueeze, axes is a required input. This check has no effect for it
+    // TODO: Add helper function to handle the following conversion from int64 initializer to int32
     if (node_unit.Inputs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
@@ -970,13 +972,13 @@ void UnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
 }
 
 Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  auto& shaper(model_builder.GetShaper());
-  auto input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& shaper(model_builder.GetShaper());
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
 
   // NNAPI does not support unsqueeze, here we utilize unsqueeze's axes input to compute output shape
   // And add equivalent operation as ANEURALNETWORKS_RESHAPE to nnapi model
   std::vector<int32_t> axes;
-  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node_unit, axes));
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
 
   Shape input_shape = shaper[input];
   auto input_dims = input_shape.size();
@@ -2130,7 +2132,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
   std::vector<int32_t> axes;
-  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node_unit, axes));
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
   return AddSqueezeOp(model_builder, node_unit.Name(), input, node_unit.Outputs()[0].node_arg.Name(), axes);
 }
 
