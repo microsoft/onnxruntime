@@ -102,5 +102,44 @@ inline double ClampMiopenBatchNormEpsilon(double epsilon) {
   return epsilon;
 }
 
+// Compatitable layer to address the non const arguments in miopenBatchNormalizationForwardTraining
+inline miopenStatus_t
+miCompatBatchNormalizationForwardTraining(miopenHandle_t handle,
+                                          miopenBatchNormMode_t bn_mode,
+                                          const void* alpha,
+                                          const void* beta,
+                                          const miopenTensorDescriptor_t xDesc,
+                                          const void* x,
+                                          const miopenTensorDescriptor_t yDesc,
+                                          void* y,
+                                          const miopenTensorDescriptor_t bnScaleBiasMeanVarDesc,
+                                          const void* bnScale,
+                                          const void* bnBias,
+                                          double expAvgFactor,
+                                          void* resultRunningMean,
+                                          void* resultRunningVariance,
+                                          double epsilon,
+                                          void* resultSaveMean,
+                                          void* resultSaveInvVariance)
+{
+    return miopenBatchNormalizationForwardTraining(handle,
+                                                   bn_mode,
+                                                   (void*)alpha,
+                                                   (void*)beta,
+                                                   xDesc,
+                                                   x,
+                                                   yDesc,
+                                                   y,
+                                                   bnScaleBiasMeanVarDesc,
+                                                   (void*)bnScale,
+                                                   (void*)bnBias,
+                                                   expAvgFactor,
+                                                   resultRunningMean,
+                                                   resultRunningVariance,
+                                                   epsilon,
+                                                   resultSaveMean,
+                                                   resultSaveInvVariance);
+}
+
 }  // namespace rocm
 }  // namespace onnxruntime
