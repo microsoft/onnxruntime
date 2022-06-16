@@ -37,13 +37,13 @@ jobs:
        - uses: actions/checkout@v3
          with:
            submodules: true
-       - uses: actions/setup-python@v3
-         with:
-           python-version: '3.8.x'
-           architecture: 'x64'
-       - name: 'Setup TVM EP requirements'
+       - name: 'Setup docker image'
          run: |
-           id
            az login --identity
            az acr login -n onnxruntimebuildcache
+           python3 tools/ci_build/get_docker_image.py --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu \
+            --context tools/ci_build/github/linux/docker \
+            --docker-build-args "--build-arg BUILD_UID=$( id -u )" \
+            --container-registry onnxruntimebuildcache \
+            --repository onnxruntimecpubuild
 
