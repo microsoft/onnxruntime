@@ -17,32 +17,21 @@ struct CudaNotification : public synchronize::Notification {
   void Activate() override {
     // record event with cudaEventBlockingSync so we can support sync on host with out busy wait.
     CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(stream->handle)));
-    //activate the notification.
-    ready_.store(true); 
   }
 
   void wait_on_device(Stream& device_stream) {
     ORT_ENFORCE(device_stream.provider->Type() == kCudaExecutionProvider);
-    // wait for the notification to be activated
-    while (!ready_.load()) {
-      onnxruntime::concurrency::SpinPause();
-    }
     // launch a wait command to the cuda stream
     CUDA_CALL_THROW(cudaStreamWaitEvent(static_cast<cudaStream_t>(device_stream.handle), 
                                         event_));
   };
 
   void wait_on_host() {
-    // wait for the notification to be activated
-    while (!ready_.load()) {
-      onnxruntime::concurrency::SpinPause();
-    }
     
     //CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
     CUDA_CALL_THROW(cudaEventSynchronize(event_));
   }
 
-  std::atomic_bool ready_{};
   cudaEvent_t event_;
 };
 
