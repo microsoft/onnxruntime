@@ -524,6 +524,9 @@ def parse_arguments():
         "--winml_root_namespace_override", type=str, help="Specify the namespace that WinML builds into."
     )
     parser.add_argument(
+        "--dml_external_project", action="store_true", help="Build with DirectML as an external project."
+    )
+    parser.add_argument(
         "--use_telemetry", action="store_true", help="Only official builds can set this flag to enable telemetry."
     )
     parser.add_argument("--enable_wcos", action="store_true", help="Build for Windows Core OS.")
@@ -1035,6 +1038,12 @@ def generate_build_tree(
             "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
         ]
 
+    if args.dml_external_project:
+        cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_EXTERNAL_PROJECT=ON",
+        ]
+
     if args.use_gdk:
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "gdk_toolchain.cmake"),
@@ -1042,8 +1051,8 @@ def generate_build_tree(
             "-DGDK_PLATFORM=" + args.gdk_platform,
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF",  # gtest doesn't build for GDK
         ]
-        if args.use_dml and not args.dml_path:
-            raise BuildError("You must set dml_path when building with the GDK.")
+        if args.use_dml and not (args.dml_path or args.dml_external_project):
+            raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
@@ -1377,7 +1386,7 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
                 raise BuildError(
                     "dml_path is invalid.", "dml_path='{}' expected_file='{}'.".format(args.dml_path, file_path)
                 )
-    else:
+    elif not args.dml_external_project:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.
