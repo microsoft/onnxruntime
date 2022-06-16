@@ -5,11 +5,6 @@ ARG DEVTOOLSET_ROOTPATH=
 ARG LD_LIBRARY_PATH_ARG=
 ARG PREPEND_PATH=
 
-# Updating the CUDA Linux GPG Repository Key ( https://developer.nvidia.com/blog/updating-the-cuda-linux-gpg-repository-key/ )
-RUN rm -rf /etc/yum.repos.d/cuda.repo && \
-    rpm --erase gpg-pubkey-7fa2af80* && \
-    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
-
 #We need both CUDA and manylinux. But the CUDA Toolkit End User License Agreement says NVIDIA CUDA Driver Libraries(libcuda.so, libnvidia-ptxjitcompiler.so) are only distributable in applications that meet this criteria:
 #1. The application was developed starting from a NVIDIA CUDA container obtained from Docker Hub or the NVIDIA GPU Cloud, and
 #2. The resulting application is packaged as a Docker container and distributed to users on Docker Hub or the NVIDIA GPU Cloud only.
@@ -39,6 +34,11 @@ COPY build_scripts/install-entrypoint.sh \
      build_scripts/update-system-packages.sh \
      build_scripts/build_utils.sh \
      /build_scripts/
+
+# Updating the CUDA Linux GPG Repository Key ( https://developer.nvidia.com/blog/updating-the-cuda-linux-gpg-repository-key/ )
+RUN rm -rf /etc/yum.repos.d/cuda.repo && \
+    rpm --erase gpg-pubkey-7fa2af80* && \
+    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo
 
 RUN /build_scripts/install-entrypoint.sh && rm -rf /build_scripts
 COPY manylinux-entrypoint /usr/local/bin/manylinux-entrypoint
