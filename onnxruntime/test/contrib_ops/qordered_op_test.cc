@@ -129,7 +129,7 @@ static std::vector<int8_t> QuantizeTransform(std::vector<int64_t> const& shape, 
                                           float v = (float)source_value / scale;
                                           v = std::max(-128.0f, v);
                                           v = std::min(127.0f, v);
-                                          return static_cast<int8_t>(std::round(v));
+                                          return static_cast<int8_t>(std::nearbyintf(v));
                                         });
 }
 
@@ -276,6 +276,10 @@ static void RunQOrdered_MatMul_Test(
     OrderCublasLt order_weight,
     float scaleA, float scaleB, float scaleC, float scaleY,
     bool add_bias = false, bool broadcast_c_batch = false) {
+  scaleA = MLFloat16(scaleA).ToFloat();
+  scaleB = MLFloat16(scaleB).ToFloat();
+  scaleC = MLFloat16(scaleC).ToFloat();
+  scaleY = MLFloat16(scaleY).ToFloat();
   int64_t nY = std::accumulate(shapeY.begin(), shapeY.end(), int64_t{1LL}, std::multiplies<int64_t>());
   std::vector<int8_t> vecA = GenData<int8_t>(shapeA, 1.0f);
   std::vector<int8_t> vecB = GenData<int8_t>(shapeB, 1.0f);
@@ -298,8 +302,9 @@ static void RunQOrdered_MatMul_Test(
 
   std::vector<int64_t> shapeBias = {colsY};
   std::vector<float> vecBias;
-  if (add_bias) {
-    vecBias = GenData<float>(shapeBias, scaleY);
+  if (add_bias) { // make bias not too big
+    float scaleBias = MLFloat16(scaleY / 27.0f).ToFloat();
+    vecBias = GenData<float>(shapeBias, scaleBias);
   }
   std::vector<int8_t> vecC;
   std::vector<int64_t> shapeC = {broadcast_c_batch ? 1 : batchY, rowsY, colsY};
@@ -309,6 +314,7 @@ static void RunQOrdered_MatMul_Test(
 
   // TODO: brocasting higher dims
   float alpha = scaleA * scaleB / scaleY;
+  float beta = scaleC / scaleY;
   int8_t const* A = vecA.data();
   int8_t const* B = vecB.data();
   int8_t* Y = vecY.data();
@@ -316,21 +322,21 @@ static void RunQOrdered_MatMul_Test(
   for (int64_t b = 0; b < batchY; b++) {
     for (int64_t m = 0; m < rowsA; m++) {
       for (int64_t n = 0; n < colsB; n++) {
-        float sum = 0.0f;
+        int32_t isum = 0;
         for (int64_t k = 0; k < colsA; k++) {
           auto posA = indexerA(m, k);
           auto posB = indexerB(n, k);  // Transpose B
-          sum += A[posA] * B[posB];
+          isum += (A[posA] * B[posB]);
         }
-        sum *= alpha;
+        float sum = alpha * isum;
         if (add_bias) {
           sum += vecBias[n];
         }
         auto posY = indexerY(m, n);
         if (scaleC != 0.0f) {
-          sum += scaleC / scaleY * C[posY];
+          sum += beta * C[posY];
         }
-        Y[posY] = static_cast<int8_t>((int)std::round(std::min(127.0f, std::max(-128.0f, sum))));
+        Y[posY] = static_cast<int8_t>((int)std::nearbyintf(std::min(127.0f, std::max(-128.0f, sum))));
       }
     }
     A += (batchA <= 1 ? int64_t{0} : (rowsA * colsA));
@@ -361,7 +367,7 @@ static void RunQOrdered_MatMul_Test(
     test_qorder.AddInput<int8_t>("C", shapeC, vecC);
     test_qorder.AddInput<float>("scale_C", {}, {scaleC});
   }
-  test_qorder.AddOutput<int8_t>("Y", shapeY, vecY, false, 0.0f, 1.0f /* abs error */);
+  test_qorder.AddOutput<int8_t>("Y", shapeY, vecY, false, 0.0f, 0.0f /* abs error */);
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
