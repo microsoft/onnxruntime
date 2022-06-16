@@ -41,6 +41,10 @@ jobs:
          with:
            python-version: '3.8.x'
            architecture: 'x64'
+       - name: 'Setup TVM EP requirements'
+         run: |
+           id
+
        - name: Azure CLI script
          uses: azure/CLI@v1
          with:
