@@ -62,7 +62,7 @@ struct Notification {
 // EP can register the handle to the executor.
 // in the POC, just use primitive function pointer
 // TODO: use a better way to dispatch handles.
-using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
+using WaitNotificationFn = std::function<bool(Stream&, synchronize::Notification&)>;
 using CreateStreamFn = std::function<std::unique_ptr<Stream>(const IExecutionProvider*)>;
 
 // an interface of a simple registry which hold the handles EP registered.

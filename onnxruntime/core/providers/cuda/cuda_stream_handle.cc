@@ -21,25 +21,32 @@ struct CudaNotification : public synchronize::Notification {
     ready_.store(true); 
   }
 
-  void wait_on_device(Stream& device_stream) {
+  bool wait_on_device(Stream& device_stream) {
     ORT_ENFORCE(device_stream.provider->Type() == kCudaExecutionProvider);
     // wait for the notification to be activated
-    while (!ready_.load()) {
-      onnxruntime::concurrency::SpinPause();
+    //while (!ready_.load()) {
+    //  onnxruntime::concurrency::SpinPause();
+    //}
+    if (!ready_.load()) {
+      return false;
     }
     // launch a wait command to the cuda stream
     CUDA_CALL_THROW(cudaStreamWaitEvent(static_cast<cudaStream_t>(device_stream.handle), 
                                         event_));
+    return true;
   };
 
-  void wait_on_host() {
+  bool wait_on_host() {
     // wait for the notification to be activated
-    while (!ready_.load()) {
-      onnxruntime::concurrency::SpinPause();
+    //while (!ready_.load()) {
+    //  onnxruntime::concurrency::SpinPause();
+    //}
+    if (!ready_.load()) {
+      return false;
     }
-    
     //CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
     CUDA_CALL_THROW(cudaEventSynchronize(event_));
+    return true;
   }
 
   std::atomic_bool ready_{};
@@ -64,12 +71,12 @@ void CudaStream::Flush(){
 
 
 // CPU Stream command handles
-void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<CudaNotification*>(&notification)->wait_on_device(stream);
+bool WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
+  return static_cast<CudaNotification*>(&notification)->wait_on_device(stream);
 }
 
-void WaitCudaNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
-  static_cast<CudaNotification*>(&notification)->wait_on_host();
+bool WaitCudaNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+  return static_cast<CudaNotification*>(&notification)->wait_on_host();
 }
 
 void ReleaseCUdaNotification(void* handle) {

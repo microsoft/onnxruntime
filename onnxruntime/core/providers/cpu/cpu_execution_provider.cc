@@ -2164,10 +2164,11 @@ struct CPUNotification : synchronize::Notification {
     ready_.store(true);
   }
 
-  void wait() {
-    while (!ready_.load()) {
-      onnxruntime::concurrency::SpinPause();
-    }
+  bool wait() {
+    //while (!ready_.load()) {
+    //  onnxruntime::concurrency::SpinPause();
+    //}
+    return ready_.load();
   };
 
   std::atomic_bool ready_{};
@@ -2184,8 +2185,8 @@ struct CPUStream : Stream {
 };
 
 // CPU Stream command handles
-void WaitCPUNotification(Stream& /*stream*/, synchronize::Notification& notification) {
-  static_cast<CPUNotification*>(&notification)->wait();
+bool WaitCPUNotification(Stream& /*stream*/, synchronize::Notification& notification) {
+  return static_cast<CPUNotification*>(&notification)->wait();
 }
 
 std::unique_ptr<Stream> CreateCPUStream(const IExecutionProvider* provider) {
