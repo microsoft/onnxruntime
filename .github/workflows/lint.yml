@@ -51,7 +51,7 @@ jobs:
           reporter: github-pr-check
           level: warning
           filter_mode: diff_context
-          lib: true
+          pyright_flags: --ignoreexternal
       - name: pylint
         uses: dciborow/action-pylint@0.0.7
         with:
