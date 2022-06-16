@@ -189,7 +189,7 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
         return
 
     dml_dependency = (
-        '<dependency id="Microsoft.AI.DirectML.Preview" version="1.9.0-dev2b57b4f738b1d0dcc2dd31ecd502e36f4e3ea5a0"/>'
+        '<dependency id="Microsoft.AI.DirectML.Preview" version="1.9.0-devd10042c94985065a565c042540e15eb75b554663"/>'
     )
 
     if package_name == "Microsoft.AI.MachineLearning":
