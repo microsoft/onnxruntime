@@ -1798,6 +1798,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
+            # Disable python tests for TensorRT on Windows due to need to enable placeholder builder
+            # to reduce test times.
+            if args.use_tensorrt and is_windows():
+                return
 
             python_path = None
             if args.use_tvm:
