@@ -463,6 +463,8 @@ def parse_arguments():
     parser.add_argument("--use_coreml", action="store_true", help="Build with CoreML support.")
     parser.add_argument("--use_snpe", action="store_true", help="Build with SNPE support.")
     parser.add_argument("--snpe_root", help="Path to SNPE SDK root.")
+    parser.add_argument("--use_vulkan", action="store_true", help="Build with Vulkan support.")
+    parser.add_argument("--vulkan_home", help="Path to Vulkan SDK root.")    
     parser.add_argument("--use_nnapi", action="store_true", help="Build with NNAPI support.")
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
@@ -787,6 +789,7 @@ def generate_build_tree(
     armnn_home,
     armnn_libs,
     snpe_root,
+    vulkan_home,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -961,6 +964,9 @@ def generate_build_tree(
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
 
+    if vulkan_home and os.path.exists(vulkan_home):
+        cmake_args += ["-DVULKAN_HOME=" + vulkan_home]
+
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
     if args.use_openvino:
@@ -1070,6 +1076,12 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
+    if args.use_vulkan:
+        if args.x86:
+            raise BuildError("You must set dml_path when building with the GDK.")
+        else:
+            cmake_args += ["-Donnxruntime_USE_VULKAN=ON"]
+            
     if args.ios:
         needed_args = [
             args.use_xcode,
@@ -2408,6 +2420,7 @@ def main():
     nccl_home = args.nccl_home
 
     snpe_root = args.snpe_root
+    vulkan_home = args.vulkan_home
 
     acl_home = args.acl_home
     acl_libs = args.acl_libs
@@ -2625,6 +2638,7 @@ def main():
             armnn_home,
             armnn_libs,
             snpe_root,
+            vulkan_home,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,
