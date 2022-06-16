@@ -527,7 +527,12 @@ std::unique_ptr<ReleasePlan> ParallelExecutionPlan::GenerateReleasePlan() const 
   int num_values = impl_->session_state_.GetOrtValueNameIdxMap().MaxIdx() + 1;
   release_plan->value_ref_counts_.reset(new std::atomic_int[num_values]);
   for (auto value_it : impl_->value_consumer_map_) {
-    release_plan->value_ref_counts_[value_it.first] = static_cast<int>(value_it.second.size());
+    // a temporary hack
+    if (allocation_plan[value_it.first].alloc_kind == AllocKind::kAllocate ||
+        allocation_plan[value_it.first].alloc_kind == AllocKind::kReuse)
+      release_plan->value_ref_counts_[value_it.first] = static_cast<int>(value_it.second.size());
+    else
+      release_plan->value_ref_counts_[value_it.first] = 0;
     for (auto node_it : value_it.second) {
       release_plan->node_value_map_[node_it].push_back(value_it.first);
     }
