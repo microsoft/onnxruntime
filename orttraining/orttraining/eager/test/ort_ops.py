@@ -1,15 +1,18 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# pylint: disable=missing-docstring
+
 import unittest
 
 import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
-from torch import nn
 
 
 class OrtOpTests(unittest.TestCase):
+    """test cases for supported eager ops"""
+
     def get_device(self):
         return torch_ort.device()
 
@@ -102,18 +105,18 @@ class OrtOpTests(unittest.TestCase):
     def test_max(self):
         cpu_tensor = torch.rand(10, 10)
         ort_tensor = cpu_tensor.to("ort")
-        y = ort_tensor.max()
-        x = cpu_tensor.max()
-        assert torch.allclose(x, y.cpu())
-        assert x.dim() == y.dim()
+        ort_min = ort_tensor.max()
+        cpu_min = cpu_tensor.max()
+        assert torch.allclose(cpu_min, ort_min.cpu())
+        assert cpu_min.dim() == ort_min.dim()
 
     def test_min(self):
         cpu_tensor = torch.rand(10, 10)
         ort_tensor = cpu_tensor.to("ort")
-        y = ort_tensor.min()
-        x = cpu_tensor.min()
-        assert torch.allclose(x, y.cpu())
-        assert x.dim() == y.dim()
+        ort_min = ort_tensor.min()
+        cpu_min = cpu_tensor.min()
+        assert torch.allclose(cpu_min, ort_min.cpu())
+        assert cpu_min.dim() == ort_min.dim()
 
     def test_equal(self):
         device = self.get_device()
@@ -158,42 +161,20 @@ class OrtOpTests(unittest.TestCase):
     def test_addmm(self):
         device = self.get_device()
         size = 4
-        input = torch.ones([size, size]).to(device)
+        ort_tensor = torch.ones([size, size]).to(device)
         input_bias = torch.ones([size]).to(device)
-        output = torch.addmm(input_bias, input, input)
+        output = torch.addmm(input_bias, ort_tensor, ort_tensor)
         expected = torch.ones([size, size]) * 5
         assert torch.equal(output.to("cpu"), expected)
 
-    def test_model(self):
+    def test_argmax(self):
         device = self.get_device()
-        model = NeuralNetwork().to(device)
-        X = torch.ones(1, 28, 28, dtype=torch.float32)
-        X_ort = X.to(device)
-        logits = model(X_ort)
-        logits_cpu = logits.to("cpu")
-        pred_probab = nn.Softmax(dim=1)(logits)
-        pred_probab_cpu = pred_probab.cpu()
-        y_pred = pred_probab.argmax()
-        y_pred_cpu = pred_probab_cpu.argmax()
-        assert y_pred == y_pred_cpu
-        assert y_pred.dim() == y_pred_cpu.dim()
-
-class NeuralNetwork(nn.Module):
-    def __init__(self):
-        super(NeuralNetwork, self).__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(28*28, 512),
-            nn.ReLU(),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, 10),
-        )
-
-    def forward(self, x):
-        x = self.flatten(x)
-        logits = self.linear_relu_stack(x)
-        return logits
+        cpu_tensor = torch.rand(3, 5)
+        ort_tensor = cpu_tensor.to(device)
+        cpu_result = torch.argmax(cpu_tensor, dim=1)
+        ort_result = torch.argmax(ort_tensor, dim=1)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
 
 
 if __name__ == "__main__":

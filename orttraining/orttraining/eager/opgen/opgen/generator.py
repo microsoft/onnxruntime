@@ -5,10 +5,7 @@ import json
 import sys
 from typing import Dict, List, Optional, Union
 
-import opgen.ast as ast
-import opgen.lexer as lexer
-import opgen.parser as parser
-import opgen.writer as writer
+from opgen import ast, lexer, parser, writer
 
 
 class Outputs:

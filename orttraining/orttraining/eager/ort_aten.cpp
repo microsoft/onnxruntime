@@ -540,9 +540,9 @@ at::Tensor& add__Tensor(
   ORT_LOG_FN(self, other, alpha);
 
   if (
-    !IsSupportedType(alpha, {at::kDouble,at::kLong,at::kHalf,at::kShort,at::kInt,at::kByte,at::kFloat,at::kBFloat16}) ||
-    !IsSupportedType(other, {at::kDouble,at::kLong,at::kHalf,at::kShort,at::kInt,at::kByte,at::kFloat,at::kBFloat16}) ||
-    !IsSupportedType(self, {at::kDouble,at::kLong,at::kHalf,at::kShort,at::kInt,at::kByte,at::kFloat,at::kBFloat16})) {
+    !IsSupportedType(alpha, {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16}) ||
+    !IsSupportedType(other, {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16}) ||
+    !IsSupportedType(self, {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16})) {
     return at::native::call_fallback_fn<
       &at::native::cpu_fallback,
       ATEN_OP(add__Tensor)>::call(self, other, alpha);
@@ -644,7 +644,7 @@ at::Tensor& out) {
   ORT_LOG_FN(self, dim, keepdim, out);
 
   if (
-    !IsSupportedType(self, {at::kLong,at::kShort,at::kHalf,at::kBFloat16,at::kFloat,at::kByte,at::kInt,at::kDouble})) {
+    !IsSupportedType(self, {at::kLong, at::kShort, at::kHalf, at::kBFloat16, at::kFloat, at::kByte, at::kInt, at::kDouble})) {
     return at::native::call_fallback_fn<
     &at::native::cpu_fallback,
     ATEN_OP(argmax_out)>::call(self, dim, keepdim, out);
@@ -673,12 +673,11 @@ at::Tensor& out) {
   throw std::runtime_error(
   "ORT return failure status:" + status.ErrorMessage());
 
-  at::TensorOptions tensor_options = out.options().dtype(at::kLong);
+  at::TensorOptions tensor_options = out.options();
 
   // generator also needs to do this to handle the out param!
-  OrtValue ot = ort_outputs_0_ArgMax[0];
   out = aten_tensor_from_ort(
-  std::move(ot),
+  std::move(ort_outputs_0_ArgMax[0]),
   tensor_options);
   return out;
 }
