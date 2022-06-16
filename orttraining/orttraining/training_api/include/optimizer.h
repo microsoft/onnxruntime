@@ -86,7 +86,7 @@ struct Optimizer {
   // TODO: load this info from checkpoint
   OptimizerType optimizer_type_ = OptimizerType::AdamW;
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
+  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
   GroupOptimizerState optimizer_state_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
