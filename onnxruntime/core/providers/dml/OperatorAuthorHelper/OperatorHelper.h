@@ -1302,6 +1302,23 @@ protected:
     std::vector<uint32_t> m_outputDimensions;
 };
 
+class BatchNormalizationHelper
+{
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
+
+public:
+    template <typename Info_t, typename Shape_t>
+    BatchNormalizationHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shapeInfo));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1318,6 +1335,7 @@ using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
 
 using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
@@ -1361,10 +1379,12 @@ using ShapeInferenceHelper_Unsqueeze7 = VersionedOpsetHelper<UnsqueezeHelper, 7>
 using ShapeInferenceHelper_Unsqueeze11 = VersionedOpsetHelper<UnsqueezeHelper, 11>;
 using ShapeInferenceHelper_Unsqueeze13 = VersionedOpsetHelper<UnsqueezeHelper, 13>;
 using ShapeInferenceHelper_EyeLike = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Trilu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape13 = ReshapeHelper;
+using ShapeInferenceHelper_Reshape14 = ReshapeHelper;
 using ShapeInferenceHelper_ConstantOfShape = ConstantOfShapeHelper;
 using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
@@ -1458,16 +1478,21 @@ using ShapeInferenceHelper_Elu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Celu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Selu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Softmax = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Softmax13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LogSoftmax = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_LogSoftmax13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Hardmax = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Hardmax13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Softsign = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Softplus = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_ParametricSoftplus = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Dropout = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
@@ -1488,13 +1513,16 @@ using ShapeInferenceHelper_RandomNormalLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Multinomial = MultinomialHelper;
 
 using ShapeInferenceHelper_ReverseSequence = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_CumSum = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum11 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
+
+using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_FusedConv = ConvHelper;
 using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_FusedInstanceNormalization = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_FusedBatchNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_FusedBatchNormalization = BatchNormalizationHelper;
 using ShapeInferenceHelper_FusedMeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_FusedGemm = GemmHelper;
 using ShapeInferenceHelper_FusedMatMul = MatMulHelper;
