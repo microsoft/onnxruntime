@@ -2004,7 +2004,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   OrtCUDAProviderOptions provider_options{};
   provider_options.default_memory_arena_cfg = &arena_cfg;
   provider_options.device_id = 0;
-  auto factory = CreateExecutionProviderFactory_Cuda(&provider_options);
+  auto factory = CudaProviderFactoryCreator::Create(&provider_options);
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(factory->CreateProvider()));

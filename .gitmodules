@@ -68,7 +68,7 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
-	branch = 8.2-GA
+	branch = 8.4-GA
 [submodule "cmake/external/pthreadpool"]
 	path = cmake/external/pthreadpool
 	url = https://github.com/Maratyszcza/pthreadpool.git
