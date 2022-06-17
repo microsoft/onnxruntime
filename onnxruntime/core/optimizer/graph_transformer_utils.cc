@@ -277,7 +277,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
       // x86-64 cpu, not edge cpu like arm. But This tranformer could be used by opencl-ep/cpu-ep. So
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
-      // this PR #6351 implemented similar fusion-pattern but only for CUDA, and can only fuse conv-add-relu, while we can fuse more activation.
+      // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
+      // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
 #endif
     } break;
