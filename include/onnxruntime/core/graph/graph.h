@@ -82,14 +82,17 @@ class Node {
   explicit Node() = default;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  Node(const std::string& name,
-       const std::string& op_type,
-       const std::string& description,
-       const std::vector<NodeArg*>& input_args,
-       const std::vector<NodeArg*>& output_args,
+  Node(std::string_view name,
+       std::string_view op_type,
+       std::string_view description,
+       const gsl::span<NodeArg*>& input_args,
+       const gsl::span<NodeArg*>& output_args,
        const NodeAttributes* attributes,
-       const std::string& domain) {
-    Init(name, op_type, description, input_args, output_args, attributes, domain);
+       std::string_view domain) {
+    Init(std::string{name}, std::string{op_type}, std::string{description},
+         std::vector<NodeArg*>{input_args.begin(), input_args.end()},
+         std::vector<NodeArg*>{output_args.begin(), output_args.end()},
+         attributes, std::string{domain});
   }
 #endif
 
