@@ -115,5 +115,5 @@ jobs:
        - name: 'Symbolic shape infer'
          run: |
             cd ${{ github.workspace }}/build/Release
-            ${{ github.workspace }}/build/Release/onnxruntime_test_python_symbolic_shape_infer.py
+            python3 ${{ github.workspace }}/build/Release/onnxruntime_test_python_symbolic_shape_infer.py
            
