@@ -16,7 +16,8 @@ and inserts nodes to reorder tensors as needed.
 */
 class NchwcTransformer : public GraphTransformer {
  public:
-  NchwcTransformer(const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept : GraphTransformer("NchwcTransformer", compatible_execution_providers) {}
+  explicit NchwcTransformer(const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
+	: GraphTransformer("NchwcTransformer", compatible_execution_providers) {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

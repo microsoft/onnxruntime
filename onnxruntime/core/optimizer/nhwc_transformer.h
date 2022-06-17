@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <utility>
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
@@ -20,8 +21,9 @@ class NhwcTransformer : public GraphTransformer {
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit NhwcTransformer(const InlinedHashSet<std::string_view>& compatible_execution_providers, AllocatorPtr cpu_allocator) noexcept 
-    : GraphTransformer("NhwcTransformer", compatible_execution_providers), cpu_allocator_(std::move(cpu_allocator)){};
+  explicit NhwcTransformer(const InlinedHashSet<std::string_view>& compatible_execution_providers,
+    AllocatorPtr cpu_allocator) noexcept
+    : GraphTransformer("NhwcTransformer", compatible_execution_providers), cpu_allocator_(std::move(cpu_allocator)){}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

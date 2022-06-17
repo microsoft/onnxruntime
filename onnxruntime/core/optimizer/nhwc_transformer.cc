@@ -32,8 +32,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
     // If the node is not supported in the EP
-    if (!graph_utils::IsSupportedProvider(NodeFromApiNode(*node), GetCompatibleExecutionProviders()))
-    {
+    if (!graph_utils::IsSupportedProvider(NodeFromApiNode(*node), GetCompatibleExecutionProviders())) {
         continue;
     }
 
