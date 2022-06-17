@@ -178,5 +178,47 @@ miCompatBatchNormalizationForwardInference(miopenHandle_t handle,
                                                     epsilon);
 }
 
+inline miopenStatus_t
+miCompatLRNCrossChannelForward(miopenHandle_t handle,
+                               miopenLRNDescriptor_t lrnDesc,
+                               miopenLRNMode_t lrnMode,
+                               const void* alpha,
+                               const miopenTensorDescriptor_t xDesc,
+                               const void* x,
+                               const void* beta,
+                               const miopenTensorDescriptor_t yDesc,
+                               void *y)
+{
+    if (lrnMode != miopenLRNCrossChannel) {
+        LOGS_DEFAULT(ERROR) << __func__ << " must be called with lrnMode == miopenLRNCrossChannel";
+        return miopenStatusBadParm;
+    }
+    return miopenLRNForward(handle,
+                            lrnDesc,
+                            alpha,
+                            xDesc,
+                            x,
+                            beta,
+                            yDesc,
+                            y,
+                            false, // Has not found cudnnLRNCrossChannelBackward anywhere yet
+                            nullptr);
+}
+
+inline miopenStatus_t
+miCompatSetLRNDescriptor(const miopenLRNDescriptor_t lrnDesc,
+                         unsigned int lrnN,
+                         double lrnAlpha,
+                         double lrnBeta,
+                         double lrnK)
+{
+    return miopenSetLRNDescriptor(lrnDesc,
+                                  miopenLRNCrossChannel,
+                                  lrnN,
+                                  lrnAlpha,
+                                  lrnBeta,
+                                  lrnK);
+}
+
 }  // namespace rocm
 }  // namespace onnxruntime
