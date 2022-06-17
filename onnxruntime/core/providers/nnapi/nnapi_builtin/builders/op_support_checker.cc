@@ -2311,8 +2311,7 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
   }
 
   // only support if `constant_value` input is known
-  // Note: Could add support for non-constant initializer later. Then we need to ensure it is a scalar (not a single
-  // element tensor).
+  // Note: Could add support for non-constant initializer later. Then we need to ensure it is a scalar (with shape []).
   if (inputs.size() > 2) {
     if (!Contains(initializers, inputs[2].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "constant_value must be known";
