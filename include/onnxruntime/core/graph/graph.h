@@ -85,8 +85,8 @@ class Node {
   Node(std::string_view name,
        std::string_view op_type,
        std::string_view description,
-       const gsl::span<NodeArg*>& input_args,
-       const gsl::span<NodeArg*>& output_args,
+       gsl::span<NodeArg*> input_args,
+       gsl::span<NodeArg*> output_args,
        const NodeAttributes* attributes,
        std::string_view domain) {
     Init(std::string{name}, std::string{op_type}, std::string{description},
