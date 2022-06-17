@@ -45,8 +45,8 @@ namespace Dml
             const size_t isConstGpuGraphInputCount,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
             const onnxruntime::Graph& graph,
-            std::vector<std::string>& fusedNodeInputArgOriginalNames,
-            std::vector<std::string>& fusedNodeOutputArgOriginalNames,
+            const gsl::span<const std::string>& fusedNodeInputArgOriginalNames,
+            const gsl::span<const std::string>& fusedNodeOutputArgOriginalNames,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             IDMLDevice* device,
             const void* executionHandle);

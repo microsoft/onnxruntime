@@ -20,8 +20,8 @@ namespace Dml
             const onnxruntime::OpKernelInfo& kernelInfo,
             const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-            std::vector<std::string>& fusedNodeInputArgOriginalNames,
-            std::vector<std::string>& fusedNodeOutputArgOriginalNames) : OpKernel(kernelInfo)
+            const gsl::span<const std::string>& fusedNodeInputArgOriginalNames,
+            const gsl::span<const std::string>& fusedNodeOutputArgOriginalNames) : OpKernel(kernelInfo)
         {       
             // Get the graph for the function which was created according to the computational
             // capacity returned by the execution provider's graph partitioner
@@ -47,17 +47,20 @@ namespace Dml
                 ORT_THROW_IF_FAILED(providerExecutionObject.As(&m_winmlProvider));
             }
 
-            TranslateAndCompileGraph(kernelInfo, graph, node.InputDefs(), fusedNodeInputArgOriginalNames, 
-                node.OutputDefs(), fusedNodeOutputArgOriginalNames, graphNodePropertyMap, transferredInitializerMap);
+            TranslateAndCompileGraph(
+                kernelInfo, 
+                graph, 
+                fusedNodeInputArgOriginalNames,
+                fusedNodeOutputArgOriginalNames, 
+                graphNodePropertyMap, 
+                transferredInitializerMap);
         }
 
         void TranslateAndCompileGraph(
             const onnxruntime::OpKernelInfo& kernelInfo,
             const onnxruntime::Graph& graph,
-            const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
-            std::vector<std::string>& fusedNodeInputArgOriginalNames,
-            const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeOutputDefs,
-            std::vector<std::string>& fusedNodeOutputArgOriginalNames,
+            const gsl::span<const std::string>& fusedNodeInputArgOriginalNames,
+            const gsl::span<const std::string>& fusedNodeOutputArgOriginalNames,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap
         )
@@ -517,10 +520,15 @@ namespace Dml
         const onnxruntime::OpKernelInfo& info, 
         const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-        std::vector<std::string>& fusedNodeInputArgOriginalNames,
-        std::vector<std::string>& fusedNodeOutputArgOriginalNames
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+        const gsl::span<const std::string> fusedNodeOutputArgOriginalNames
         )
     {
-        return new FusedGraphKernel(info, graphNodePropertyMap, transferredInitializerMap, fusedNodeInputArgOriginalNames, fusedNodeOutputArgOriginalNames);
+        return new FusedGraphKernel(
+            info, 
+            graphNodePropertyMap, 
+            transferredInitializerMap, 
+            fusedNodeInputArgOriginalNames, 
+            fusedNodeOutputArgOriginalNames);
     }
 } // namespace Dml
