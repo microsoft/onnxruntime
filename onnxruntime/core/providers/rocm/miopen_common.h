@@ -124,21 +124,58 @@ miCompatBatchNormalizationForwardTraining(miopenHandle_t handle,
 {
     return miopenBatchNormalizationForwardTraining(handle,
                                                    bn_mode,
-                                                   (void*)alpha,
-                                                   (void*)beta,
+                                                   const_cast<void*>(alpha),
+                                                   const_cast<void*>(beta),
                                                    xDesc,
                                                    x,
                                                    yDesc,
                                                    y,
                                                    bnScaleBiasMeanVarDesc,
-                                                   (void*)bnScale,
-                                                   (void*)bnBias,
+                                                   const_cast<void*>(bnScale),
+                                                   const_cast<void*>(bnBias),
                                                    expAvgFactor,
                                                    resultRunningMean,
                                                    resultRunningVariance,
                                                    epsilon,
                                                    resultSaveMean,
                                                    resultSaveInvVariance);
+}
+
+
+template <typename ScalingFactorType>
+miopenStatus_t
+miCompatBatchNormalizationForwardInference(miopenHandle_t handle,
+                                           miopenBatchNormMode_t bn_mode,
+                                           const ScalingFactorType* alpha,
+                                           const ScalingFactorType* beta,
+                                           const miopenTensorDescriptor_t xDesc,
+                                           const void* x,
+                                           const miopenTensorDescriptor_t yDesc,
+                                           void* y,
+                                           const miopenTensorDescriptor_t bnScaleBiasMeanVarDesc,
+                                           const void* bnScale,
+                                           const void* bnBias,
+                                           const void* estimatedMean,
+                                           const void* estimatedVariance,
+                                           double epsilon)
+{
+    float compat_alpha = *alpha;
+    float compat_beta = *beta;
+    // Current MIOpen assumes alpha and beta are fp32
+    return miopenBatchNormalizationForwardInference(handle,
+                                                    bn_mode,
+                                                    &compat_alpha,
+                                                    &compat_beta,
+                                                    xDesc,
+                                                    const_cast<void*>(x),
+                                                    yDesc,
+                                                    y,
+                                                    bnScaleBiasMeanVarDesc,
+                                                    const_cast<void*>(bnScale),
+                                                    const_cast<void*>(bnBias),
+                                                    const_cast<void*>(estimatedMean),
+                                                    const_cast<void*>(estimatedVariance),
+                                                    epsilon);
 }
 
 }  // namespace rocm
