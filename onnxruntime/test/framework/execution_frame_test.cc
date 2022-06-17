@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/span_utils.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -270,8 +269,8 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                        std::vector<int64_t>{2, 3},
                        std::vector<float>(6, 1.0f), &v3);
 
-  std::vector<OrtValue> outputs;
-  ExecutionFrame frame(AsSpan({x1_idx, x2_idx, x3_idx}), AsSpan({v1, v2, v3}), {t3_idx}, outputs, {}, state);
+  vector<OrtValue> outputs;
+  ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
 
   OrtValue& mlvalue3 = *frame.GetMutableNodeInputOrOutputMLValue(3);
   OrtValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
@@ -292,7 +291,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                                                             cpu_allocator->Info(),
                                                             TensorShape(std::vector<int64_t>{2, 3})));
   MemoryPatternGroup pattern;
-  ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
+  ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
@@ -369,7 +368,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
       y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 2})));
 
   MemoryPatternGroup pattern;
-  ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
+  ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);

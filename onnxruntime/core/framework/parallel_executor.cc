@@ -91,8 +91,8 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
     }
 
     if (all_tensors) {
-      MemoryPatternGroup mem_patterns;
-      ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns));
+      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
+      ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }

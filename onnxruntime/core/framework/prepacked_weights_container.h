@@ -3,10 +3,11 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <cstdint>
 
-#include "core/common/inlined_containers.h"
 #include "core/framework/buffer_deleter.h"
 
 #include "core/framework/allocator.h"
@@ -57,12 +58,12 @@ class PrepackedWeightsContainer final {
   // Define allocators ahead of the container containing tensors because the allocators
   // needs to destructed after the container containing the pre-packed cached tensors
   // because the Tensor buffers will be de-allocated using these allocators
-  InlinedHashMap<std::string, AllocatorPtr> allocators_;
+  std::unordered_map<std::string, AllocatorPtr> allocators_;
 
   // This is an unordered map that holds a mapping between a composite key
   // to PrePackedWeights instances.
   // The key is : op_type + "+" + hash_of_prepacked_buffers_in_the_PrepackedWeights_instance.
-  InlinedHashMap<std::string, PrePackedWeights> prepacked_weights_map_;
+  std::unordered_map<std::string, PrePackedWeights> prepacked_weights_map_;
 };
 
 }  // namespace onnxruntime
