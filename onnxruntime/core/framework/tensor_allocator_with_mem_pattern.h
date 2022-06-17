@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <core/common/inlined_containers.h>
 #include "tensor_allocator.h"
 #include "mem_pattern.h"
 #include "ort_value_pattern_planner.h"
@@ -17,15 +16,14 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
  private:
   OrtValuePatternPlanner planner_;
   MemoryPatternGroup mem_patterns_;
-  InlinedVector<BufferUniquePtr>& weights_buffers_;
-  InlinedHashMap<OrtMemoryInfo, void*> buffers_;
+  std::vector<BufferUniquePtr>& weights_buffers_;
+  std::map<OrtMemoryInfo, void*> buffers_;
   bool is_sealed_ = false;
   const ExecutionPlanBase& seq_plan_;
 
   common::Status AllocatePlannedBuffersAndReportTotalSize(
-      InlinedHashMap<std::string, size_t>& planned_memory_sizes_in_byte) {
+      std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) {
     const size_t location_len = mem_patterns_.locations.size();
-    planned_memory_sizes_in_byte.reserve(location_len);
     for (size_t i = 0; i < location_len; ++i) {
       auto& location = mem_patterns_.locations[i];
       auto alloc = GetAllocator(location);
@@ -61,21 +59,21 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
 
  public:
   TensorAllocatorWithMemPattern(const ExecutionPlanBase& execution_plan, const SessionState& session_state,
-                                InlinedVector<BufferUniquePtr>& weights_buffers)
+                                std::vector<BufferUniquePtr>& weights_buffers)
       : ITensorAllocator(session_state),
         planner_(execution_plan, /*using counters*/ false),
         weights_buffers_(weights_buffers),
         seq_plan_(execution_plan) {}
 
-  common::Status FinalizePlan(InlinedHashMap<std::string, size_t>& planned_memory_sizes_in_byte) override {
-    ORT_RETURN_IF_ERROR(planner_.GeneratePatterns(mem_patterns_));
+  common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) override {
+    ORT_RETURN_IF_ERROR(planner_.GeneratePatterns(&mem_patterns_));
     ORT_RETURN_IF_ERROR(AllocatePlannedBuffersAndReportTotalSize(planned_memory_sizes_in_byte));
     is_sealed_ = true;
     return Status::OK();
   }
 
   common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
-                                       std::optional<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override {
+                                       std::unique_ptr<MemBuffer>& buf_out, AllocatorPtr& alloc_out) override {
     if (!is_sealed_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error.");
     }
@@ -97,7 +95,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     if (it == buffers_.end()) {
       if (block != nullptr && block->size_ == 0) {
         // Because the size is 0, this miss find is expected. we won't allocate a buffer with size of zero.
-        buf_out.emplace(nullptr, 0, location);
+        buf_out = std::make_unique<MemBuffer>(nullptr, 0, location);
         return Status::OK();
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Weight buffer for initializer '", name, "' is not found");
@@ -107,7 +105,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get preallocated buffer for initializer '", name, "' failed");
     }
 
-    buf_out.emplace(reinterpret_cast<char*>(it->second) + block->offset_, block->size_, location);
+    buf_out = std::make_unique<MemBuffer>(reinterpret_cast<char*>(it->second) + block->offset_, block->size_, location);
     return Status::OK();
   }
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override {
