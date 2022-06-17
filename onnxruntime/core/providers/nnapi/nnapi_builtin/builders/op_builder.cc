@@ -143,6 +143,34 @@ enum DataLayout {
   L_1230 = 1,
 };
 
+static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                            std::vector<int32_t>& axes) {
+  // Squeeze/Unsqueeze opset 13 uses input1 as axes
+  if (node_unit.SinceVersion() > 12) {
+    // For squeeze, axes is an optional input.If it is not supplied, return an empty axes as default to squeeze all
+    // For unsqueeze, axes is a required input. This check has no effect for it
+    // TODO: Add helper function to handle the following conversion from int64 initializer to int32
+    if (node_unit.Inputs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
+      std::vector<uint8_t> unpacked_tensor;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
+      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have an axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node_unit);
+    axes = helper.Get("axes", std::vector<int32_t>());
+  }
+
+  return Status::OK();
+}
+
 // This is primarily used for adding the weight (an initializer) of Conv/QlinearConv
 // And perform layout change from ONNX -> NNAPI
 // If is_per_tensor_u8s8 is true, the QlinearConv is per-tensor u8s8 (input X is unsigned int8
@@ -925,6 +953,52 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 }
 
 #pragma endregion op_reshape
+
+#pragma region op_unsqueeze
+
+class UnsqueezeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void UnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  // Unsqueeze opset 13 uses input 1 as axes, add it to initializer skip list
+  if (node_unit.SinceVersion() > 12 && node_unit.Inputs().size() > 1) {
+    model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());  // "axes"
+  }
+}
+
+Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& shaper(model_builder.GetShaper());
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+
+  // NNAPI does not support unsqueeze, here we utilize unsqueeze's axes input to compute output shape
+  // And add equivalent operation as ANEURALNETWORKS_RESHAPE to nnapi model
+  std::vector<int32_t> axes;
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
+
+  Shape input_shape = shaper[input];
+  auto input_dims = input_shape.size();
+  std::vector<int32_t> shape;
+  const auto size = SafeInt<uint32_t>(input_dims + axes.size());  // "output rank"
+  shape.reserve(size);
+  for (auto& axis : axes) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, size));
+  }
+  std::sort(axes.begin(), axes.end());
+  std::copy(input_shape.cbegin(), input_shape.cend(), std::back_inserter(shape));
+  for (size_t i = 0; i < axes.size(); i++) {
+    auto iter = shape.cbegin() + axes[i];
+    shape.insert(iter, SafeInt<int32_t>(1));
+  }
+
+  return ReshapeOpBuilder::AddReshapeOperator(model_builder, node_unit, input, shape);
+}
+
+#pragma endregion op_unsqueeze
 
 #pragma region op_batchnormalization
 
@@ -2046,7 +2120,6 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static Status GetAxes(ModelBuilder& model_builder, const NodeUnit& node_unit, std::vector<int32_t>& axes);
 };
 
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2055,37 +2128,11 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-/* static */ Status SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder,
-                                              const NodeUnit& node_unit, std::vector<int32_t>& axes) {
-  // Squeeze opset 13 use input as axes
-  if (node_unit.SinceVersion() > 12) {
-    // If axes is not supplied, return an empty axes as default to squeeze all
-    if (node_unit.Inputs().size() > 1) {
-      const auto& initializers(model_builder.GetInitializerTensors());
-      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
-      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
-      axes.resize(size);
-      for (uint32_t i = 0; i < size; i++) {
-        // it is unlikely we have a axis value overflow for int32
-        axes[i] = static_cast<int32_t>(raw_axes[i]);
-      }
-    }
-  } else {
-    NodeAttrHelper helper(node_unit);
-    axes = helper.Get("axes", std::vector<int32_t>());
-  }
-
-  return Status::OK();
-}
-
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
   std::vector<int32_t> axes;
-  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node_unit, axes));
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
   return AddSqueezeOp(model_builder, node_unit.Name(), input, node_unit.Outputs()[0].node_arg.Name(), axes);
 }
 
@@ -2912,6 +2959,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Unsqueeze", UnsqueezeOpBuilder);
 
   // Builders shared among similar ops
   {
