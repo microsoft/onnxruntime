@@ -22,7 +22,7 @@ from transformers import T5Config
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from torch_onnx_export_helper import torch_onnx_export
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ class T5EncoderDecoderInitHelper:
                 }
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
-            temp_onnx_model_path = os.path.join(tmp_dir_name, "model.onnx")
+            temp_onnx_model_path = os.path.join(tmp_dir_name, "encoder_decoder_init.onnx")
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             torch_onnx_export(
                 model,
@@ -224,7 +224,7 @@ class T5EncoderDecoderInitHelper:
                 onnx_model_path,
                 save_as_external_data=use_external_data_format,
                 all_tensors_to_one_file=True,
-                location=onnx_model_path + ".data",
+                location=os.path.basename(onnx_model_path) + ".data",
                 size_threshold=4096,
                 convert_attribute=False,
             )
@@ -232,7 +232,7 @@ class T5EncoderDecoderInitHelper:
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: T5EncoderDecoderInitInputs):
         """Run inference of ONNX model."""
-        logger.debug(f"start onnxruntime_inference")
+        logger.debug("start onnxruntime_inference")
 
         ort_inputs = {
             "encoder_input_ids": numpy.ascontiguousarray(inputs.encoder_input_ids.cpu().numpy()),

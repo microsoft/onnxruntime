@@ -7,10 +7,12 @@
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import List, Union
 
 import numpy
+import onnx
 import torch
 from past_helper import PastKeyValuesHelper
 from t5_encoder import T5EncoderInputs
@@ -19,8 +21,8 @@ from transformers import T5Config
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from io_binding_helper import TypeHelper
-from torch_onnx_export_helper import torch_onnx_export
+from io_binding_helper import TypeHelper  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -320,24 +322,39 @@ class T5DecoderHelper:
                     }
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-        torch_onnx_export(
-            decoder,
-            args=tuple(input_list),
-            f=onnx_model_path,
-            export_params=True,
-            input_names=input_names,
-            output_names=output_names,
-            dynamic_axes=dynamic_axes,
-            opset_version=12,
-            do_constant_folding=True,
-            use_external_data_format=use_external_data_format,
-            verbose=verbose,
-        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            temp_onnx_model_path = os.path.join(tmp_dir_name, "decoder.onnx")
+            Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
+            torch_onnx_export(
+                decoder,
+                args=tuple(input_list),
+                f=temp_onnx_model_path if use_external_data_format else onnx_model_path,
+                export_params=True,
+                input_names=input_names,
+                output_names=output_names,
+                dynamic_axes=dynamic_axes,
+                opset_version=12,
+                do_constant_folding=True,
+                use_external_data_format=use_external_data_format,
+                verbose=verbose,
+            )
+
+            if use_external_data_format:
+                model = onnx.load_model(temp_onnx_model_path, load_external_data=True)
+                onnx.save_model(
+                    model,
+                    onnx_model_path,
+                    save_as_external_data=True,
+                    all_tensors_to_one_file=True,
+                    location=os.path.basename(onnx_model_path) + ".data",
+                    size_threshold=4096,
+                )
 
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: T5DecoderInputs):
         """Run inference of ONNX model."""
-        logger.debug(f"start onnxruntime_inference")
+        logger.debug("start onnxruntime_inference")
 
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy()),
@@ -414,7 +431,8 @@ class T5DecoderHelper:
 
             test_cases_max_diff.append(max_diff_all)
             logger.info(
-                f"batch_size={batch_size} encode_sequence_length={encode_sequence_length}, past_decode_sequence_length={past_decode_sequence_length}, max_diff={max_diff_all}"
+                f"batch_size={batch_size}, encode_sequence_length={encode_sequence_length}, "
+                + f"past_decode_sequence_length={past_decode_sequence_length}, max_diff={max_diff_all}"
             )
 
         return max_diff_all
