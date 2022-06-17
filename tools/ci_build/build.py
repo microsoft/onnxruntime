@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 from distutils.version import LooseVersion
+from pathlib import Path
 
 from amd_hipify import amd_hipify
 
@@ -476,6 +477,9 @@ def parse_arguments():
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
+    parser.add_argument(
+        "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
+    )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
@@ -518,6 +522,9 @@ def parse_arguments():
     parser.add_argument("--use_winml", action="store_true", help="Build with WinML.")
     parser.add_argument(
         "--winml_root_namespace_override", type=str, help="Specify the namespace that WinML builds into."
+    )
+    parser.add_argument(
+        "--dml_external_project", action="store_true", help="Build with DirectML as an external project."
     )
     parser.add_argument(
         "--use_telemetry", action="store_true", help="Only official builds can set this flag to enable telemetry."
@@ -822,6 +829,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
+        "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
@@ -1030,6 +1038,12 @@ def generate_build_tree(
             "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
         ]
 
+    if args.dml_external_project:
+        cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_EXTERNAL_PROJECT=ON",
+        ]
+
     if args.use_gdk:
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "gdk_toolchain.cmake"),
@@ -1037,8 +1051,8 @@ def generate_build_tree(
             "-DGDK_PLATFORM=" + args.gdk_platform,
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF",  # gtest doesn't build for GDK
         ]
-        if args.use_dml and not args.dml_path:
-            raise BuildError("You must set dml_path when building with the GDK.")
+        if args.use_dml and not (args.dml_path or args.dml_external_project):
+            raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
@@ -1372,7 +1386,7 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
                 raise BuildError(
                     "dml_path is invalid.", "dml_path='{}' expected_file='{}'.".format(args.dml_path, file_path)
                 )
-    else:
+    elif not args.dml_external_project:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.
@@ -1789,18 +1803,18 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "10800"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:
-            # Disable python tests for TensorRT because many tests are
-            # not supported yet.
-            if args.use_tensorrt:
+            # Disable python tests for TensorRT on Windows due to need to enable placeholder builder
+            # to reduce test times.
+            if args.use_tensorrt and is_windows():
                 return
 
             python_path = None
             if args.use_tvm:
-                python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+                python_path = str((Path(build_dir) / config / "_deps" / "tvm-src" / "python").resolve())
 
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run.
@@ -1832,7 +1846,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 log.info("Testing CUDA Graph feature")
                 run_subprocess([sys.executable, "onnxruntime_test_python_cudagraph.py"], cwd=cwd, dll_path=dll_path)
 
-            if not args.disable_ml_ops:
+            if not args.disable_ml_ops and not args.use_tensorrt:
                 run_subprocess([sys.executable, "onnxruntime_test_python_mlops.py"], cwd=cwd, dll_path=dll_path)
 
             # The following test has multiple failures on Windows
@@ -1872,6 +1886,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
+                # Disable python onnx tests for TensorRT because many tests are
+                # not supported yet.
+                if args.use_tensorrt:
+                    return
+
                 run_subprocess(
                     [sys.executable, "onnxruntime_test_python_backend.py"],
                     cwd=cwd,

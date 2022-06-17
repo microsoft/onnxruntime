@@ -3422,28 +3422,41 @@ struct OrtApi {
   */
   ORT_CLASS_RELEASE(Op);
 
-  /** \brief: Append SNPE execution provider to the session options
-  * \param[in] provider_options_keys - keys to configure the provider options
-  * \param[in] provider_options_values - values to configure the provider options
-  * \param[in] num_keys - number of keys passed in
-  * Supported keys are:
-  * "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
-  * "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
-  * Mapping to SNPE Runtime_t definition: CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
-  * GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
-  * GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
-  * DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
-  * AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
-  * SNPE Runtime_t refers to https://developer.qualcomm.com/docs/snpe/group__c__plus__plus__apis.html
-  * "priority": execution priority, options: "low", "normal".
-  * "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
-  * "ITENSOR" -- default, ITensor which is float only.
-  * "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
-  * If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
-  *
-  * \since Version 1.12.
-  */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_SNPE, _In_ OrtSessionOptions* options,
+  /** \brief: Append execution provider to the session options.
+   * \param[in] provider_name - provider to add.
+   * \param[in] provider_options_keys - keys to configure the provider options
+   * \param[in] provider_options_values - values to configure the provider options
+   * \param[in] num_keys - number of keys passed in
+   *
+   * Currently supported providers:
+   *   SNPE
+   *   XNNPACK
+   *
+   * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
+   *       that should be used to add it.
+   *
+   * SNPE supported keys:
+   *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
+   *   "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
+   *   Mapping to SNPE Runtime_t definition: CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
+   *   GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
+   *   GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
+   *   DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
+   *   AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
+   *   SNPE Runtime_t refers to https://developer.qualcomm.com/docs/snpe/group__c__plus__plus__apis.html
+   *   "priority": execution priority, options: "low", "normal".
+   *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
+   *   "ITENSOR" -- default, ITensor which is float only.
+   *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
+   *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
+   *
+   * XNNPACK supported keys:
+   *   None currently
+   *
+   * \since Version 1.12.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options,
+                  _In_ const char* provider_name,
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);

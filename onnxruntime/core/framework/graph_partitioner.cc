@@ -96,6 +96,12 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                                  TransformLayoutFunction transform_layout) {
   const auto& ep_type = current_ep.Type();
 
+  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !transform_layout) {
+    LOGS_DEFAULT(WARNING) << ep_type << " cannot be used with this model due to its ONNX opset not being supported by "
+                                        "the layout transformer.";
+    return Status::OK();
+  }
+
   {
     GraphViewer graph_viewer(graph);
     capabilities = current_ep.GetCapability(graph_viewer,

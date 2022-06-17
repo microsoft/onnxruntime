@@ -111,7 +111,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
+    buildparameter: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
@@ -320,16 +320,16 @@ jobs:
   - template: templates/get-docker-image-steps.yml
     parameters:
       ScriptName: onnxruntime/tools/ci_build/get_docker_image.py 
-      Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_2
+      Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4
       Context: onnxruntime/tools/ci_build/github/linux/docker
       DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecuda114xtrt82build
+      Repository: onnxruntimecuda116xtrt84build
   - task: CmdLine@2
     displayName: 'Test C API application for GPU package'
     inputs:
       script: |
         docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
-        --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda114xtrt82build \
+        --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda116xtrt84build \
         /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet 
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
