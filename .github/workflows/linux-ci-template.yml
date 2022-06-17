@@ -23,6 +23,7 @@ jobs:
             --docker-build-args "--build-arg BUILD_UID=$( id -u )" \
             --container-registry onnxruntimebuildcache \
             --repository onnxruntimecpubuild
+           docker logout onnxruntimebuildcache.azurecr.io
 
 
        - name: 'Build'
