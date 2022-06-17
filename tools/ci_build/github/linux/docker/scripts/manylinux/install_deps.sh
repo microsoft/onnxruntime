@@ -78,7 +78,7 @@ GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/sr
 unzip /tmp/src/gradle-6.3-bin.zip
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
-if ! command -v protoc &> /dev/null ; then
+if ! command -v protoc 2>&1 ; then
   # https://stackoverflow.com/questions/68690709/how-do-you-fix-or-mask-a-1091-error-found-with-shellcheck-when-including-a-sourc
   # shellcheck disable=SC1090
   source "${0/%install_deps.sh/../install_protobuf.sh}"
