@@ -4,7 +4,6 @@ on:
     branches:
       - master
       - main
-      - snnn/linuxci
   pull_request:
 
 concurrency:
