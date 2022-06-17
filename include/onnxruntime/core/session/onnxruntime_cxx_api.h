@@ -977,24 +977,22 @@ struct CustomOpApi {
 
   void ThrowOnError(OrtStatus* result);
 
-  void CreateOpAttr(_In_ const char* name,
-                    _In_ const void* data,
-                    _In_ int len,
-                    _In_ OrtOpAttrType type,
-                    _Outptr_ OrtOpAttr** op_attr);
+  OrtOpAttr* CreateOpAttr(_In_ const char* name,
+                          _In_ const void* data,
+                          _In_ int len,
+                          _In_ OrtOpAttrType type);
 
   void ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr);
 
-  void CreateOp(_In_ const OrtExecutionProvider* ep,
-                _In_ const char* op_name,
-                _In_ const char* domain,
-                int version,
-                _In_opt_ const char** type_constraint_names,
-                _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                int type_constraint_count,
-                _In_opt_ const OrtOpAttr* const* attr_values,
-                int attr_count,
-                _Outptr_ OrtOp** ort_op);
+  OrtOp* CreateOp(_In_ const OrtKernelInfo* info,
+                  _In_ const char* op_name,
+                  _In_ const char* domain,
+                  int version,
+                  _In_opt_ const char** type_constraint_names,
+                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                  int type_constraint_count,
+                  _In_opt_ const OrtOpAttr* const* attr_values,
+                  int attr_count);
 
   void InvokeOp(_In_ const OrtKernelContext* context,
                 _In_ const OrtOp* ort_op,
@@ -1005,7 +1003,9 @@ struct CustomOpApi {
 
   void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
 
-  void GetExecutionProvider(_In_ const OrtKernelInfo* info, _Outptr_ OrtExecutionProvider** ep);
+  OrtKernelInfo* CopyKernelInfo(_In_ const OrtKernelInfo* info);
+
+  void ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy);
 
  private:
   const OrtApi& api_;

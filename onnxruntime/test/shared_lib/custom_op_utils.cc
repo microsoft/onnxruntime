@@ -208,45 +208,43 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
 }
 
 StandaloneCustomKernel::StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
+  info_copy_ = ort.CopyKernelInfo(info);
+  ORT_ENFORCE(info_copy_, "Failed to copy kernel info");
   const char* add_type_constraint_names[1] = {"T"};
   int add_type_constraint_values[1] = {1};
-  ort.GetExecutionProvider(info, &ep_);
-  ort.CreateOp(ep_, "Add", "", 14,
+  op_add_ = ort.CreateOp(info_copy_, "Add", "", 14,
                (const char**)add_type_constraint_names,
                (const ONNXTensorElementDataType*)add_type_constraint_values,
-               1, nullptr, 0, &op_add_);
+               1, nullptr, 0);
   ORT_ENFORCE(op_add_, "op_add not initialzied");
-  InitTopK(ort, ep_);
+  InitTopK(ort_);
   ORT_ENFORCE(op_topk_, "op_topk not initialzied");
-  InitGru(ort_, ep_);
+  InitGru(ort_);
   ORT_ENFORCE(op_gru_, "op_gru not initialzied");
 }
 
-void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtExecutionProvider* ep) {
+void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort) {
   const char* type_constraint_names[2] = {"T", "I"};
   int type_constraint_values[2] = {1, 7};
 
   int64_t axis_value = -1;
-  OrtOpAttr* axis{};
-  ort.CreateOpAttr("axis", &axis_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &axis);
+  OrtOpAttr* axis = ort.CreateOpAttr("axis", &axis_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   int64_t largest_value = 0;  // return in ascending order
-  OrtOpAttr* largest{};
-  ort.CreateOpAttr("largest", &largest_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &largest);
+  OrtOpAttr* largest = ort.CreateOpAttr("largest", &largest_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   int64_t sorted_value = 1;
-  OrtOpAttr* sorted{};
-  ort.CreateOpAttr("sorted", &sorted_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &sorted);
+  OrtOpAttr* sorted = ort.CreateOpAttr("sorted", &sorted_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   if (!axis || !largest || !sorted) {
     ORT_THROW("Failed to create attributes for topk");
   }
 
   OrtOpAttr* top_attrs[3] = {axis, largest, sorted};
-  ort.CreateOp(ep, "TopK", "", 14,
+  op_topk_ = ort.CreateOp(info_copy_, "TopK", "", 14,
                      (const char**)type_constraint_names,
                      (const ONNXTensorElementDataType*)type_constraint_values,
-                     2, top_attrs, 3, &op_topk_);
+                     2, top_attrs, 3);
 
   ort.ReleaseOpAttr(axis);
   ort.ReleaseOpAttr(largest);
@@ -284,43 +282,37 @@ void StandaloneCustomKernel::InvokeTopK(OrtKernelContext* context) {
   }
 }
 
-void StandaloneCustomKernel::InitGru(Ort::CustomOpApi ort, const OrtExecutionProvider* ep) {
+void StandaloneCustomKernel::InitGru(Ort::CustomOpApi ort) {
   const char* type_constraint_names[2] = {"T", "T1"};
   int type_constraint_values[2] = {1, 6};
 
   const char* activition_names[4] = {"LeakyRelu", "Tanh", "Sigmoid", "ScaledTanh"};
-  OrtOpAttr* activations{};
-  ort.CreateOpAttr("activations", activition_names, 4, OrtOpAttrType::ORT_OP_ATTR_STRINGS, &activations);
+  OrtOpAttr* activations = ort.CreateOpAttr("activations", activition_names, 4, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
 
   float alphas[2] = {0.5f, 2.f};
-  OrtOpAttr* activation_alpha{};
-  ort.CreateOpAttr("activation_alpha ", alphas, 2, OrtOpAttrType::ORT_OP_ATTR_FLOATS, &activation_alpha);
+  OrtOpAttr* activation_alpha = ort.CreateOpAttr("activation_alpha ", alphas, 2, OrtOpAttrType::ORT_OP_ATTR_FLOATS);
 
   float betas[1] = {2.f};
-  OrtOpAttr* activation_beta{};
-  ort.CreateOpAttr("activation_beta ", betas, 1, OrtOpAttrType::ORT_OP_ATTR_FLOATS, &activation_beta);
+  OrtOpAttr* activation_beta = ort.CreateOpAttr("activation_beta ", betas, 1, OrtOpAttrType::ORT_OP_ATTR_FLOATS);
 
   const char* direction_string = "bidirectional";
-  OrtOpAttr* direction{};
-  ort.CreateOpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING, &direction);
+  OrtOpAttr* direction = ort.CreateOpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING);
 
   int64_t linear_before_reset_value = 0;
-  OrtOpAttr* linear_before_reset{};
-  ort.CreateOpAttr("linear_before_reset", &linear_before_reset_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &linear_before_reset);
+  OrtOpAttr* linear_before_reset = ort.CreateOpAttr("linear_before_reset", &linear_before_reset_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   int64_t hidden_size_value = 2;
-  OrtOpAttr* hidden_size{};
-  ort.CreateOpAttr("hidden_size", &hidden_size_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &hidden_size);
+  OrtOpAttr* hidden_size = ort.CreateOpAttr("hidden_size", &hidden_size_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   if (!activations || !activation_alpha || !activation_beta || !direction || !linear_before_reset || !hidden_size) {
     ORT_THROW("failed to create attributes for gru.");
   }
 
   OrtOpAttr* gru_attrs[6] = {activations, activation_alpha, activation_beta, direction, linear_before_reset, hidden_size};
-  ort.CreateOp(ep, "GRU", "", 14,
-               (const char**)type_constraint_names,
-               (const ONNXTensorElementDataType*)type_constraint_values,
-               2, gru_attrs, 6, &op_gru_);
+  op_gru_ = ort.CreateOp(info_copy_, "GRU", "", 14,
+                         (const char**)type_constraint_names,
+                         (const ONNXTensorElementDataType*)type_constraint_values,
+                         2, gru_attrs, 6);
 
   ort.ReleaseOpAttr(activations);
   ort.ReleaseOpAttr(activation_alpha);
@@ -413,24 +405,19 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   int type_constraint_values[] = {1}; //float
 
   int64_t dilation_values[] = {2};
-  OrtOpAttr* dilations{};
-  ort_.CreateOpAttr("dilations", &dilation_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS, &dilations);
+  OrtOpAttr* dilations = ort_.CreateOpAttr("dilations", &dilation_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS);
   
   int64_t group_value = 1;
-  OrtOpAttr* group{};
-  ort_.CreateOpAttr("group", &group_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &group);
+  OrtOpAttr* group = ort_.CreateOpAttr("group", &group_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
   int64_t kernel_shape_values[] = {2};
-  OrtOpAttr* kernel_shape{};
-  ort_.CreateOpAttr("kernel_shape", &kernel_shape_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS, &kernel_shape);
+  OrtOpAttr* kernel_shape = ort_.CreateOpAttr("kernel_shape", &kernel_shape_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS);
 
   int64_t pad_values[] = {2, 2};
-  OrtOpAttr* pads{};
-  ort_.CreateOpAttr("pads", &pad_values, 2, OrtOpAttrType::ORT_OP_ATTR_INTS, &pads);
+  OrtOpAttr* pads = ort_.CreateOpAttr("pads", &pad_values, 2, OrtOpAttrType::ORT_OP_ATTR_INTS);
 
   int64_t stride_values[] = {2};
-  OrtOpAttr* strides{};
-  ort_.CreateOpAttr("strides", &stride_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS, &strides);
+  OrtOpAttr* strides = ort_.CreateOpAttr("strides", &stride_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS);
 
   if (!dilations || !group || !kernel_shape || !pads || !strides) {
     ORT_THROW("failed to create attributes for conv.");
@@ -438,10 +425,10 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
 
   OrtOp* op_conv{};
   OrtOpAttr* conv_attrs[] = {dilations, group, kernel_shape, pads, strides};
-  ort_.CreateOp(ep_, "Conv", "", 11,
-               (const char**)type_constraint_names,
-               (const ONNXTensorElementDataType*)type_constraint_values,
-                1, conv_attrs, 5, &op_conv);
+  op_conv = ort_.CreateOp(info_copy_, "Conv", "", 11,
+                          (const char**)type_constraint_names,
+                          (const ONNXTensorElementDataType*)type_constraint_values,
+                          1, conv_attrs, 5);
   ORT_ENFORCE(op_conv, "op_conv not initialzied");
 
   ort_.ReleaseOpAttr(dilations);
@@ -509,4 +496,5 @@ StandaloneCustomKernel::~StandaloneCustomKernel() {
   ort_.ReleaseOp(op_add_);
   ort_.ReleaseOp(op_topk_);
   ort_.ReleaseOp(op_gru_);
+  ort_.ReleaseKernelInfo(info_copy_);
 }

@@ -354,7 +354,7 @@ ORT_API_STATUS_IMPL(CreateOpAttr,
 ORT_API(void, ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr);
 
 ORT_API_STATUS_IMPL(CreateOp,
-                    _In_ const OrtExecutionProvider* ep,
+                    _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
                     int version,
@@ -382,7 +382,8 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     _In_ size_t num_keys);
 
-ORT_API_STATUS_IMPL(GetExecutionProvider,
-      _In_ const OrtKernelInfo* info,
-      _Outptr_ OrtExecutionProvider** ep);
+ORT_API_STATUS_IMPL(CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ OrtKernelInfo** info_copy);
+
+ORT_API(void, ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy);
+
 }  // namespace OrtApis

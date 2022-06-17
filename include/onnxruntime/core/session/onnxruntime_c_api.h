@@ -329,8 +329,6 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
-struct OrtExecutionProvider;
-typedef struct OrtExecutionProvider OrtExecutionProvider;
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
@@ -3385,7 +3383,7 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOp,
-                  _In_ const OrtExecutionProvider* ep,
+                  _In_ const OrtKernelInfo* info,
                   _In_ const char* op_name,
                   _In_ const char* domain,
                   _In_ int version,
@@ -3463,18 +3461,24 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
 
-  /* \brief: Get execution provider from kernel info
+  /* \brief: Get a copy of kernel info
   *
   * \param[in] kernel info
-  * \param[out] execution provider
+  * \param[out] copy of kernel info
   *
-  * The API is mainly used for getting an execution provider during custom op creation
-  * The execution provider could later be used as an argument to create a native ort op by CreateOp API
   * \since Version 1.12.
   */
-  ORT_API2_STATUS(GetExecutionProvider,
-      _In_ const OrtKernelInfo* info,
-      _Outptr_ OrtExecutionProvider** ep);
+  ORT_API2_STATUS(CopyKernelInfo,
+                  _In_ const OrtKernelInfo* info,
+                  _Outptr_ OrtKernelInfo** info_copy);
+
+  /* \brief: Release a copy kernel info
+  *
+  * \param[in] a copy of kernel info returned by CopyKernelInfo
+  * 
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(KernelInfo);
 };
 
 /*

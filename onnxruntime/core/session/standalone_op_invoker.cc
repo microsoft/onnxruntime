@@ -24,7 +24,7 @@ ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr*) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOp,
-                    _In_ const OrtExecutionProvider*,
+                    _In_ const OrtKernelInfo*,
                     _In_ const char*,
                     _In_ const char*,
                     _In_ int,
@@ -61,6 +61,18 @@ ORT_API_STATUS_IMPL(OrtApis::GetExecutionProvider,
   return CreateStatus(ORT_NOT_IMPLEMENTED, "GetExecutionProvider is not implemented for minimal build.");
   API_IMPL_END
 }
+
+ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo,
+                    _In_ const OrtKernelInfo* info,
+                    _Outptr_ OrtKernelInfo** info_copy) {
+  API_IMPL_BEGIN
+  return CreateStatus(ORT_NOT_IMPLEMENTED, "CopyKernelInfo is not implemented for minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
+}
+
 #else
 
 namespace onnxruntime {
@@ -339,7 +351,7 @@ onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, Or
   return status;
 }
 
-onnxruntime::Status CreateOp(const OrtExecutionProvider* ort_ep,
+onnxruntime::Status CreateOp(const OrtKernelInfo* info,
                              const char* op_name,
                              const char* domain,
                              int version,
@@ -350,7 +362,8 @@ onnxruntime::Status CreateOp(const OrtExecutionProvider* ort_ep,
                              int attr_count,
                              OrtOp** op) {
   *op = nullptr;
-  auto ep = reinterpret_cast<const IExecutionProvider*>(ort_ep);
+  auto kernel_info = reinterpret_cast<const OpKernelInfo*>(info);
+  auto ep = reinterpret_cast<const IExecutionProvider*>(kernel_info->GetExecutionProvider());
   auto kernel_registry = ep->GetKernelRegistry();
   const KernelCreateInfo* kernel_create_info{};
   std::unordered_map<std::string, MLDataType> type_constraint_map;
@@ -435,7 +448,7 @@ ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOp,
-                    _In_ const OrtExecutionProvider* ep,
+                    _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
                     int version,
@@ -446,7 +459,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     int attr_count,
                     _Outptr_ OrtOp** ort_op) {
   API_IMPL_BEGIN
-  auto status = onnxruntime::standalone::CreateOp(ep,
+  auto status = onnxruntime::standalone::CreateOp(info,
                                                   op_name,
                                                   domain,
                                                   version,
@@ -483,21 +496,26 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp* op) {
   if (op) {
-    onnxruntime::OpKernel* kernel = reinterpret_cast<onnxruntime::OpKernel*>(op);
+    auto kernel = reinterpret_cast<onnxruntime::OpKernel*>(op);
     onnxruntime::standalone::DelNode(kernel);
     delete kernel;
   }
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetExecutionProvider,
-                    _In_ const OrtKernelInfo* info,
-                    _Outptr_ OrtExecutionProvider** ep) {
+ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ OrtKernelInfo** info_copy) {
   API_IMPL_BEGIN
   auto kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  auto ort_ep = const_cast<onnxruntime::IExecutionProvider*>(kernel_info->GetExecutionProvider());
-  *ep = reinterpret_cast<OrtExecutionProvider*>(ort_ep);
+  auto temporary_info_holder = std::make_unique<onnxruntime::OpKernelInfo>(*kernel_info);
+  *info_copy = reinterpret_cast<OrtKernelInfo*>(temporary_info_holder.release());
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
+  if (info_copy) {
+    auto kernel_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy);
+    delete kernel_info;
+  }
 }
 
 #endif
