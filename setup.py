@@ -289,11 +289,11 @@ except ImportError as error:
 
 
 class InstallCommand(InstallCommandBase):
-
     def finalize_options(self):
         ret = InstallCommandBase.finalize_options(self)
         self.install_lib = self.install_platlib
         return ret
+
 
 providers_cuda_or_rocm = "libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
 providers_tensorrt_or_migraphx = "libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
@@ -351,7 +351,7 @@ else:
 
 if is_manylinux:
     if is_openvino:
-        ov_libs =[
+        ov_libs = [
             "libopenvino_intel_cpu_plugin.so",
             "libopenvino_intel_gpu_plugin.so",
             "libopenvino_intel_myriad_plugin.so",
@@ -509,7 +509,7 @@ if enable_training:
     # onnxruntime-training-1.7.0.dev20210408+cu111-cp36-cp36m-linux_x86_64.whl
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
-    if not is_openvino : 
+    if not is_openvino:
         # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 
