@@ -1015,7 +1015,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   //   to separate workers, avoiding the need for further work stealing.
 
   void InitializePreferredWorkers(std::vector<int>& preferred_workers) {
-    static std::atomic<unsigned> next_worker;
+    static std::atomic<unsigned> next_worker{0};
 
     // preferred_workers[0] isn't supposed to be used, so initializing it with -1 to:
     // a) fault if inappropriately accessed
@@ -1443,6 +1443,10 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
   std::atomic<bool> done_;
 
+  // SpinLoopStatus indicates whether the main worker spinning (inner) loop should exit immediately when there is
+  // no work available (kIdle) or whether it should follow the configured spin-then-block policy (kBusy).
+  // This lets the ORT session layer hint to the thread pool that it should stop spinning in between
+  // requests.
   enum class SpinLoopStatus {
     kIdle,
     kBusy
