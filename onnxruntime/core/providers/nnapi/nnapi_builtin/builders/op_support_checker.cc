@@ -779,6 +779,44 @@ bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
 
 #pragma endregion
 
+#pragma region op_unsqueeze
+
+class UnsqueezeOpSupportChecker : public BaseOpSupportChecker {
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+};
+
+bool UnsqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                                  const OpSupportCheckParams& /* params */) const {
+  const auto& inputs = node_unit.Inputs();
+  Shape input_shape;
+  if (!GetShape(inputs[0].node_arg, input_shape))
+    return false;
+
+  // This limitation actually comes from Reshape op.
+  // We are adding ANEURALNETWORKS_RESHAPE as an equivalent operation for Unsqueeze as it's not supported by nnapi
+  const auto input_rank = input_shape.size();
+  if (input_rank > 4 || input_rank == 0) {
+    LOGS_DEFAULT(VERBOSE) << "Unsqueeze only supports 1-4d shape, input is "
+                          << input_rank << "d shape";
+    return false;
+  }
+
+  // Unsqueeze opset 13 uses input 1 as axes, if we have input 1 then it needs to be an initializer
+  if (node_unit.SinceVersion() > 12 && inputs.size() > 1) {
+    const auto& axes_name = inputs[1].node_arg.Name();
+    if (!Contains(initializers, axes_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Input axes of Unsqueeze must be known";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region op_batchnormalization
 
 class BatchNormalizationOpSupportChecker : public BaseOpSupportChecker {
@@ -2361,6 +2399,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Softmax", SoftMaxOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Squeeze", SqueezeOpSupportChecker);
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Transpose", TransposeOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Unsqueeze", UnsqueezeOpSupportChecker);
 
   // Identity is always supported, we use BaseOpSupportChecker as default
   NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Identity", BaseOpSupportChecker);
