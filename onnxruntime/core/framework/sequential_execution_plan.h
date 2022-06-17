@@ -76,6 +76,27 @@ struct AllocPlanPerValue {
   AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
 };
 
+struct ExecutionContext;
+class IExecutionProvider;
+using CommandFn = std::function<void(ExecutionContext&)>;
+
+// a logic stream to execute command.
+// each command in the logic stream will be executed in FIFO
+// a logic stream will be binded to multiple device stream, as the command in the same logic stream may be executed on different EPs.
+// i.e., if we set concurrency level to 1, the single logic stream will be equal to our sequential execution plan, which has both cpu and gpu kernels
+struct LogicStream {
+  std::vector<CommandFn> commands_;
+  const IExecutionProvider* ep_ = nullptr;
+
+  void Run(ExecutionContext& ctx) {
+    for (auto& command : commands_) {
+      command(ctx);
+    }
+  }
+
+  ~LogicStream() {}
+};
+
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
 struct SequentialExecutionPlan : public ExecutionPlanBase {
@@ -110,13 +131,25 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   };
 
   // Execution_plan: represents the nodes in the sequential order to be executed
-  std::vector<NodeExecutionPlan> execution_plan;
+  
+  struct NodesExecutionPlan {
+    std::vector<NodeExecutionPlan> nodes_execution_order;
+    // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
+    std::vector<OrtValueIndex> to_be_freed;
+  };
+
+  std::vector<NodesExecutionPlan> execution_plan;
 
   // Records whether a given node has fence on its input or output, key is node index.
   std::vector<bool> node_has_fence;
 
-  // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
-  std::vector<OrtValueIndex> to_be_freed;
+  // logic streams for stream executor
+  std::vector<std::unique_ptr<LogicStream>> logic_streams;
+  int num_logic_streams_{};
+
+  // the stream where the notificaiton got created.
+  std::vector<size_t> notification_owners_;
+  std::unordered_map<size_t, size_t> value_to_stream_map_;
 
   const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;

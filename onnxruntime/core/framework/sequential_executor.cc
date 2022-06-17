@@ -137,7 +137,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
 }
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
-                                  const SequentialExecutionPlan& seq_exec_plan,
+                                  const SequentialExecutionPlan::NodesExecutionPlan& exec_plan,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
@@ -174,8 +174,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
   LOGS(logger, INFO) << "Begin execution";
-  const SequentialExecutionPlan& seq_exec_plan = *session_state.GetExecutionPlan();
-  const auto& exec_plan_vec = seq_exec_plan.execution_plan;
+  auto& plan = *session_state.GetExecutionPlan();
+  ORT_ENFORCE(plan.execution_plan.size() == 1);
+  const auto& seq_exec_plan = plan.execution_plan[0];
+  const auto& exec_plan_vec = seq_exec_plan.nodes_execution_order;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
 // Enable TRACE_EXECUTION compile flag to dump execution plan
@@ -267,7 +269,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-    if (seq_exec_plan.NodeHasFence(node_index)) {
+    if (plan.NodeHasFence(node_index)) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
@@ -406,7 +408,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     // sync after compute for outputs
-    if (seq_exec_plan.NodeHasFence(node_index)) {
+    if (plan.NodeHasFence(node_index)) {
       for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
         Fence_t fence = op_kernel_context.InputFence(input_index);
         if (fence) {
@@ -521,11 +523,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 }
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
-                                  const SequentialExecutionPlan& seq_exec_plan,
+                                  const SequentialExecutionPlan::NodesExecutionPlan& exec_plan,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger) {
   for (auto i = node_exec_plan.free_from_index; i <= node_exec_plan.free_to_index; ++i) {
-    auto ort_value_idx = seq_exec_plan.to_be_freed[i];
+    auto ort_value_idx = exec_plan.to_be_freed[i];
     VLOGS(logger, 1) << "Releasing ort_value with index: " << ort_value_idx;
     ORT_RETURN_IF_ERROR(frame.ReleaseMLValue(ort_value_idx));
   }

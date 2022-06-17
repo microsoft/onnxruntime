@@ -555,7 +555,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
-  if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+  /*if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
@@ -565,7 +565,8 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     } else {
       p_exec = std::make_unique<ParallelExecutor>(session_state, terminate_flag);
     }
-  }
+  }*/
+  p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();

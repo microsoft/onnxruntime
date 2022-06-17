@@ -22,23 +22,16 @@ using ProviderStreamMap = std::unordered_map<std::string, int>;
 // Each set contains ops which should be grouped in an independent logic stream
 using OpStreamMap = std::vector<std::vector<std::string>>;
 
-class ParallelExecutionPlan : public IExecutor, public SequentialExecutionPlan {
+class ParallelExecutionPlan : public IExecutor {
  public:
-  ParallelExecutionPlan(const SessionState& session_state,
-                        const ProviderStreamMap& provider_stream_map,
-                        const OpStreamMap& op_stream_map = {});
-  ~ParallelExecutionPlan();
+  ParallelExecutionPlan(const SessionState& session_state);
+
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger) override;
-  const std::vector<int>& GetRefCounts() const;
-  const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const;
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;
-  std::unique_ptr<ReleasePlan> GenerateReleasePlan() const;
-  const std::unordered_map<size_t, size_t>& GetValueToStreamMap() const;
-  void GenerateReusePlan(const ISequentialPlannerContext&);
 };
 
 }  // namespace onnxruntime

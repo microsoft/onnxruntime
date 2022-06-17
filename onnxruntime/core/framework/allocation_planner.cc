@@ -16,10 +16,18 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/framework/execution_context.h"
+#include "core/framework/op_kernel_context_internal.h"
+
+#ifdef USE_CUDA
+#include <nvtx3/nvToolsExtCuda.h>
+#endif
+
 
 using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
+using NotificationIndex = size_t;
 
 namespace NestedSubgraphInfoDetails {
 
@@ -105,23 +113,25 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   }
 
   out << "\nExecution Plan:\n";
-  for (size_t i = 0; i < plan.execution_plan.size(); ++i) {
-    auto& step = plan.execution_plan[i];
-    auto node = graph.GetNode(step.node_index);
-    ORT_ENFORCE(nullptr != node);
-    out << "[" << i << "] ";
-    out << node->OpType() << " (" << node->Name() << ")" << std::endl;
-    if (step.free_from_index <= step.free_to_index) {
-      out << "Free ml-values: ";
-      std::string sep;
-      for (int j = step.free_from_index; j <= step.free_to_index; ++j) {
-        auto freed_value_index = plan.to_be_freed[j];
-        auto name_iter = index_to_name.find(freed_value_index);
-        auto name = (name_iter == index_to_name.end()) ? "INVALID INDEX" : name_iter->second;
-        out << sep << "(" << freed_value_index << ") " << name;
-        sep = ", ";
+  for (auto& stream_plan : plan.execution_plan) {
+    for (size_t i = 0; i < stream_plan.nodes_execution_order.size(); ++i) {
+      auto& step = stream_plan.nodes_execution_order[i];
+      auto node = graph.GetNode(step.node_index);
+      ORT_ENFORCE(nullptr != node);
+      out << "[" << i << "] ";
+      out << node->OpType() << " (" << node->Name() << ")" << std::endl;
+      if (step.free_from_index <= step.free_to_index) {
+        out << "Free ml-values: ";
+        std::string sep;
+        for (int j = step.free_from_index; j <= step.free_to_index; ++j) {
+          auto freed_value_index = stream_plan.to_be_freed[j];
+          auto name_iter = index_to_name.find(freed_value_index);
+          auto name = (name_iter == index_to_name.end()) ? "INVALID INDEX" : name_iter->second;
+          out << sep << "(" << freed_value_index << ") " << name;
+          sep = ", ";
+        }
+        out << std::endl;
       }
-      out << std::endl;
     }
   }
 
@@ -158,7 +168,11 @@ class PlannerImpl {
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
-  Status CreatePlan();
+  Status CreatePlan(const ExecutionProviders& execution_providers,
+                    const IStreamCommandHandleRegistry& stream_handle_registry,
+                    const ProviderStreamMap& provider_stream_map,
+                    const OpStreamMap& op_stream_map,
+                    bool enable_multi_stream);
 
  private:
   const ISequentialPlannerContext& context_;
@@ -175,6 +189,9 @@ class PlannerImpl {
   const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
 
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
+
+  std::vector<std::vector<NodeIndex>> stream_nodes_;
+  std::vector<size_t> node_stream_map_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -514,7 +531,10 @@ class PlannerImpl {
     ort_value_info_.resize(num_ml_values);
 
     // Initialize execution plan:
-    plan_.execution_plan.reserve(num_graph_nodes);
+    plan_.execution_plan.resize(stream_nodes_.size());
+    for (auto& node_order : stream_nodes_) {
+      plan_.execution_plan.reserve(node_order.size());
+    }
 
     // Initialize node_has_fence.
     plan_.node_has_fence.resize(graph_viewer_.MaxNodeIndex());
@@ -532,7 +552,80 @@ class PlannerImpl {
     return ci.kernel_def->HasExternalOutputs();
   }
 
-  Status ComputeUseCounts() {
+  Status ComputeReuseCount() {
+    // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
+    using GraphInputsSet = InlinedHashSet<std::string_view>;
+    const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
+    GraphInputsSet graph_inputs;
+    graph_inputs.reserve(graph_inputs_nodes.size());
+    for (auto& graph_input : graph_inputs_nodes) {
+      graph_inputs.insert(graph_input->Name());
+    }
+
+    for (auto graph_input : graph_viewer_.GetInputs()) {
+      OrtValueIndex index = Index(graph_input->Name());
+      UseCount(index)++;  // Models caller's usage post-inference; ensures it will not be reused.
+    }
+
+    for (auto node_arg : outer_scope_node_args_) {
+      OrtValueIndex index = Index(node_arg->Name());
+      UseCount(index)++;  // ensure will not be re-used as this graph does not own the buffer
+    }
+
+    // All initializers should be treated as input
+    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
+      const auto& initializer_name = pair.first;
+      UseCount(initializer_name)++;
+    }
+
+    for (auto& execution_seq : plan_.execution_plan) {
+      for (SequentialExecutionPlan::NodeExecutionPlan& step : execution_seq.nodes_execution_order) {
+        auto pnode = graph_viewer_.GetNode(step.node_index);
+        if (pnode == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
+        }
+
+        auto process_input = [this](const NodeArg& input, size_t /*arg_idx*/) {
+          const auto& name = input.Name();
+          UseCount(name)++;
+          return Status::OK();
+        };
+
+        ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->InputDefs(), process_input));
+
+        ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->ImplicitInputDefs(), process_input));
+
+        auto outputs = pnode->OutputDefs();
+        auto num_outputs = outputs.size();
+        bool has_external_outputs = HasExternalOutputs(*pnode);
+        for (size_t i = 0; i < num_outputs; ++i) {
+          auto* node_output = outputs[i];
+          if (!node_output->Exists()) continue;
+          OrtValueIndex index = Index(node_output->Name());
+          // Ensures external outputs will not be reused.
+          UseCount(index) += (has_external_outputs ? 2 : 1);
+        }
+      }
+    }
+
+    for (auto graph_output : graph_viewer_.GetOutputs()) {
+      UseCount(graph_output->Name())++;  // Models caller's usage post-inference; ensures it will not be reused.
+    }
+    return Status::OK();
+  }
+
+  void ResetReuseCount() {
+    for (auto i = 0; i < ort_value_info_.size(); ++i) {
+      ort_value_info_[i].usecount = 0;
+      ort_value_info_[i].reused_buffer_index = i;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+      ort_value_info_[i].inplace_reused_buffer_index = i;
+#endif
+    }
+    freelist_.clear();
+  }
+
+  Status ComputeValueLocation() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     using GraphInputsSet = InlinedHashSet<std::string_view>;
     const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
@@ -545,13 +638,13 @@ class PlannerImpl {
     for (auto graph_input : graph_viewer_.GetInputs()) {
       OrtValueIndex index = Index(graph_input->Name());
       ProcessDef(index, graph_input);
-      UseCount(index)++;  // Models caller's usage post-inference; ensures it will not be reused.
+      //UseCount(index)++;  // Models caller's usage post-inference; ensures it will not be reused.
     }
 
     for (auto node_arg : outer_scope_node_args_) {
       OrtValueIndex index = Index(node_arg->Name());
       ProcessDef(index, node_arg);
-      UseCount(index)++;  // ensure will not be re-used as this graph does not own the buffer
+      //UseCount(index)++;  // ensure will not be re-used as this graph does not own the buffer
     }
 
     // All initializers should be treated as input
@@ -559,187 +652,185 @@ class PlannerImpl {
       const auto& initializer_name = pair.first;
       OrtValueIndex index = Index(initializer_name);
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
-      UseCount(initializer_name)++;
+      //UseCount(initializer_name)++;
     }
 
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     InlinedHashMap<OrtValueIndex, const IExecutionProvider*> map_implicitly_consumed_node_arg_to_ep;
     InlinedHashSet<OrtValueIndex> set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers;
+    
+    for (auto& execution_seq : plan_.execution_plan) {
+      for (SequentialExecutionPlan::NodeExecutionPlan& step : execution_seq.nodes_execution_order) {
+        auto pnode = graph_viewer_.GetNode(step.node_index);
+        if (pnode == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
+        }
 
-    for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
-      auto pnode = graph_viewer_.GetNode(step.node_index);
-      if (pnode == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
-      }
+        // Identify where each output of this node should be allocated.
+        // This is determined by the OpKernel bound to the node.
+        const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map_, pnode->Index());
 
-      // Identify where each output of this node should be allocated.
-      // This is determined by the OpKernel bound to the node.
-      const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map_, pnode->Index());
+        const auto* p_kernel_def = kernel_create_info.kernel_def.get();
 
-      const auto* p_kernel_def = kernel_create_info.kernel_def.get();
+        ORT_ENFORCE(p_kernel_def, "Should not have entry in kernel create info with nullptr for kernel_def");
 
-      ORT_ENFORCE(p_kernel_def, "Should not have entry in kernel create info with nullptr for kernel_def");
+        auto exec_provider = execution_providers_.Get(*pnode);
+        if (exec_provider == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the execution provider ",
+                                 pnode->GetExecutionProviderType());
+        }
 
-      auto exec_provider = execution_providers_.Get(*pnode);
-      if (exec_provider == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the execution provider ",
-                               pnode->GetExecutionProviderType());
-      }
+        bool is_implicit_input = false;
 
-      bool is_implicit_input = false;
+        // increment UseCount and add location information if applicable for the provided input def
+        auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
+                              &set_node_arg_has_explicit_consumer,
+                              &map_implicitly_consumed_node_arg_to_ep,
+                              &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
+                              this](const NodeArg& input, size_t arg_idx) {
+          const auto& name = input.Name();
+          //UseCount(name)++;
 
-      // increment UseCount and add location information if applicable for the provided input def
-      auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
-                            &set_node_arg_has_explicit_consumer,
-                            &map_implicitly_consumed_node_arg_to_ep,
-                            &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
-                            this](const NodeArg& input, size_t arg_idx) {
-        const auto& name = input.Name();
-        UseCount(name)++;
+          bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
+          bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+                                                 [&name](const NodeArg* value) {
+                                                   return value && value->Name() == name;
+                                                 }) != outer_scope_node_args_.cend();
+          bool is_subgraph = (parent_node_ != nullptr);
 
-        bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
-                                               [&name](const NodeArg* value) {
-                                                 return value && value->Name() == name;
-                                               }) != outer_scope_node_args_.cend();
-        bool is_subgraph = (parent_node_ != nullptr);
+          // If it's a graph input or outer scope node arg, set its plan.
+          // NOTE: Copy nodes should have already been added if a graph input is fed as input
+          // to nodes assigned to different providers.
 
-        // If it's a graph input or outer scope node arg, set its plan.
-        // NOTE: Copy nodes should have already been added if a graph input is fed as input
-        // to nodes assigned to different providers.
+          if (is_graph_input || is_outer_scope_arg) {
+            OrtValueIndex index = Index(name);
 
-        if (is_graph_input || is_outer_scope_arg) {
-          OrtValueIndex index = Index(name);
+            if (!is_implicit_input) {
+              OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
+              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
+              set_node_arg_has_explicit_consumer.insert(index);
+            } else {  // implicit input
+              // Only process an implicit input if there are explicit consumers at this graph level
+              // If there is an explicit consumer, the location MUST be where it is consumed
+              // and not where it is located in the outer scope.
+              // It is okay if we process a node consuming this arg as an implicit input
+              // ahead of a node that is an explicit consumer, because we will just reset
+              // this location in the 'if' branch above.
 
-          if (!is_implicit_input) {
-            OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-            plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, mem_type)->Info());
-            set_node_arg_has_explicit_consumer.insert(index);
-          } else {  // implicit input
-            // Only process an implicit input if there are explicit consumers at this graph level
-            // If there is an explicit consumer, the location MUST be where it is consumed
-            // and not where it is located in the outer scope.
-            // It is okay if we process a node consuming this arg as an implicit input
-            // ahead of a node that is an explicit consumer, because we will just reset
-            // this location in the 'if' branch above.
+              // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
+              // then set its location to be its corresponding location in the outer scope.
+              // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
+              // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
+              if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
+                auto iter = outer_scope_node_arg_to_location_map_.find(name);
+                bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
 
-            // CASE 1: We see an implicit input without explicit consumers in a subgraph (pass-through subgraph inputs),
-            // then set its location to be its corresponding location in the outer scope.
-            // This is so that the subgraph copying mechanism doesn't trigger an unnecessary copy and any copying
-            // decisions are deferred till there is an explicit consumer of the subgraph input in nested subgraphs.
-            if (is_subgraph && set_node_arg_has_explicit_consumer.count(index) == 0) {
-              auto iter = outer_scope_node_arg_to_location_map_.find(name);
-              bool found_in_outer_scope_location_map = (iter != outer_scope_node_arg_to_location_map_.end());
+                if (!is_graph_input) {
+                  // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
+                  // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
+                  // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
+                  // called in FinalizeSessionStateImpl() in SessionState.
+                  ORT_ENFORCE(found_in_outer_scope_location_map,
+                              "There is no location for this node arg in the outer scope location map");
+                }
 
-              if (!is_graph_input) {
-                // Failing this enforce for an implicit subgraph input points to an internal error somewhere.
-                // For certain older opsets (Scan-8), we may not have added explicit subgraph inputs
-                // to the outer scope location map. See explanation in IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs()
-                // called in FinalizeSessionStateImpl() in SessionState.
-                ORT_ENFORCE(found_in_outer_scope_location_map,
-                            "There is no location for this node arg in the outer scope location map");
-              }
+                if (found_in_outer_scope_location_map) {
+                  plan_.SetLocation(static_cast<size_t>(index), iter->second);
+                }
+              } else if (set_node_arg_has_explicit_consumer.count(index) == 0) {
+                // CASE 2: We see an implicit input without explicit consumers in the main graph,
+                // then set its location to be the device corresponding to the EP that the subgraph
+                // holding node has been partitioned to.
 
-              if (found_in_outer_scope_location_map) {
-                plan_.SetLocation(static_cast<size_t>(index), iter->second);
-              }
-            } else if (set_node_arg_has_explicit_consumer.count(index) == 0) {
-              // CASE 2: We see an implicit input without explicit consumers in the main graph,
-              // then set its location to be the device corresponding to the EP that the subgraph
-              // holding node has been partitioned to.
+                // The "ideal" solution is to set the location of its first "explicit" usage which may occur
+                // in any nested subgraph of the node, but that is potentially too costly to
+                // get at this stage (TODO: Investigate feasibility of this, see TODO in FinalizeSessionStateImpl() around this)
 
-              // The "ideal" solution is to set the location of its first "explicit" usage which may occur
-              // in any nested subgraph of the node, but that is potentially too costly to
-              // get at this stage (TODO: Investigate feasibility of this, see TODO in FinalizeSessionStateImpl() around this)
+                // Instead, we take a "less than ideal" route which is to set the location to be the device
+                // corresponding to the EP that the node is partitioned to. The hypothesis is that it is "most likely"
+                // that the implicit input will eventually be consumed on that device in a nested subgraph.
 
-              // Instead, we take a "less than ideal" route which is to set the location to be the device
-              // corresponding to the EP that the node is partitioned to. The hypothesis is that it is "most likely"
-              // that the implicit input will eventually be consumed on that device in a nested subgraph.
+                // The previous behavior was to default to CPU which will cause unnecessary copies when
+                // (1) The user invokes Run() with an OrtValue backed by non-CPU memory (eg CUDA) and
+                // the node in the subgraph that consumes the subgraph's implicit input is on a non-CPU device
+                // in the subgraph
+                // (2) The user tries to IOBind implicitly consumed graph inputs (GH Issue 11254) and
+                // the node in the subgraph that consumes the subgraph's implicit input is on
+                // a non-CPU device in the subgraph
 
-              // The previous behavior was to default to CPU which will cause unnecessary copies when
-              // (1) The user invokes Run() with an OrtValue backed by non-CPU memory (eg CUDA) and
-              // the node in the subgraph that consumes the subgraph's implicit input is on a non-CPU device
-              // in the subgraph
-              // (2) The user tries to IOBind implicitly consumed graph inputs (GH Issue 11254) and
-              // the node in the subgraph that consumes the subgraph's implicit input is on
-              // a non-CPU device in the subgraph
+                // Even if the user provides an input on CPU and the node in the subgraph that consumes the subgraph's
+                // implicit input is on a non-CPU device, instead of the subgraph copying mechanism taking it to the device,
+                // all we will do is "front-load" this copy in utils::CopyInputsAcrossDevices() with this approach.
 
-              // Even if the user provides an input on CPU and the node in the subgraph that consumes the subgraph's
-              // implicit input is on a non-CPU device, instead of the subgraph copying mechanism taking it to the device,
-              // all we will do is "front-load" this copy in utils::CopyInputsAcrossDevices() with this approach.
+                // NOTE 1: The only case this will be sub-optimal is when a node containing a subgraph is partitioned to a
+                // non-CPU EP and the user provides an input (or tries to IOBind the input) AND it will eventually be
+                // explicitly consumed on CPU - this scenario should be very rare and we forgo performance in this case
+                // (the subgraph copying mechanism will make the copy to CPU eventually) in favor of optimizing for the
+                // common case (which is that we expect the implicit input to be consumed on the non-CPU device corresponding
+                // to the non-CPU EP).
 
-              // NOTE 1: The only case this will be sub-optimal is when a node containing a subgraph is partitioned to a
-              // non-CPU EP and the user provides an input (or tries to IOBind the input) AND it will eventually be
-              // explicitly consumed on CPU - this scenario should be very rare and we forgo performance in this case
-              // (the subgraph copying mechanism will make the copy to CPU eventually) in favor of optimizing for the
-              // common case (which is that we expect the implicit input to be consumed on the non-CPU device corresponding
-              // to the non-CPU EP).
+                // NOTE 2: If the implicit input is consumed by multiple nodes (as implicit inputs in all of them) and
+                // all of them are partitioned to the same EP, then we go ahead with the above stated logic.
+                // If there are multiple EPs involved, we default the location to just CPU as there is ambiguity involved
+                // as to which non-CPU device is "most optimal" for the implicit input.
 
-              // NOTE 2: If the implicit input is consumed by multiple nodes (as implicit inputs in all of them) and
-              // all of them are partitioned to the same EP, then we go ahead with the above stated logic.
-              // If there are multiple EPs involved, we default the location to just CPU as there is ambiguity involved
-              // as to which non-CPU device is "most optimal" for the implicit input.
+                if (set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.count(index) == 0) {
+                  auto already_seen_ep_for_node_arg = map_implicitly_consumed_node_arg_to_ep.find(index);
 
-              if (set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.count(index) == 0) {
-                auto already_seen_ep_for_node_arg = map_implicitly_consumed_node_arg_to_ep.find(index);
-
-                if (already_seen_ep_for_node_arg == map_implicitly_consumed_node_arg_to_ep.end()) {
-                  // First time we are encountering this implicitly consumed input at this graph level (or)
-                  plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
-                  map_implicitly_consumed_node_arg_to_ep.insert({index, exec_provider});
-                } else if (already_seen_ep_for_node_arg->second == exec_provider) {
-                  // The EP that we previously seen for this implicit input is the same one as the current EP
-                  // we have seen
-                  plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
-                } else {
-                  // Default the location to CPU
-                  plan_.SetLocation(static_cast<size_t>(index),
-                                    execution_providers_.Get(CPU)->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
-                  set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
+                  if (already_seen_ep_for_node_arg == map_implicitly_consumed_node_arg_to_ep.end()) {
+                    // First time we are encountering this implicitly consumed input at this graph level (or)
+                    plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
+                    map_implicitly_consumed_node_arg_to_ep.insert({index, exec_provider});
+                  } else if (already_seen_ep_for_node_arg->second == exec_provider) {
+                    // The EP that we previously seen for this implicit input is the same one as the current EP
+                    // we have seen
+                    plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
+                  } else {
+                    // Default the location to CPU
+                    plan_.SetLocation(static_cast<size_t>(index),
+                                      execution_providers_.Get(CPU)->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info());
+                    set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
+                  }
                 }
               }
             }
           }
+
+          return Status::OK();
+        };
+
+        ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->InputDefs(), process_input));
+
+        is_implicit_input = true;
+        ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->ImplicitInputDefs(), process_input));
+
+        auto outputs = pnode->OutputDefs();
+        auto num_outputs = outputs.size();
+        bool has_external_outputs = HasExternalOutputs(*pnode);
+        for (size_t i = 0; i < num_outputs; ++i) {
+          auto* node_output = outputs[i];
+          if (!node_output->Exists()) continue;
+          OrtValueIndex index = Index(node_output->Name());
+          ProcessDef(index, node_output);
+          // Ensures external outputs will not be reused.
+          //UseCount(index) += (has_external_outputs ? 2 : 1);
+          auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
+          ORT_ENFORCE(allocator);
+          plan_.SetLocation(static_cast<size_t>(index),
+                            allocator->Info());
         }
 
-        return Status::OK();
-      };
-
-      ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->InputDefs(), process_input));
-
-      is_implicit_input = true;
-      ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(pnode->ImplicitInputDefs(), process_input));
-
-      auto outputs = pnode->OutputDefs();
-      auto num_outputs = outputs.size();
-      bool has_external_outputs = HasExternalOutputs(*pnode);
-      for (size_t i = 0; i < num_outputs; ++i) {
-        auto* node_output = outputs[i];
-        if (!node_output->Exists()) continue;
-        OrtValueIndex index = Index(node_output->Name());
-        ProcessDef(index, node_output);
-        // Ensures external outputs will not be reused.
-        UseCount(index) += (has_external_outputs ? 2 : 1);
-        auto allocator = exec_provider->GetAllocator(0, p_kernel_def->OutputMemoryType(i));
-        ORT_ENFORCE(allocator);
-        plan_.SetLocation(static_cast<size_t>(index),
-                          allocator->Info());
+        // if sync is needed, mark allocation plan as create_fence_if_async=true
+        // note that the input arg may come from an execution provider (i.e. CPU) that does not support async,
+        // in which case create_fence_if_async would be ignored when creating MLValue
+        if (p_kernel_def->ExecQueueId() != 0) {
+          pnode->ForEachDef([this](const onnxruntime::NodeArg& arg, bool /*is_input*/) {
+            OrtValueIndex index = Index(arg.Name());
+            AllocPlan(index).create_fence_if_async = true;
+          });
+        }
       }
-
-      // if sync is needed, mark allocation plan as create_fence_if_async=true
-      // note that the input arg may come from an execution provider (i.e. CPU) that does not support async,
-      // in which case create_fence_if_async would be ignored when creating MLValue
-      if (p_kernel_def->ExecQueueId() != 0) {
-        pnode->ForEachDef([this](const onnxruntime::NodeArg& arg, bool /*is_input*/) {
-          OrtValueIndex index = Index(arg.Name());
-          AllocPlan(index).create_fence_if_async = true;
-        });
-      }
-    }
-
-    for (auto graph_output : graph_viewer_.GetOutputs()) {
-      UseCount(graph_output->Name())++;  // Models caller's usage post-inference; ensures it will not be reused.
     }
 
     return Status::OK();
@@ -895,19 +986,7 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  // Should only be used after ProcessDef()
-  Status ComputeReusePlan() {
-    std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    //copy the use counts to a vector, before computing reuse
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    std::vector<int> ort_value_usecount;
-    for (auto ort_value_info : ort_value_info_) {
-      ort_value_usecount.push_back(ort_value_info.usecount);
-    }
-#endif
-
-    // Identify allocation/deallocation plan for every ml-value
-
+  Status ComputePlanForInputsAndWeights() {
     auto setup_preexisting = [this](const NodeArg* node_arg) {
       auto input_index = Index(node_arg->Name());
       AllocPlanPerValue& thisplan = AllocPlan(input_index);
@@ -932,7 +1011,18 @@ class PlannerImpl {
     }
 
     // set AllocationInfo for each weight
-    ORT_RETURN_IF_ERROR(GeneratePlanForWeights());
+    return GeneratePlanForWeights();
+  }
+
+  // Should only be used after ProcessDef()
+  Status ComputeReusePlan(std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan) {
+    //copy the use counts to a vector, before computing reuse
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+    std::vector<int> ort_value_usecount;
+    for (auto ort_value_info : ort_value_info_) {
+      ort_value_usecount.push_back(ort_value_info.usecount);
+    }
+#endif
 
     // Cached graph outputs.
     const auto& graph_outputs = graph_viewer_.GetOutputs();
@@ -1005,8 +1095,7 @@ class PlannerImpl {
               }
             }
           }
-        } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+        } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
@@ -1023,8 +1112,7 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
-        } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableTensor(*node_output, &reused)) {
+        } else if (FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           //std::cout << ort_value_info_[reused].p_def_site->Name() << " reused by " << node_output->Name() << " as remote tensor" << std::endl;
           //auto* shape = ort_value_info_[reused].p_def_site->Shape();
@@ -1193,8 +1281,8 @@ class PlannerImpl {
   }
 
   // Compute fence check. Set has_fence flag if either one of inputs, implicit inputs or outputs of a given node has fence.
-  Status ComputeFenceCheck() {
-    for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
+  Status ComputeFenceCheck(std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan) {
+    for (SequentialExecutionPlan::NodeExecutionPlan& step : execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
       if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Can not find the node ", step.node_index);
 
@@ -1219,11 +1307,11 @@ class PlannerImpl {
 
   // Convert information in a freelist (about which ml-value becomes free when) into
   // a deallocation plan in the format required in an ExecutionPlan
-  void GenerateDeallocationPlan() {
+  void GenerateDeallocationPlan(SequentialExecutionPlan::NodesExecutionPlan& execution_plan) {
     // Store (indices of) ml-values to be freed in plan->to_be_freed
     // Set plan->execution_plan[n].free_from_index/free_to_index for every n that must free some ml-value.
 
-    plan_.to_be_freed.reserve(freelist_.size());
+    execution_plan.to_be_freed.reserve(freelist_.size());
     bool has_prev_dealloc_point = false;
     size_t prev_dealloc_point = 0;
     //TODO: should be size_t
@@ -1231,31 +1319,112 @@ class PlannerImpl {
 
     // Copy all items from freelist to to_be_freed in reverse order
     for (auto it = freelist_.rbegin(), end = freelist_.rend(); it != end; ++it) {
-      plan_.to_be_freed.push_back(it->ml_value);
+      execution_plan.to_be_freed.push_back(it->ml_value);
       //
       if (it->deallocate_point != prev_dealloc_point) {
         if (has_prev_dealloc_point)
-          plan_.execution_plan[prev_dealloc_point].free_to_index = current - 1;
+          execution_plan.nodes_execution_order[prev_dealloc_point].free_to_index = current - 1;
         prev_dealloc_point = it->deallocate_point;
         has_prev_dealloc_point = true;
-        plan_.execution_plan[prev_dealloc_point].free_from_index = current;
+        execution_plan.nodes_execution_order[prev_dealloc_point].free_from_index = current;
       }
       current++;
     }
 
     if (has_prev_dealloc_point)
-      plan_.execution_plan[prev_dealloc_point].free_to_index = current - 1;
+      execution_plan.nodes_execution_order[prev_dealloc_point].free_to_index = current - 1;
 
     size_t program_counter = 0;
-    for (auto& node_plan : plan_.execution_plan) {
+    for (auto& node_plan : execution_plan.nodes_execution_order) {
       for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
-        auto ml_value_idx = plan_.to_be_freed[index];
+        auto ml_value_idx = execution_plan.to_be_freed[index];
         if (AllocPlan(ml_value_idx).alloc_kind == AllocKind::kAllocate) {
           ORT_ENFORCE(AllocPlan(ml_value_idx).program_counter.Ends().back() == program_counter);
         }
       }
 
       program_counter += 1;
+    }
+  }
+
+  void PartitionIntoStreams(const ProviderStreamMap& provider_stream_map,
+                            const OpStreamMap& op_stream_map,
+                            bool enable_multi_stream) {
+    if (!enable_multi_stream) {
+      stream_nodes_.resize(1);
+      node_stream_map_.resize(graph_viewer_.MaxNodeIndex());
+      auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_.GetExecutionOrder());
+
+      for (auto node_index : p_graph_nodes) {
+        stream_nodes_[0].push_back(node_index);
+        node_stream_map_[node_index] = 0;
+      }
+      return;
+    }
+
+    class StreamRange {  //iterate between [from,to)
+     public:
+      StreamRange(int from, int to) : from_(from), to_(to){};
+      int next() {
+        int size = to_ - from_;
+        ORT_ENFORCE(size > 0, "invalid stream range");
+        int curr = from_ + iter_;
+        iter_ = (iter_ + 1) % size;
+        return curr;
+      };
+      StreamRange(const StreamRange&) = default;
+      StreamRange(StreamRange&&) = default;
+      StreamRange& operator=(const StreamRange&) = default;
+      StreamRange& operator=(StreamRange&&) = default;
+
+     private:
+      int from_{};
+      int to_{};
+      int iter_{};
+    };  //StreamRange
+
+    int stream_idx = 0;
+
+    std::map<std::string, std::unique_ptr<StreamRange>> stream_map;
+    for (const auto& iter : provider_stream_map) {
+      const auto& provider_name = iter.first;
+      int num_streams = iter.second;
+      int prev_stream_idx = stream_idx;
+      for (int i = 0; i < num_streams; ++i) {
+        plan_.logic_streams.push_back(std::make_unique<LogicStream>());
+        stream_idx++;
+      }
+      stream_map.insert({provider_name, std::make_unique<StreamRange>(prev_stream_idx, stream_idx)});
+    }
+
+    for (const auto& iter : op_stream_map) {
+      plan_.logic_streams.push_back(std::make_unique<LogicStream>());
+      for (const auto& op : iter) {
+        stream_map.insert({op, std::make_unique<StreamRange>(stream_idx, stream_idx + 1)});
+      }
+      stream_idx++;
+    }
+
+    plan_.num_logic_streams_ = stream_idx;
+    
+    //partition the nodes into streams
+    stream_nodes_.resize(plan_.num_logic_streams_);
+    node_stream_map_.resize(graph_viewer_.MaxNodeIndex());
+    auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_.GetExecutionOrder());
+
+    for (auto node_index : p_graph_nodes) {
+      const auto* node = graph_viewer_.GetNode(node_index);
+      int logic_stream_index = -1;
+      if (stream_map.find(node->OpType()) != stream_map.end()) {
+        logic_stream_index = stream_map[node->OpType()]->next();
+      } else {
+        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+        ORT_ENFORCE(stream_map.find(exec_provider_name) != stream_map.end());
+        logic_stream_index = stream_map[exec_provider_name]->next();
+      }
+      ORT_ENFORCE(logic_stream_index > -1 && logic_stream_index < plan_.num_logic_streams_);
+      stream_nodes_[logic_stream_index].push_back(node_index);
+      node_stream_map_[node_index] = logic_stream_index;
     }
   }
 
@@ -1298,44 +1467,184 @@ class PlannerImpl {
 #endif
 };
 
-Status PlannerImpl::CreatePlan() {
+Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
+                               const IStreamCommandHandleRegistry& stream_handle_registry,
+                               const ProviderStreamMap& provider_stream_map,
+                               const OpStreamMap& op_stream_map,
+                               bool enable_multi_stream) {
   auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_.GetExecutionOrder());
 
+  //1. partition graph into streams
+  PartitionIntoStreams(provider_stream_map, op_stream_map, enable_multi_stream);
+  
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
 
   Initialize(p_graph_nodes.size(), static_cast<size_t>(num_ml_values));
 
   // Determine execution order: we use the default topological sort order for now. We can later
   // explore more efficient orderings (from a memory usage perspective).
-  for (auto n : p_graph_nodes) {
-    plan_.execution_plan.emplace_back(n);
+  for (auto i = 0; i < plan_.execution_plan.size(); ++i) {
+    for (auto n : stream_nodes_[i])
+      plan_.execution_plan[i].nodes_execution_order.emplace_back(n);
   }
 
-  // compute use counts for all ml-values
-  ORT_RETURN_IF_ERROR(ComputeUseCounts());
+  // compute value location
+  ORT_RETURN_IF_ERROR(ComputeValueLocation());
+  ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
-  // determine sharing/reuse among ml-values
-  ORT_RETURN_IF_ERROR(ComputeReusePlan());
-
-  // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
-  ORT_RETURN_IF_ERROR(ComputeFenceCheck());
+  for (auto i = 0; i < plan_.execution_plan.size(); ++i) {
+    //reset the reuse count
+    ResetReuseCount();
+    //compute reuse count
+    ORT_RETURN_IF_ERROR(ComputeReuseCount());
+    //determine sharing/reuse among ml-values
+    ORT_RETURN_IF_ERROR(ComputeReusePlan(plan_.execution_plan[i].nodes_execution_order));
+    // Determine nodes that need fence check. This needs to be done after ComputeUseCounts and ComputeReusePlan.
+    ORT_RETURN_IF_ERROR(ComputeFenceCheck(plan_.execution_plan[i].nodes_execution_order));
+#ifdef ENABLE_TRAINING
+    // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
+    ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
+#endif
+    // convert information in the freelist_ into a deallocation plan in required format
+    GenerateDeallocationPlan(plan_.execution_plan[i]);
+  }
+   
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   //Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
   AdjustInplaceLifeIntervals();
 #endif
 
-#ifdef ENABLE_TRAINING
-  // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
-  ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
-#endif
-
-  // convert information in the freelist_ into a deallocation plan in required format
-  GenerateDeallocationPlan();
-
   // Ensure Memory-Time schedule is valid. This should be called at the end because memory start/end timestamps
   // are updated until GenerateDeallocationPlan is finished.
-  VerifyMemoryTimeSchedule();
+  // TODO: support verify with multi-stream
+  if (!enable_multi_stream)
+    VerifyMemoryTimeSchedule();
+
+  if (enable_multi_stream) {
+    // build logic streams
+    
+    //2. for each node, if any of its consumer partitioned to another stream, generate a notification
+    size_t num_notifications = 0;
+    std::unordered_map<NodeIndex, NotificationIndex> node_to_notification;
+    for (auto i = 0; i < plan_.num_logic_streams_; ++i) {
+      for (auto node_index : stream_nodes_[i]) {
+        auto* node = graph_viewer_.GetNode(node_index);
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
+            node_to_notification[node_index] = num_notifications++;
+            break;
+          }
+        }
+      }
+    }
+
+    //3. Check the nodes in each logical stream, set the EP isntance;
+    for (auto i = 0; i < plan_.num_logic_streams_; ++i) {
+      std::set<const IExecutionProvider*> providers;
+      for (auto node_index : stream_nodes_[i]) {
+        auto* node = graph_viewer_.GetNode(node_index);
+        onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
+        const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
+        if (plan_.logic_streams[node_stream_map_[node_index]]->ep_) {
+          ORT_ENFORCE(plan_.logic_streams[node_stream_map_[node_index]]->ep_ == ep);
+        } else {
+          plan_.logic_streams[node_stream_map_[node_index]]->ep_ = ep;
+        }
+      }
+    }
+    //4. set notification owners
+    plan_.notification_owners_.resize(num_notifications);
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+      auto it = node_to_notification.find(node_index);
+      if (it != node_to_notification.end()) {
+        // notification owned by the node who produced it.
+        plan_.notification_owners_[it->second] = node_stream_map_[node_index];
+      }
+    }
+    //5. add commands to logic queue
+    for (auto i = 0; i < plan_.num_logic_streams_; ++i) {
+      for (auto j = 0; j < stream_nodes_[i].size(); ++j) {
+        auto node_index = stream_nodes_[i][j];
+        auto cur_stream_idx = node_stream_map_[node_index];
+        // check if any producer is not in current stream, if yes, create a wait
+        auto* node = graph_viewer_.GetNode(node_index);
+        for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
+          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
+            // find the notificaiton id
+            auto notfication_it = node_to_notification.find(it->Index());
+            ORT_ENFORCE(notfication_it != node_to_notification.end());
+            // push a wait command
+            auto wait_handle = stream_handle_registry.GetWaitHandle(
+                plan_.logic_streams[plan_.notification_owners_[notfication_it->second]]->ep_->Type(),
+                node->GetExecutionProviderType());
+            NotificationIndex notification_index = notfication_it->second;
+            const std::string& upstream_node_name = it->Name();
+            plan_.logic_streams[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](ExecutionContext& ctx) {
+              wait_handle(*ctx.device_streams[cur_stream_idx], *ctx.notifications[notification_index]);
+              // update streams clock status
+              ctx.device_streams[cur_stream_idx]->UpdateStreamClock(ctx.notifications[notification_index]->stream, ctx.notifications[notification_index]->timestamp);
+              LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
+            });
+          }
+        }
+        // push launch kernel command
+        plan_.logic_streams[i]->commands_.push_back([j, node, node_index, cur_stream_idx, i](ExecutionContext& ctx) {
+          auto* p_kernel = ctx.session_state->GetKernel(node_index);
+          auto* intra_tp = ctx.session_state->GetThreadPool();
+          // TODO: set terminate flag from run_option
+          OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, false, ctx.device_streams[cur_stream_idx].get());
+          if (p_kernel->IsAsync()) {
+            ORT_ENFORCE(false);
+          } else {
+#ifdef USE_CUDA
+            static std::atomic_int color = 0;
+            color = (color + 10) / 1000;
+            nvtxEventAttributes_t eventAttrib = {0};
+            eventAttrib.version = NVTX_VERSION;
+            eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+            eventAttrib.colorType = NVTX_COLOR_ARGB;
+            eventAttrib.color = color;
+            eventAttrib.messageType = NVTX_MESSAGE_TYPE_ASCII;
+            eventAttrib.message.ascii = p_kernel->Node().OpType().c_str();
+            nvtxRangePushEx(&eventAttrib);
+#endif
+            ORT_ENFORCE(p_kernel->Compute(&kernel_ctx).IsOK(), MakeString("kernel fail on node ") + node->Name());
+            auto& execution_plan = ctx.session_state->GetExecutionPlan()->execution_plan[i];
+            for (auto idx = execution_plan.nodes_execution_order[j].free_from_index; 
+                 idx <= execution_plan.nodes_execution_order[j].free_to_index; ++idx) {
+              auto ort_value_idx = execution_plan.to_be_freed[i];
+              ORT_THROW_IF_ERROR(ctx.frame->ReleaseMLValue(ort_value_idx));
+            }
+#ifdef USE_CUDA
+            nvtxRangePop();
+#endif
+          }
+          LOGS(*ctx.logger, INFO) << "stream " << i << " complete with " << node->Name();
+        });
+        // check if any notification generated by this node, if yes, push a activate
+        auto notification_it = node_to_notification.find(node_index);
+        if (notification_it != node_to_notification.end()) {
+          NotificationIndex notification_index = notification_it->second;
+          plan_.logic_streams[i]->commands_.push_back([notification_index, i, node](ExecutionContext& ctx) {
+            ctx.notifications[notification_index]->Activate();
+            LOGS(*ctx.logger, INFO) << "stream " << i << " send notification for " << node->Name();
+          });
+        }
+      }
+    }
+    //6. value to stream map:
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+      auto* node = graph_viewer_.GetNode(node_index);
+      const auto& output_defs = node->OutputDefs();
+      for (int output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
+        const auto& node_output = output_defs[output_idx_local];
+        if (!node_output->Exists()) continue;
+        OrtValueIndex output_idx_global = Index(node_output->Name());
+        plan_.value_to_stream_map_[output_idx_global] = node_stream_map_[node_index];
+      }
+    }
+  }
 
   return Status::OK();
 }
@@ -1350,6 +1659,11 @@ Status SequentialPlanner::CreatePlan(
     const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
+    const ExecutionProviders& execution_providers,
+    const IStreamCommandHandleRegistry& stream_handle_registry,
+    const ProviderStreamMap& provider_stream_map,
+    const OpStreamMap& op_stream_map,
+    bool enable_multi_stream,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
   ORT_ENFORCE(plan, "plan ptr must be filled with instance!");
@@ -1360,7 +1674,7 @@ Status SequentialPlanner::CreatePlan(
                       outer_scope_node_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
-  return planner.CreatePlan();
+  return planner.CreatePlan(execution_providers, stream_handle_registry, provider_stream_map, op_stream_map, enable_multi_stream);
 }
 
 }  // namespace onnxruntime
