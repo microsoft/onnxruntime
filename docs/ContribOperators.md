@@ -371,7 +371,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The id of the padding token</dd>
 </dl>
 
-#### Inputs (6 - 10)
+#### Inputs (5 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -384,8 +384,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of beams for beam search. 1 means no beam search. Shape is (1)</dd>
 <dt><tt>num_return_sequences</tt> : I</dt>
 <dd>The number of returned sequences in the batch. Shape is (1)</dd>
-<dt><tt>temperature</tt> : T</dt>
-<dd>The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)</dd>
 <dt><tt>length_penalty</tt> (optional) : T</dt>
 <dd>Exponential penalty to the length. Default value 1.0 means no penalty.Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences.Shape is (1,)</dd>
 <dt><tt>repetition_penalty</tt> (optional) : T</dt>
