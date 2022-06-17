@@ -111,7 +111,6 @@ TEST(TrainingApiTest, OptimStep) {
   ORT_ENFORCE(LoadCheckpoint(checkpoint_to_load_path, state).IsOK());
 
   onnxruntime::SessionOptions session_option;
-  session_option.optimized_model_filepath = "/home/bmeswani/github/onnxruntime/build/adamw_final.onnx";
   std::unique_ptr<Environment> env;
   std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
   std::shared_ptr<IExecutionProvider> cuda_provider = providers.front();

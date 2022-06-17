@@ -12,17 +12,23 @@ namespace training {
 namespace api {
 using namespace common;
 
+struct ModelIdentifiers {
+  const std::string train_model;
+  const std::optional<std::string> eval_model, optim_model;
+  ModelIdentifiers(const std::string& train_model_uri,
+                   const std::optional<std::string>& eval_model_uri,
+                   const std::optional<std::string>& optim_model_uri)
+      : train_model(train_model_uri), eval_model(eval_model_uri), optim_model(optim_model_uri) {}
+};
+
 // Wrapper on top of module and optimizer classes and is the only class exposed via capis
 class TrainingSession {
  public:
   TrainingSession(const Environment& session_env,
                   const SessionOptions& session_options,
                   const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-                  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters);
-
-  Status Initialize(const std::string& train_model_uri,
-                    const std::optional<std::string>& eval_model_uri,
-                    const std::optional<std::string>& optim_model_uri);
+                  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+                  const ModelIdentifiers& model_identifiers);
 
   size_t GetTrainModeOutputCount() const noexcept;
 
@@ -45,9 +51,6 @@ class TrainingSession {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TrainingSession);
 
-  const Environment& environment_;
-  SessionOptions session_options_;
-  std::vector<std::shared_ptr<IExecutionProvider>> providers_;
   const std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::unique_ptr<Module> module_;
   std::unique_ptr<Optimizer> optimizer_;

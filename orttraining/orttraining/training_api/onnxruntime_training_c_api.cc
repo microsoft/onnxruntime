@@ -34,17 +34,18 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_
   *out = nullptr;
 
   ORT_TRY {
+    using ProvidersType = std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>>;
     train_sess = std::make_unique<onnxruntime::training::api::TrainingSession>(
         env->GetEnvironment(),
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        CreateProviders(options->provider_factories),
-        chkpt_state->module_checkpoint_state.named_parameters);
-
-    ORT_API_RETURN_IF_STATUS_NOT_OK(train_sess->Initialize(train_model_path,
-                                                           eval_model_path ? std::optional<std::string>{eval_model_path}
-                                                                           : std::nullopt,
-                                                           optimizer_model_path ? std::optional<std::string>{optimizer_model_path}
-                                                                                : std::nullopt));
+        options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
+        chkpt_state->module_checkpoint_state.named_parameters,
+        onnxruntime::training::api::ModelIdentifiers{
+            train_model_path,
+            eval_model_path ? std::optional<std::string>{eval_model_path}
+                            : std::nullopt,
+            optimizer_model_path ? std::optional<std::string>{optimizer_model_path}
+                                 : std::nullopt});
 
     *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }
