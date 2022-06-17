@@ -31,6 +31,12 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
+    // If the node is not supported in the EP
+    if (!graph_utils::IsSupportedProvider(NodeFromApiNode(*node), GetCompatibleExecutionProviders()))
+    {
+        continue;
+    }
+
     // Only QLinearConv needs to be handled explicitly. The rest will be transformed if needed during transpose
     // optimization.
     if (node->OpType() == "QLinearConv") {

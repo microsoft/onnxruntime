@@ -269,10 +269,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifndef DISABLE_CONTRIB_OPS
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
-        transformers.emplace_back(std::make_unique<NchwcTransformer>());
+        transformers.emplace_back(std::make_unique<NchwcTransformer>(cpu_ep));
       }
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
-      transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
+      transformers.emplace_back(std::make_unique<NhwcTransformer>(cpu_ep, std::move(cpu_allocator)));
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similiar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
       // x86-64 cpu, not edge cpu like arm. But This tranformer could be used by opencl-ep/cpu-ep. So
@@ -341,8 +341,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
+        const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
         auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
-        transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
+        transformers.emplace_back(std::make_unique<NhwcTransformer>(cpu_ep, std::move(cpu_allocator)));
 #else
         ORT_UNUSED_PARAMETER(cpu_execution_provider);
 #endif
