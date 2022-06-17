@@ -20,8 +20,8 @@ namespace Dml
             const onnxruntime::OpKernelInfo& kernelInfo,
             const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-            const gsl::span<const std::string>& fusedNodeInputArgOriginalNames,
-            const gsl::span<const std::string>& fusedNodeOutputArgOriginalNames) : OpKernel(kernelInfo)
+            const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+            const gsl::span<const std::string> fusedNodeOutputArgOriginalNames) : OpKernel(kernelInfo)
         {       
             // Get the graph for the function which was created according to the computational
             // capacity returned by the execution provider's graph partitioner
@@ -59,8 +59,8 @@ namespace Dml
         void TranslateAndCompileGraph(
             const onnxruntime::OpKernelInfo& kernelInfo,
             const onnxruntime::Graph& graph,
-            const gsl::span<const std::string>& fusedNodeInputArgOriginalNames,
-            const gsl::span<const std::string>& fusedNodeOutputArgOriginalNames,
+            const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+            const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap
         )

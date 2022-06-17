@@ -105,7 +105,7 @@ namespace GraphKernelHelper
     bool GetGraphInputConstness(
         uint32_t index,
         const onnxruntime::OpKernelInfo& kernelInfo,
-        const gsl::span<const std::string>& fusedNodeInputArgOriginalNames,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap) 
     {
         // Transferred initializers are uploaded to GPU memory
@@ -139,7 +139,7 @@ namespace GraphKernelHelper
         const std::vector<uint8_t>& inputsConstant,
         const onnxruntime::OpKernelInfo& kernelInfo,
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        const gsl::span<const std::string>& fusedNodeInputArgOriginalNames,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
