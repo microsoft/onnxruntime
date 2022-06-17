@@ -794,7 +794,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto graph_viewer = graph_build.CreateGraphViewer();
         auto model = graph_viewer->CreateModel(*GetLogger());
         auto model_proto = model->ToProto();
-        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true, true);
+        graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
         model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
         std::string string_buf;
@@ -1039,7 +1039,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     // Reconstruct graph proto from fused node's function body
     auto model = graph_body_viewer.CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, true);
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string string_buf;
     model_proto->SerializeToString(string_buf);

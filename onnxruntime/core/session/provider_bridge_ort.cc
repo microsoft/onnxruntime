@@ -762,8 +762,8 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
   const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
-  void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args, bool include_outer_scope_values) noexcept override {
-    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, include_outer_scope_values);
+  void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) noexcept override {
+    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args);
   }
 
   // Path (wrapped)

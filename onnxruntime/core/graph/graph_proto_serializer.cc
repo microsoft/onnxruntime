@@ -8,8 +8,7 @@ namespace onnxruntime {
 void GraphViewerToProto(const GraphViewer& graph_view, 
                         ONNX_NAMESPACE::GraphProto& graph_proto, 
                         bool include_initializer,
-                        bool include_outer_scope_args,
-                        bool include_outer_scope_values) {
+                        bool include_outer_scope_args) {
   graph_proto.set_name(graph_view.Name());
   graph_proto.set_doc_string(graph_view.Description());
 
@@ -55,7 +54,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
 
 
     // handle outer scope value which is a constant initializer
-    if (include_outer_scope_values) {
+    if (include_outer_scope_args) {
       for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
         const auto& node = graph_view.GetNode(node_idx);
         for (const auto& input : node->InputDefs()) {
