@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/graph/basic_types.h"
-#include "core/common/inlined_containers.h"
 #include "core/framework/alloc_kind.h"
 #include "core/framework/data_types.h"
 #include "core/framework/execution_plan_base.h"
@@ -114,10 +113,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::vector<NodeExecutionPlan> execution_plan;
 
   // Records whether a given node has fence on its input or output, key is node index.
-  InlinedVector<bool> node_has_fence;
+  std::vector<bool> node_has_fence;
 
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
-  InlinedVector<OrtValueIndex> to_be_freed;
+  std::vector<OrtValueIndex> to_be_freed;
 
   const OrtMemoryInfo& GetLocation(size_t ort_value_index) const override {
     return allocation_plan[ort_value_index].location;
@@ -127,11 +126,10 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     allocation_plan[ort_value_index].location = info;
   }
 
-  InlinedHashSet<OrtMemoryInfo> GetAllLocations() const override {
-    InlinedHashSet<OrtMemoryInfo> locations;
-    locations.reserve(allocation_plan.size());
+  std::set<OrtMemoryInfo> GetAllLocations() const override {
+    std::set<OrtMemoryInfo> locations;
     for (auto& alloc_plan : allocation_plan) {
-      locations.insert(alloc_plan.location);
+      if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
     }
     return locations;
   }
