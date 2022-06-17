@@ -271,8 +271,7 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                              dims_attn.size());
     }
     if (dims_attn != dims) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have same shape as input_ids, got ",
-                             dims_attn);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'attention_mask' is expected to have same shape as input_ids");
     }
   }
 
