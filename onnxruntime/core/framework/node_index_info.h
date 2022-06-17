@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/common/inlined_containers_fwd.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/basic_types.h"
 
@@ -54,7 +53,7 @@ class NodeIndexInfo final {
 
   // This vector contains the indices from the OrtValueNameIdxMap in the SessionState for each Node's input/outputs.
   // Order is node inputs, implicit inputs, outputs.
-  InlinedVector<int> node_values_;
+  std::vector<int> node_values_;
 
   // the minimum NodeIndex. we use this to minimize the size of node_offsets_.
   NodeIndex min_node_index_ = 0;
@@ -62,7 +61,7 @@ class NodeIndexInfo final {
   // The entry at node_offsets_[GetNodeOffsetsIndex(Node::Index())] contains the index in node_values_
   // where the information for the Node begins.
   size_t GetNodeOffsetsIndex(NodeIndex node_index) const { return node_index - min_node_index_; }
-  InlinedVector<int> node_offsets_;
+  std::vector<int> node_offsets_;
 
   const int max_mlvalue_idx_;
 
