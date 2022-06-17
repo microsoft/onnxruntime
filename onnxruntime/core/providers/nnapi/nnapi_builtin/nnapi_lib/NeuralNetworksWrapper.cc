@@ -98,9 +98,9 @@ size_t OperandType::GetElementByteSize() const {
 }
 
 size_t OperandType::GetOperandBlobByteSize() const {
-  // use uin64_t even dimension is uint32_t to prevent overflow
-  uint64_t num_elements = std::accumulate(dimensions.begin(), dimensions.end(), uint64_t(1), std::multiplies<uint64_t>());
-  return SafeInt<size_t>(num_elements) * GetElementByteSize();
+  SafeInt<size_t> num_elements = std::accumulate(dimensions.begin(), dimensions.end(), SafeInt<size_t>(1),
+                                                 std::multiplies<SafeInt<size_t>>());
+  return num_elements * GetElementByteSize();
 }
 
 void OperandType::SetDimensions(const std::vector<uint32_t>& d) {
