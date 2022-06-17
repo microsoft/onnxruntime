@@ -98,10 +98,10 @@ TEST(SignalOpsTest, STFTFloat) {
 
   std::vector<float> signal(64, 1);
   test.AddInput<float>("signal", {1, 64, 1}, signal);
+  test.AddInput<int64_t>("frame_step", {}, {8});
   std::vector<float> window(16, 1);
   test.AddInput<float>("window", {16}, window);
   test.AddInput<int64_t>("frame_length", {}, {16});
-  test.AddInput<int64_t>("frame_step", {}, {8});
 
   std::vector<int64_t> output_shape = {1, 7, 9, 2};
   std::vector<float> expected_output =
