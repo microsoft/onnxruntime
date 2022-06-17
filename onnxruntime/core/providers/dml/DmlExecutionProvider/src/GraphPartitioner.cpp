@@ -164,14 +164,10 @@ namespace Dml
 
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
-        bool allow64BitInputThroughStrides,
-        _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap, // Only used when allow64BitInputThroughStrides is true
         _In_opt_ const InternalRegistrationInfo* regInfo,
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
-
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
 
         if (regInfo != nullptr)
@@ -253,13 +249,9 @@ namespace Dml
         const onnxruntime::Node& node,
         const onnxruntime::KernelRegistry& registry,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
-        const InternalRegistrationInfoMap& internalRegInfoMap,
-        bool allow64BitInputThroughStrides,
-        _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap
+        const InternalRegistrationInfoMap& internalRegInfoMap
         )
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
-
         const onnxruntime::KernelCreateInfo* createInfo;
         Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo);
         if (!st.IsOK())
@@ -279,7 +271,7 @@ namespace Dml
         }
 
         // Check whether the node uses any data types which are unsupported by the device.
-        if (!DoesNodeContainSupportedDataTypes(node, allow64BitInputThroughStrides, nodeNameToPartitionMap, internalRegInfo.get(), supportedDeviceDataTypeMask))
+        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask))
         {
             return false;
         }
@@ -309,8 +301,7 @@ namespace Dml
         // registration.  Determine if that registration supports usage as a graph node.
         for (auto registry : dmlRegistries) 
         {
-            bool allow64BitInputThroughStrides = true;
-            if (IsNodeSupportedByDml(node, *registry, supportedDeviceDataTypeMask, internalRegInfoMap, allow64BitInputThroughStrides, nodeNameToPartitionMap))
+            if (IsNodeSupportedByDml(node, *registry, supportedDeviceDataTypeMask, internalRegInfoMap))
             {
                 *isDmlNode = true;
 
@@ -541,7 +532,7 @@ namespace Dml
                 partitionNodePropsMap.insert(std::make_pair(
                     GraphDescBuilder::GetUniqueNodeName(*node), std::move(graphNodePropertyMap[node])));
             }
-            
+
 #ifdef PRINT_PARTITON_INFO
             printf("\n");
 #endif
@@ -549,7 +540,7 @@ namespace Dml
             auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
             {
                 out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap));
-				return Status::OK();
+                return Status::OK();
             };
 
             // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.

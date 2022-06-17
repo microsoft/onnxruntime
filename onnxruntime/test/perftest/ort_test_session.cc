@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace perftest {
 
 std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
-  //Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
+  // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
   const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
   const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
   auto& input = test_inputs_.at(id);
@@ -76,6 +76,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_engine_decryption_enable = false;
     std::string trt_engine_decryption_lib_path = "";
     bool trt_force_sequential_engine_build = false;
+    bool trt_context_memory_sharing_enable = false;
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -207,8 +208,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_context_memory_sharing_enable") {
+        if (value == "true" || value == "True") {
+          trt_context_memory_sharing_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_context_memory_sharing_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_context_memory_sharing_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_context_memory_sharing_enable'] \n");
       }
     }
     OrtTensorRTProviderOptionsV2 tensorrt_options;
@@ -230,6 +239,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_engine_decryption_enable = trt_engine_decryption_enable;
     tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
+    tensorrt_options.trt_context_memory_sharing_enable = trt_context_memory_sharing_enable;
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
@@ -243,13 +253,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    std::string device_type = "";          // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
-    bool enable_vpu_fast_compile = false;  // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
-    std::string device_id = "";            // [device_id]: Selects a particular hardware device for inference.
-    size_t num_of_threads = 8;             // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
-    bool use_compiled_network = false;     // [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists.
-    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
-    bool enable_opencl_throttling = false;    // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device (Reduces CPU Utilization when using GPU)
+    std::string device_type = "";           // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
+    bool enable_vpu_fast_compile = false;   // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
+    std::string device_id = "";             // [device_id]: Selects a particular hardware device for inference.
+    size_t num_of_threads = 8;              // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
+    bool use_compiled_network = false;      // [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists.
+    std::string blob_dump_path = "";        // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
+    bool enable_opencl_throttling = false;  // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device (Reduces CPU Utilization when using GPU)
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
@@ -321,13 +331,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       }
     }
     OrtOpenVINOProviderOptions options;
-    options.device_type = device_type.c_str();                  //To set the device_type
-    options.device_id = device_id.c_str();                      // To set the device_id
-    options.enable_vpu_fast_compile = enable_vpu_fast_compile;  // To enable_vpu_fast_compile, default is false
-    options.num_of_threads = num_of_threads;                    // To set number of free InferRequests, default is 8
-    options.use_compiled_network = use_compiled_network;        // To use_compiled_network, default is false
-    options.blob_dump_path = blob_dump_path.c_str();            // sets the blob_dump_path, default is ""
-    options.enable_opencl_throttling = enable_opencl_throttling;      // Enables GPU Throttling (Reduces CPU Utilization)
+    options.device_type = device_type.c_str();                    // To set the device_type
+    options.device_id = device_id.c_str();                        // To set the device_id
+    options.enable_vpu_fast_compile = enable_vpu_fast_compile;    // To enable_vpu_fast_compile, default is false
+    options.num_of_threads = num_of_threads;                      // To set number of free InferRequests, default is 8
+    options.use_compiled_network = use_compiled_network;          // To use_compiled_network, default is false
+    options.blob_dump_path = blob_dump_path.c_str();              // sets the blob_dump_path, default is ""
+    options.enable_opencl_throttling = enable_opencl_throttling;  // Enables GPU Throttling (Reduces CPU Utilization)
     session_options.AppendExecutionProvider_OpenVINO(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
@@ -341,10 +351,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
     std::istringstream ss(option_string);
     std::string token;
-
-    std::vector<const char*> snpe_option_keys;
-    std::vector<const char*> snpe_option_values;
-    std::vector<std::string> values;
+    std::unordered_map<std::string, std::string> snpe_options;
 
     while (ss >> token) {
       if (token == "") {
@@ -360,35 +367,26 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
       if (key == "runtime") {
         std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
-        if (supported_runtime.find(value) != supported_runtime.end()) {
-          snpe_option_keys.push_back("runtime");
-          values.push_back(value);
-        } else {
+        if (supported_runtime.find(value) == supported_runtime.end()) {
           ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
 select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
         }
       } else if (key == "priority") {
-        snpe_option_keys.push_back("priority");
-        values.push_back(value);
+        // no validation
       } else if (key == "buffer_type") {
         std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
-        if (supported_buffer_type.find(value) != supported_buffer_type.end()) {
-          snpe_option_keys.push_back("buffer_type");
-          values.push_back(value);
-        } else {
+        if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
           ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       } else {
         ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type'] \n");
       }
+
+      snpe_options[key] = value;
     }
-    for (auto& it : values) {
-      snpe_option_values.push_back(it.c_str());
-    }
-    session_options.AppendExecutionProvider_SNPE(snpe_option_keys.data(),
-                                                 snpe_option_values.data(),
-                                                 snpe_option_keys.size());
+
+    session_options.AppendExecutionProvider("SNPE", snpe_options);
 #else
     ORT_THROW("SNPE is not supported in this build\n");
 #endif
@@ -460,14 +458,18 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
-
     OrtROCMProviderOptions rocm_options;
     rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
     rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
+#endif
+  } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
+#ifdef USE_XNNPACK
+    session_options.AppendExecutionProvider("XNNPACK", {});
+#else
+    ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
