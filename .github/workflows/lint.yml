@@ -44,14 +44,12 @@ jobs:
           reporter: github-pr-check
           level: info
           filter_mode: file
-      - name: pyright
-        uses: jordemort/action-pyright@v1
+      - uses: tsuyoshicho/action-mypy@v3
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-          filter_mode: diff_context
-          pyright_flags: --ignoreexternal
+          workdir: .
       - name: pylint
         uses: dciborow/action-pylint@0.0.7
         with:
