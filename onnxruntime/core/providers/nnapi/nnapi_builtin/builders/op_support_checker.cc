@@ -2238,7 +2238,8 @@ class PadOpSupportChecker : public BaseOpSupportChecker {
 
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override {
     // before Pad-11, inputs `pads` and `constant_value` were attributes
-    // only support inputs now, but we could add support for attributes later
+    // only support inputs now
+    // Note: Could add support for attributes later.
     return 11;
   }
 
@@ -2271,6 +2272,7 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
   }
 
   // only support "constant" mode
+  // Note: Could possibly add support for "reflect" later using ANEURALNETWORKS_MIRROR_PAD.
   {
     NodeAttrHelper helper{node_unit};
     const auto mode = helper.Get("mode", "constant");
@@ -2309,6 +2311,8 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
   }
 
   // only support if `constant_value` input is known
+  // Note: Could add support for non-constant initializer later. Then we need to ensure it is a scalar (not a single
+  // element tensor).
   if (inputs.size() > 2) {
     if (!Contains(initializers, inputs[2].node_arg.Name())) {
       LOGS_DEFAULT(VERBOSE) << "constant_value must be known";
