@@ -114,6 +114,11 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
 
   // Allocate subgraph inputs to be same device as encoder_input_ids.
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(encoder_input_ids.Location());
+  if (cpu_allocator == nullptr) {
+    const IExecutionProvider* provider = GetProvider();
+    cpu_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
+  }
+  ORT_RETURN_IF(cpu_allocator != nullptr, "cpu_allocator shouldn't be nullptr");
 
   // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
   OrtValue expanded_encoder_input_ids;
