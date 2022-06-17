@@ -30,11 +30,11 @@ struct OpBuilderRegistrations {
 };
 
 #define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
-  {                                                                                \
+  do {                                                                             \
     uint32_t _index = 0;                                                           \
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, _index)); \
     input_indices.push_back(_index);                                               \
-  }
+  } while (0)
 
 Status AddTransposeOperator(ModelBuilder& model_builder,
                             const std::string& input,
@@ -2770,6 +2770,109 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 #pragma endregion
 
+#pragma region op_pad
+
+class PadOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& inputs = node_unit.Inputs();
+  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // pads
+  if (inputs.size() > 2) {
+    model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());  // constant_value
+  }
+}
+
+Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper = model_builder.GetShaper();
+  const auto& operand_indices = model_builder.GetOperandIndices();
+  const auto& operand_types = model_builder.GetOperandTypes();
+  const auto& inputs = node_unit.Inputs();
+  const auto& outputs = node_unit.Outputs();
+
+  std::vector<uint32_t> input_indices{};
+
+  // `data` input
+  const auto& data = inputs[0].node_arg.Name();
+  input_indices.push_back(operand_indices.at(data));
+
+  // `pads` input
+  // convert from [begin_1, begin_2, ..., end_1, end_2, ...] to [begin_1, end_1, begin_2, end_2, ...]
+  // convert from int64_t to int32_t
+  const auto& data_shape = shaper[data];
+  const uint32_t data_rank = SafeInt<uint32_t>(data_shape.size());
+
+  const auto& pads = inputs[1].node_arg.Name();
+  const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
+  ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
+
+  std::vector<uint8_t> pads_initializer_raw_data{};
+  ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*pads_initializer, pads_initializer_raw_data));
+  // assume pads_initializer has int64 data, per ONNX spec
+  ORT_RETURN_IF_NOT(pads_initializer_raw_data.size() == 2 * data_rank * sizeof(int64_t),
+                    "Expected pads initializer size in bytes: ", 2 * data_rank * sizeof(int64_t),
+                    ", actual: ", pads_initializer_raw_data.size());
+
+  std::vector<int32_t> converted_pads_data{};
+  converted_pads_data.reserve(2 * data_rank);
+
+  auto copy_and_convert = [](const void* raw_i64_src,
+                             std::back_insert_iterator<decltype(converted_pads_data)> i32_dst) {
+    int64_t i64;
+    memcpy(&i64, raw_i64_src, sizeof(i64));
+    *i32_dst = SafeInt<int32_t>(i64);
+  };
+
+  for (size_t i = 0; i < data_rank; ++i) {
+    copy_and_convert(&pads_initializer_raw_data[i * sizeof(int64_t)],
+                     std::back_inserter(converted_pads_data));
+
+    copy_and_convert(&pads_initializer_raw_data[(i + data_rank) * sizeof(int64_t)],
+                     std::back_inserter(converted_pads_data));
+  }
+
+  const Shape converted_pads_shape{data_rank, 2};
+  const OperandType converted_pads_operand_type{Type::TENSOR_INT32, converted_pads_shape};
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(pads, converted_pads_data.data(),
+                                                                      converted_pads_operand_type));
+  input_indices.push_back(operand_indices.at(pads));
+
+  // `constant_value` input
+  float pad_value = 0.0f;
+  if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
+    const auto& constant_value = inputs[2].node_arg.Name();
+    const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
+    ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
+
+    std::vector<uint8_t> pad_value_raw_data{};
+    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*constant_value_initializer, pad_value_raw_data));
+    // assume constant_value_initializer has float data
+    // ONNX spec says it matches `data` input type, and op support checker limits that to float
+    ORT_RETURN_IF_NOT(pad_value_raw_data.size() == sizeof(float),
+                      "Expected constant_value initializer size in bytes: ", sizeof(float),
+                      ", actual size: ", pad_value_raw_data.size());
+    memcpy(&pad_value, pad_value_raw_data.data(), sizeof(float));
+  }
+
+  ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);
+
+  const auto& output = outputs[0].node_arg.Name();
+
+  ORT_RETURN_IF_ERROR(shaper.Pad(data, converted_pads_data, output));
+
+  const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
+  const auto op_code = ANEURALNETWORKS_PAD_V2;
+
+  return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+}
+
+#pragma endregion op_pad
+
 #pragma region CreateGetOpBuilders
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -2780,10 +2883,10 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 // This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
-  {                                                                                           \
+  do {                                                                                        \
     op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
     op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
-  }
+  } while (0)
 
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
@@ -2800,6 +2903,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Gather", GatherOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Pad", PadOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
