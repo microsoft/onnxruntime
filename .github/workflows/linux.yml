@@ -32,88 +32,12 @@ jobs:
          run: |
            python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir build --config Release --skip_submodule_sync --parallel --enable_pybind --disable_contrib_ops --disable_ml_ops --skip_onnx_tests --use_tvm --ctest_path ""
 
-  Onnxruntime-CPU:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-ubuntu-20-04-cpu"]
-    steps:
-       - uses: actions/checkout@v3
-         with:
-           submodules: true
-       - name: 'Setup docker image'
-         run: |
-           az login --identity
-           az acr login -n onnxruntimebuildcache
-           python3 tools/ci_build/get_docker_image.py --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu \
-            --context tools/ci_build/github/linux/docker \
-            --docker-build-args "--build-arg BUILD_UID=$( id -u )" \
-            --container-registry onnxruntimebuildcache \
-            --repository onnxruntimecpubuild
+  Onnxruntime-Linux-CPU:
+    uses: ./.github/workflows/linux-ci-template.yml
+    with:
+      build_args: --enable_transformers_tool_test --build_java --build_nodejs  --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
 
-
-       - name: 'Build'
-         run: |
-            mkdir -p $HOME/.onnx
-            mkdir -p ${{ github.workspace }}/build
-            docker run --rm \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume ${{ github.workspace }}:/onnxruntime_src \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuild \
-                /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /onnxruntime_src/build --cmake_generator Ninja \
-                  --config Debug Release \
-                  --skip_submodule_sync \
-                  --build_shared_lib \
-                  --parallel \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  --enable_transformers_tool_test \
-                  --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
-
-
-       - name: 'Install python deps and run java tests'
-         run: |
-             set -e -x
-             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-             cp ${{ github.workspace }}/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt ${{ github.workspace }}/build/requirements.txt
-             # Test ORT with the latest ONNX release.
-             export ONNX_VERSION=$(cat ${{ github.workspace }}/cmake/external/onnx/VERSION_NUMBER)
-             sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" ${{ github.workspace }}/build/requirements.txt
-             python3 -m pip install -r ${{ github.workspace }}/build/requirements.txt
-             mkdir ${{ github.workspace }}/build/requirements_torch_cpu/
-             cp ${{ github.workspace }}/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt ${{ github.workspace }}/build/requirements_torch_cpu/requirements.txt
-             python3 -m pip install -r ${{ github.workspace }}/build/requirements_torch_cpu/requirements.txt
-             ln -sf /data/models ${{ github.workspace }}/build
-             cd ${{ github.workspace }}/java
-             /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=${{ github.workspace }}/build/Release"
-
-       - name: 'Install Release python package'
-         run: |
-             rm -rf ${{ github.workspace }}/build/Release/onnxruntime ${{ github.workspace }}/build/Release/pybind11
-             python3 -m pip install ${{ github.workspace }}/build/Release/dist/*.whl
-
-       - name: 'Run Release unit tests'
-         run: |
-             cd ${{ github.workspace }}/build/Release
-             python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir ${{ github.workspace }}/build --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --build_nodejs --ctest_path ""
-
-       - name: 'Install Debug python package'
-         run: |
-             set -e -x
-             rm -rf ${{ github.workspace }}/build/Debug/onnxruntime ${{ github.workspace }}/build/Debug/pybind11
-             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-             python3 -m pip install ${{ github.workspace }}/build/Debug/dist/*.whl
-
-       - name: 'Run Debug unit tests'
-         run: |
-             set -e -x
-             cd ${{ github.workspace }}/build/Debug
-             python3 ${{ github.workspace }}/tools/ci_build/build.py --build_dir ${{ github.workspace }}/build --cmake_generator Ninja --config Debug --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_onnx_tests --enable_transformers_tool_test --build_nodejs --ctest_path ""
-
-       - name: 'Symbolic shape infer'
-         run: |
-            cd ${{ github.workspace }}/build/Release
-            python3 ${{ github.workspace }}/build/Release/onnxruntime_test_python_symbolic_shape_infer.py
-           
+  Onnxruntime-Linux-Training-CPU:
+    uses: ./.github/workflows/linux-ci-template.yml
+    with:
+      build_args: --enable_training --enable_transformers_tool_test --build_java --build_nodejs  --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
