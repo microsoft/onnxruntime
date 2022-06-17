@@ -64,85 +64,15 @@ static const unsigned char BitReverseTable256[] = {
     0x27, 0xA7, 0x67, 0xE7, 0x17, 0x97, 0x57, 0xD7, 0x37, 0xB7, 0x77, 0xF7, 0x0F, 0x8F, 0x4F, 0xCF, 0x2F, 0xAF, 0x6F,
     0xEF, 0x1F, 0x9F, 0x5F, 0xDF, 0x3F, 0xBF, 0x7F, 0xFF};
 
-template <unsigned TSignificantBits>
-uint32_t bit_reverse(uint32_t num) {
-  uint32_t rev = (BitReverseTable256[num & 0xff] << 24) | (BitReverseTable256[(num >> 8) & 0xff] << 16) |
-                 (BitReverseTable256[(num >> 16) & 0xff] << 8) | (BitReverseTable256[(num >> 24) & 0xff]);
-  return static_cast<uint32_t>(((uint64_t)rev) >> (32 - TSignificantBits));
-}
-
 template <typename T>
 static inline T bit_reverse(T num, unsigned significant_bits) {
-  switch (significant_bits) {
-    case 0:
-      return static_cast<T>(bit_reverse<0>(static_cast<uint32_t>(num)));
-    case 1:
-      return static_cast<T>(bit_reverse<1>(static_cast<uint32_t>(num)));
-    case 2:
-      return static_cast<T>(bit_reverse<2>(static_cast<uint32_t>(num)));
-    case 3:
-      return static_cast<T>(bit_reverse<3>(static_cast<uint32_t>(num)));
-    case 4:
-      return static_cast<T>(bit_reverse<4>(static_cast<uint32_t>(num)));
-    case 5:
-      return static_cast<T>(bit_reverse<5>(static_cast<uint32_t>(num)));
-    case 6:
-      return static_cast<T>(bit_reverse<6>(static_cast<uint32_t>(num)));
-    case 7:
-      return static_cast<T>(bit_reverse<7>(static_cast<uint32_t>(num)));
-    case 8:
-      return static_cast<T>(bit_reverse<8>(static_cast<uint32_t>(num)));
-    case 9:
-      return static_cast<T>(bit_reverse<9>(static_cast<uint32_t>(num)));
-    case 10:
-      return static_cast<T>(bit_reverse<10>(static_cast<uint32_t>(num)));
-    case 11:
-      return static_cast<T>(bit_reverse<11>(static_cast<uint32_t>(num)));
-    case 12:
-      return static_cast<T>(bit_reverse<12>(static_cast<uint32_t>(num)));
-    case 13:
-      return static_cast<T>(bit_reverse<13>(static_cast<uint32_t>(num)));
-    case 14:
-      return static_cast<T>(bit_reverse<14>(static_cast<uint32_t>(num)));
-    case 15:
-      return static_cast<T>(bit_reverse<15>(static_cast<uint32_t>(num)));
-    case 16:
-      return static_cast<T>(bit_reverse<16>(static_cast<uint32_t>(num)));
-    case 17:
-      return static_cast<T>(bit_reverse<17>(static_cast<uint32_t>(num)));
-    case 18:
-      return static_cast<T>(bit_reverse<18>(static_cast<uint32_t>(num)));
-    case 19:
-      return static_cast<T>(bit_reverse<19>(static_cast<uint32_t>(num)));
-    case 20:
-      return static_cast<T>(bit_reverse<20>(static_cast<uint32_t>(num)));
-    case 21:
-      return static_cast<T>(bit_reverse<21>(static_cast<uint32_t>(num)));
-    case 22:
-      return static_cast<T>(bit_reverse<22>(static_cast<uint32_t>(num)));
-    case 23:
-      return static_cast<T>(bit_reverse<23>(static_cast<uint32_t>(num)));
-    case 24:
-      return static_cast<T>(bit_reverse<24>(static_cast<uint32_t>(num)));
-    case 25:
-      return static_cast<T>(bit_reverse<25>(static_cast<uint32_t>(num)));
-    case 26:
-      return static_cast<T>(bit_reverse<26>(static_cast<uint32_t>(num)));
-    case 27:
-      return static_cast<T>(bit_reverse<27>(static_cast<uint32_t>(num)));
-    case 28:
-      return static_cast<T>(bit_reverse<28>(static_cast<uint32_t>(num)));
-    case 29:
-      return static_cast<T>(bit_reverse<29>(static_cast<uint32_t>(num)));
-    case 30:
-      return static_cast<T>(bit_reverse<30>(static_cast<uint32_t>(num)));
-    case 31:
-      return static_cast<T>(bit_reverse<31>(static_cast<uint32_t>(num)));
-    case 32:
-      return static_cast<T>(bit_reverse<32>(static_cast<uint32_t>(num)));
-    default:
-      ORT_THROW("Unsupported bit size.");
+  if (significant_bits > 32) {
+    ORT_THROW("Unsupported bit size.");
   }
+  uint32_t num_32 = static_cast<uint32_t>(num);
+  uint32_t rev = (BitReverseTable256[num_32 & 0xff] << 24) | (BitReverseTable256[(num_32 >> 8) & 0xff] << 16) |
+                 (BitReverseTable256[(num_32 >> 16) & 0xff] << 8) | (BitReverseTable256[(num_32 >> 24) & 0xff]);
+  return static_cast<T>(((uint64_t)rev) >> (32 - significant_bits));
 }
 
 template <typename T>
