@@ -44,7 +44,8 @@ jobs:
           reporter: github-pr-check
           level: info
           filter_mode: file
-      - uses: tsuyoshicho/action-mypy@v3
+      - name: mypy
+        uses: tsuyoshicho/action-mypy@v3
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
