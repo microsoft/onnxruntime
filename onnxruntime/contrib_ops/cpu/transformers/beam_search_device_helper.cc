@@ -199,6 +199,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
+
+  auto beam_batch_size = logits_shape[0];
   auto input_length = logits_shape[1];
 
   // Get logits for the last token:
@@ -212,7 +214,12 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
                                                       static_cast<gsl::index>(vocab_size));
       gsl::copy(source, target);
-      current_logits += input_length * vocab_size;
+      if (beam_batch_size == batch_beam_size) {
+        current_logits += input_length * vocab_size;
+      }
+      if (beam_batch_size == batch_size && i % num_beams == 0) {
+        current_logits += input_length * vocab_size;
+      }
     }
   }
 

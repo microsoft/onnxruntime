@@ -109,6 +109,21 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     }
   }
 
+    // Copy input_ids to sequences[0]
+  void SetSequence2(gsl::span<const int32_t> input_ids_in_cpu,
+                   size_t batch_beam_size,
+                   int beam_size,
+                   int max_length,
+                   int sequence_length) {
+    gsl::span<int32_t> sequences_0 = sequences_space;
+    for (size_t i = 0; i < batch_beam_size; i++) {
+      for (int j = 0; j < sequence_length; j++) {
+        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
+        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length * beam_size + j];
+      }
+    }
+  }
+
  private:
   BufferUniquePtr final_beam_scores_buffer_;
   BufferUniquePtr sequence_lengths_buffer_;
