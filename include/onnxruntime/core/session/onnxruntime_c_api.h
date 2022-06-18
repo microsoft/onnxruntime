@@ -692,6 +692,18 @@ struct OrtApi {
   ORT_API2_STATUS(CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
+  /** \brief Create an OrtSession from an std::istream C++ object
+  *
+  * \param[in] env
+  * \param[in] model_istream
+  * \param[in] options
+  * \param[out] out Returned newly created OrtSession. Must be freed with OrtApi::ReleaseSession
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(CreateSessionFromIStream, _In_ const OrtEnv* env, _In_ void* model_istream,
+                  _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
+
   /** \brief Run the model in an ::OrtSession
   *
   * Will not return until the model run has completed. Multiple threads might be used to run the model based on

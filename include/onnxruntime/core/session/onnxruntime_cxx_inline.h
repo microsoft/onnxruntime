@@ -605,6 +605,10 @@ inline Session::Session(Env& env, const void* model_data, size_t model_data_leng
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
 
+inline Session::Session(Env& env, std::istream& model_istream, const SessionOptions& options) {
+  ThrowOnError(GetApi().CreateSessionFromIStream(env, &model_istream, options, &p_));
+}
+
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                        const char* const* output_names, size_t output_names_count) {
   std::vector<Ort::Value> output_values;
