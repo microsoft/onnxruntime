@@ -37,7 +37,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 "wrap exportable sub-nn.Module's as ORTModule."
             )
         inplace = kwargs["inplace"]
-        training_mode = symbolic_helper._training_mode
+        training_mode = symbolic_helper.check_training_mode
         cconv = n.cconv()
         input_tensor_types = []
         input_requires_grads = []
