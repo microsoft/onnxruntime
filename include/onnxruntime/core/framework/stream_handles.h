@@ -36,8 +36,10 @@ struct Stream {
   }
 
   virtual ~Stream() {}
-  virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) = 0;
-  virtual void Flush() = 0;
+  virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) {
+    return {};
+  };
+  virtual void Flush(){};
 };
 
 namespace synchronize {

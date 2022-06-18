@@ -2157,47 +2157,12 @@ std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
 }
 
-struct CPUNotification : synchronize::Notification {
-  CPUNotification(Stream* s) : Notification(s) {}
-
-  void Activate() override {
-    /*ready_.store(true);*/
-  }
-
-  void wait() {
-    /*while (!ready_.load()) {
-      onnxruntime::concurrency::SpinPause();
-    }*/
-  };
-
-  //std::atomic_bool ready_{};
-};
-
-struct CPUStream : Stream {
-  CPUStream(const IExecutionProvider* ep) : Stream(nullptr, ep) {}
-
-  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
-    return std::make_unique<CPUNotification>(this);
-  }
-
-  void Flush() override {}
-};
-
-// CPU Stream command handles
-void WaitCPUNotification(Stream& /*stream*/, synchronize::Notification& notification) {
-  /*static_cast<CPUNotification*>(&notification)->wait();*/
-}
-
 std::unique_ptr<Stream> CreateCPUStream(const IExecutionProvider* provider) {
   ORT_ENFORCE(provider && provider->Type() == kCpuExecutionProvider);
-  return std::make_unique<CPUStream>(provider);
+  return std::make_unique<Stream>(nullptr, provider);
 }
 
-
 void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  //stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCpuExecutionProvider, WaitCPUNotification);
-  //TODO: move it to cuda ep?
-  //stream_handle_registry.RegisterWaitFn(kCpuExecutionProvider, kCudaExecutionProvider, WaitCPUNotification);
   stream_handle_registry.RegisterCreateStreamFn(kCpuExecutionProvider, CreateCPUStream);
 }
 
