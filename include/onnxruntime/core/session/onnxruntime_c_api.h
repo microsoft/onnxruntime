@@ -3472,8 +3472,8 @@ struct OrtApi {
                   _In_ const OrtKernelInfo* info,
                   _Outptr_ OrtKernelInfo** info_copy);
 
-  /* \brief: Release a copy kernel info
-  *
+  /* \brief: Release kernel info
+  * 
   * \param[in] a copy of kernel info returned by CopyKernelInfo
   * 
   * \since Version 1.12.
