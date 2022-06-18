@@ -222,7 +222,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     case TransformerLevel::Level3: {
       // Register the NCHWc layout transformer if supported by the platform.
       if (MlasNchwcGetBlockSize() > 1) {
-        transformers.emplace_back(std::make_unique<NchwcTransformer>());
+        InlinedHashSet<std::string_view> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
+        transformers.emplace_back(std::make_unique<NchwcTransformer>(cpu_execution_providers));
       }
     } break;
 
