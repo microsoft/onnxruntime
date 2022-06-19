@@ -118,7 +118,7 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
     const IExecutionProvider* provider = GetProvider();
     cpu_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
   }
-  ORT_RETURN_IF(cpu_allocator != nullptr, "cpu_allocator shouldn't be nullptr");
+  ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
 
   // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
   OrtValue expanded_encoder_input_ids;
