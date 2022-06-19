@@ -30,6 +30,10 @@ Here are some tips to reduce memory consumption and tune performance with ORT.
 ### 1. Shared arena-based allocator
 Memory consumption can be reduced between multiple sessions by configuring the shared arena-based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
+The default setting for 'enable_cpu_mem_arena' is true. Setting ['enable_cpu_mem_arena'](https://onnxruntime.ai/docs/api/python/api_summary.html#onnxruntime.SessionOptions.enable_cpu_mem_arena) to false reduces memory consumption. For smaller models, setting 'enable_cpu_mem_arena' to false will give significant memory savings during inference. See [Github issue](https://github.com/microsoft/onnxruntime/issues/11627#issuecomment-1137668551) for more details.
+On the other hand, if you disable 'enable_cpu_mem_arena', inference latency will increase.
+For memory savings, you can set the memory size limit in the execution provider settings and [cuda_provider_options](https://github.com/microsoft/onnxruntime/issues/11627#issuecomment-1137668551).
+
 ### 2. Mimalloc allocator
 
 OnnxRuntime supports overriding memory allocations using mimalloc allocator, which is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc). 
