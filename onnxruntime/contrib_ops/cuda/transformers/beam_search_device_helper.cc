@@ -568,7 +568,7 @@ Status UpdateDecoderFeeds(
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
     bool has_hidden_state,
-    int,
+    int current_length,
     transformers::Sequences&,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
@@ -580,8 +580,9 @@ Status UpdateDecoderFeeds(
 
   if (!has_hidden_state) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "BeamSearch CUDA Op does not support Zcode senario(Decoder does not have input encoder_hidden_states)");
+                           "BeamSearch CUDA Op does not support no hidden state senario(Decoder does not have input encoder_hidden_states)");
   }
+  ORT_UNUSED_PARAMETER(current_length);
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
