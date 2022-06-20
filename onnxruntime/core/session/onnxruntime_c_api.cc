@@ -30,6 +30,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
+#include "core/session/ort_input_stream_istream.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/framework/data_types.h"
@@ -621,7 +622,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 
   std::unique_ptr<std::istream> stream_wrapper;
   if (model_stream != nullptr) {
-    // TODO: stream_wrapper = ...
+    stream_wrapper = std::make_unique<onnxruntime::OrtInputStreamIStream>(*model_stream, 65536);
   }
 
   if (load_config_from_model) {
