@@ -17,7 +17,7 @@
     2) Build net6 targets - SelectedTargets=Net6
     3) Run 'Pack' target to create nuget package from combination of 1 and 2 - SelectedTargets=All
   
-  Default is PreNet6 so that existing projects will do the same thing.
+  Default is PreNet6 so that existing projects and CI builds will do the same thing unless explicitly updated.
   -->
   <PropertyGroup>
     <SelectedTargets>PreNet6</SelectedTargets>
@@ -37,8 +37,6 @@
        we can add .net6 support to other packages later as needed -->
   <PropertyGroup Condition="('$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime' OR 
                              '$(OrtPackageId)' == 'Microsoft.ML.OnnxRuntime.Gpu')">
-    <!-- for now add net6.0-maccatalyst and skip net6.0-macos (used for native mac app) as it seems to need 
-         extra workload install steps for the latter to build successfully. -->
     <Net6Targets>net6.0;net6.0-android;net6.0-ios;net6.0-maccatalyst;net6.0-macos</Net6Targets>
   </PropertyGroup>
 
@@ -182,7 +180,7 @@
     <DefineConstants>$(DefineConstants);$(OrtConstants)</DefineConstants>
   </PropertyGroup>
 
-  <!-- if you need to debug the conditions this output will help -->
+  <!-- debug output - makes finding/fixing any issues with the the conditions easy.
   <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
     <Message Text="TargetPlatform='$(TargetPlatform)' TargetPlatformIdentifier='$(TargetPlatformIdentifier)' " />
     <Message Text="TargetFramework='$(TargetFramework)' TargetFrameworkIdentifier='$(TargetFrameworkIdentifier)' " />
@@ -192,6 +190,7 @@
     <Message Text="OrtConstants='$(OrtConstants)' " />
     <Message Text="TargetFrameworks='$(TargetFrameworks)' " />
   </Target>
+  -->
 
   <ItemGroup>
     <None Include="$(OnnxRuntimeCsharpRoot)\..\include\onnxruntime\core\session\onnxruntime_*.h"
