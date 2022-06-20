@@ -55,14 +55,14 @@ ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp*) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo,
-                    _In_ const OrtKernelInfo* info,
-                    _Outptr_ OrtKernelInfo** info_copy) {
+                    _In_ const OrtKernelInfo*,
+                    _Outptr_ OrtKernelInfo**) {
   API_IMPL_BEGIN
   return CreateStatus(ORT_NOT_IMPLEMENTED, "CopyKernelInfo is not implemented for minimal build.");
   API_IMPL_END
 }
 
-ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
+ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo*) {
 }
 
 #else
