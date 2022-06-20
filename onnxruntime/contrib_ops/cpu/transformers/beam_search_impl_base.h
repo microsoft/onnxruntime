@@ -220,7 +220,7 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
                            "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
   }
 
-  const Tensor* vocab_mask = context.Input<Tensor>(8);
+  const Tensor* vocab_mask = context.Input<Tensor>(7);
   if (vocab_mask != nullptr) {  // vocab_mask is optional
     const auto& vocab_mask_dims = vocab_mask->Shape().GetDims();
     if (vocab_mask_dims.size() != 1) {
@@ -238,9 +238,8 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
     parameters_->vocab_mask = vocab_mask->DataAsSpan<int32_t>();
   }
 
-  const Tensor* prefix_vocab_mask = context.Input<Tensor>(9);
-  if (prefix_vocab_mask != nullptr) {
-    // prefix_vocab_mask is optional
+  const Tensor* prefix_vocab_mask = context.Input<Tensor>(8);
+  if (prefix_vocab_mask != nullptr) {  // prefix_vocab_mask is optional
     const auto& vocab_mask_dims = prefix_vocab_mask->Shape().GetDims();
     if (vocab_mask_dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
