@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <optional>
 #include <core/common/status.h>
 #include <core/common/common.h>
+#include <core/common/inlined_containers_fwd.h>
 #include <core/graph/onnx_protobuf.h>
 #include <core/framework/allocator.h>
 #include <core/framework/tensor.h>
@@ -21,7 +23,7 @@ class ITensorAllocator {
   // Create an ITensorAllocator instance based on enable_mem_pattern
   static std::unique_ptr<ITensorAllocator> Create(bool enable_mem_pattern, const ExecutionPlanBase& execution_plan,
                                                   const SessionState& session_state,
-                                                  std::vector<BufferUniquePtr>& weights_buffers);
+                                                  InlinedVector<BufferUniquePtr>& weights_buffers);
 
   AllocatorPtr GetAllocator(const OrtMemoryInfo& memory_info);
 
@@ -32,7 +34,7 @@ class ITensorAllocator {
    * When there is no more tensor to trace, call this function to finalize the
    * allocation.
    */
-  virtual common::Status FinalizePlan(std::unordered_map<std::string, size_t>& planned_memory_sizes_in_byte) = 0;
+  virtual common::Status FinalizePlan(InlinedHashMap<std::string, size_t>& planned_memory_sizes_in_byte) = 0;
 
   /**
    * Handing out buffers reserved in @see #Trace() via parameter buf_out,
@@ -47,7 +49,7 @@ class ITensorAllocator {
    * @return 
   */
   virtual common::Status GetPreallocatedBuffer(int ort_value_index, const char* name,
-                                               std::unique_ptr<MemBuffer>& buf_out,
+                                               std::optional<MemBuffer>& buf_out,
                                                AllocatorPtr& alloc_out) = 0;
 
   virtual const MemoryPatternGroup& GetMemPatterns() = 0;
