@@ -101,7 +101,7 @@ TEST(SqueezeOpTest, BadAxes) {
   test.AddOutput<float>("squeezed", {3, 4, 5}, std::vector<float>(60, 1.0f));
 
   // Expect failure.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dimension of input 0 must be 1 instead of 3", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(SqueezeOpTest, SqueezeNegAxis_2) {

@@ -15,14 +15,14 @@ using namespace onnxruntime;
 
 template <typename T>
 static void BM_NhwcUpsampleBilinear(benchmark::State& state) {
-  const int64_t output_height = static_cast<int64_t>(state.range(0));
-  const int64_t output_width = static_cast<int64_t>(state.range(1));
-  constexpr int64_t batch_size = 1;
-  constexpr int64_t num_channels = 256;
-  constexpr int64_t input_height = 32;
-  constexpr int64_t input_width = 32;
-  const int64_t height_scale = output_height / input_height;
-  const int64_t width_scale = output_width / input_width;
+  const int32_t output_height = static_cast<int32_t>(state.range(0));
+  const int32_t output_width = static_cast<int32_t>(state.range(1));
+  constexpr int32_t batch_size = 1;
+  constexpr int32_t num_channels = 256;
+  constexpr int32_t input_height = 32;
+  constexpr int32_t input_width = 32;
+  const float height_scale = static_cast<float>(output_height) / input_height;
+  const float width_scale = static_cast<float>(output_width) / input_width;
   const std::vector<float> roi{0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f};
   constexpr bool use_extrapolation = false;
   constexpr float extrapolation_value = 0;
@@ -41,11 +41,11 @@ static void BM_NhwcUpsampleBilinear(benchmark::State& state) {
       concurrency::CreateThreadPool(&onnxruntime::Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP));
 
   for (auto _ : state) {
-    NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                         static_cast<float>(height_scale), static_cast<float>(width_scale), roi,
-                         use_extrapolation, extrapolation_value, XdataBase,
-                         YdataBase, alloc, get_original_coordinate,
-                         output_height * output_width * num_channels > 64 ? tp.get() : nullptr);
+    NhwcUpsampleBilinear<T, use_extrapolation>(
+        batch_size, num_channels, input_height, input_width, output_height, output_width,
+        height_scale, width_scale, roi, extrapolation_value, XdataBase, YdataBase,
+        alloc, get_original_coordinate,
+        output_height * output_width * num_channels > 64 ? tp.get() : nullptr);
   }
 }
 

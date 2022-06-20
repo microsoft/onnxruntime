@@ -951,11 +951,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
+  // only provide NCWH to NHWC layout transformer if supported
+  TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
+                                                    ? layout_transformer::TransformLayoutForEP
+                                                    : nullptr;
+
   // Do partitioning based on execution providers' capabilities.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
-                                                       session_state.GetMutableFuncMgr(),
-                                                       layout_transformer::TransformLayoutForCompilingEP, mode));
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
+                                                       mode));
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
@@ -1175,10 +1179,15 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                SessionState& session_state) {
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
+  // only provide NCWH to NHWC layout transformer if supported
+  TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
+                                                    ? layout_transformer::TransformLayoutForEP
+                                                    : nullptr;
+
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
-                                            layout_transformer::TransformLayoutForCompilingEP,
+                                            transform_layout_fn,
                                             GraphPartitioner::Mode::kOrtFormatLoad,
                                             &compiled_kernel_hashes));
 

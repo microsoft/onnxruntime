@@ -248,6 +248,12 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   return std::unique_lock<OrtMutex>(singleton);
 }
 
+#ifdef ORT_TENSORRT_PLACEHOLDER_BUILDER
+// instantiate global unused builder object which keeps the TRT kernel library in memory
+// so that subsequent builders avoid the expensive load / unload process.
+auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
+#endif
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
@@ -283,6 +289,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       engine_decryption_lib_path_ = info.engine_decryption_lib_path;
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
+    context_memory_sharing_enable_ = info.context_memory_sharing_enable;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -367,6 +374,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!force_sequential_engine_build_env.empty()) {
       force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
     }
+
+    const std::string context_memory_sharing_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kContextMemorySharingEnable);
+    if (!context_memory_sharing_enable_env.empty()) {
+      context_memory_sharing_enable_ = (std::stoi(context_memory_sharing_enable_env) == 0 ? false : true);
+    }
   }
 
   // Validate setting
@@ -430,7 +442,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_cache_path: " << cache_path_
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
-                        << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_;
+                        << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
+                        << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -1193,7 +1206,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       if (trt_engine != nullptr) {
         // Build context
-        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        if (context_memory_sharing_enable_) {
+          size_t mem_size = trt_engine->getDeviceMemorySize();
+          if (mem_size > max_ctx_mem_size_) {
+            max_ctx_mem_size_ = mem_size;
+            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
+          }
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+        } else {
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        }
         if (trt_context == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
@@ -1239,7 +1261,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           update_engine_cache = true;
 
         // Build context
-        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        if (context_memory_sharing_enable_) {
+          size_t mem_size = trt_engine->getDeviceMemorySize();
+          if (mem_size > max_ctx_mem_size_) {
+            max_ctx_mem_size_ = mem_size;
+            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
+          }
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+        } else {
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        }
         if (trt_context == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
@@ -1290,8 +1321,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
-            runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_,
-            update_engine_cache};
+            runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
+            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, update_engine_cache};
       *state = p.release();
       return 0;
     };
@@ -1350,6 +1381,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
       auto alloc = trt_state->scratch_allocator;
+      auto context_memory = trt_state->context_memory;
+      auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
@@ -1536,8 +1569,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         trt_engine = trt_state->engine->get();
 
         // Build context
-        *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
-            trt_state->engine->get()->createExecutionContext());
+        if (trt_state->context_memory_sharing_enable) {
+          *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+        } else {
+          *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContext());
+        }
         if (trt_state->context == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
@@ -1827,6 +1865,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                    "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
           }
         }
+      }
+
+      // Set execution context memory
+      if (trt_state->context_memory_sharing_enable) {
+        size_t mem_size = trt_engine->getDeviceMemorySize();
+        if (mem_size > *max_context_mem_size_ptr) {
+          *max_context_mem_size_ptr = mem_size;
+          *context_memory = IAllocator::MakeUniquePtr<void>(alloc, *max_context_mem_size_ptr);
+        }
+        trt_context->setDeviceMemory((*context_memory).get());
       }
 
       // Run TRT inference
