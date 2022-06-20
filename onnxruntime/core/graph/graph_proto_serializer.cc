@@ -58,13 +58,26 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
         const auto& node = graph_view.GetNode(node_idx);
         for (const auto& input : node->InputDefs()) {
+          // check node input is not in the current scope initializer set
           if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
             continue;
           }
+
+          // check node input is not graph input
+          for (const auto* input_arg : graph_view.GetInputsIncludingInitializers()) {
+            if (input->Name() == input_arg->Name()) {
+              continue;
+            }
+          }
+
           if (graph_view.IsConstantInitializer(input->Name(), true)) {
             auto* p_initializer = graph_proto.add_initializer();
             *p_initializer = *(graph_view.GetConstantInitializer(input->Name(), true));
             current_scope_initializer_set.insert(input->Name());
+          }
+          else {
+            // TODO: We might need to handle the case where the outer scope value is not constant initializer.
+            LOGS_DEFAULT(WARNING) << "The outer scope value " << input->Name() << " is not a constant initializer, so we don't add this outer scope value or initializer as the graph proto initializer.";
           }
         }
       }
