@@ -154,6 +154,8 @@ NodeUnit::NodeUnit(const Node& node)
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
     : output_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
+      q_nodes_{output_nodes_},
+      dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
@@ -242,6 +244,13 @@ void NodeUnit::InitForSingleNode() {
   } else {
     ORT_THROW("The QLinear op [", static_cast<uint8_t>(qlinear_type), "] is not supported");
   }
+}
+
+std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
+  std::vector<const Node*> all_nodes = dq_nodes_;
+  all_nodes.push_back(&target_node_);
+  all_nodes.insert(all_nodes.end(), q_nodes_.begin(), q_nodes_.end());
+  return all_nodes;
 }
 
 std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>

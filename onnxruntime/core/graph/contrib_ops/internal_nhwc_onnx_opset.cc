@@ -7,8 +7,12 @@
 
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/nhwc_inference_context.h"
+#include "core/graph/contrib_ops/ms_schema.h"  // contrib::GetOpSchema
 
 namespace onnxruntime {
+namespace contrib {
+class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearAveragePool);
+}
 namespace internal_nhwc_onnx {
 
 using contrib::NhwcInferenceContext;
@@ -16,7 +20,6 @@ using RegistrationFunc = std::function<void(ONNX_NAMESPACE::OpSchema&&)>;
 
 namespace {
 
-template <typename F>
 void RegisterNHWCSchema(const RegistrationFunc& f, ::ONNX_NAMESPACE::OpSchema&& schema) {
   // Need to copy the inferencing function from the temporary OpSchema object
   auto onnx_inferencing_func = schema.GetTypeAndShapeInferenceFunction();
@@ -46,6 +49,12 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
 }
 }  // namespace
 
+#define REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(RegistrationFn, Op, SinceVersion) \
+  RegisterNHWCSchema(                                                        \
+      RegistrationFn,                                                        \
+      contrib::GetOpSchema<                                                  \
+          contrib::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, SinceVersion, Op)>())
+
 #define REGISTER_NHWC_SCHEMA(RegistrationFn, Op, SinceVersion) \
   RegisterNHWCSchema(                                          \
       RegistrationFn,                                          \
@@ -58,6 +67,8 @@ void RegisterNHWCSchemaWithActivation(const RegistrationFunc& f, ::ONNX_NAMESPAC
       ::ONNX_NAMESPACE::GetOpSchema<                                           \
           ::ONNX_NAMESPACE::ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, SinceVersion, Op)>())
 
+void RegisterInternalNHWCOpset();
+
 void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMESPACE::OpSchema&&)>& fn) {
   // if the operator may be fused with an activation, use the WITH_ACTIVATION variant to add optional attributes
   // for the activation parameters.
@@ -66,6 +77,12 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, Conv, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 12);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
+  REGISTER_NHWC_SCHEMA(fn, QLinearConv, 10);
+  REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
+
+  // contrib operator, specific to kMSInternalNHWCDomain, and defined in internal_nhwc_onnx_defs.cc
+  RegisterInternalNHWCOpset();
 
   // TODO: Add other layout sensitive ops when needed. Those are:
   //   QLinearConv,

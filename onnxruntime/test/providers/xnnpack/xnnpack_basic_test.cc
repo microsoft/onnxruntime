@@ -18,6 +18,11 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+// if this is a full build we need the provider test utils
+#include "test/optimizer/qdq_test_utils.h"
+#endif
+
 #include "gtest/gtest.h"
 
 using namespace ONNX_NAMESPACE;
@@ -156,6 +161,135 @@ TEST(XnnpackEP, TestAddEpUsingPublicApi) {
     ASSERT_ORTSTATUS_OK(api, SessionOptionsAppendExecutionProvider(so, "XNNPACK", keys, values, 1));
     api->ReleaseSessionOptions(so);
   }
+}
+
+static void RunModelTest(
+    const GetQDQTestCaseFn& build_test_case,
+    const char* test_description,
+    const EPVerificationParams& params = EPVerificationParams()) {
+  onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  RunAndVerifyOutputsWithEP(model_data, "XnnpackEP.TestQDQModel",
+                            DefaultXnnpackExecutionProvider(),
+                            helper.feeds_, params);
+}
+
+TEST(XnnpackEP, TestQDQConvU8U8) {
+  RunModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
+                                       uint8_t /* WeightType */,
+                                       int32_t /* BiasType */,
+                                       uint8_t /* OutputType */>(
+                      {1, 1, 5, 5} /* input_shape */,
+                      {1, 1, 3, 3} /* weights_shape */),
+                  "xnnpack_qdq_test_graph_conv_u8u8",
+                  {ExpectedEPNodeAssignment::Some});  // two transpose nodes would be added before and after
+}
+TEST(XnnpackEP, TestQDQConvS8S8) {
+  RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
+                                       int8_t /* WeightType */,
+                                       int32_t /* BiasType */,
+                                       int8_t /* OutputType */>(
+                      {1, 1, 5, 5} /* input_shape */,
+                      {1, 1, 3, 3} /* weights_shape */),
+                  "xnnpack_qdq_test_graph_conv_s8s8",
+                  {ExpectedEPNodeAssignment::Some, 0.2f});
+}
+
+TEST(XnnpackEP, TestAveragePool) {
+  const std::vector<int64_t> input_shape = {1, 2, 3, 3};
+  auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+    Node& pool_node = builder.AddNode("AveragePool", {input_arg}, {output_arg});
+    std::vector<int64_t> pads((input_shape.size() - 2) * 2, 1);
+    pool_node.AddAttribute("pads", pads);
+    std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
+    pool_node.AddAttribute("kernel_shape", kernel_shape);
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_averagepool",
+               {
+                   ExpectedEPNodeAssignment::Some,
+                   1e-2f /* fp32_abs_err */,
+               });
+}
+
+TEST(XnnpackEP, TestQDQAveragePool) {
+  RunModelTest(BuildQDQAveragePoolTestCase<uint8_t /* InputType */,
+                                              uint8_t /* OutputType */>(
+                      {1, 1, 30, 30} /* input_shape */, static_cast<int64_t>(1)),
+                  "xnnpack_qdq_test_graph_averagepool",
+                  {
+                      ExpectedEPNodeAssignment::Some,
+                      1e-2f /* fp32_abs_err */,
+                  });
+}
+// xnnpack only support the last dim as reduced axis,
+// we are expected that the other reduce axis would be handled by CPUEP
+TEST(XnnpackEP, TestQDQSoftMax_axisZero_v13) {
+  RunModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                      {1, 2, 3, 32} /* input_shape */,
+                      static_cast<int64_t>(0) /* axis */,
+                      1.f / 256 /* output_scales */,
+                      0 /* output_zp */),
+                  "xnnpack_qdq_test_graph_softmax",
+                  {ExpectedEPNodeAssignment::None});
+}
+
+TEST(XnnpackEP, TestSoftMax_axisZero_v12) {
+  const std::vector<int64_t> input_shape = {1, 2, 3, 5};
+  int64_t axis = input_shape.size() - 1;
+  auto modelCreater = [input_shape, axis](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape,
+                                               std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
+
+    auto* output_arg = builder.MakeOutput();
+
+    // add SoftMax
+    Node& softmax_node = builder.AddNode("Softmax", {input_arg}, {output_arg});
+    softmax_node.AddAttribute("axis", axis);
+    softmax_node.SetSinceVersion(12);
+  };
+  RunModelTest(modelCreater,
+               "xnnpack_test_graph_softmax",
+               {ExpectedEPNodeAssignment::All});
+}
+
+TEST(XnnpackEP, TestSoftMax_axisLast) {
+  const std::vector<int64_t> input_shape = {1, 2, 3, 5};
+  int64_t axis = input_shape.size() - 1;
+  auto modelCreater = [input_shape, axis](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape,
+                                               std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
+
+    auto* output_arg = builder.MakeOutput();
+
+    // add SoftMax
+    Node& softmax_node = builder.AddNode("Softmax", {input_arg}, {output_arg});
+    softmax_node.AddAttribute("axis", axis);
+  };
+  RunModelTest(modelCreater,
+               "xnnpack_test_graph_softmax",
+               {ExpectedEPNodeAssignment::All});
+}
+
+TEST(XnnpackEP, TestQDQSoftMax_axisLast) {
+  RunModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                      {1, 2, 3, 5} /* input_shape */,
+                      static_cast<int64_t>(3) /* axis */,
+                      1.f / 256 /* output_scales */,
+                      0 /* output_zp */),
+                  "xnnpack_qdq_test_graph_softmax",
+                  {ExpectedEPNodeAssignment::All});
 }
 #endif
 

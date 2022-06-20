@@ -124,7 +124,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "510b8e0f9af1891588c52bef64248cb72f04c30e",
+          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "git submodule at cmake/external/XNNPACK"
