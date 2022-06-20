@@ -82,10 +82,6 @@ class TestBeamSearchGpt(unittest.TestCase):
     def test_early_stopping(self):
         self.run_beam_search("--early_stopping")
 
-    # @pytest.mark.slow
-    # def test_temperature(self):
-    #     self.run_beam_search("--temperature 0.5")
-
     @pytest.mark.slow
     def test_length_penalty(self):
         for length_penalty in [0.5, 2.0]:
@@ -179,10 +175,6 @@ class TestBeamSearchT5(unittest.TestCase):
     @pytest.mark.slow
     def test_early_stopping(self):
         self.run_beam_search("--early_stopping")
-
-    # @pytest.mark.slow
-    # def test_temperature(self):
-    #     self.run_beam_search("--temperature 0.5")
 
     @pytest.mark.slow
     def test_length_penalty(self):
