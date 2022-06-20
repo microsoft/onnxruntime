@@ -14,6 +14,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
                              const std::vector<std::string>& bw_fetches_names,
                              const std::vector<OrtDevice>& bw_outputs_device_info,
                              int local_rank) : inference_session_(session) {
+ORT_UNUSED_PARAMETER(local_rank);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryInfo::SetLocalRank(local_rank);
 #endif
