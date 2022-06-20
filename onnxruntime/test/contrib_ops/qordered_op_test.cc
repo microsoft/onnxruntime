@@ -877,7 +877,7 @@ static void QuantizeAndFindScale(const std::vector<MLFloat16>& data, std::vector
     }
   }
 
-  scale = (max * 2.f) / 255.f;
+  scale = MLFloat16((max * 2.f) / 256.f).ToFloat();
 
   quantized_data.reserve(data.size());
 
@@ -885,7 +885,7 @@ static void QuantizeAndFindScale(const std::vector<MLFloat16>& data, std::vector
     float val = e.ToFloat() / scale;
     val = std::max(-128.0f, val);
     val = std::min(127.0f, val);
-    quantized_data.push_back(static_cast<int8_t>(std::round(val)));
+    quantized_data.push_back(static_cast<int8_t>(std::nearbyintf(val)));
   }
 }
 
@@ -913,7 +913,7 @@ static void QKVGemmScale(MLFloat16* mat_A, MLFloat16* mat_B, int64_t batch,
     }
   }
 
-  scale = (max * 2.f) / 255.f;
+  scale = MLFloat16((max * 2.f) / 256.f).ToFloat();
 }
 
 static std::vector<MLFloat16> QDQ(const std::vector<MLFloat16>& input, float scale) {
@@ -926,7 +926,7 @@ static std::vector<MLFloat16> QDQ(const std::vector<MLFloat16>& input, float sca
     float val = e.ToFloat() / scale;
     val = std::max(-128.0f, val);
     val = std::min(127.0f, val);
-    int8_t quant_val = static_cast<int8_t>(std::round(val));
+    int8_t quant_val = static_cast<int8_t>(std::nearbyintf(val));
 
     // DQ
     float dequant_val = quant_val * scale;
