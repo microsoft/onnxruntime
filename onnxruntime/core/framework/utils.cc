@@ -23,6 +23,7 @@
 #include "core/framework/orttraining_partial_executor.h"
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
+#include "core/framework/parallel_execution_plan.h"
 
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
@@ -574,18 +575,18 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
-    if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+    if (false && execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
       ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                           feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                           feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                           logger));
     } else {
-      auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
-
+      auto paral_plan = std::make_unique<ParallelExecutionPlan>(session_state);
       auto ret = paral_plan->Execute(session_state,
                                      feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                      feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                     logger);
+                                     logger,
+                                     terminate_flag);
       ORT_RETURN_IF_ERROR(ret);
   }
   } else {
@@ -620,18 +621,17 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     }
 
     // no device copies are needed so simple execute
-    if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+    if (false && execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
       ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                           feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                           feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
                                           logger));
     } else {
-      auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
-
+      auto paral_plan = std::make_unique<ParallelExecutionPlan>(session_state);
       auto ret = paral_plan->Execute(session_state,
                                      feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                      feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                     logger);
+                                     logger, terminate_flag);
       ORT_RETURN_IF_ERROR(ret);
     }
     

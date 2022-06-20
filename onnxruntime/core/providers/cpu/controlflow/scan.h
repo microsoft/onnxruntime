@@ -13,6 +13,7 @@
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/framework/ort_value_tensor_slicer.h"
+#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 namespace scan {
@@ -44,7 +45,7 @@ struct Info {
 struct DeviceHelpers {
   using ZeroData = std::function<common::Status(void* data, size_t size_in_bytes)>;
   using Transpose = std::function<common::Status(const gsl::span<const size_t>& permutations,
-                                                 const Tensor& input, Tensor& output)>;
+                                                 const Tensor& input, Tensor& output, Stream*)>;
   using CreateConstSlicer = std::function<OrtValueTensorSlicer<const OrtValue>(const OrtValue& ort_value,
                                                                                int64_t slice_dimension /*=0*/,
                                                                                int64_t dim0_offset /*=0*/)>;

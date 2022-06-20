@@ -37,7 +37,6 @@
 #include "core/framework/memory_info.h"
 #endif
 
-#include "core/framework/parallel_execution_plan.h"
 #include "core/framework/stream_handles.h"
 
 namespace flatbuffers {
@@ -181,10 +180,6 @@ class SessionState {
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
-
-  ParallelExecutionPlan* GetParalllelExecutionPlan();
-
-  const ParallelExecutionPlan& GetConstParalllelExecutionPlan() const;
 
   const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const;
 
@@ -463,8 +458,6 @@ class SessionState {
   std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
   std::vector<BufferUniquePtr> weights_buffers_;
   std::unique_ptr<SequentialExecutionPlan> p_seq_exec_plan_ = nullptr;
-
-  std::unique_ptr<ParallelExecutionPlan> p_para_exec_plan_ = nullptr;
 
   const logging::Logger& logger_;
   profiling::Profiler& profiler_;

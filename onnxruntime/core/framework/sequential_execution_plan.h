@@ -78,7 +78,7 @@ struct AllocPlanPerValue {
 
 struct ExecutionContext;
 class IExecutionProvider;
-using CommandFn = std::function<void(ExecutionContext&)>;
+using CommandFn = std::function<Status(ExecutionContext&)>;
 
 // a logic stream to execute command.
 // each command in the logic stream will be executed in FIFO
@@ -88,11 +88,7 @@ struct LogicStream {
   std::vector<CommandFn> commands_;
   const IExecutionProvider* ep_ = nullptr;
 
-  void Run(ExecutionContext& ctx) {
-    for (auto& command : commands_) {
-      command(ctx);
-    }
-  }
+  void Run(ExecutionContext& ctx);
 
   ~LogicStream() {}
 };

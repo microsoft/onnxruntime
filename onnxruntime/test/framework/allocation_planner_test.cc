@@ -20,6 +20,7 @@
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "core/framework/parallel_execution_plan.h"
 
 using namespace ONNX_NAMESPACE;
 

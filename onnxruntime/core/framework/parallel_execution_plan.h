@@ -14,7 +14,6 @@ namespace onnxruntime {
 class SessionState;
 struct ReleasePlan;
 struct AllocPlanPerValue;
-struct ParallelExecutionPlanImpl; 
 class ISequentialPlannerContext;
 
 // Specify how many logic streams for each provider type
@@ -22,16 +21,17 @@ using ProviderStreamMap = std::unordered_map<std::string, int>;
 // Each set contains ops which should be grouped in an independent logic stream
 using OpStreamMap = std::vector<std::vector<std::string>>;
 
-class ParallelExecutionPlan : public IExecutor {
+class ParallelExecutionPlan {
  public:
-  ParallelExecutionPlan(const SessionState& session_state);
+  ParallelExecutionPlan(const SessionState& session_state) : session_state_(session_state){}
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                          const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
-                         const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                         const logging::Logger& logger) override;
-  std::unique_ptr<ParallelExecutionPlanImpl> impl_;
+                         const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                         const logging::Logger& logger, const bool& terminate_flag);
+
+  const SessionState& session_state_;
 };
 
 }  // namespace onnxruntime

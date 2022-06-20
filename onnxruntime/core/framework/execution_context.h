@@ -21,6 +21,9 @@ struct ExecutionContext {
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unique_ptr<ReleasePlan> release_plan;
   std::vector<std::unique_ptr<Stream>> device_streams;
+  const bool& terminate_flag;
+  OrtMutex status_lock;
+  Status result_status{Status::OK()};
 
   ExecutionContext(const SessionState& sess_state,
                    const std::vector<std::unique_ptr<LogicStream>>& logic_streams,
@@ -29,8 +32,10 @@ struct ExecutionContext {
                    const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                    std::vector<OrtValue>& fetches,
                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                   const logging::Logger& sess_logger) : session_state(&sess_state),
-                                                         logger(&sess_logger) {
+                   const logging::Logger& sess_logger,
+                   const bool& terminate) : session_state(&sess_state),
+                                                         logger(&sess_logger),
+                                      terminate_flag(terminate) {
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
       if (logic_stream->commands_.size() > 0) {
@@ -84,6 +89,12 @@ struct ExecutionContext {
         }
       }
     }
+  }
+
+  void SetStatus(Status& status) {
+    std::lock_guard<OrtMutex> lock(status_lock);
+    if (result_status.IsOK() && !status.IsOK())
+      result_status = status;
   }
 };
 }

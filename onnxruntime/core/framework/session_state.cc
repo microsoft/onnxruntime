@@ -19,8 +19,6 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/framework/parallel_execution_plan.h"
-
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
@@ -244,10 +242,6 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
 }
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const { return p_seq_exec_plan_.get(); }
-
-ParallelExecutionPlan* SessionState::GetParalllelExecutionPlan() { return p_para_exec_plan_.get(); }
-
-const ParallelExecutionPlan& SessionState::GetConstParalllelExecutionPlan() const { return *p_para_exec_plan_; }
 
 void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_plans) {
   std::cout << type << std::endl;
@@ -1517,10 +1511,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     this->GetStreamHandleRegistryInstance(),
                                                     provider_stream_map,
                                                     read_op_map_from_str(session_options.grouped_ops),
-                                                    session_options.execution_mode == ExecutionMode::ORT_PARALLEL,
+                                                    //session_options.execution_mode == ExecutionMode::ORT_PARALLEL,
+                                                    true,
                                                     p_seq_exec_plan_));
 
-  p_para_exec_plan_ = std::make_unique<ParallelExecutionPlan>(*this);
   LOGS(logger_, INFO) << "p_para_exec_plan initialized";
 
   // Record the allocation plan
