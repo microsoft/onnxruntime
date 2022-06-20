@@ -2390,14 +2390,14 @@ def parse_arguments():
         default=0,
     )
     parser.add_argument(
-        "--save_as_exteranl_data",
+        "--save_as_external_data",
         help="Saving an ONNX model to external data",
         action="store_true",
         default=False,
     )
     parser.add_argument(
         "--all_tensors_to_one_file",
-        help="Saving all the exteranl data to one file",
+        help="Saving all the external data to one file",
         action="store_true",
         default=False,
     )
@@ -2408,7 +2408,7 @@ def parse_arguments():
     )
     parser.add_argument(
         "--external_data_size_threshold",
-        help="The size threshold for exteranl data",
+        help="The size threshold for external data",
         type=int,
         default=1024,
     )
