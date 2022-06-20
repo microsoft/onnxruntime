@@ -54,14 +54,11 @@ The SNPE Execution Provider supports a number of options to set the SNPE Runtime
 ### C++
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
-std::vector<const char*> snpe_option_keys;
-std::vector<const char*> snpe_option_values;
-snpe_option_keys.push_back("runtime");
-snpe_option_values.push_back("DSP");
-snpe_option_keys.push_back("buffer_type");
-snpe_option_values.push_back("FLOAT");
+std::unordered_map<std::string, std::string> snpe_options;
+snpe_options["runtime"] = "DSP";
+snpe_options["buffer_type"] = "FLOAT";
 Ort::SessionOptions session_options;
-session_options.AppendExecutionProvider_SNPE(snpe_option_keys.data(), snpe_option_values.data(), snpe_option_keys.size());
+session_options.AppendExecutionProvider("SNPE", snpe_options);
 Ort::Session session(env, model_path, session_options);
 ```
 
