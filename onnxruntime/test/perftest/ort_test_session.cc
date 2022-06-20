@@ -262,8 +262,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                                            //  threads with this value at runtime.
     bool use_compiled_network = false;     // [use_compiled_network]: Can be enabled to directly import pre-compiled
                                            // blobs if exists.
-    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to 
-                                           // dump and load the blobs for the use_compiled_network(save/load blob) 
+    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to
+                                           // dump and load the blobs for the use_compiled_network(save/load blob)
                                            // feature. This overrides the default path.
     bool enable_opencl_throttling = false;    // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                               // device (Reduces CPU Utilization when using GPU)
