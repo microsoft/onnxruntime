@@ -107,7 +107,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_DNNL
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, 1));
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = true;
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, &dnnl_options));
     std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return;

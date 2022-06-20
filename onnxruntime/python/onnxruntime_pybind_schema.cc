@@ -41,7 +41,9 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
                 }()),
 #endif
 #ifdef USE_DNNL
-            onnxruntime::DnnlProviderFactoryCreator::Create(1),
+            OrtDnnlProviderOptions dnnl_options;
+            dnnl_options.use_arena = true;
+            onnxruntime::DnnlProviderFactoryCreator::Create(&dnnl_options),
 #endif
 #ifdef USE_OPENVINO
             onnxruntime::OpenVINOProviderFactoryCreator::Create(OrtOpenVINOProviderOptions()),

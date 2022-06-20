@@ -105,12 +105,21 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
+std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider() {
 #ifdef USE_DNNL
-  if (auto factory = DnnlProviderFactoryCreator::Create(enable_arena ? 1 : 0))
+  OrtDnnlProviderOptions dnnl_options;
+  if (auto factory = DnnlProviderFactoryCreator::Create(&dnnl_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
+std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDnnlProviderOptions* params) {
+#ifdef USE_DNNL
+  if (auto factory = DnnlProviderFactoryCreator::Create(params))
     return factory->CreateProvider();
 #else
-  ORT_UNUSED_PARAMETER(enable_arena);
+  ORT_UNUSED_PARAMETER(params);
 #endif
   return nullptr;
 }

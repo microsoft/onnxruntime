@@ -3,10 +3,12 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/dnnl/dnnl_provider_factory_creator.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
 #include <atomic>
 #include <cassert>
-#include "dnnl_execution_provider.h"
-#include "dnnl_provider_factory_creator.h"
+#include <omp.h>
+#include <math.h>
 
 using namespace onnxruntime;
 
@@ -29,7 +31,7 @@ std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
 }
 
 struct Dnnl_Provider : Provider {
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int use_arena) override {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* options) override {
 #if defined(_WIN32)
     {
       // We crash when unloading DNNL on Windows when OpenMP also unloads (As there are threads
@@ -45,7 +47,38 @@ struct Dnnl_Provider : Provider {
       assert(handle);  // It should exist
     }
 #endif
-    return std::make_shared<DnnlProviderFactory>(use_arena != 0);
+    const std::string debug_log_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_DEBUG_LOG");
+    bool debug_log_ = false;
+    if (!debug_log_env.empty()) {
+      debug_log_ = (std::stoi(debug_log_env) == 0 ? false : true);
+    }
+    // Cast options
+    const OrtDnnlProviderOptions* dnnl_options = reinterpret_cast<const OrtDnnlProviderOptions*>(options);
+
+    if (dnnl_options->optimize_threads) {
+      // Set up threads for optimal performance
+      int num_threads = dnnl_options->onednn_threads ? dnnl_options->onednn_threads : omp_get_max_threads();
+      int ort_num_threads = dnnl_options->ort_threads;
+      if (!ort_num_threads) {
+        // Avoid over subscription
+        ort_num_threads = static_cast<int>(ceil(num_threads / 4.0f));
+        num_threads -= ort_num_threads;
+      }
+
+      // Check for nullptr to avoid undefined behavior
+      if (dnnl_options->ort_intra_op_threads != nullptr) {
+        // Override default value
+        *dnnl_options->ort_intra_op_threads = ort_num_threads;
+      }
+
+      // Set number of threads
+      omp_set_num_threads(num_threads);
+      if (debug_log_) {
+        LOGS_DEFAULT(ERROR) << "Setting OMP to " << num_threads << " threads\n";
+      }
+    }
+
+    return std::make_shared<DnnlProviderFactory>(dnnl_options->use_arena != 0);
   }
 
   void Initialize() override {

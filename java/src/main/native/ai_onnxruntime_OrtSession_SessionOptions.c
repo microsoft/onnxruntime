@@ -15,7 +15,6 @@
 
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
-#include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
@@ -26,6 +25,9 @@
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
 #ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
+#endif
+#ifdef USE_DNNL
+#include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #endif
 
 /*
@@ -406,9 +408,20 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
     (void)jobj;
   #ifdef USE_DNNL
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*) handle,useArena));
+    int ort_threads = 0;
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = useArena;       // Follow the user command
+    dnnl_options.optimize_threads = 1;       // Optimize threads : true
+    dnnl_options.ort_intra_op_threads = &ort_threads;
+    dnnl_options.onednn_threads = 0;         // This will automatically allocate threads
+    dnnl_options.ort_threads = ort_threads;  // Same here
+    checkOrtStatus(jniEnv, (const OrtApi*)apiHandle,
+             OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*)handle,&dnnl_options));
+    // Optimize ORT thread count
+    const OrtApi* api = (const OrtApi*)apiHandle;
+    checkOrtStatus(jniEnv, api, api->SetIntraOpNumThreads((OrtSessionOptions*)handle, ort_threads));
   #else
-    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when DNNL is defined.
+    (void)apiHandle; (void)handle; (void)useArena;  // Parameters used when DNNL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");
   #endif
 }

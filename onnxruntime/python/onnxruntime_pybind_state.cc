@@ -584,7 +584,35 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-    return onnxruntime::DnnlProviderFactoryCreator::Create(session_options.enable_cpu_mem_arena)->CreateProvider();
+    // Generate dnnl_options
+    OrtDnnlProviderOptions dnnl_options;
+
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
+        if (option.first == "num_of_threads") {
+          dnnl_options.onednn_threads = std::stoi(option.second);
+          if (dnnl_options.onednn_threads < 0) {
+            ORT_THROW("[ERROR] [OneDNN] The value for the key 'num_of_threads' should be greater than 0\n");
+            // If the user doesnt define num_threads, default to the number of physical cores for best performance
+          } else if (dnnl_options.onednn_threads == 0) {
+            std::vector<size_t> cpu_list = Env::Default().GetThreadAffinityMasks();
+            if (!cpu_list.empty() && cpu_list.size() > 1) {
+              dnnl_options.onednn_threads = static_cast<int>(cpu_list.size());
+            }
+          }
+        } else {
+          ORT_THROW("Invalid OneDNN EP option: ", option.first);
+        }
+      }
+    }
+
+    dnnl_options.use_arena = session_options.enable_cpu_mem_arena;
+    dnnl_options.optimize_threads = true;
+    dnnl_options.ort_intra_op_threads = const_cast<int*>(&session_options.intra_op_param.thread_pool_size);
+    dnnl_options.ort_threads = session_options.intra_op_param.thread_pool_size;
+
+    return onnxruntime::DnnlProviderFactoryCreator::Create(&dnnl_options)->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO

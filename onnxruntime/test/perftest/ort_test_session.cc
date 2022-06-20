@@ -36,9 +36,61 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
+    // Create runtime options
+    int enable_training = false;
+    int num_of_threads = 0;
+
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW(
+            "[ERROR] [OneDNN] Use a '|' to separate the key and value for the "
+            "run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "num_of_threads") {
+        std::stringstream sstream(value);
+        sstream >> num_of_threads;
+        if (num_of_threads < 0) {
+          ORT_THROW("[ERROR] [OneDNN] The value for the key 'num_of_threads' should be greater than 0\n");
+          // If the user doent define num_threads, default to the number of physical cores for best performance
+        } else if (num_of_threads == 0) {
+          std::vector<size_t> cpu_list = Env::Default().GetThreadAffinityMasks();
+          if (!cpu_list.empty() && cpu_list.size() > 1) {
+            num_of_threads = static_cast<int>(cpu_list.size());
+          }
+        }
+      } else {
+        ORT_THROW(
+            "[ERROR] [OneDNN] wrong key type entered. "
+            "Choose from the following runtime key options that are available for OneDNN. ['num_of_threads']\n");
+      }
+    }
+
+    // Generate provider options
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.optimize_threads = true;
+    dnnl_options.use_arena = performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0;
+    dnnl_options.ort_intra_op_threads = const_cast<int*>(&performance_test_config.run_config.intra_op_num_threads);
+    dnnl_options.onednn_threads = num_of_threads;
+    dnnl_options.ort_threads = performance_test_config.run_config.intra_op_num_threads;
+    dnnl_options.enable_training = enable_training;
+
     Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options,
-                                                      performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+        OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, &dnnl_options));
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif

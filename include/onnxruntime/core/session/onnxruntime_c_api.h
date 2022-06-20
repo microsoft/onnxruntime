@@ -534,6 +534,23 @@ typedef struct OrtOpenVINOProviderOptions {
   unsigned char enable_dynamic_shapes;  ///< 0 = disabled, nonzero = enabled
 } OrtOpenVINOProviderOptions;
 
+/** \brief OneDNN Provider Options
+ *
+ * \see OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
+ */
+typedef struct OrtDnnlProviderOptions {
+#ifdef __cplusplus
+  OrtDnnlProviderOptions() : use_arena{true}, enable_training{false}, optimize_threads{false}, 
+                             ort_intra_op_threads{nullptr}, onednn_threads{0}, ort_threads{0} {}
+#endif
+  int use_arena;              // If arena is used, use_arena 0 = not used, nonzero = used
+  int enable_training;        // Enable or disable training ops, enable_training 0 = not enabled, nonzero = enabled
+  int optimize_threads;       // If we should optimize threads, optimize_threads 0 = not optimized, nonzero = optimized
+  int* ort_intra_op_threads;  // Ptr needed to optimize ort threads, modifies the ort session options configuration
+  int onednn_threads;         // Number of threads we want oneDNN to use, onednn_threads 0 = omp_get_max_threads()
+  int ort_threads;            // Number of threads for ORT to use, ort_threads 0 = steal 1/4 of onednn_threads for ort
+} OrtDnnlProviderOptions;
+
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 

@@ -8,9 +8,10 @@ extern "C" {
 #endif
 
 /**
- * \param use_arena zero: false. non-zero: true.
+ * \param[in] dnnl_options configuration parameters for oneDnnl EP creation.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl,
+               _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
 
 #ifdef __cplusplus
 }
