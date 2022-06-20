@@ -12,8 +12,8 @@ namespace onnxruntime {
 namespace {
 // Don't check if the op is Deprecated. In ONNX Runtime's world, there is no deprecation.
 bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_type,
-                                       const std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion>& versions,
-                                       const std::string& domain) {
+                                       std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
+                                       std::string_view domain) {
   return (node.OpType() == op_type && graph_utils::MatchesOpSinceVersion(node, versions) &&
           graph_utils::MatchesOpSetDomain(node, domain));
 }
@@ -24,7 +24,7 @@ bool IsFusableActivation(const Node& node) {
   return IsSupportedOptypeVersionAndDomain(node, "Elu", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Selu", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Softplus", {1}, kOnnxDomain) ||
@@ -61,7 +61,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    if (graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 
@@ -70,7 +70,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& fused_gemm = graph.AddNode(graph.GenerateNodeName("fused " + gemm_node.Name()), "FusedGemm",
                                      "fused Gemm " + gemm_node.Name() + "with activation " + act_node.OpType(),
-                                     gemm_node.MutableInputDefs(), {}, &gemm_node.GetAttributes(), "com.microsoft");
+                                     gemm_node.MutableInputDefs(), {}, &gemm_node.GetAttributes(), kMSDomain);
 
     // Add a new attribute to specify the activation type
     fused_gemm.AddAttribute("activation", act_node.OpType());
@@ -83,7 +83,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     for (const auto& attr : attrs) {
       AttributeProto fused_gemm_attr(attr.second);
       fused_gemm_attr.set_name("activation_" + attr.first);
-      fused_gemm.AddAttribute("activation_" + attr.first, fused_gemm_attr);
+      fused_gemm.AddAttributeProto(std::move(fused_gemm_attr));
     }
 
     // move output definitions and edges from act_node to fused_gemm. delete gemm_node and act_node.

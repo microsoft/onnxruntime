@@ -13,7 +13,16 @@
 #include "core/common/common.h"
 #ifdef _WIN32
 
-#if defined(USE_PATHCCH_LIB)
+#if _GAMING_XBOX
+// Hacky, but the PathCch* APIs work on Xbox. Presumably PathCch.h needs to be updated to include the
+// GAMES partition. It would be worthwhile to investigate this a bit more (or just use std::filesystem).
+#pragma push_macro("WINAPI_FAMILY")
+#undef WINAPI_FAMILY
+#define WINAPI_FAMILY WINAPI_FAMILY_DESKTOP_APP
+#include <PathCch.h>
+#pragma pop_macro("WINAPI_FAMILY")
+#pragma comment(lib, "PathCch.lib")
+#elif defined(USE_PATHCCH_LIB)
 #include <PathCch.h>
 #pragma comment(lib, "PathCch.lib")
 // Desktop apps need to support back to Windows 7, so we can't use PathCch.lib as it was added in Windows 8
@@ -28,6 +37,7 @@
 #include <libgen.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <string.h>
 #endif
 
 #ifdef _WIN32
@@ -37,9 +47,9 @@ namespace {
 
 Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
-#if WINVER < _WIN32_WINNT_WIN8 && !defined(USE_PATHCCH_LIB)
+#if WINVER < _WIN32_WINNT_WIN8 && !defined(USE_PATHCCH_LIB) && !defined(_GAMING_XBOX)
   (void)cchPath;
-  for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
+  for (PCWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
     ;
   PWSTR pszLast = PathSkipRootW(pszPath);
   if (pszLast == nullptr) pszLast = pszPath;
@@ -60,7 +70,7 @@ Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
     pszPath[0] = L'.';
     pszPath[1] = L'\0';
   } else
-    for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
+    for (PCWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
       ;
   return Status::OK();
 #else
@@ -85,16 +95,20 @@ Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
 }  // namespace
 
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std::basic_string<ORTCHAR_T>& ret) {
-  std::wstring input = s;
-  if (input.empty()) {
+  if (s.empty()) {
     ret = ORT_TSTR(".");
     return Status::OK();
   }
+
   ret = s;
+
+  // Replace slash to backslash since we use PathCchRemoveBackslash
+  std::replace(ret.begin(), ret.end(), ORTCHAR_T('/'), ORTCHAR_T('\\'));
+
   auto st = onnxruntime::RemoveFileSpec(const_cast<wchar_t*>(ret.data()), ret.length() + 1);
   if (!st.IsOK()) {
     std::ostringstream oss;
-    oss << "illegal input path:" << ToMBString(s) << ". " << st.ErrorMessage();
+    oss << "illegal input path:" << ToUTF8String(s) << ". " << st.ErrorMessage();
     return Status(st.Category(), st.Code(), oss.str());
   }
   ret.resize(wcslen(ret.c_str()));
@@ -107,24 +121,24 @@ namespace onnxruntime {
 
 namespace {
 
-template <typename T>
-struct Freer {
-  void operator()(T* p) { ::free(p); }
-};
-
-using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
+inline std::unique_ptr<char[]> StrDup(const std::string& input) {
+  auto buf = std::make_unique<char[]>(input.size() + 1);
+  strncpy(buf.get(), input.c_str(), input.size());
+  buf[input.size()] = 0;
+  return buf;
+}
 
 }  // namespace
 
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& input,
                                       std::basic_string<ORTCHAR_T>& output) {
-  MallocdStringPtr s{strdup(input.c_str())};
+  auto s = StrDup(input);
   output = dirname(s.get());
   return Status::OK();
 }
 
 std::string GetLastComponent(const std::string& input) {
-  MallocdStringPtr s{strdup(input.c_str())};
+  auto s = StrDup(input);
   std::string ret = basename(s.get());
   return ret;
 }

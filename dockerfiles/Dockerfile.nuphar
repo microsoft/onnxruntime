@@ -17,7 +17,8 @@ RUN apt-get update && \
 ENV PATH="/opt/cmake/bin:${PATH}"
 RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
 RUN /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} && \
-    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_deps.sh -p ${PYTHON_VERSION}
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_os_deps.sh && \
+    /onnxruntime/tools/ci_build/github/linux/docker/scripts/install_python_deps.sh -p ${PYTHON_VERSION}
 
 WORKDIR /
 

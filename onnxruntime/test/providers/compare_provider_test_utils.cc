@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/session/inference_session.h"
+#include "core/optimizer/insert_cast_transformer.h"
 #include "test/util/include/default_providers.h"
 #include "test/providers/compare_provider_test_utils.h"
-
+#include "test/test_environment.h"
 #include "test/compare_ortvalue.h"
 
 using namespace std;
@@ -41,7 +42,9 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
 
 void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
                                      double per_sample_tolerance,
-                                     double relative_per_sample_tolerance) {
+                                     double relative_per_sample_tolerance,
+                                     const bool need_cpu_cast,
+                                     const std::unordered_map<std::string, int>& extra_domain_to_version) {
 #ifndef NDEBUG
   run_called_ = true;
 #endif
@@ -49,17 +52,31 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   std::unique_ptr<IExecutionProvider> target_execution_provider = GetExecutionProvider(target_provider_type);
   ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type << " is not supported.";
 
-  auto p_model = BuildGraph();
+  auto p_model = BuildGraph(extra_domain_to_version);
   auto& graph = p_model->MainGraph();
 
-  Status status = graph.Resolve();
+  Status status;
+
+  // In InferenceSession::Initialize(), the call to graph partitioner, which is responsible
+  // for Inlining function bodies for ops whose kernel is missing happens before the 
+  // Cast Transformer. As a result, for MLFloat16 tests where the node is missing a CPU kernel,
+  // the function body is instead used for CPU pass. This option allows the comparison with 
+  // the CPU kernel by adding the input/output casts before looking for a registered CPU kernel.
+  if (need_cpu_cast) {
+    InsertCastTransformer transformer("Test");
+    bool modified = false;
+    status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+    ASSERT_TRUE(status.IsOK());
+  }
+
+  status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
     return;
   }
 
   // Hookup the inputs and outputs
-  std::unordered_map<std::string, MLValue> feeds;
+  std::unordered_map<std::string, OrtValue> feeds;
   std::vector<std::string> output_names;
   FillFeedsAndOutputNames(feeds, output_names);
 
@@ -93,7 +110,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   run_options.run_tag = op_;
   run_options.run_log_verbosity_level = 1;
 
-  std::vector<MLValue> cpu_fetches;
+  std::vector<OrtValue> cpu_fetches;
   status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
@@ -102,11 +119,22 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   }
 
   // run with target provider
+  // build the graph again as the cpu graph may be with casts
+  auto p_tp_model = BuildGraph(extra_domain_to_version);
+  auto& tp_graph = p_tp_model->MainGraph();
+
+  status = tp_graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  if (!status.IsOK()) {
+    return;
+  }
 
   InferenceSession target_session_object{so, GetEnvironment()};
   EXPECT_TRUE(target_session_object.RegisterExecutionProvider(std::move(target_execution_provider)).IsOK());
 
-  std::istringstream model_proto_str1(s1);
+  std::string s2;
+  p_tp_model->ToProto().SerializeToString(&s2);
+  std::istringstream model_proto_str1(s2);
   status = target_session_object.Load(model_proto_str1);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
@@ -121,7 +149,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
     return;
   }
 
-  std::vector<MLValue> target_fetches;
+  std::vector<OrtValue> target_fetches;
   status = target_session_object.Run(run_options, feeds, output_names, &target_fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 

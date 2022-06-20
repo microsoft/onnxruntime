@@ -15,7 +15,7 @@ Rewrite graph fusing embeddings and mask processing into one node.
 */
 class EmbedLayerNormFusion : public GraphTransformer {
  public:
-  EmbedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  EmbedLayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("EmbedLayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

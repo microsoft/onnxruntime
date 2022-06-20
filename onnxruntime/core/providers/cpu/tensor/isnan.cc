@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "isnan.h"
-#include "core/util/math_cpuonly.h"
+#include "core/providers/cpu/tensor/isnan.h"
+
 #include "core/common/common.h"
+#include "core/framework/math.h"
 #include "core/framework/tensor.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 

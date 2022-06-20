@@ -3,14 +3,14 @@
 
 #pragma once
 
-#include "core/common/common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-class ScatterND final : public CudaKernel, protected ScatterNDBase {
+class ScatterND final : public CudaKernel {
  public:
   explicit ScatterND(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override;

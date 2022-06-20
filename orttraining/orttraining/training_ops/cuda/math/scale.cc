@@ -2,28 +2,38 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/math/scale.h"
+#include "orttraining/training_ops/cuda/math/scale_impl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_SCALE_KERNEL_TYPED(T)                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      Scale,                                                                    \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
-          .TypeConstraint("ScaleT", {DataTypeImpl::GetTensorType<float>(),      \
-                                     DataTypeImpl::GetTensorType<double>(),     \
-                                     DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                     DataTypeImpl::GetTensorType<int64_t>(),    \
-                                     DataTypeImpl::GetTensorType<int32_t>()})   \
-          .InputMemoryType<OrtMemTypeCPUInput>(1),                              \
+#define REGISTER_SCALE_KERNEL_TYPED(T)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      Scale,                                                                   \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .TypeConstraint("ScaleT", {DataTypeImpl::GetTensorType<float>(),     \
+                                     DataTypeImpl::GetTensorType<double>(),    \
+                                     DataTypeImpl::GetTensorType<MLFloat16>(), \
+                                     DataTypeImpl::GetTensorType<int64_t>(),   \
+                                     DataTypeImpl::GetTensorType<int32_t>()})  \
+          .InputMemoryType(OrtMemTypeCPUInput, 1),                             \
       Scale<T>);
+
+template <typename ScaleT>
+struct GetScaleValueImpl {
+  void operator()(const Tensor* scale, float& scale_value) const {
+    ORT_ENFORCE(scale->Shape().Size() == 1, "Scale input should have a single value.");
+    scale_value = static_cast<float>(*(scale->template Data<ScaleT>()));
+    ORT_ENFORCE(scale_value != 0.0f, "Scale value must not be 0.");
+  }
+};
 
 template <typename T>
 Scale<T>::Scale(const OpKernelInfo& info) : CudaKernel(info) {

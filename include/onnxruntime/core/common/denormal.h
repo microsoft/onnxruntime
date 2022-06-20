@@ -9,9 +9,4 @@ namespace onnxruntime {
 // Return true if SSE3 instruction is supported, otherwise return false.
 bool SetDenormalAsZero(bool on);
 
-#ifdef _OPENMP
-// Set flush-to-zero and denormal-as-zero on OpenMP threads when on is true.
-void InitializeWithDenormalAsZero(bool on);
-#endif
-
 }  // namespace onnxruntime

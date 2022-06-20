@@ -144,6 +144,7 @@ function(target_cppwinrt
                 /metadata_dir ${sdk_metadata_directory}
                 /W1 /char signed /nomidl /nologo /winrt
                 /no_settings_comment /no_def_idir /target "NT60"
+                /I ${CMAKE_CURRENT_BINARY_DIR}/winml_api
                 /I ${idl_source_directory}
                 /I ${um_sdk_directory}
                 /I ${shared_sdk_directory}
@@ -155,7 +156,7 @@ function(target_cppwinrt
                 ${midl_options}
                 ${renamed_idl_fullpath_back_slash}
             COMMAND
-                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -ref ${sdk_metadata_directory} ${add_ref} -out ${generated_dir_back_slash} -verbose
+                    ${cppwinrt_exe} -in ${winmd_filename} -comp ${output_dir_back_slash} -pch dll/pch.h -ref ${sdk_metadata_directory} ${add_ref} -out ${generated_dir_back_slash} -verbose
             COMMAND
                     # copy the generated component files into a temporary directory where headers exclusions will be applied
                     xcopy ${output_dir_back_slash} ${temp_dir_back_slash}\\ /Y /D

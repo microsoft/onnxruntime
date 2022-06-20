@@ -107,7 +107,7 @@ template <typename T, unsigned TPB>
 __global__ void EmbedLayerNormKernel(
     int hidden_size, const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
-    const T epsilon, T* output) {
+    const T epsilon, T* output, T* embedding_sum, const int* position_ids) {
   KeyValuePairSum pair_sum;
   // 1. lookup word and segment of the block
   // blockIdx.x = position in the sequence
@@ -116,6 +116,7 @@ __global__ void EmbedLayerNormKernel(
   // gridDim.y = batch_size
   __shared__ int word_id;
   __shared__ int segment_id;
+  __shared__ int position_id;
 
   const T rld = T(1.f / hidden_size);
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
@@ -124,14 +125,20 @@ __global__ void EmbedLayerNormKernel(
     if (nullptr == segment_ids) {
       segment_id = 0;
     } else {
-      segment_id = segment_ids[sequence_position];;
+      segment_id = segment_ids[sequence_position];
+    }
+    if (nullptr == position_ids) {
+      position_id = blockIdx.x;
+    } else {
+      position_id = position_ids[sequence_position];
     }
   }
   __syncthreads();
 
   // 2. load pos/segment/word embeddings and add them toghether
   // offset into embeddings is given by word_id * hidden_size
-  const int position_offset = blockIdx.x * hidden_size;
+  const int position_offset = position_id * hidden_size;
+
   const int word_offset = word_id * hidden_size;
   const int segment_offset = segment_id * hidden_size;
   // the output offset is given by b * (sequence_length * hidden_size) + s * hidden_size
@@ -148,6 +155,10 @@ __global__ void EmbedLayerNormKernel(
     const T val = w + t + p;
 
     output[output_offset + it] = val;
+    if (embedding_sum != nullptr) {
+      embedding_sum[output_offset + it] = val;
+    }
+
     const T rldval = rld * val;
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
   }
@@ -161,13 +172,13 @@ bool EmbedSkipLayerNorm(
     cudaStream_t stream, int hidden_size, int batch_size, int sequence_length,
     const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
-    const T epsilon, T* output) {
+    const T epsilon, T* output, T* embedding_sum, const int* position_ids) {
   constexpr int tpb = 256;
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
 
   EmbedLayerNormKernel<T, tpb>
-      <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma, word_embedding, position_embedding, segment_embedding, epsilon, output);
+      <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma, word_embedding, position_embedding, segment_embedding, epsilon, output, embedding_sum, position_ids);
 
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -188,7 +199,9 @@ bool LaunchEmbedLayerNormKernel(
     const int hidden_size,
     int batch_size,
     int sequence_length,
-    const size_t element_size) {
+    const size_t element_size,
+    void* embedding_sum,
+    const int* position_ids) {
   if (nullptr == input_mask) {
     if (!CUDA_CALL(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream)))
       return false;
@@ -202,14 +215,14 @@ bool LaunchEmbedLayerNormKernel(
         reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding),
         reinterpret_cast<const half*>(segment_embedding), __float2half_rn(epsilon),
-        reinterpret_cast<half*>(output));
+        reinterpret_cast<half*>(output), reinterpret_cast<half*>(embedding_sum), position_ids);
   } else {
     return EmbedSkipLayerNorm<float>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const float*>(beta), reinterpret_cast<const float*>(gamma),
         reinterpret_cast<const float*>(word_embedding), reinterpret_cast<const float*>(position_embedding),
         reinterpret_cast<const float*>(segment_embedding), epsilon,
-        reinterpret_cast<float*>(output));
+        reinterpret_cast<float*>(output), reinterpret_cast<float*>(embedding_sum), position_ids);
   }
 }
 

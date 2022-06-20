@@ -4,28 +4,27 @@
 #include "nonzero_op.h"
 #include "nonzero_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 // kernel builder functions
-#define NONZERO_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                         \
-      NonZero,                                                                     \
-      kOnnxDomain,                                                                 \
-      9, 12,                                                                       \
-      type_name,                                                                   \
-      kCudaExecutionProvider,                                                      \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
-      NonZero<type>)                                                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                   \
-      NonZero,                                                                     \
-      kOnnxDomain,                                                                 \
-      13,                                                                          \
-      type_name,                                                                   \
-      kCudaExecutionProvider,                                                      \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+#define NONZERO_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                    \
+      NonZero,                                                                                \
+      kOnnxDomain,                                                                            \
+      9, 12,                                                                                  \
+      type_name,                                                                              \
+      kCudaExecutionProvider,                                                                 \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      NonZero<type>)                                                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                              \
+      NonZero,                                                                                \
+      kOnnxDomain,                                                                            \
+      13,                                                                                     \
+      type_name,                                                                              \
+      kCudaExecutionProvider,                                                                 \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       NonZero<type>)
 
 #define NONZERO_TYPED_KERNEL(type) \
@@ -52,13 +51,13 @@ NONZERO_TYPED_KERNEL(float)
 
 template <typename T>
 Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
-  static const std::vector<int64_t> kScalarDims = {1};
+  static const TensorShape kScalarDims{1};
   const auto x = context->Input<Tensor>(0);
 
   int nonzero_elements = 0;
   const auto& x_shape = x->Shape();
   const int x_rank = x_shape.IsScalar() ? 1 : static_cast<int>(x_shape.NumDimensions());
-  const std::vector<int64_t>& x_dims = (x_shape.IsScalar()) ? kScalarDims : x_shape.GetDims();
+  auto x_dims = (x_shape.IsScalar()) ? kScalarDims.GetDims() : x_shape.GetDims();
   const int64_t x_size = x_shape.Size();
   if (x_size > 0) {
     auto x_data = reinterpret_cast<const typename ToCudaType<T>::MappedType*>(x->template Data<T>());

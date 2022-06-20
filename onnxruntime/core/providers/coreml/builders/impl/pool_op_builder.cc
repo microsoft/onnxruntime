@@ -4,11 +4,13 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
-#include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#ifdef __APPLE__
+#include "core/providers/coreml/builders/model_builder.h"
+#include "builder_utils.h"
+#endif
 
 #include "base_op_builder.h"
-#include "builder_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -16,28 +18,29 @@ namespace coreml {
 class PoolOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
+#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
- private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
 // Add operator related
 
+#ifdef __APPLE__
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                             const Node& node,
                                             const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   auto* coreml_pool = layer->mutable_pooling();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
 
   bool is_global_pooling = false;
-  bool is_average_pool = false;
   if (op_type == "GlobalAveragePool") {
     is_global_pooling = true;
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_AVERAGE);
@@ -45,7 +48,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     is_global_pooling = true;
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_MAX);
   } else if (op_type == "AveragePool") {
-    is_average_pool = true;
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_AVERAGE);
   } else if (op_type == "MaxPool") {
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_MAX);
@@ -105,9 +107,10 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
@@ -172,9 +175,9 @@ void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
           "MaxPool",
       };
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<PoolOpBuilder>());
-  for (const auto& op_type : op_types) {
-    op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+  op_registrations.builders.push_back(std::make_unique<PoolOpBuilder>());
+  for (const auto& type : op_types) {
+    op_registrations.op_builder_map.emplace(type, op_registrations.builders.back().get());
   }
 }
 

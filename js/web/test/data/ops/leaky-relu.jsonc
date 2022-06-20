@@ -1,0 +1,67 @@
+[
+  {
+    "name": "leakyRelu with no (default) attributes",
+    "operator": "LeakyRelu",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [-1.0, 0.0, 1.0, 1.0, -2.0],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-0.01, 0.0, 1.0, 1.0],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "leakyRelu with specified attributes",
+    "operator": "LeakyRelu",
+    "attributes": [{ "name": "alpha", "data": 0.05, "type": "float" }],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [-1.0, 0.0, 1.0, 1.0],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-0.05, 0.0, 1.0, 1.0],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [-1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [-0.05],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

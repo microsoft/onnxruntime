@@ -4,14 +4,14 @@
 #pragma once
 #include "core/providers/cpu/cpu_provider_factory.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
-#endif
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
+#endif
+#ifdef USE_TVM
+#include "core/providers/tvm/tvm_provider_factory.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"

@@ -1,36 +1,21 @@
 #!/bin/bash
 
 # Parse Arguments
-while getopts d:o:m: parameter
+while getopts d:o:m:p:e:v:b:a: parameter
 do case "${parameter}"
 in 
 d) DOCKER_IMAGE=${OPTARG};;
 o) OPTION=${OPTARG};;
 m) MODEL_PATH=${OPTARG};;
+p) PERF_DIR=${OPTARG};;
+e) EP_LIST=${OPTARG};;
+v) MODEL_VOLUME=${OPTARG};;
+b) BUILD_ORT=${OPTARG};;
+a) BENCHMARK_ARGS=${OPTARG};;
 esac
 done 
 
 # Variables
-MACHINE_PERF_DIR=/home/hcsuser/perf/
-DOCKER_PERF_DIR=/usr/share/perf/
-PERF_SCRIPT=$DOCKER_PERF_DIR'perf.sh'
-VOLUME=$MACHINE_PERF_DIR:$DOCKER_PERF_DIR
+DOCKER_PERF_DIR='/perf/'
 
-# Add Remaining Variables
-if [ $OPTION == "onnx-zoo-models" ]
-then 
-    MODEL_PATH=model_list.json
-fi 
-
-if [ $OPTION == "many-models" ]
-then 
-    MODEL_PATH=/usr/share/mount/many-models
-    VOLUME=$VOLUME' -v /home/hcsuser/mount/many-models:/usr/share/mount/many-models'
-fi 
-
-if [ $OPTION == "partner-models" ]
-then 
-   MODEL_PATH=partner_model_list.json
-fi
-
-sudo docker run --gpus all -v $VOLUME $DOCKER_IMAGE /bin/bash $PERF_SCRIPT -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH
+docker run --gpus all -v $PERF_DIR:$DOCKER_PERF_DIR -v $MODEL_VOLUME/$OPTION:$DOCKER_PERF_DIR$OPTION $DOCKER_IMAGE /bin/bash $DOCKER_PERF_DIR'perf.sh' -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -b $BUILD_ORT -e "$EP_LIST" "$BENCHMARK_ARGS"

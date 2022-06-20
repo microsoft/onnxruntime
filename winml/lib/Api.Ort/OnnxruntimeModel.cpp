@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api.Ort/pch.h"
 #include "OnnxruntimeModel.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
@@ -130,6 +130,11 @@ STDMETHODIMP ModelInfo::GetName(const char** out, size_t* len) {
   return S_OK;
 }
 
+STDMETHODIMP ModelInfo::SetName(const char* name) {
+  name_ = std::string(name);
+  return S_OK;
+}
+
 STDMETHODIMP ModelInfo::GetDomain(const char** out, size_t* len) {
   *out = domain_.c_str();
   *len = domain_.size();
@@ -242,6 +247,14 @@ STDMETHODIMP OnnruntimeModel::SaveModel(_In_ const wchar_t* const file_name, _In
   return S_OK;
 }
 
+STDMETHODIMP OnnruntimeModel::SetName(const char* name) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelSetName(ort_model_.get(), name),
+                          engine_factory_->UseOrtApi());
+  info_->SetName(name);
+  return S_OK;
+}
+
 STDMETHODIMP OnnruntimeModel::DetachOrtModel(OrtModel** model) {
   *model = ort_model_.release();
   return S_OK;
@@ -314,60 +327,6 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   return S_OK;
 }
 
-static ONNXTensorElementDataType
-ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
-  switch (kind) {
-    case winml::TensorKind::Boolean: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-    }
-    case winml::TensorKind::String: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-    }
-    case winml::TensorKind::Float16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-    }
-    case winml::TensorKind::Float: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-    }
-    case winml::TensorKind::Double: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-    }
-    case winml::TensorKind::Int8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-    }
-    case winml::TensorKind::Int16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
-    }
-    case winml::TensorKind::Int32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-    }
-    case winml::TensorKind::Int64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-    }
-    case winml::TensorKind::UInt8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-    }
-    case winml::TensorKind::UInt16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
-    }
-    case winml::TensorKind::UInt32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
-    }
-    case winml::TensorKind::UInt64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
-    }
-    case winml::TensorKind::Complex64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
-    }
-    case winml::TensorKind::Complex128: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
-    }
-    default: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    }
-  }
-}
-
 STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* constant_value) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
@@ -402,5 +361,28 @@ STDMETHODIMP OnnruntimeModel::AddModelOutput(_In_ const char* const name, _In_ I
   ort_type_info_provider->GetTypeInfo(&type_info);
 
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelAddOutput(ort_model_.get(), name, type_info), ort_api);
+  return S_OK;
+}
+
+
+STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
+                                        _In_ const char* const* output_names,
+                                        _In_ const char* const* input_names,
+                                        size_t num_linkages,
+                                        bool promote_unlinked_outputs,
+                                        _In_ const char* const join_node_prefix) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  auto ort_api = engine_factory_->UseOrtApi();
+  
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->JoinModels(ort_model_.get(),
+                                                       static_cast<OnnruntimeModel*>(other_model)->ort_model_.get(),
+                                                       output_names,
+                                                       input_names,
+                                                       num_linkages,
+                                                       promote_unlinked_outputs,
+                                                       join_node_prefix),
+                          ort_api);
+  // reset the info so that it is recreated with the new information lazily
+  info_ = nullptr;
   return S_OK;
 }

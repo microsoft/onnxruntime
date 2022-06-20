@@ -13,76 +13,21 @@
 #include "boost/mp11.hpp"
 
 #include "core/common/common.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #ifndef SHARED_PROVIDER
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #endif
 
 namespace onnxruntime {
 namespace utils {
-
-template <typename T>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-}
-
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<float>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int8_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT8;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int16_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<int64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<std::string>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_STRING;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<bool>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<MLFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<double>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint32_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT32;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<uint64_t>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_UINT64;
-};
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-};
 
   // The following primitives are strongly recommended for switching on tensor input datatypes for
   // kernel implementations.
@@ -473,7 +418,8 @@ enum class ContainerType : uint16_t {
   kTensor = 1,
   kMap = 2,
   kSequence = 3,
-  kOpaque = 4
+  kOpaque = 4,
+  kOptional = 5
 };
 
 class TypeNode {
@@ -552,10 +498,11 @@ class ContainerChecker {
         ORT_ENFORCE(++index < c.size(), "Sequence is missing type entry for its element");
         constexpr int32_t prim_type = ToTensorProtoElementType<T>();
         // Check if this is a primitive type and it matches
-        if (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+        ORT_IF_CONSTEXPR(prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
           return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                  c[index].IsPrimType(prim_type);
-        } else {
+        }
+        else {
           // T is not primitive, check next entry for non-primitive proto
           return IsContainerOfType<T>::check(c, index);
         }
@@ -581,11 +528,11 @@ class ContainerChecker {
       }
       ORT_ENFORCE(++index < c.size(), "Map is missing type entry for its value");
       constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      ORT_IF_CONSTEXPR(val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
         return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                c[index].IsPrimType(val_type);
       }
-      return IsContainerOfType<V>::check(c, index);
+      else return IsContainerOfType<V>::check(c, index);
     }
   };
 

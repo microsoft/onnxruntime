@@ -18,11 +18,10 @@
 #else
 #include <sys/mman.h>
 #endif
-#if !defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
 #include "core/platform/threadpool.h"
 #endif
 
-#include "core/common/make_unique.h"
 
 #if !defined(UNUSED_VARIABLE)
 #if defined(__GNUC__)
@@ -111,8 +110,8 @@ class MatrixGuardBuffer {
       std::fill_n(buffer, Elements, T(0));
 
     } else {
-      const int MinimumFillValue = -23;
-      const int MaximumFillValue = 23;
+      constexpr int MinimumFillValue = -23;
+      constexpr int MaximumFillValue = 23;
 
       int FillValue = MinimumFillValue;
       T* FillAddress = buffer;
@@ -187,7 +186,7 @@ class MlasTestFixture : public testing::Test {
   static TMlasTester* mlas_tester;
 };
 
-// Long Execute test. It is too heavy register each single test, treat long execute big groups.
+// Long Execute test. It is too heavy to register each single test, treat long execute big groups.
 template <typename TMlasTester>
 class MlasLongExecuteTests : public MlasTestFixture<TMlasTester> {
  public:
@@ -211,7 +210,7 @@ class MlasLongExecuteTests : public MlasTestFixture<TMlasTester> {
   }
 };
 
-// Some short Execute may not need to distinguish each parameters, 
+// Some short Execute may not need to distinguish each parameters,
 // because they finish quickly, and may disturb others by inject too many small tests.
 // Register it as whole using following helper.
 template <typename TMlasTester>
@@ -237,3 +236,16 @@ class MlasDirectShortExecuteTests : public MlasTestFixture<TMlasTester> {
   }
 };
 
+inline
+void ReorderInputNchw(const int64_t* input_shape, const float* S, float* D) {
+  const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  int64_t batch_count = input_shape[0];
+  int64_t channel_count = input_shape[1];
+  int64_t nchwc_channel_count = (channel_count + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+  int64_t spatial_count = input_shape[2] * input_shape[3];
+  for (int64_t n = 0; n < batch_count; n++) {
+    MlasReorderInputNchw(S, D, static_cast<size_t>(channel_count), static_cast<size_t>(spatial_count));
+    S += spatial_count * channel_count;
+    D += spatial_count * nchwc_channel_count;
+  }
+}

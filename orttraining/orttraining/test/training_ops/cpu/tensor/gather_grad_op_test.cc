@@ -53,7 +53,7 @@ void ConfigureGatherGradRandomDataOpTester(
   ASSERT_LT(static_cast<size_t>(axis), X_shape.NumDimensions());
 
   const TensorShape dY_shape = [&]() {
-    std::vector<int64_t> dY_dims = X_shape.GetDims();
+    TensorShapeVector dY_dims = X_shape.AsShapeVector();
     auto it = dY_dims.erase(dY_dims.begin() + axis);
     dY_dims.insert(
         it, indices_shape.GetDims().begin(), indices_shape.GetDims().end());
@@ -66,11 +66,13 @@ void ConfigureGatherGradRandomDataOpTester(
   const auto output = CalculateOutput(axis, X_shape, grad, indices);
 
   test.AddAttribute<int64_t>("axis", axis);
+  //auto shape_dims = X_shape.GetDims();
+  //std::vector<int64_t> v_dims(shape_dims.cbegin(), shape_dims.cend());
   test.AddInput<int64_t>(
-      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.GetDims());
-  test.AddInput<int64_t>("indices", indices_shape.GetDims(), indices);
-  test.AddInput<T>("grad", dY_shape.GetDims(), grad);
-  test.AddOutput<T>("output", X_shape.GetDims(), output);
+      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.AsShapeVector());
+  test.AddInput<int64_t>("indices", indices_shape.AsShapeVector(), indices);
+  test.AddInput<T>("grad", dY_shape.AsShapeVector(), grad);
+  test.AddOutput<T>("output", X_shape.AsShapeVector(), output);
 }
 
 template <typename T>
@@ -154,6 +156,22 @@ TEST(GatherGradOpTest, GatherGrad_axis0_indices2d_float) {
                        {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
   test.AddOutput<float>("output", {3, 3},
                         {0, 2, 4, 6, 8, 10, 0, 0, 0});
+  test.Run();
+}
+
+TEST(GatherGradOpTest, GatherGrad_negative_indices) {
+  OpTester test("GatherGrad", 1, kMSDomain);
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<int64_t>("shape", {2},
+                         {3, 3});
+  test.AddInput<int64_t>("indices", {2LL, 2LL},
+                         {0LL, -1LL,
+                          0LL, -2LL});
+
+  test.AddInput<float>("grad", {2, 2, 3},
+                       {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5});
+  test.AddOutput<float>("output", {3, 3},
+                        {0, 2, 4, 3, 4, 5, 3, 4, 5});
   test.Run();
 }
 

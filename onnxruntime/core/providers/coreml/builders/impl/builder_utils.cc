@@ -1,11 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/providers/common.h>
+#ifdef __APPLE__
 
-#include "builder_utils.h"
-#include "coreml/NeuralNetwork.pb.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
+
+#include "core/common/safeint.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/shared/utils/utils.h"
+
+#include "coreml/NeuralNetwork.pb.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -80,18 +85,19 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
   return Status::OK();
 }
 
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
+                        const float* data, size_t num_elements) {
+  *weight.mutable_floatvalue() = {data, data + num_elements};
+}
+
 common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                                   const ONNX_NAMESPACE::TensorProto& tensor) {
   auto data_type = tensor.data_type();
-  if (data_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* data =
-        tensor.float_data().empty() ? reinterpret_cast<const float*>(tensor.raw_data().data())
-                                    : tensor.float_data().data();
-
-    weight.mutable_floatvalue()->Clear();
-    auto num_elements = Product(tensor.dims());
-    std::copy(data, data + num_elements,
-              google::protobuf::RepeatedFieldBackInserter(weight.mutable_floatvalue()));
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor));
+    auto num_elements = SafeInt<size_t>(Product(tensor.dims()));
+    CreateCoreMLWeight(weight, reinterpret_cast<const float*>(unpacked_tensor.data()), num_elements);
   } else {
     // TODO: support other type
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -104,3 +110,5 @@ common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
 
 }  // namespace coreml
 }  // namespace onnxruntime
+
+#endif

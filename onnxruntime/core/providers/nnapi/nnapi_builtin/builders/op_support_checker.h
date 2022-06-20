@@ -6,15 +6,18 @@
 #include "helper.h"
 
 namespace onnxruntime {
+
+class NodeUnit;
+
 namespace nnapi {
 
 struct OpSupportCheckParams {
-  OpSupportCheckParams(int32_t android_sdk_ver, bool use_nchw)
-      : android_sdk_ver(android_sdk_ver),
+  OpSupportCheckParams(int32_t android_feature_level, bool use_nchw)
+      : android_feature_level(android_feature_level),
         use_nchw(use_nchw) {
   }
 
-  int32_t android_sdk_ver = 0;
+  int32_t android_feature_level = 0;
   bool use_nchw = false;
 };
 
@@ -23,7 +26,8 @@ class IOpSupportChecker {
   virtual ~IOpSupportChecker() = default;
 
   // Check if an operator is supported
-  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node, const OpSupportCheckParams& params) const = 0;
+  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                             const OpSupportCheckParams& params) const = 0;
 };
 
 // Get the lookup table with IOpSupportChecker delegates for different onnx operators

@@ -1,0 +1,60 @@
+[
+  {
+    "name": "identity with no attributes",
+    "operator": "Identity",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [1234.5678],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1234.5678],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[1]",
+        "inputs": [
+          {
+            "data": [1.1, 2.2, 3.3, 4.4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.1, 2.2, 3.3, 4.4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[2,4]",
+        "inputs": [
+          {
+            "data": [1.0, 2.1, 1.0, 3.1, 2.0, 3.9, 1.8, 2.7],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 2.1, 1.0, 3.1, 2.0, 3.9, 1.8, 2.7],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

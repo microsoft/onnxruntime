@@ -209,7 +209,7 @@ bool PyOpLibProxy::InvokePythonFunc(void*                            raw_inst,
     }
 
     scope.Add(pyArgs);
-    auto pyResult = PyEval_CallObject(pyFunc, pyArgs);
+    auto pyResult = PyObject_CallObject(pyFunc, pyArgs);
     if (nullptr == pyResult) {
         logging_func("InvokePythonFunc: no result");
         return false;
@@ -268,9 +268,11 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
 
   for (size_t i = 0; i < inputs_count; ++i) {
     auto ort_value = ort_.KernelContext_GetInput(context, i);
-    inputs.push_back(const_cast<MLValue*>(ort_value)->Get<Tensor>().DataRaw());
+    inputs.push_back(ort_value->Get<Tensor>().DataRaw());
     inputs_type.push_back(GetType(ort_value));
-    inputs_dim.push_back(const_cast<MLValue*>(ort_value)->Get<Tensor>().Shape().GetDims());
+    auto tensor_dims = ort_value->Get<Tensor>().Shape().GetDims();
+    std::vector<int64_t> shape(tensor_dims.cbegin(), tensor_dims.cend());
+    inputs_dim.push_back(std::move(shape));
   }
 
   std::string err;

@@ -5,7 +5,6 @@
 
 interface IDMLOperation;
 interface IDMLOperator;
-enum DML_TENSOR_DATA_TYPE;
 struct DML_OPERATOR_DESC;
 
 struct MLOperatorKernelDmlProperties
@@ -112,10 +111,6 @@ IMLOperatorRegistryPrivate : public IUnknown
         bool canAliasFirstInput,
         bool supportsGraph,
         const uint32_t* requiredInputCountForGraph = nullptr,
-        bool requiresFloatFormatsForGraph = false,
-        bool supportedWith64BitTensorsVia32BitStrides = false,
-        bool supportedWith64BitTensorsVia32BitStridesFromAnyEp = false,
-        bool prefer64BitTensorsDirectly = false,
         _In_reads_(constantCpuInputCount) const uint32_t* constantCpuInputs = nullptr,
         uint32_t constantCpuInputCount = 0
         ) const noexcept PURE;

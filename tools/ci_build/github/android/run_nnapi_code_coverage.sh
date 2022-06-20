@@ -12,18 +12,19 @@ fi
 ORT_ROOT=$1
 # Build and run onnxruntime using NNAPI execution provider targeting android emulator
 python3 ${ORT_ROOT}/tools/ci_build/build.py \
-	--android \
-	--build_dir build_nnapi \
-	--android_sdk_path $ANDROID_HOME \
-	--android_ndk_path $ANDROID_NDK_HOME \
-	--android_abi=x86_64 \
-	--android_api=29 \
-	--skip_submodule_sync \
-	--parallel \
-	--use_nnapi \
-	--cmake_generator=Ninja \
-	--build_java \
-	--code_coverage
+    --android \
+    --build_dir build_nnapi \
+    --android_sdk_path $ANDROID_HOME \
+    --android_ndk_path $ANDROID_NDK_HOME \
+    --android_abi=x86_64 \
+    --android_api=29 \
+    --skip_submodule_sync \
+    --parallel \
+    --use_nnapi \
+    --cmake_generator=Ninja \
+    --build_java \
+    --path_to_protoc_exe $ORT_ROOT/protobuf_install/bin/protoc \
+    --code_coverage
 
 # Install gcovr
 python3 -m pip install gcovr

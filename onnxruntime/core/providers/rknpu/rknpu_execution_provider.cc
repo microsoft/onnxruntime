@@ -41,14 +41,14 @@ RknpuExecutionProvider::RknpuExecutionProvider()
     : IExecutionProvider{onnxruntime::kRknpuExecutionProvider} {
   AllocatorCreationInfo default_memory_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator));
       }};
 
   InsertAllocator(CreateAllocator(default_memory_info));
 
   AllocatorCreationInfo cpu_memory_info{
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(
+        return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(RKNPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
       }};
 
@@ -135,7 +135,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
         node_set.insert(node_index[index]);
       }
       std::unique_ptr<IndexedSubGraph> sub_graph =
-          onnxruntime::make_unique<IndexedSubGraph>();
+          std::make_unique<IndexedSubGraph>();
       // Find inputs and outputs of the subgraph
       std::unordered_map<const NodeArg*, int>
           fused_inputs, fused_outputs, fused_outputs_to_add;
@@ -233,7 +233,7 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
       // Assign inputs and outputs to subgraph's meta_def
       auto meta_def =
-          onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+          std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
       meta_def->name = "RKNPU_" + std::to_string(counter++);
       meta_def->domain = kMSDomain;
 
@@ -249,37 +249,31 @@ RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       sub_graph->SetMetaDef(std::move(meta_def));
 
       result.push_back(
-          onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+          std::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
   return result;
 }
 
-common::Status RknpuExecutionProvider::Compile(
-    const std::vector<onnxruntime::Node*>& fused_nodes,
-    std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto* fused_node : fused_nodes) {
-    // Reconstruct graph proto from fused node's function body
-    const auto* func_body = fused_node->GetFunctionBody();
-    if (!func_body) {
-      return common::Status(common::ONNXRUNTIME,
-                            common::INVALID_ARGUMENT, "Function body is empty");
-    }
-    const Graph& graph_body = func_body->Body();
-    onnxruntime::Model model(graph_body.Name(), true, ModelMetaData(),
+common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+    onnxruntime::Model model(graph_body_viewer.Name(), true, ModelMetaData(),
                              PathString(),
                              IOnnxRuntimeOpSchemaRegistryList(),
-                             graph_body.DomainToVersionMap(),
+                             graph_body_viewer.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(),
                              *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    *(model_proto.mutable_graph()) = graph_body.ToGraphProto();
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
     model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, int> input_map;
-    const auto& input_defs = fused_node->InputDefs();
+    const auto& input_defs = fused_node.InputDefs();
     input_map.reserve(input_defs.size());
     for (int i = 0, end = input_defs.size(); i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
@@ -287,21 +281,21 @@ common::Status RknpuExecutionProvider::Compile(
 
     // Build map from output name to its index in output definitions
     std::unordered_map<std::string, int> output_map;
-    const auto& output_defs = fused_node->OutputDefs();
+    const auto& output_defs = fused_node.OutputDefs();
     output_map.reserve(output_defs.size());
     for (int i = 0, end = output_defs.size(); i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
 
-    model_proto_[fused_node->Name()] = model_proto;
-    input_info_[fused_node->Name()] = input_map;
-    output_info_[fused_node->Name()] = output_map;
+    model_proto_[fused_node.Name()] = model_proto;
+    input_info_[fused_node.Name()] = input_map;
+    output_info_[fused_node.Name()] = output_map;
 
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [&](ComputeContext* context,
                                          FunctionState* state) {
       std::unique_ptr<RknpuFuncState> p =
-          onnxruntime::make_unique<RknpuFuncState>();
+          std::make_unique<RknpuFuncState>();
       rk::nn::Graph* graph = new rk::nn::Graph();
       *p = {"", std::unique_ptr<rk::nn::Exection>(new rk::nn::Exection(graph)),
             model_proto_[context->node_name], input_info_[context->node_name],
@@ -524,7 +518,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kRknpuExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
@@ -534,7 +528,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kRknpuExecutionProvider,
     KernelDefBuilder()
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 

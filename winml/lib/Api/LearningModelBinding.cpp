@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api/pch/pch.h"
 #include "ConverterResourceStore.h"
 #include "impl/FeatureCompatibility.h"
 #include "FeatureValues.h"

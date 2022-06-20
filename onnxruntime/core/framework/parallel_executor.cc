@@ -35,10 +35,10 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   TimePoint tp;
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().Now();
+    tp = session_state.Profiler().Start();
   }
 
-  root_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+  root_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                                          fetch_allocators, session_state);
   //std::cout << "start nodes:" << std::endl;
   for (auto node_index : session_state.GetGraphViewer().GetRootNodes()) {
@@ -82,21 +82,18 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   VLOGS(logger, 1) << "Done execution.";
 
   if (root_frame_->HasMemoryPatternPlanner()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
-      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
-      ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns.get()));
-      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      MemoryPatternGroup mem_patterns;
+      ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }
 
@@ -118,7 +115,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
   bool keep_running = true;
   const auto& graph_viewer = session_state.GetGraphViewer();
   TimePoint sync_time_begin;
-  TimePoint kernel_begin_time, kernel_end_time;
+  TimePoint kernel_begin_time;
   const bool f_profiler_enabled = session_state.Profiler().IsEnabled();
   const SequentialExecutionPlan& exec_plan = *session_state.GetExecutionPlan();
 
@@ -142,7 +139,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     OpKernelContextInternal op_kernel_context(session_state, *root_frame_, *p_op_kernel, logger, terminate_flag_);
 
     if (f_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().Start();
     }
     // sync before compute
     int queue_id = p_op_kernel->KernelDef().ExecQueueId();
@@ -183,7 +180,7 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
       concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
-      kernel_begin_time = session_state.Profiler().Now();
+      kernel_begin_time = session_state.Profiler().Start();
     }
 
     // call compute on the kernel
@@ -216,15 +213,14 @@ Status ParallelExecutor::RunNodeAsync(size_t p_node_index,
     }
 
     if (f_profiler_enabled) {
-      kernel_end_time = session_state.Profiler().Now();
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node.Name() + "_kernel_time",
-                                                     kernel_begin_time, kernel_end_time,
+                                                     kernel_begin_time,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()},
                                                       {"provider", p_op_kernel->KernelDef().Provider()},
                                                       {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())}});
 
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().Start();
     }
     // sync after compute for outputs
     if (exec_plan.NodeHasFence(node_index)) {

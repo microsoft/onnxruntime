@@ -1,11 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _WIN32
-// disable some warnings from protobuf to pass Windows build
-#pragma warning(disable : 4244)
-#endif
-
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 
@@ -18,15 +13,19 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 #if !defined(ORT_MINIMAL_BUILD)
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
-    static const std::unordered_set<std::string> high_pri_ops = {"Shape", "Size"};
-    return high_pri_ops.find(n->OpType()) != high_pri_ops.end();
+    // local statics so we can compare std::strings in the checks
+    static const std::string shape_op("Shape");
+    static const std::string size_op("Size");
+
+    const auto& op_type = n->OpType();
+    return op_type == shape_op || op_type == size_op;
   }
 
   // Used for std::priority_queue
   // If return false, n1 will be output first
   // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
-    // nodes in global high priorty list will be output first
+    // nodes in global high priority list will be output first
     if (IsHighPri(n1) != IsHighPri(n2)) {
       return IsHighPri(n2);
     }
@@ -92,8 +91,8 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     }
 
     // create set of node indexes as we need quick lookups and don't care about the order
-    filtered_node_indices_ = std::unordered_set<NodeIndex>(filter_info->nodes.cbegin(),
-                                                           filter_info->nodes.cend());
+    filtered_node_indices_ = FilteredNodeSet(filter_info->nodes.cbegin(),
+                                             filter_info->nodes.cend());
 
     const auto& metadef = filter_info->GetMetaDef();
 
@@ -195,8 +194,19 @@ const std::vector<const NodeArg*>& GraphViewer::GetOutputs() const noexcept {
                                    : filtered_node_outputs_;
 }
 
+bool GraphViewer::NodeProducesGraphOutput(const Node& node) const {
+  const auto& outputs = GetOutputs();
+  auto end_outputs = outputs.cend();
+  for (auto output_def : node.OutputDefs()) {
+    if (std::find(outputs.cbegin(), end_outputs, output_def) != end_outputs) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Get graph value infos.
-const std::vector<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
+const std::unordered_set<const NodeArg*>& GraphViewer::GetValueInfo() const noexcept {
   return graph_->GetValueInfo();
 }
 
@@ -258,7 +268,22 @@ bool GraphViewer::IsSubgraph() const {
 }
 
 bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_outer_scope) const {
-  return graph_->GetConstantInitializer(name, check_outer_scope) != nullptr;
+  return GetConstantInitializer(name, check_outer_scope) != nullptr;
 }
+
+bool GraphViewer::IsInitializedTensor(const std::string& name) const {
+  return graph_->IsInitializedTensor(name);
+}
+
+const ONNX_NAMESPACE::TensorProto* GraphViewer::GetConstantInitializer(const std::string& initializer_name,
+                                                                       bool check_outer_scope) const {
+  return graph_->GetConstantInitializer(initializer_name, check_outer_scope);
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+const std::unordered_set<std::string>& GraphViewer::GetOuterScopeNodeArgNames() const noexcept {
+  return graph_->GetOuterScopeNodeArgNames();
+}
+#endif
 
 }  // namespace onnxruntime

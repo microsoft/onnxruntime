@@ -3,16 +3,16 @@
 
 #include "orttraining/core/session/tensor_helper.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
-#endif
-
 namespace onnxruntime {
+
+// Copy a chunk of memory to CPU from GPU.
+void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location);
+
 namespace training {
 
 // Return the shape of a tensor slice.
-std::vector<int64_t> GetSliceShape(
-    const std::vector<int64_t>& shape,  // before-slicing tensor shape
+TensorShapeVector GetSliceShape(
+    gsl::span<const int64_t> shape,  // before-slicing tensor shape
     const size_t slice_axis,            // axis to slice along
     const size_t num_slices) {          // number of slices along the slicing axis
   ORT_ENFORCE(shape.size() > 0);
@@ -22,7 +22,7 @@ std::vector<int64_t> GetSliceShape(
   ORT_ENFORCE(shape.at(slice_axis) % num_slices == 0);
 
   // Shape of slice along slice_axis.
-  std::vector<int64_t> slice_shape(shape.size());
+  TensorShapeVector slice_shape(shape.size());
   // Compute original slice's shape.
   std::copy(shape.begin(), shape.end(), slice_shape.begin());
   // Replace the sliced dimension.
@@ -34,7 +34,7 @@ std::vector<int64_t> GetSliceShape(
 // Given tensor's element type and shape, this function creates a tensor in the passed-in session.
 OrtValue CreateCpuTensorValue(
     const MLDataType elem_type,
-    std::vector<int64_t> shape,
+    gsl::span<const int64_t> shape,
     onnxruntime::InferenceSession& session_state) {
   ORT_ENFORCE(elem_type->AsPrimitiveDataType(), "Tensor's element type must be a scalar type.");
   ORT_ENFORCE(shape.size() > 0, "Shape vector must be non-empty.");
@@ -44,7 +44,7 @@ OrtValue CreateCpuTensorValue(
   AllocatorPtr cpu_allocator = session_state.GetAllocator(cpu_location);
 
   // Given a shape, allocate a tensor using CPU allocator.
-  auto cpu_tensor = onnxruntime::make_unique<Tensor>(elem_type, shape, cpu_allocator);
+  auto cpu_tensor = std::make_unique<Tensor>(elem_type, shape, cpu_allocator);
 
   // Create type definition for the created tensor.
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
@@ -53,41 +53,6 @@ OrtValue CreateCpuTensorValue(
   OrtValue cpu_value{cpu_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
 
   return cpu_value;
-}
-
-// Copy a chunk of memory to CPU from GPU.
-void CopyGpuToCpu(
-    void* dst_ptr,
-    const void* src_ptr,
-    const size_t size,
-    const OrtMemoryInfo& dst_location,
-    const OrtMemoryInfo& src_location) {
-  ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
-
-#ifdef USE_CUDA
-  // Current CUDA device.
-  int device;
-  CUDA_CALL(cudaGetDevice(&device));
-
-  if (device != src_location.id) {
-    // Need to switch to the allocating device.
-    CUDA_CALL(cudaSetDevice(src_location.id));
-    // Copy from GPU to CPU.
-    CUDA_CALL(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
-    // Switch back to current device.
-    CUDA_CALL(cudaSetDevice(device));
-  } else {
-    // Copy from GPU to CPU.
-    CUDA_CALL(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
-  }
-#else
-  ORT_UNUSED_PARAMETER(dst_ptr);
-  ORT_UNUSED_PARAMETER(src_ptr);
-  ORT_UNUSED_PARAMETER(size);
-  ORT_UNUSED_PARAMETER(dst_location);
-  ORT_UNUSED_PARAMETER(src_location);
-  ORT_THROW("CPU-to-CPU copy is not implemented.");
-#endif
 }
 
 // Copy a chunk of memory to CPU from CPU.
@@ -138,7 +103,7 @@ void CopyToCpuTensor(Tensor& dst, const Tensor& src) {
 // For a tensor with shape [D1, D2, D3], the linear index of element at (x, y, z) is
 // i = x * (D2 * D3) + y * D3 + z. If we append one dimension to form a new shape [D1, D2, D3, D4],
 // the new linear index at (x, y, z, u) can be computed using i * D4 + u.
-size_t UpdateLinearIndex(const size_t linear_index, const size_t new_axis_index, const size_t new_axis_dim) {
+constexpr size_t UpdateLinearIndex(const size_t linear_index, const size_t new_axis_index, const size_t new_axis_dim) {
   return linear_index * new_axis_dim + new_axis_index;
 }
 
@@ -270,7 +235,7 @@ void CopyConcat(
       auto chunk_size = src_shape[concat_axis] * segment_size;
 
       // Bias of the i_seg-th segment in input tensor. Its unit is the number of tensor elements.
-      // chunk_size * 
+      // chunk_size *
       auto src_bias = UpdateLinearIndex(i_seg, 0, src_shape[concat_axis]) * segment_size;
       auto dst_bias = UpdateLinearIndex(i_seg, anchor_bias, dst_shape[concat_axis]) * segment_size;
 
@@ -290,7 +255,7 @@ OrtValue ConcatenateTensors(
   // Concatenated tensors in CPU buffers.
   std::vector<OrtValue> cpu_values;
   // Result tensor's shape.
-  std::vector<int64_t> new_shape = orig_values.front().Get<Tensor>().Shape().GetDims();
+  TensorShapeVector new_shape = orig_values.front().Get<Tensor>().Shape().AsShapeVector();
   // Tensor elements' type.
   MLDataType elem_type = orig_values.front().Get<Tensor>().DataType();
   int64_t new_dim = 0;

@@ -15,7 +15,7 @@ namespace onnxruntime {
 namespace {
 
 //assume start1 <= end1, start2 <= end2
-inline bool AreIntervalsOverlap(int start1, int end1, int start2, int end2) {
+constexpr inline bool AreIntervalsOverlap(int start1, int end1, int start2, int end2) {
   return start1 <= end2 && start2 <= end1;
 }
 
@@ -76,7 +76,7 @@ void KernelDef::CalculateHash() {
 
 // TODO: Tell user why it has conflicts
 // TODO: Investigate why IsConflict() was not triggered when there were duplicate Tile CUDA
-// kernels registered. Removing `InputMemoryType<OrtMemTypeCPUInput>(1)` in the kernel definition
+// kernels registered. Removing `InputMemoryType(OrtMemTypeCPUInput, 1)` in the kernel definition
 // triggered the conflict.
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
@@ -261,5 +261,17 @@ KernelDefBuilder& KernelDefBuilder::VariadicAlias(int input_offset, int output_o
   kernel_def_->variadic_alias_offsets_ = std::make_pair(input_offset, output_offset);
   return *this;
 }
+
+#ifdef ENABLE_TRAINING
+KernelDefBuilder& KernelDefBuilder::MayStridedInput(int input_index) {
+  kernel_def_->may_strided_inputs_.emplace_back(input_index);
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::MayStridedOutput(int input_index, int output_index) {
+  kernel_def_->may_strided_output_map_.emplace_back(input_index, output_index);
+  return *this;
+}
+#endif
 
 }  // namespace onnxruntime

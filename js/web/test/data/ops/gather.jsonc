@@ -1,0 +1,97 @@
+[
+  {
+    "name": "Gather",
+    "operator": "Gather",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "data[4] indices[]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [2],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "data[4] indices[1]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [2],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "data[2,4] indices[]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [5, 6, 7, 8],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "data[2,4] indices[1]",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 4],
+            "type": "float32"
+          },
+          {
+            "data": [1],
+            "dims": [1],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [5, 6, 7, 8],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

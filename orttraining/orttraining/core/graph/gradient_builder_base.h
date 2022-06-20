@@ -5,11 +5,13 @@
 
 #include <vector>
 #include <string>
-#include "core/util/math.h"
+#include "core/framework/float16.h"
 #include "core/graph/graph.h"
+#include "core/util/math.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
+#include "orttraining/core/graph/gradient_definition_registry.h"
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
 
@@ -37,6 +39,8 @@ Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape);
 
 typedef std::vector<NodeDef> GradientDef;
 
+std::string GetGradientDefinitionKeyByNode(const Node& node);
+
 class GradientBuilderBase {
  public:
   GradientBuilderBase(const GradientGraphConfiguration& gradient_graph_config,
@@ -44,13 +48,15 @@ class GradientBuilderBase {
                       const Node* node,
                       const std::unordered_set<std::string>& gradient_inputs,
                       const std::unordered_set<std::string>& gradient_outputs,
-                      const logging::Logger& logger)
+                      const logging::Logger& logger,
+                      std::unordered_set<std::string>& stashed_tensors)
       : gradient_graph_config_(gradient_graph_config),
         graph_(graph),
         node_(node),
         gradient_inputs_(gradient_inputs),
         gradient_outputs_(gradient_outputs),
-        logger_(logger) {
+        logger_(logger),
+        stashed_tensors_(stashed_tensors) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -82,8 +88,16 @@ class GradientBuilderBase {
     return gradient_graph_config_;
   }
 
+  void RecordStashedTensor(const std::string& name) const {
+    stashed_tensors_.insert(name);
+  }
+
+  bool IsTensorStashed(const std::string& name) const {
+    return stashed_tensors_.find(name) != stashed_tensors_.end();
+  }
+
   // i-th input of forward op
-  ArgDef I(const size_t i) const {
+  ArgDef I(const size_t i, bool record_stashing = true) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
 
     const std::string& name = node_->InputDefs()[i]->Name();
@@ -94,11 +108,15 @@ class GradientBuilderBase {
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
+    if (record_stashing) {
+      RecordStashedTensor(node_->InputDefs()[i]->Name());
+    }
+
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
   }
 
   // i-th output of forward op
-  ArgDef O(const size_t i) const {
+  ArgDef O(const size_t i, bool record_stashing = true) const {
     ORT_ENFORCE(i < node_->OutputDefs().size());
 
     const std::string& name = node_->OutputDefs()[i]->Name();
@@ -109,6 +127,10 @@ class GradientBuilderBase {
       return ArgDef(recomputed_nodearg->Name(), recomputed_nodearg->TypeAsProto());
     }
 
+    if (record_stashing) {
+      RecordStashedTensor(node_->OutputDefs()[i]->Name());
+    }
+
     return ArgDef(node_->OutputDefs()[i]->Name(), node_->OutputDefs()[i]->TypeAsProto());
   }
 
@@ -116,6 +138,12 @@ class GradientBuilderBase {
   ArgDef GI(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
+  }
+
+  // gradient of i-th input of forward op - useful when gradient type does not match input type
+  ArgDef GI(const size_t i, const TypeProto *type) const {
+    ORT_ENFORCE(i < node_->InputDefs().size());
+    return ArgDef(GradientName(node_->InputDefs()[i]->Name()), type);
   }
 
   // gradient of i-th output of forward op
@@ -194,8 +222,7 @@ class GradientBuilderBase {
   }
 
   int OnnxOpSetVersion() const {
-    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ?
-               graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
+    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ? graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
   }
 
   template <typename T>
@@ -210,14 +237,19 @@ class GradientBuilderBase {
   }
 
   template <typename T>
-  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+  static ONNX_NAMESPACE::TensorProto ScalarTensorProto(T value, std::vector<int64_t> shape) {
     ORT_ENFORCE(shape.size() == 0 || (shape.size() == 1 && shape[0] == 1));
-
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(value);
     for (auto dim : shape) {
       t_proto.add_dims(dim);
     }
 
+    return t_proto;
+  }
+
+  template <typename T>
+  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+    auto t_proto = ScalarTensorProto(value, shape);
     return NodeDef("Constant",
                    {},
                    {ArgDef(arg_name, nullptr)},
@@ -235,6 +267,18 @@ class GradientBuilderBase {
     }
 
     return ConstantScalarNode(value, {1}, arg_name);
+  }
+
+  static ONNX_NAMESPACE::TensorProto ScalarTensorProtoByElemType(float value, int elem_type) {
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      return ScalarTensorProto(MLFloat16(math::floatToHalf(value)), {1});
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      return ScalarTensorProto(BFloat16(value), {1});
+    }
+
+    return ScalarTensorProto(value, {1});
   }
 
   static NodeDef ZeroConstantNode(int elem_type) {
@@ -269,13 +313,17 @@ class GradientBuilderBase {
                                  std::vector<NodeDef>& output) const;
 
   std::vector<NodeDef> GetBiasGeluGradNodes(
-    bool use_approximation,
-    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
-    const ArgDef& dX, const ArgDef& dB,                  // outputs
-    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
-    const std::string& node_name) const;
+      bool use_approximation,
+      const ArgDef& dY, const ArgDef& X, const ArgDef& B,                  // inputs
+      const ArgDef& dX, const ArgDef& dB,                                  // outputs
+      const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+      const std::string& node_name) const;
 
   const std::string& NodeName() const { return node_->Name(); }
+
+  std::string GetGradientDefinitionKey() const { return GetGradientDefinitionKeyByNode(*node_); }
+
+  AttributeProto AttributeDefinitionToAttributeProto(const GradientNodeAttributeDefinition& attr_def) const;
 
  private:
   friend class GradientGraphBuilder;
@@ -305,6 +353,8 @@ class GradientBuilderBase {
   std::unordered_set<std::string> gradient_outputs_;
 
   const logging::Logger& logger_;
+
+  std::unordered_set<std::string>& stashed_tensors_;
 };
 
 class EmptyGradientBuilder : public GradientBuilderBase {

@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
@@ -22,6 +23,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/bfc_arena.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
@@ -30,15 +32,18 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
-#elif USE_ROCM
+#endif
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
-#include "core/session/device_allocator.h"
-#include "core/session/allocator_impl.h"
+#include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -62,6 +67,14 @@ struct KernelRegistryAndStatus {
 };
 }  // namespace
 namespace onnxruntime {
+
+#ifdef USE_CUDA
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif
+#ifdef USE_ROCM
+ProviderInfo_ROCM& GetProviderInfo_ROCM();
+#endif
+
 class FuseAdd : public OpKernel {
  public:
   explicit FuseAdd(const OpKernelInfo& info) : OpKernel(info) {
@@ -86,7 +99,10 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         kFuseTest,
                         1,
                         kFuseExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder(),
+                        // there's no OpSchema so there's nothing to validate the type constraint against and it
+                        // will just be ignored
+                        // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
 Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {
@@ -105,7 +121,7 @@ class FuseExecutionProvider : public IExecutionProvider {
   explicit FuseExecutionProvider() : IExecutionProvider{kFuseExecutionProvider} {
     AllocatorCreationInfo device_info{
         [](int) {
-          return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
         }};
     InsertAllocator(device_info.device_alloc_factory(0));
   }
@@ -115,19 +131,31 @@ class FuseExecutionProvider : public IExecutionProvider {
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
-    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
     for (auto& node : graph.Nodes()) {
       sub_graph->nodes.push_back(node.Index());
     }
-    auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
+    auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
     meta_def->name = "FuseAdd";
     meta_def->domain = "FuseTest";
     meta_def->inputs = {"X", "Y", "Z"};
     meta_def->outputs = {"M"};
     meta_def->since_version = 1;
     meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+    meta_def->type_and_shape_inference_function = [](::onnx::InferenceContext& ctx) {
+      propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      ::onnx::TensorShapeProto intermediary_shape;
+      bidirectionalBroadcastShapeInference(
+          ctx.getInputType(0)->tensor_type().shape(),
+          ctx.getInputType(1)->tensor_type().shape(),
+          intermediary_shape);
+      bidirectionalBroadcastShapeInference(
+          ctx.getInputType(1)->tensor_type().shape(),
+          intermediary_shape,
+          *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+    };
     sub_graph->SetMetaDef(std::move(meta_def));
-    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     return result;
   }
 
@@ -144,16 +172,17 @@ static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vecto
                           const std::vector<float>& expected_values);
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
-//static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
+// static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
-  p_model = onnxruntime::make_unique<Model>("test", true, ModelMetaData(), PathString(),
-                                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                            model_specific_functions, DefaultLoggingManager().DefaultLogger());
+  p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
+                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                    model_specific_functions, DefaultLoggingManager().DefaultLogger(),
+                                    ModelOptions(true, true));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -175,7 +204,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   if (provider_type == kCpuExecutionProvider) {
     node.SetExecutionProviderType(provider_type);
   } else {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
     node.SetExecutionProviderType(provider_type);
 #endif
   }
@@ -187,8 +216,7 @@ template <typename T = float>
 void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
                    const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor.Shape()));
+  ASSERT_EQ(expected_shape, tensor.Shape());
   const std::vector<T> found(tensor.template Data<T>(),
                              tensor.template Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
@@ -244,6 +272,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                ProviderType bind_provider_type,
                                bool is_preallocate_output_vec,
                                ProviderType allocation_provider,
+                               IExecutionProvider* gpu_provider,
                                OrtDevice* output_device) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
@@ -255,7 +284,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
   OrtValue input_tmp;
   CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
-  io_binding->BindInput("A", input_tmp);
+  ASSERT_STATUS_OK(io_binding->BindInput("A", input_tmp));
   const void* tmp_A = io_binding->GetInputs()[0].Get<Tensor>().DataRaw();  // location of data post binding
 
   // prepare inputs
@@ -278,8 +307,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x_B, values_mul_x,
                        &input_ml_value_B);
 
-  io_binding->BindInput("A", input_ml_value_A);
-  io_binding->BindInput("B", input_ml_value_B);
+  ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
+  ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
 
   // check location of 'A' post-binding has changed to validate that the previous value was replaced
   ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() != tmp_A);
@@ -291,16 +320,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     if (allocation_provider == kCpuExecutionProvider) {
       AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
                              &output_ml_value);
-    } else if (allocation_provider == kCudaExecutionProvider) {
-#ifdef USE_CUDA
-      AllocateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
-                             &output_ml_value);
-#endif
-    } else if (allocation_provider == kRocmExecutionProvider) {
-#ifdef USE_ROCM
-      AllocateMLValue<float>(TestRocmExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
-                             &output_ml_value);
-#endif
+    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+      AllocateMLValue<float>(gpu_provider->GetAllocator(0, OrtMemTypeDefault), expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
     }
@@ -308,9 +329,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   if (output_device) {
     // output should be allocated on specified device (if not preallocated here)
-    io_binding->BindOutput("Y", *output_device);
+    ASSERT_STATUS_OK(io_binding->BindOutput("Y", *output_device));
   } else {
-    io_binding->BindOutput("Y", output_ml_value);
+    ASSERT_STATUS_OK(io_binding->BindOutput("Y", output_ml_value));
   }
 
   ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
@@ -334,15 +355,17 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
-    std::unique_ptr<Tensor> cpu_tensor = onnxruntime::make_unique<Tensor>(element_type,
-                                                                          shape,
-                                                                          cpu_allocator);
+    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
+                                                                  shape,
+                                                                  cpu_allocator);
 #ifdef USE_CUDA
-    cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
-#elif USE_ROCM
-    hipStream_t stream = static_cast<hipStream_t>(static_cast<const onnxruntime::ROCMExecutionProvider*>(TestRocmExecutionProvider())->GetComputeStream());
+    cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
+    st = GetProviderInfo_CUDA().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
 #endif
-    st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
+#ifdef USE_ROCM
+    hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
+    st = GetProviderInfo_ROCM().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
+#endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
@@ -351,14 +374,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
 #endif
   } else {
-    if (allocation_provider == kCudaExecutionProvider) {
-#ifdef USE_CUDA
-      TestCudaExecutionProvider()->Sync();
-#endif
-    } else if (allocation_provider == kRocmExecutionProvider) {
-#ifdef USE_ROCM
-      TestRocmExecutionProvider()->Sync();
-#endif
+    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+      ASSERT_STATUS_OK(gpu_provider->Sync());
     }
     VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
   }
@@ -568,7 +585,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -597,6 +614,8 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 #endif
 }
 
+// WebAssembly will emit profiling data into console
+#if !defined(__wasm__)
 TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   SessionOptions so;
 
@@ -606,9 +625,10 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+#endif
+#ifdef USE_ROCM
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -632,17 +652,20 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   ASSERT_TRUE(size > 1);
   ASSERT_TRUE(lines[0].find("[") != string::npos);
   ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
-  ASSERT_TRUE(lines[size-1].find("]") != string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
   bool has_kernel_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
-      has_kernel_info = has_kernel_info || (lines[i].find("Kernel") != string::npos);
+      has_kernel_info = has_kernel_info || lines[i].find("Kernel") != string::npos &&
+                                               lines[i].find("stream") != string::npos &&
+                                               lines[i].find("block_x") != string::npos;
     }
   }
-#ifdef USE_CUDA
+
+#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
@@ -665,25 +688,27 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
 
   std::ifstream profile(profile_file);
   std::string line;
-  std::vector<std::string> lines;
 
-  while (std::getline(profile, line)) {
-    lines.push_back(line);
-  }
-
-  auto size = lines.size();
-  ASSERT_TRUE(size > 1);
-  ASSERT_TRUE(lines[0].find("[") != string::npos);
-  ASSERT_TRUE(lines[1].find("mul_1_fence_before") != string::npos);
-  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
-
-  for (size_t i = 1; i < size - 1; ++i) {
-    for (auto& s : tags) {
-      ASSERT_TRUE(lines[i].find(s) != string::npos);
+  int count = 0;
+  while (std::getline(profile, line)) {
+    if (count == 0) {
+      ASSERT_TRUE(line.find("[") != string::npos);
+    } else if (count <= 5) {
+      for (auto& s : tags) {
+        ASSERT_TRUE(line.find(s) != string::npos);
+      }
+    } else {
+      ASSERT_TRUE(line.find("]") != string::npos);
     }
+
+    if (count == 1) {
+      ASSERT_TRUE(line.find("mul_1_fence_before") != string::npos);
+    }
+    count++;
   }
 }
+#endif  // __wasm__
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
@@ -760,7 +785,7 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
   // is around our pointer stays valid.
   auto capturing_sink = new CapturingSink();
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(capturing_sink),
       logging::Severity::kVERBOSE,
       false,
@@ -822,7 +847,7 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
 
   InferenceSession session_object{so, GetEnvironment()};
   CPUExecutionProviderInfo epi;
-  ASSERT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CPUExecutionProvider>(epi)).IsOK());
+  ASSERT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CPUExecutionProvider>(epi)).IsOK());
 
   std::ifstream model_file_stream(MODEL_URI, ios::in | ios::binary);
   ASSERT_TRUE(model_file_stream.good());
@@ -846,16 +871,18 @@ static void TestBindHelper(const std::string& log_str,
   so.session_log_verbosity_level = 1;  // change to 1 for detailed logging
 
   InferenceSession session_object{so, GetEnvironment()};
+  IExecutionProvider* gpu_provider{};
 
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
-    CUDAExecutionProviderInfo epi;
-    epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
-#elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+    auto provider = DefaultCudaExecutionProvider();
+    gpu_provider = provider.get();
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+#endif
+#ifdef USE_ROCM
+    auto provider = DefaultRocmExecutionProvider();
+    gpu_provider = provider.get();
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif
   }
 
@@ -877,6 +904,7 @@ static void TestBindHelper(const std::string& log_str,
                             bind_provider_type,
                             preallocate_output,
                             allocation_provider,
+                            gpu_provider,
                             output_device);
 }
 
@@ -905,7 +933,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   OrtValue ml_value1;
   vector<float> v1{2.f};
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v1, &ml_value1);
-  io_binding->BindOutput("foo", ml_value1);
+  ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value1));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   auto span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
   ASSERT_TRUE(static_cast<size_t>(span.size()) == v1.size());
@@ -916,7 +944,7 @@ TEST(InferenceSessionTests, TestIOBindingReuse) {
   OrtValue ml_value2;
   vector<float> v2{3.f};
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1}, v2, &ml_value2);
-  io_binding->BindOutput("foo", ml_value2);
+  ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value2));
   ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
   span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
   ASSERT_TRUE(static_cast<size_t>(span.size()) == v2.size());
@@ -1182,7 +1210,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
   run_options.run_tag = so.session_logid;
 
   CPUExecutionProviderInfo epi;
-  auto testCPUExecutionProvider = onnxruntime::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
+  auto testCPUExecutionProvider = std::make_unique<::onnxruntime::CPUExecutionProvider>(epi);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -1212,16 +1240,72 @@ TEST(ExecutionProviderTest, FunctionTest) {
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 
   InferenceSession session_object_2{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(std::move(testCPUExecutionProvider)));
   ASSERT_STATUS_OK(
-      session_object_2.RegisterExecutionProvider(onnxruntime::make_unique<::onnxruntime::FuseExecutionProvider>()));
-  status = session_object_2.Load(model_file_name);
-  ASSERT_TRUE(status.IsOK());
-  status = session_object_2.Initialize();
-  ASSERT_TRUE(status.IsOK());
-  status = session_object_2.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+      session_object_2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
+  ASSERT_STATUS_OK(session_object_2.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object_2.Initialize());
+  ASSERT_STATUS_OK(session_object_2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+}
+
+TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
+  onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  std::vector<onnxruntime::NodeArg*> inputs;
+  std::vector<onnxruntime::NodeArg*> outputs;
+
+  // FLOAT tensor.
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  inputs.push_back(&input_arg_1);
+  inputs.push_back(&input_arg_2);
+  auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &float_tensor);
+  outputs.push_back(&output_arg);
+  graph.AddNode("node_1", "Add", "node 1.", inputs, outputs);
+
+  auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &float_tensor);
+  inputs.clear();
+  inputs.push_back(&output_arg);
+  inputs.push_back(&input_arg_3);
+  auto& output_arg_2 = graph.GetOrCreateNodeArg("M", &float_tensor);
+  outputs.clear();
+  outputs.push_back(&output_arg_2);
+  graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK());
+  std::string model_file_name = "fused_node_shape_inference_test_graph.onnx";
+  status = onnxruntime::Model::Save(model, model_file_name);
+
+  SessionOptions so;
+  so.session_logid = "ExecutionProviderTest.ShapeInferenceForFusedFunctionTest";
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(
+      session.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
+  status = session.Load(model_file_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  Graph& fused_graph = session.GetMutableGraph();
+  ASSERT_TRUE(fused_graph.NumberOfNodes() == 1);
+  auto& fused_node = *fused_graph.Nodes().begin();
+  ASSERT_TRUE(fused_node.NodeType() == Node::Type::Fused);
+  ASSERT_TRUE(fused_node.Op()->has_type_and_shape_inference_function());
+
+  // Clear shape inference data from output node to verify that assigned inference function is called
+  auto& fused_node_output = *fused_node.MutableOutputDefs()[0];
+  fused_node_output.ClearShape();
+  fused_graph.SetGraphResolveNeeded();
+  ASSERT_STATUS_OK(fused_graph.Resolve());
+
+  ASSERT_TRUE(fused_node_output.Shape() != nullptr);
+  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape()) == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
 }
 
 TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
@@ -1326,11 +1410,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_1};
         std::vector<onnxruntime::NodeArg*> outputs = {&node_2};
         auto& cast_node = graph.AddNode("cast_1", "Cast", "node 2", inputs, outputs);
-        ONNX_NAMESPACE::AttributeProto to;
-        to.set_name("to");
-        to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-        to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-        cast_node.AddAttribute("to", to);
+        cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
       }
       {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_2, &data_0};
@@ -1376,11 +1456,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_if_input};
     auto& cast_node = graph.AddNode("cast_9", "Cast", "node 2", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
 
   std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
@@ -1409,14 +1485,10 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#ifdef USE_CUDA
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+#if USE_CUDA
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1518,11 +1590,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_1};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_0__value_2};
     auto& cast_node = graph.AddNode("graph_0__cast_0", "Cast", "cast node in main graph", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
   {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_2, &input_0};
@@ -1549,14 +1617,10 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#ifdef USE_CUDA
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+#if USE_CUDA
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1697,8 +1761,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(Y_dims);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&rtensor.Shape()));
+  ASSERT_EQ(expected_shape, rtensor.Shape());
   for (size_t i = 0; i < Y_data.size(); ++i)
     EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
 
@@ -1740,8 +1803,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     std::vector<int64_t> truncated_output_dims = Y_dims;
     truncated_output_dims[0] = truncated_len;
     TensorShape truncated_shape(truncated_output_dims);
-    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-    ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&truncated_shape), *reinterpret_cast<const std::vector<int64_t>*>(&truncated_rtensor.Shape()));
+    ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
     auto seq_output_stride = truncated_shape.SizeFromDimension(1);
     for (int i = 0; i < truncated_shape.Size(); ++i)
       EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
@@ -1761,7 +1823,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
 
-  auto dummy_provider = onnxruntime::make_unique<DummyExecutionProvider>();
+  auto dummy_provider = std::make_unique<DummyExecutionProvider>();
   auto* p_dummy_provider = dummy_provider.get();
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(dummy_provider)));
 
@@ -1823,7 +1885,7 @@ TEST(InferenceSessionTests, TestRegisterTransformers) {
     InferenceSession session_object{so, GetEnvironment()};
 
     // Create and register dummy graph transformer
-    auto dummy_transformer_unique_ptr = onnxruntime::make_unique<DummyGraphTransformer>("DummyTransformer");
+    auto dummy_transformer_unique_ptr = std::make_unique<DummyGraphTransformer>("DummyTransformer");
     const auto* dummy_transformer = dummy_transformer_unique_ptr.get();
     ASSERT_STATUS_OK(session_object.RegisterGraphTransformer(std::move(dummy_transformer_unique_ptr)));
 
@@ -1856,23 +1918,13 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   }
 }
 
-// fallback to lenient merging of shape info if model opset is not the latest
-TEST(InferenceSessionTests, TestLenientShapeInferencing) {
-  // latest opset should fail
+TEST(InferenceSessionTests, TestStrictShapeInference) {
   std::vector<int64_t> input_shape{2, 2};
   std::vector<float> input_data{0.f, 1.f, 2.f, 3.f};
   std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
   std::vector<int64_t> output_data{2, 2};
 
-  OpTester latest_opset("Shape", -1);  // use latest opset for shape inference errors
-  latest_opset.AddInput("data", input_shape, input_data);
-  latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
-                   "Mismatch between number of source and target dimensions. Source=1 Target=2");
-
-  // older opset should allow the mismatch with a warning.
   // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
-  // This should result in a warning log message but successful run.
   class OpTesterWithReshape : public OpTester {
    public:
     OpTesterWithReshape() : OpTester("Shape", 7) {
@@ -1899,13 +1951,23 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
     }
   };
 
-  OpTesterWithReshape old_opset;
+  OpTesterWithReshape tester;
 
-  old_opset.AddInput("data", input_shape, input_data);
-  old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  // TensorRT doesn't handle Unsqueeze
-  // OpenVINO: Disabled temporarily
-  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  tester.AddInput("data", input_shape, input_data);
+  tester.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  const std::unordered_set<string> excluded_provider_types = {
+      kTensorrtExecutionProvider,   // Doesn't handle Unsqueeze.
+      kOpenVINOExecutionProvider};  // Disabled temporarily.
+
+  // This should result in a warning log message but successful run.
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "Mismatch between number of source and target dimensions. Source=1 Target=2",
+             excluded_provider_types);
 }
 
 #ifdef USE_CUDA
@@ -1918,9 +1980,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so, GetEnvironment()};
 
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 
   ASSERT_STATUS_OK(session_object.Load(model_uri));
 
@@ -1933,6 +1993,95 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   // execution mode is sequential since we have registered the CUDA EP
   // (which isn't supported by the parallel execution mode)
   ASSERT_TRUE(so_queried.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+}
+
+TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
+  OrtArenaCfg arena_cfg;
+  arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  OrtCUDAProviderOptions provider_options{};
+  provider_options.default_memory_arena_cfg = &arena_cfg;
+  provider_options.device_id = 0;
+  auto factory = CudaProviderFactoryCreator::Create(&provider_options);
+
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(factory->CreateProvider()));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Fetch the CUDA allocator to analyze its stats
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  auto cuda_alloc = session_object.GetAllocator(mem_info);
+
+  AllocatorStats alloc_stats;
+  static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+#ifdef ENABLE_TRAINING
+  // In training builds, initializers are allocated using the Reserve() call which
+  // will not cause an arena extension
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
+#else
+  // The arena would have made an extension to accommodate the sole initializer on CUDA
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
+#endif
+
+  // no shrinkages should have occurred during this time (sanity check)
+  ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
+
+  auto allocated_memory_before_run = alloc_stats.total_allocated_bytes;
+
+  {
+    // First Run - no shrinkage
+    RunOptions run_options_1;
+    RunModel(session_object, run_options_1);
+
+    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+
+    // The arena would have made 2 more extensions as part of servicing memory requests within Run()
+    // 1) - To take the solitary feed to cuda memory
+    // 2) - Allocate output of the solitary node
+#ifdef ENABLE_TRAINING
+    // In training - that is a total of 2 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+#else
+    // In inferencing - that is a total of 3 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+#endif
+
+    // Assert that there have been no shrinkages after this Run()
+    ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
+  }
+
+  {
+    // Second Run - with shrinkage
+    RunOptions run_options_2;
+    ASSERT_STATUS_OK(run_options_2.config_options.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage,
+                                                                 "gpu:0"));
+    RunModel(session_object, run_options_2);
+
+    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+
+    // The arena would have made no extensions in this Run() as the freed memory after the first Run()
+    // will be re-used
+
+#ifdef ENABLE_TRAINING
+    // In training - that is a total of 2 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+#else
+    // In inferencing - that is a total of 3 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+#endif
+
+    // The arena would have shrunk both extensions it made as part of Run() - because these allocations
+    // would have been left unused after this Run()
+    // (The allocation for the sole initializer will not be shrunk as it is still being "used" by the session)
+    ASSERT_EQ(alloc_stats.num_arena_shrinkages, 2);
+  }
+
+  // Assert that allocated memory before and after Run() are the same
+  // Because any memory allocated during Run would have been de-allocated as pat of the shrinkage
+  auto allocated_memory_after_run = alloc_stats.total_allocated_bytes;
+  ASSERT_EQ(allocated_memory_before_run, allocated_memory_after_run);
 }
 
 #endif
@@ -2218,7 +2367,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed) {
   so.use_per_session_threads = true;
 
   so.session_logid = "CheckIfPerSessionThreadPoolsAreBeingUsed";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2257,7 +2406,7 @@ TEST(InferenceSessionTests, CheckIfGlobalThreadPoolsAreBeingUsed) {
   so.use_per_session_threads = false;
 
   so.session_logid = "CheckIfGlobalThreadPoolsAreBeingUsed";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2295,7 +2444,7 @@ TEST(InferenceSessionTests, CheckIfPerSessionThreadPoolsAreBeingUsed2) {
   so.use_per_session_threads = true;
 
   so.session_logid = "CheckIfPerSessionThreadPoolsAreBeingUsed2";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2342,7 +2491,7 @@ TEST(InferenceSessionTests, InvalidSessionEnvCombination) {
   so.use_per_session_threads = false;
 
   so.session_logid = "InvalidSessionEnvCombination";
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2375,7 +2524,7 @@ class InferenceSessionTestSharingAllocator : public InferenceSessionWrapper {
 
 // Ensure sessions use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllocator) {
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2384,12 +2533,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2398,13 +2547,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  ASSERT_STATUS_OK(so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  ASSERT_STATUS_OK(so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2420,7 +2569,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
 
 // Ensure sessions don't use the same allocator. It uses ORT created allocator.
 TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreatedAllocator) {
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2429,12 +2578,12 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_TRUE(st.IsOK());
   // create allocator to register with the env
   bool use_arena = true;
-#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) || defined(USE_MIMALLOC)
   use_arena = false;
 #endif
   OrtMemoryInfo mem_info{onnxruntime::CPU, use_arena ? OrtArenaAllocator : OrtDeviceAllocator};
   AllocatorCreationInfo device_info{
-      [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+      [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
   AllocatorPtr allocator_ptr = CreateAllocator(device_info);
@@ -2443,13 +2592,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  ASSERT_STATUS_OK(so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "0");
+  ASSERT_STATUS_OK(so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "0"));
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2472,7 +2621,7 @@ class InferenceSessionTestSharingInitializer : public InferenceSessionWrapper {
 };
 
 TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitializer) {
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2490,7 +2639,7 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
   CreateMLValue<float>(allocator, {3, 2}, input_data_vec, &val_to_share_from_allocator);
 
   OrtMemoryInfo mem_info{CPU, OrtArenaAllocator};
-  CreateMLValue<float>({3, 2}, input_data_vec.data(), mem_info, &val_to_share);
+  CreateMLValue<float>(std::array<int64_t, 2>{3, 2}, input_data_vec.data(), mem_info, &val_to_share);
 
   // create sessions to share the allocator
   SessionOptions so1;
@@ -2546,7 +2695,7 @@ TEST(InferenceSessionTests, InitializerSharing_EnsureSessionsUseUserAddedInitial
 void RunModelWithDenormalAsZero(InferenceSession& session_object,
                                 const RunOptions& run_options,
                                 bool set_denormal_as_zero) {
-  const float denormal_float = 1e-38f;
+  constexpr float denormal_float = 1e-38f;
 
   // prepare input X
   std::vector<int64_t> dims_mul{3, 2};
@@ -2581,9 +2730,9 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
 
 void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp,
                                         bool set_denormal_as_zero) {
-  const int num_tasks = 4;
-  const float denormal_float = 1e-38f;
-  const double denormal_double = 1e-308;
+  constexpr int num_tasks = 4;
+  constexpr float denormal_float = 1e-38f;
+  constexpr double denormal_double = 1e-308;
 
   std::array<float, num_tasks> input_float;
   input_float.fill(denormal_float);
@@ -2609,7 +2758,7 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
     return;
   }
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2623,18 +2772,15 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   ASSERT_TRUE(st.IsOK());
 
   SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1"));
   so.use_per_session_threads = false;
 
   std::string configValue;
-  so.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue);
+  ASSERT_TRUE(so.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue));
   EXPECT_EQ(configValue, "1");
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session{so, *env};
@@ -2646,15 +2792,10 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(env->GetIntraOpThreadPool(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(env->GetInterOpThreadPool(), true);
 
   // Set back to default.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 }
 
@@ -2665,7 +2806,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
     return;
   }
 
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<ISink>(new CLogSink()), logging::Severity::kVERBOSE, false,
       LoggingManager::InstanceType::Temporal);
 
@@ -2678,13 +2819,10 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // inference session without denormal as zero.
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
   // inference session with denormal as zero
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1"));
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(true);
-#endif
   SetDenormalAsZero(true);
 
   InferenceSessionTestGlobalThreadPools session1{so, *env};
@@ -2696,19 +2834,14 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   run_options.run_log_severity_level = static_cast<int>(Severity::kVERBOSE);
   RunModelWithDenormalAsZero(session1, run_options, true);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session1.GetIntraOpThreadPoolToUse(), true);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
 
   // inference session without denormal as zero.
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0"));
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
-#ifdef _OPENMP
-  InitializeWithDenormalAsZero(false);
-#endif
   SetDenormalAsZero(false);
 
   InferenceSessionTestGlobalThreadPools session2{so, *env};
@@ -2718,9 +2851,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // Since it's parallel, it runs on threads.
   RunModelWithDenormalAsZero(session2, run_options, false);
 
-#ifndef _OPENMP
   VerifyThreadPoolWithDenormalAsZero(session2.GetIntraOpThreadPoolToUse(), false);
-#endif
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 

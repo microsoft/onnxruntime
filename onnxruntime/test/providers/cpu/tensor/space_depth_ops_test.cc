@@ -10,9 +10,9 @@ namespace test {
 
 TEST(TensorOpTest, SpaceToDepthTest_1) {
   OpTester test("SpaceToDepth");
-  const int64_t blocksize = 2;
+  constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
-  const int64_t N = 1, C = 2, H = 2, W = 4;
+  constexpr int64_t N = 1, C = 2, H = 2, W = 4;
   const std::vector<float> X =
       {0.0f, 0.1f, 0.2f, 0.3f,
        1.0f, 1.1f, 1.2f, 1.3f,
@@ -38,11 +38,41 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
   test.Run();
 }
 
+TEST(TensorOpTest, SpaceToDepthTest_1_double) {
+  OpTester test("SpaceToDepth");
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  constexpr int64_t N = 1, C = 2, H = 2, W = 4;
+  const std::vector<double> X =
+      {0.0, 0.1, 0.2, 0.3,
+       1.0, 1.1, 1.2, 1.3,
+
+       2.0, 2.1, 2.2, 2.3,
+       3.0, 3.1, 3.2, 3.3};
+
+  test.AddInput<double>("input", {N, C, H, W}, X);
+
+  const std::vector<double> result = {
+      0.0, 0.2,
+      2.0, 2.2,
+
+      0.1, 0.3,
+      2.1, 2.3,
+
+      1.0, 1.2,
+      3.0, 3.2,
+
+      1.1, 1.3,
+      3.1, 3.3};
+
+  test.AddOutput<double>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
+  test.Run();
+}
 TEST(TensorOpTest, SpaceToDepthTest_2) {
   OpTester test("SpaceToDepth");
-  const int64_t blocksize = 3;
+  constexpr int64_t blocksize = 3;
   test.AddAttribute("blocksize", blocksize);
-  const int64_t N = 2, C = 3, H = 3, W = 6;
+  constexpr int64_t N = 2, C = 3, H = 3, W = 6;
   const std::vector<float> X = {
       0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.,
       11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21.,
@@ -73,11 +103,11 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_1) {
-  OpTester test("DepthToSpace", 7); // create an opset 7 model
-  const int64_t blocksize = 2;
+  OpTester test("DepthToSpace", 7);  // create an opset 7 model
+  constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
 
-  const int64_t N = 1, C = 8, H = 1, W = 2;
+  constexpr int64_t N = 1, C = 8, H = 1, W = 2;
   const std::vector<float> X = {
       0.0f, 0.2f,
       2.0f, 2.2f,
@@ -103,12 +133,42 @@ TEST(TensorOpTest, DepthToSpaceTest_1) {
   test.Run();
 }
 
-TEST(TensorOpTest, DepthToSpaceTest_2) {
-  OpTester test("DepthToSpace", 7); // create an opset 7 model
-  const int64_t blocksize = 2;
+TEST(TensorOpTest, DepthToSpaceTest_1_double) {
+  OpTester test("DepthToSpace", 7);  // create an opset 7 model
+  constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
 
-  const int64_t N = 2, C = 12, H = 3, W = 2;
+  constexpr int64_t N = 1, C = 8, H = 1, W = 2;
+  const std::vector<double> X = {
+      0.0, 0.2,
+      2.0, 2.2,
+
+      0.1, 0.3,
+      2.1, 2.3,
+
+      1.0, 1.2,
+      3.0, 3.2,
+
+      1.1, 1.3,
+      3.1, 3.3};
+
+  test.AddInput<double>("input", {N, C, H, W}, X);
+
+  const std::vector<double> result =
+      {0.0, 0.1, 0.2, 0.3,
+       1.0, 1.1, 1.2, 1.3,
+
+       2.0, 2.1, 2.2, 2.3,
+       3.0, 3.1, 3.2, 3.3};
+  test.AddOutput<double>("output", {N, C / (blocksize * blocksize), H * blocksize, W * blocksize}, result);
+  test.Run();
+}
+TEST(TensorOpTest, DepthToSpaceTest_2) {
+  OpTester test("DepthToSpace", 7);  // create an opset 7 model
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+
+  constexpr int64_t N = 2, C = 12, H = 3, W = 2;
   const std::vector<float> X = {
       0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.,
       11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21.,
@@ -148,10 +208,10 @@ TEST(TensorOpTest, DepthToSpaceTest_2) {
 
 TEST(TensorOpTest, DepthToSpaceTest_3) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with missing default attribute
-  const int64_t blocksize = 2;
+  constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
 
-  const int64_t N = 2, C = 12, H = 3, W = 2;
+  constexpr int64_t N = 2, C = 12, H = 3, W = 2;
   const std::vector<float> X = {
       0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.,
       11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21.,
@@ -191,11 +251,11 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
 
 TEST(TensorOpTest, DepthToSpaceTest_4) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "DCR" mode
-  const int64_t blocksize = 2;
+  constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
   test.AddAttribute("mode", "DCR");
 
-  const int64_t N = 2, C = 12, H = 3, W = 2;
+  constexpr int64_t N = 2, C = 12, H = 3, W = 2;
   const std::vector<float> X = {
       0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.,
       11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21.,
@@ -235,11 +295,11 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
 
 TEST(TensorOpTest, DepthToSpaceTest_5) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "CRD" mode
-  const int64_t blocksize = 2;
+  constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
   test.AddAttribute("mode", "CRD");
 
-  const int64_t N = 1, C = 4, H = 2, W = 3;
+  constexpr int64_t N = 1, C = 4, H = 2, W = 3;
   const std::vector<float> X = {0., 1., 2.,
                                 3., 4., 5.,
                                 9., 10., 11.,
@@ -254,7 +314,7 @@ TEST(TensorOpTest, DepthToSpaceTest_5) {
   const std::vector<float> result = {0., 9., 1., 10., 2., 11.,
                                      18., 27., 19., 28., 20., 29.,
                                      3., 12., 4., 13., 5., 14.,
-                                    21., 30., 22., 31., 23., 32.};
+                                     21., 30., 22., 31., 23., 32.};
 
   test.AddOutput<float>("output", {1, 1, 4, 6}, result);
   test.Run();

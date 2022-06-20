@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/math/bias_softmax.h"
-
-#include "core/providers/common.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
@@ -25,7 +24,7 @@ void DispatchBiasSoftmaxForwardImpl(
     int bias_broadcast_size_per_batch);
 
 template <typename T>
-void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
     cudaStream_t stream,
     cudnnHandle_t cudaDnnHandle,
     int element_count,
@@ -43,7 +42,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
     BiasSoftmax);
 
 Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
@@ -69,7 +68,8 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
     t_disp.Invoke<DispatchBiasSoftmaxForward>(Stream(), Y, X, B, D, N, D, broadcast_size);
   } else {
     // need to fallback to add kernel + CUDA DNN library softmax call :/
-    t_disp.Invoke<DispatchBiasSoftMaxForwardViaDnnLibrary>(Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y);
+    ORT_RETURN_IF_ERROR((t_disp.InvokeRet<Status, DispatchBiasSoftMaxForwardViaDnnLibrary>(
+        Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y)));
   }
 
   return Status::OK();
@@ -77,50 +77,50 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
 
 template <typename T>
 void DispatchBiasSoftmaxForward<T>::operator()(
-      cudaStream_t stream,
-      Tensor* output,
-      const Tensor* input,
-      const Tensor* input_bias,
-      int element_count,
-      int batch_count,
-      int batch_stride,
-      int bias_broadcast_size_per_batch) {
-    DispatchBiasSoftmaxForwardImpl<T>(
-        stream,
-        output,
-        input,
-        input_bias,
-        element_count,
-        batch_count,
-        batch_stride,
-        bias_broadcast_size_per_batch);
+    cudaStream_t stream,
+    Tensor* output,
+    const Tensor* input,
+    const Tensor* input_bias,
+    int element_count,
+    int batch_count,
+    int batch_stride,
+    int bias_broadcast_size_per_batch) {
+  DispatchBiasSoftmaxForwardImpl<T>(
+      stream,
+      output,
+      input,
+      input_bias,
+      element_count,
+      batch_count,
+      batch_stride,
+      bias_broadcast_size_per_batch);
 }
 
 template <typename T>
-void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
-      cudaStream_t stream,
-      cudnnHandle_t cudaDnnHandle,
-      int element_count,
-      int batch_count,
-      int broadcast_axis,
-      int softmax_axis,
-      const onnxruntime::TensorShape& X_shape,
-      const onnxruntime::Tensor* X,
-      const onnxruntime::TensorShape& B_shape,
-      const onnxruntime::Tensor* B,
-      onnxruntime::Tensor* Y) {
-    DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>(
-        stream,
-        cudaDnnHandle,
-        element_count,
-        batch_count,
-        broadcast_axis,
-        softmax_axis,
-        X_shape,
-        X,
-        B_shape,
-        B,
-        Y);
+Status DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
+    cudaStream_t stream,
+    cudnnHandle_t cudaDnnHandle,
+    int element_count,
+    int batch_count,
+    int broadcast_axis,
+    int softmax_axis,
+    const onnxruntime::TensorShape& X_shape,
+    const onnxruntime::Tensor* X,
+    const onnxruntime::TensorShape& B_shape,
+    const onnxruntime::Tensor* B,
+    onnxruntime::Tensor* Y) {
+  return DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>(
+      stream,
+      cudaDnnHandle,
+      element_count,
+      batch_count,
+      broadcast_axis,
+      softmax_axis,
+      X_shape,
+      X,
+      B_shape,
+      B,
+      Y);
 }
 
 }  // namespace cuda

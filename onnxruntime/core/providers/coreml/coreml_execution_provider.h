@@ -20,9 +20,6 @@ class CoreMLExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
-  // we implement the Compile that takes FusedNodeAndGraph instances
-  FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -34,6 +31,8 @@ class CoreMLExecutionProvider : public IExecutionProvider {
 
  private:
   // <fused_node_name, <coreml_model_file_path, compiled_coreml_model>>
+  #ifdef __APPLE__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
+  #endif
 };
 }  // namespace onnxruntime

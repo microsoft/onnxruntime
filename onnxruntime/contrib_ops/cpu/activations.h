@@ -67,7 +67,7 @@ class Gelu : public OpKernel {
 
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
     int64_t elem_count = input->Shape().Size();
-    static const int64_t length_per_task = 4096;  // this number comes from FastGelu.
+    constexpr int64_t length_per_task = 4096;  // this number comes from FastGelu.
     int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
     concurrency::ThreadPool::TryBatchParallelFor(
         tp, static_cast<int32_t>(task_count),

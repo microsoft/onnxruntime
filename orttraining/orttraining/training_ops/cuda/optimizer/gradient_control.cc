@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gradient_control.h"
+#include "gradient_control_impl.h"
+
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "common.h"
-#include "gradient_control.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -17,9 +19,9 @@ namespace cuda {
       1,                                                                            \
       T##_##T_GRAD,                                                                 \
       kCudaExecutionProvider,                                                       \
-      KernelDefBuilder()                                                            \
+      (*KernelDefBuilder::Create())                                                 \
           .Alias(0, 0)                            /* Accumulate tensors in-place */ \
-          .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep do_update in CPU */       \
+          .InputMemoryType(OrtMemTypeCPUInput, 2) /* Keep do_update in CPU */       \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                    \
           .TypeConstraint("T_GRAD", DataTypeImpl::GetTensorType<T_GRAD>()),         \
       InPlaceAccumulator<T, T_GRAD>);
@@ -28,11 +30,9 @@ REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, float)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, MLFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(MLFloat16, MLFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(MLFloat16, float)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(float, BFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(BFloat16, BFloat16)
 REGISTER_IN_PLACE_TENSOR_ACCUMULATOR_TYPED(BFloat16, float)
-#endif
 
 template <typename T>
 Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -54,7 +54,7 @@ Status ZeroGradient<T>::ComputeInternal(OpKernelContext* ctx) const {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .Alias(0, 0) /* Zero out gradients in-place */          \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),  \

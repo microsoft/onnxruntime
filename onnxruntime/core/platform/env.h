@@ -28,6 +28,7 @@ limitations under the License.
 #include "core/framework/callback.h"
 #include "core/platform/env_time.h"
 #include "core/platform/telemetry.h"
+#include "core/session/onnxruntime_c_api.h"
 
 #ifndef _WIN32
 #include <sys/types.h>
@@ -48,8 +49,13 @@ using FileOffsetType = off_t;
 
 class EnvThread {
  public:
-  virtual void OnCancel() = 0;
   virtual ~EnvThread() = default;
+
+ protected:
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
+  void* custom_thread_creation_options = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+  OrtCustomThreadHandle custom_thread_handle = nullptr;
 };
 
 // Parameters that are required to create a set of threads for a thread pool
@@ -68,6 +74,11 @@ struct ThreadOptions {
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
+
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
+  void* custom_thread_creation_options = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+  int dynamic_block_base_ = 0;
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
@@ -194,11 +205,13 @@ class Env {
   // loading a library.  The rules for determining the exact location of the
   // library are platform-specific and are not documented here.
   //
+  // global_symbols only has an effect on unix, where a value of true means to load with RTLD_GLOBAL vs RTLD_LOCAL
+  // 
   // On success, returns a handle to the library in "*handle" and returns
   // OK from the function.
   // Otherwise returns nullptr in "*handle" and an error status from the
   // function.
-  virtual common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const = 0;
+  virtual common::Status LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const = 0;
 
   virtual common::Status UnloadDynamicLibrary(void* handle) const = 0;
 

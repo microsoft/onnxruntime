@@ -9,6 +9,7 @@
 #include <iostream>
 #include <tuple>
 
+#include "core/common/profiler_common.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/ort_mutex.h"
 
@@ -49,9 +50,9 @@ class Profiler {
   void StartProfiling(const std::basic_string<T>& file_name);
 
   /*
-  Produce current time point for any profiling action.
+  Start profiling and return current time point.
   */
-  TimePoint Now() const;
+  TimePoint Start();
 
   /*
   Whether data collection and output from this profiler is enabled.
@@ -75,12 +76,6 @@ class Profiler {
   void EndTimeAndRecordEvent(EventCategory category,
                              const std::string& event_name,
                              const TimePoint& start_time,
-                             const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
-                             bool sync_gpu = false);
-
-  void EndTimeAndRecordEvent(EventCategory category,
-                             const std::string& event_name,
-                             const TimePoint& start_time, const TimePoint& end_time,
                              const std::initializer_list<std::pair<std::string, std::string>>& event_args = {},
                              bool sync_gpu = false);
 
@@ -113,15 +108,17 @@ class Profiler {
   static void SetGlobalMaxNumEvents(size_t new_max_num_events) {
     global_max_num_events_.store(new_max_num_events);
   }
+  
+  void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
+    if (ep_profiler) {
+      ep_profilers_.push_back(std::move(ep_profiler));
+      if (enabled_) {
+        ep_profilers_.back()->StartProfiling();
+      }
+    }
+  }
 
  private:
-  void EndTimeAndRecordEvent(EventCategory category,
-                             const std::string& event_name,
-                             long long duration,         //duration of the op
-                             long long time_from_start,  //time difference between op start time and profiler start time
-                             const std::initializer_list<std::pair<std::string, std::string>>& event_args,
-                             bool sync_gpu = false);
-
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
 
   /**
@@ -134,12 +131,21 @@ class Profiler {
   // Mutex controlling access to profiler data
   OrtMutex mutex_;
   bool enabled_{false};
+#if defined(__wasm__)
+  /*
+   * The simplest way to emit profiling data in WebAssembly is to print out to console,
+   * since browsers can't access to a file system directly.
+   * TODO: Consider MEMFS or IndexedDB instead of console.
+   */
+  std::ostream& profile_stream_{std::cout};
+#else
   std::ofstream profile_stream_;
+#endif
   std::string profile_stream_file_;
   const logging::Logger* session_logger_{nullptr};
   const logging::Logger* custom_logger_{nullptr};
   TimePoint profiling_start_time_;
-  std::vector<EventRecord> events_;
+  Events events_;
   bool max_events_reached{false};
   bool profile_with_logger_{false};
   const size_t max_num_events_{global_max_num_events_.load()};
@@ -147,6 +153,8 @@ class Profiler {
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
   static Profiler* instance_;
 #endif
+
+  std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
 };
 
 }  // namespace profiling

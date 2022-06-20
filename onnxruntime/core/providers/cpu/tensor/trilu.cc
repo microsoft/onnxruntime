@@ -21,7 +21,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double, int64_t>()),
     Trilu);
-} // namespace contrib
+
+}  // namespace contrib
 #endif
 
 ONNX_OPERATOR_KERNEL_EX(

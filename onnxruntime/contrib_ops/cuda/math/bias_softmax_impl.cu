@@ -6,13 +6,12 @@
 #include <limits>
 #include <algorithm>
 
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl_functors.cuh"
-#include "core/providers/cuda/math/softmax_impl.cuh"
+#include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 
 using namespace onnxruntime;
@@ -233,7 +232,7 @@ SPECIALIZED_BIAS_SOFTMAX_IMPL(MLFloat16)
 // For large element count we fall back to explicit Add kernel + CUDA DNN library
 // note: This is an unhappy path! There is no performance benefit for the fusion.
 template <typename T>
-void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
     cudaStream_t stream,
     cudnnHandle_t cudaDnnHandle,
     int element_count,
@@ -251,29 +250,31 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   const auto* B_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
   auto* Y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
+  int X_num_dim = static_cast<int>(X_shape.NumDimensions());
+
   // binary elementise kernel requires input pitches
-  TArray<int64_t> lhs_padded_strides(static_cast<int>(X_shape.NumDimensions()));
+  TArray<int64_t> lhs_padded_strides(X_num_dim);
   int64_t lhs_pitch = 1, rhs_pitch = 1;
-  for (int i = -1; i >= -(int)X_shape.NumDimensions(); i--) {
-    size_t positive_i = X_shape.NumDimensions() + i;
-    lhs_padded_strides[static_cast<int>(positive_i)] = lhs_pitch;
+  for (int i = -1; i >= -X_num_dim; i--) {
+    int positive_i = X_num_dim + i;
+    lhs_padded_strides[positive_i] = lhs_pitch;
     lhs_pitch *= X_shape[positive_i];
   }
 
   // set pitches for bias so it broadcasts along relevant dimensions
-  TArray<int64_t> rhs_padded_strides(static_cast<int>(X_shape.NumDimensions()));
-  for (int i = -1; i >= -(int)X_shape.NumDimensions(); i--) {
-    size_t positive_ix = X_shape.NumDimensions() + i;
-    size_t positive_ib = B_shape.NumDimensions() + i;
+  TArray<int64_t> rhs_padded_strides(X_num_dim);
+  for (int i = -1; i >= -X_num_dim; i--) {
+    int positive_ix = X_num_dim + i;
+    int positive_ib = static_cast<int>(B_shape.NumDimensions()) + i;
     if (broadcast_axis <= positive_ix && positive_ix < softmax_axis) {
-      rhs_padded_strides[static_cast<int>(positive_ix)] = 0;
+      rhs_padded_strides[positive_ix] = 0;
       continue;
     }
-    rhs_padded_strides[static_cast<int>(positive_ix)] = rhs_pitch;
+    rhs_padded_strides[positive_ix] = rhs_pitch;
     rhs_pitch *= B_shape[positive_ib];
   }
 
-  TArray<fast_divmod> fdm_output_strides(static_cast<int>(X_shape.NumDimensions()));
+  TArray<fast_divmod> fdm_output_strides(X_num_dim);
   //TODO: fast_divmod only supports int32
   for (int i = 0; i < fdm_output_strides.Size(); i++)
     fdm_output_strides[i] = fast_divmod(static_cast<int>(lhs_padded_strides[i]));
@@ -282,7 +283,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   // invoke elementwise add with broadcast kernel
   ::onnxruntime::cuda::BinaryElementWiseImpl(
       stream,
-      (int32_t)X_shape.NumDimensions(),
+      (int32_t)X_num_dim,
       &lhs_padded_strides,
       X_data,
       &rhs_padded_strides,
@@ -299,8 +300,8 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
   CudnnTensor input_tensor, output_tensor;
-  input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>());
-  output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>());
+  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
   cudnnSoftmaxForward(
       cudaDnnHandle,
       CUDNN_SOFTMAX_ACCURATE,
@@ -311,20 +312,22 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
       &beta,
       output_tensor,
       Y_data);
+
+  return Status::OK();
 }
 
-#define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                \
-  template void DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
-      cudaStream_t stream,                                      \
-      cudnnHandle_t cudaDnnHandle,                              \
-      int element_count,                                        \
-      int batch_count,                                          \
-      int broadcast_axis,                                       \
-      int softmax_axis,                                         \
-      const onnxruntime::TensorShape& X_shape,                  \
-      const Tensor* X_data,                                     \
-      const onnxruntime::TensorShape& B_shape,                  \
-      const Tensor* B_data,                                     \
+#define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                  \
+  template Status DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
+      cudaStream_t stream,                                        \
+      cudnnHandle_t cudaDnnHandle,                                \
+      int element_count,                                          \
+      int batch_count,                                            \
+      int broadcast_axis,                                         \
+      int softmax_axis,                                           \
+      const onnxruntime::TensorShape& X_shape,                    \
+      const Tensor* X_data,                                       \
+      const onnxruntime::TensorShape& B_shape,                    \
+      const Tensor* B_data,                                       \
       Tensor* Y_data);
 
 SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(double)

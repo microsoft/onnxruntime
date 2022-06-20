@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/math/isfinite.h"
+#include "isfinite_impl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -15,7 +16,7 @@ namespace cuda {
       1,                                                             \
       T,                                                             \
       kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
+      (*KernelDefBuilder::Create())                                  \
           .TypeConstraint("V", DataTypeImpl::GetTensorType<T>())     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()), \
       IsAllFiniteOp<T>);

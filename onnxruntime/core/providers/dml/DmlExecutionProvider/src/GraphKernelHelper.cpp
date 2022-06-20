@@ -29,17 +29,17 @@ namespace GraphKernelHelper
                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
         Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice;
-        THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+        ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-        THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             nullptr,
-            IID_PPV_ARGS(buffer.GetAddressOf())));
+            IID_GRAPHICS_PPV_ARGS(buffer.GetAddressOf())));
 
-        THROW_IF_FAILED(provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
+        ORT_THROW_IF_FAILED(provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
 
         return buffer;
     }
@@ -67,20 +67,20 @@ namespace GraphKernelHelper
                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
         Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice;
-        THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+        ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-        THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             nullptr,
-            IID_PPV_ARGS(buffer.GetAddressOf())));
+            IID_GRAPHICS_PPV_ARGS(buffer.GetAddressOf())));
 
         // Map the buffer and copy the data
         void* bufferData = nullptr;
         D3D12_RANGE range = {0, tensorByteSize};
-        THROW_IF_FAILED(buffer->Map(0, &range, &bufferData));
+        ORT_THROW_IF_FAILED(buffer->Map(0, &range, &bufferData));
         memcpy(bufferData, tensorPtr, tensorByteSize);
         buffer->Unmap(0, &range);
 
@@ -99,17 +99,17 @@ namespace GraphKernelHelper
 
         *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnk, 0);
 
-        THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
+        ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
     }
 
     bool GetGraphInputConstness(
         uint32_t index,
         const onnxruntime::OpKernelInfo& kernelInfo,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap) 
     {
         // Transferred initializers are uploaded to GPU memory
-        auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[index]->Name()));
+        auto iter = transferredInitializerMap.find(fusedNodeInputArgOriginalNames[index]);
         if (iter != transferredInitializerMap.end())
         {
             return true;
@@ -139,13 +139,13 @@ namespace GraphKernelHelper
         const std::vector<uint8_t>& inputsConstant,
         const onnxruntime::OpKernelInfo& kernelInfo,
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         _Out_ std::vector<bool>& inputsUsed,
-        _Out_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
-        _Out_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
-        _Out_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
-        _Out_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
-        _Out_opt_ std::vector<std::vector<std::byte>>* inputRawData,
+        _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
+        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
+        _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
+        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
+        _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData,
         _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap)
     {
         const uint32_t graphInputCount = kernelInfo.GetInputCount();
@@ -154,7 +154,7 @@ namespace GraphKernelHelper
         std::map<const onnx::TensorProto*, uint32_t> initializerToLastInputIndexMap;
         for (uint32_t i = 0; i < graphInputCount; i++) 
         {
-            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
+            auto iter = transferredInitializerMap.find(fusedNodeInputArgOriginalNames[i]);
             if (iter != transferredInitializerMap.end()) {
                 initializerToLastInputIndexMap[&iter->second] = i;
             }
@@ -172,7 +172,7 @@ namespace GraphKernelHelper
             // initialization or execution). So just throw away the transferred initializer and skip this input.
             if (!inputsUsed[i])
             {
-                transferredInitializerMap.erase(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
+                transferredInitializerMap.erase(fusedNodeInputArgOriginalNames[i]);
 
                 if (inputRawData)
                 {
@@ -183,7 +183,7 @@ namespace GraphKernelHelper
             }
 
             // Look for the initializer among those transferred from the graph during partitioning
-            auto iter = transferredInitializerMap.find(GetFusedNodeArgNameMatchingGraph(fusedNodeInputDefs[i]->Name()));
+            auto iter = transferredInitializerMap.find(fusedNodeInputArgOriginalNames[i]);
             if (iter != transferredInitializerMap.end())
             {
                 std::byte* tensorPtr = nullptr;
@@ -248,7 +248,7 @@ namespace GraphKernelHelper
             else if (inputsConstant[i])
             {                
                 const onnxruntime::Tensor* inputTensor = nullptr;
-                THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
+                ORT_THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
 
                 const std::byte* tensorData = reinterpret_cast<const std::byte*>(inputTensor->DataRaw());
 
@@ -279,11 +279,11 @@ namespace GraphKernelHelper
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const onnxruntime::OpKernelInfo& kernelInfo,
-        _Out_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
-        _Out_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
-        _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
-        _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
-        _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
+        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+        _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
     {
         const uint32_t graphInputCount = kernelInfo.GetInputCount();
 
@@ -319,44 +319,6 @@ namespace GraphKernelHelper
         dmlGraphDesc.OutputEdges = dmlOutputEdges.data();
         dmlGraphDesc.IntermediateEdgeCount = gsl::narrow_cast<uint32_t>(dmlIntermediateEdges.size());
         dmlGraphDesc.IntermediateEdges = dmlIntermediateEdges.data();
-    }
-
-    // TODO: This is a hack which strips the suffix added within Lotus transforms that insert mem copies.
-    // This shouldn't be necessary if Lotus exposes the inputs/ouputs in the same order between the kernel
-    // for a function, and the graph for that function exposed as a kernel property.  When the ordering 
-    // mismatch is fixed (WindowsAI: 21114358, Lotus: 1953), this workaround should be removed.
-    std::string GetFusedNodeArgNameMatchingGraph(const std::string& fusedNodeArgeName)
-    {
-        const char* suffix = nullptr;
-        
-        // The suffix used when inserting mem copies is equal to the below, probably followed by an incrementing number.
-        if (!suffix) 
-        {
-            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider_");
-        }
-
-        // The suffix used when inserting mem copies is equal to the below, not followed by an incrementing number.
-        if (!suffix) 
-        {
-            suffix = strstr(fusedNodeArgeName.c_str(), "_DmlExecutionProvider");
-        }
-        
-        if (!suffix) 
-        {
-            suffix = strstr(fusedNodeArgeName.c_str(), "_token_");
-        }
-
-        if (suffix)
-        {
-            return std::string(
-                fusedNodeArgeName.begin(),
-                fusedNodeArgeName.begin() + (suffix - fusedNodeArgeName.c_str())
-            );
-        } 
-        else 
-        {
-            return fusedNodeArgeName;
-        }
     }
 }  // namespace GraphKernelHelper
 }  // namespace Dml

@@ -3,42 +3,52 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/op_node_proto_helper.h"
 #include "core/providers/common.h"
 #include "core/util/math.h"
+#endif
+
+#include "core/common/inlined_containers.h"
+#include "core/framework/op_node_proto_helper.h"
 
 namespace onnxruntime {
 
 // A helper struct holding attributes for Conv-family ops
 struct ConvAttributes {
-  explicit ConvAttributes(const OpNodeProtoHelper<ProtoHelperNodeContext>& info) {
+  using ConvPadVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
+
+  explicit ConvAttributes(const OpKernelInfo& info) {
     std::string auto_pad_str;
     auto status = info.GetAttr<std::string>("auto_pad", &auto_pad_str);
     if (status.IsOK()) {
       auto_pad = StringToAutoPadType(auto_pad_str);
     }
 
-    kernel_shape_specified = info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK();
+    kernel_shape_specified = info.GetAttrs("kernel_shape", kernel_shape_).IsOK();
 
-    status = info.GetAttrs<int64_t>("strides", strides);
-    if (!status.IsOK() || strides.empty()) {
+    status = info.GetAttrs("strides", strides);
+    if (kernel_shape_specified && (!status.IsOK() || strides.empty())) {
       strides.resize(kernel_shape_.size(), 1);
     }
 
-    status = info.GetAttrs<int64_t>("pads", pads);
+    gsl::span<const int64_t> pads_span;
+    status = info.GetAttrsAsSpan("pads", pads_span);
     if (!status.IsOK()) {
-      // If pads are not explicitly provided, fill the container with all zeros
-      // so that we can compute and fill in pad values downstream
-      pads.resize(kernel_shape_.size() * 2, 0);
+      if (kernel_shape_specified) {
+        // If pads are not explicitly provided, fill the container with all zeros
+        // so that we can compute and fill in pad values downstream
+        pads.resize(kernel_shape_.size() * 2, 0);
+      }
     } else {
       // Pads are explicitly provided, make sure that auto_pad is NOTSET
       ORT_ENFORCE(auto_pad == AutoPadType::NOTSET,
                   "A Conv/ConvTranspose node has both 'auto_pad' and 'pads' attributes");
+      pads.assign(pads_span.cbegin(), pads_span.cend());
     }
 
-    status = info.GetAttrs<int64_t>("dilations", dilations);
-    if (!status.IsOK() || dilations.empty()) {
+    status = info.GetAttrs("dilations", dilations);
+    if (kernel_shape_specified && (!status.IsOK() || dilations.empty())) {
       dilations.resize(kernel_shape_.size(), 1);
     }
 
@@ -54,16 +64,16 @@ struct ConvAttributes {
     ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_pad_str).IsOK());
     auto_pad = StringToAutoPadType(auto_pad_str);
     ORT_ENFORCE(info.GetAttr<int64_t>("group", &group).IsOK());
-    ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape_).IsOK());
-    ORT_ENFORCE(info.GetAttrs<int64_t>("strides", strides).IsOK());
-    ORT_ENFORCE(info.GetAttrs<int64_t>("pads", pads).IsOK());
-    ORT_ENFORCE(info.GetAttrs<int64_t>("dilations", dilations).IsOK());
+    ORT_ENFORCE(info.GetAttrs("kernel_shape", kernel_shape_).IsOK());
+    ORT_ENFORCE(info.GetAttrs("strides", strides).IsOK());
+    ORT_ENFORCE(info.GetAttrs("pads", pads).IsOK());
+    ORT_ENFORCE(info.GetAttrs("dilations", dilations).IsOK());
 #endif
   }
 
   ~ConvAttributes() = default;
 
-  Status ComputeKernelShape(const TensorShape& weight_shape, std::vector<int64_t>& kernel_shape) const {
+  Status ComputeKernelShape(const TensorShape& weight_shape, TensorShapeVector& kernel_shape) const {
     if (kernel_shape_specified) {
       kernel_shape = kernel_shape_;
       if (kernel_shape.size() + 2 != weight_shape.NumDimensions()) {
@@ -79,8 +89,8 @@ struct ConvAttributes {
         }
       }
     } else {
-      auto& weight_dims = weight_shape.GetDims();
-      kernel_shape = std::vector<int64_t>(weight_dims.begin() + 2, weight_dims.end());
+      auto weight_dims = weight_shape.GetDims();
+      kernel_shape.assign(weight_dims.begin() + 2, weight_dims.end());
     }
 
     return Status::OK();
@@ -117,13 +127,13 @@ struct ConvAttributes {
     return ValidateInputShape(input->Shape(), weight->Shape());
   }
 
-  Status InferOutputShape(const TensorShape& input_shape,
-                          const std::vector<int64_t>& kernel_shape,
-                          const std::vector<int64_t>& strides_p,
-                          const std::vector<int64_t>& dilations_p,
-                          std::vector<int64_t>& pads_p,
-                          std::vector<int64_t>& output_shape,
-                          bool force_symmetric_auto_padding = false) const {
+  Status InferPadsAndOutputShape(const TensorShape& input_shape,
+                                 const gsl::span<const int64_t>& kernel_shape,
+                                 const gsl::span<const int64_t>& strides_p,
+                                 const gsl::span<const int64_t>& dilations_p,
+                                 ConvPadVector& pads_p,
+                                 TensorShapeVector& output_shape,
+                                 bool force_symmetric_auto_padding = false) const {
     size_t rank = input_shape.NumDimensions();
 
     // Make sure all "metadata" containers have the right number of elements
@@ -150,8 +160,7 @@ struct ConvAttributes {
                                                    kernel_shape[dim],
                                                    dilations_p[dim],
                                                    auto_pad,
-                                                   pads_p.at(dim),
-                                                   pads_p.at(input_shape.NumDimensions() + dim),
+                                                   pads_p[dim], pads_p[rank + dim],
                                                    output_dim_size,
                                                    force_symmetric_auto_padding));
       if (output_dim_size <= 0) {
@@ -166,16 +175,16 @@ struct ConvAttributes {
   // and to collect metadata regarding the portion of the output (with "adjusted" pads)
   // to be sliced off to make the output correspond to the "actual" asymmetric paddings
   Status InferOutputShapeWithAdjustedPads(const TensorShape& input_shape,
-                                          const std::vector<int64_t>& kernel_shape,
-                                          const std::vector<int64_t>& strides_p,
-                                          const std::vector<int64_t>& dilations_p,
-                                          std::vector<int64_t>& pads_p,
-                                          std::vector<int64_t>& output_shape,
-                                          std::vector<int64_t>& output_shape_with_revised_pads,
+                                          const gsl::span<const int64_t>& kernel_shape,
+                                          const gsl::span<const int64_t>& strides_p,
+                                          const gsl::span<const int64_t>& dilations_p,
+                                          ConvPadVector& pads_p,
+                                          TensorShapeVector& output_shape,
+                                          TensorShapeVector& output_shape_with_revised_pads,
                                           bool& post_slicing_needed,
-                                          std::vector<int64_t>& slice_starts,
-                                          std::vector<int64_t>& slice_ends,
-                                          std::vector<int64_t>& slice_axes) const {
+                                          TensorShapeVector& slice_starts,
+                                          TensorShapeVector& slice_ends,
+                                          TensorShapeVector& slice_axes) const {
     size_t rank = input_shape.NumDimensions();
     // Make sure all "metadata" containers have the right number of elements
     if (rank > strides_p.size())
@@ -241,7 +250,7 @@ struct ConvAttributes {
           }
 
           post_slicing_needed = true;
-          slice_axes.push_back(dim + 2);
+          slice_axes.push_back(static_cast<int64_t>(dim) + 2);
           slice_starts.push_back(excess_output_head);
           slice_ends.push_back(excess_output_head + output_dim_size);                      // we may modify this below
           output_shape_with_revised_pads.push_back(excess_output_head + output_dim_size);  // we may modify this below
@@ -271,7 +280,7 @@ struct ConvAttributes {
               // Head has not been over-padded. Only tail pads need to be modified.
               post_slicing_needed = true;
 
-              slice_axes.push_back(dim + 2);
+              slice_axes.push_back(static_cast<int64_t>(dim) + 2);
               slice_starts.push_back(0);
               slice_ends.push_back(output_dim_size - revised_dim_size);
             }
@@ -297,14 +306,14 @@ struct ConvAttributes {
   AutoPadType auto_pad = AutoPadType::NOTSET;
   int64_t group;
   bool kernel_shape_specified;
-  std::vector<int64_t> strides;
-  std::vector<int64_t> pads;
-  std::vector<int64_t> dilations;
+  TensorShapeVector strides;
+  ConvPadVector pads;
+  TensorShapeVector dilations;
   std::string activation;
-  float alpha;
+  float alpha = 1.0f;
 
  private:
-  std::vector<int64_t> kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_
+  TensorShapeVector kernel_shape_;  // must use ComputeKernelShape(...), instead of kernel_shape_
 };
 
 }  // namespace onnxruntime

@@ -14,7 +14,11 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 /*
 ONNX_OPERATOR_SCHEMA(GRU)
     .SetDoc(R"DOC(
@@ -138,9 +142,18 @@ Equations (Default: f=Sigmoid, g=Tanh):
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GRU,
     7,
+    13,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+    DeepCpuGruOp);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    GRU,
+    14,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                             DataTypeImpl::GetTensorType<double>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
@@ -358,7 +371,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                                                          hidden_output_size_per_direction);
 
     detail::UniDirectionalGru<T> fw(alloc, seq_length, batch_size, input_size, hidden_size_,
-                                    linear_before_reset_, Direction::kForward, bias_1, initial_hidden_1,
+                                    linear_before_reset_ != 0, Direction::kForward, bias_1, initial_hidden_1,
                                     activation_funcs_.Entries()[0],
                                     activation_funcs_.Entries()[1],
                                     clip_, thread_pool);
@@ -366,7 +379,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                output_1, hidden_output_1);
 
     detail::UniDirectionalGru<T> bw(alloc, seq_length, batch_size, input_size, hidden_size_,
-                                    linear_before_reset_, Direction::kReverse, bias_2, initial_hidden_2,
+                                    linear_before_reset_ != 0, Direction::kReverse, bias_2, initial_hidden_2,
                                     activation_funcs_.Entries()[2],
                                     activation_funcs_.Entries()[3],
                                     clip_, thread_pool);
@@ -374,7 +387,7 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
                output_2, hidden_output_2);
   } else {
     detail::UniDirectionalGru<T> gru_p(alloc, seq_length, batch_size, input_size, hidden_size_,
-                                       linear_before_reset_, direction_, bias_1, initial_hidden_1,
+                                       linear_before_reset_ != 0, direction_, bias_1, initial_hidden_1,
                                        activation_funcs_.Entries()[0],
                                        activation_funcs_.Entries()[1],
                                        clip_, thread_pool);
@@ -635,7 +648,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       for (int r = 0; r < batch_size_; r++) {
         const T* p_bias_r = use_bias_ ? SafeRawConstPointer<T>(batched_bias_WRr_local + r * hidden_size_,
                                                                batched_bias_WRr_local_end, hidden_size_)
-          : nullptr;
+                                      : nullptr;
 
         // initialize p_rt with input to calculate rt. outputZRH_ has Xt*(Wr^T) + Ht-1*(Rr^T).
         T* p_rt = SafeRawPointer(outputZRH_, out_added_offset + r * hidden_size_x3 + hidden_size_, hidden_size_);
@@ -729,7 +742,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
 
         const T* p_bias_z = use_bias_ ? SafeRawConstPointer<T>(batched_bias_WRz_local,
                                                                batched_bias_WRz_local_end, hidden_size_)
-          : nullptr;
+                                      : nullptr;
 
         // initialize p_zt with Xt*(Wz^T) + Ht-1*(Rz^T), which is most of the input to calculate zt:
         T* p_zt = SafeRawPointer<T>(outputZRH_, out_added_offset + r * hidden_size_x3, hidden_size_);
@@ -779,7 +792,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
       prev_Ht = output;
       prev_Ht_end = output_end;
     }
-  } // End parallel section
+  }  // End parallel section
 
   // copy last output to final_hidden_state
   for (int i = 0; i < batch_size_; i++) {

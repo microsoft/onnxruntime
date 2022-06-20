@@ -1,0 +1,86 @@
+[
+  {
+    "name": "asin with no attributes",
+    "operator": "Asin",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [0.5],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.52359878],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[1]",
+        "inputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.10016742, 0.20135792, 0.30469265, 0.41151685],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[2,4]",
+        "inputs": [
+          {
+            "data": [0.1, 0.2, 0.3, 0.4, 0.9, 0.8, 0.7, 0.6],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              0.10016742,
+              0.20135792,
+              0.30469265,
+              0.41151685,
+              1.11976951,
+              0.92729522,
+              0.7753975,
+              0.64350111
+            ],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [0.1],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.10016742],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

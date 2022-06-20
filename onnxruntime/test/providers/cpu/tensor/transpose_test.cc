@@ -188,7 +188,7 @@ TEST(TransposeOpTest, TwoDimStr) {
 }
 
 // Test 3 dimensional transpose, with permutation attribute specified
-TEST(TransposeOpTest, ThreeDim) {
+TEST(TransposeOpTest, Transpose021) {
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<float> input_vals = {
       1.0f, 2.0f, 3.0f,
@@ -225,8 +225,38 @@ TEST(TransposeOpTest, ThreeDim) {
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
 }
 
+TEST(TransposeOpTest, Transpose120) {
+  std::vector<int64_t> input_shape({4, 2, 3});
+  std::vector<float> input_vals = {
+      1.0f, 2.0f, 3.0f,
+      4.0f, 5.0f, 6.0f,
+
+      1.1f, 2.1f, 3.1f,
+      4.1f, 5.1f, 6.1f,
+
+      1.2f, 2.2f, 3.2f,
+      4.2f, 5.2f, 6.2f,
+
+      1.3f, 2.3f, 3.3f,
+      4.3f, 5.3f, 6.3f};
+
+  std::vector<int64_t> perm = {1, 2, 0};
+  std::vector<int64_t> expected_shape({2, 3, 4});
+  auto expected_vals = {
+      1.0f, 1.1f, 1.2f, 1.3f,
+      2.0f, 2.1f, 2.2f, 2.3f,
+      3.0f, 3.1f, 3.2f, 3.3f,
+
+      4.0f, 4.1f, 4.2f, 4.3f,
+      5.0f, 5.1f, 5.2f, 5.3f,
+      6.0f, 6.1f, 6.2f, 6.3f
+     };
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);  //TensorRT: illegal error
+}
+
 // test when the suffix size is > 1 (last dimension is not moved)
-TEST(TransposeOpTest, ThreeDimSuffix) {
+TEST(TransposeOpTest, Transpose102) {
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<float> input_vals = {
       1.0f, 2.0f, 3.0f,
@@ -590,26 +620,34 @@ static void TestTranspose(
   test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
 }
 
-TEST(TransposeOpTest, Transpose0213) {
+TEST(TransposeOpTest, Transpose0213) {  // Will trigger Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim()
   const std::vector<int64_t> X_dims{64, 128, 16, 64};
   const std::vector<int64_t> perm{0, 2, 1, 3};
   const std::vector<int64_t> Y_dims{64, 16, 128, 64};
   TestTranspose(perm, X_dims, Y_dims);
 }
 
-TEST(TransposeOpTest, Transpose0231) {
+TEST(TransposeOpTest, Transpose0213_V2) {  // Will trigger Transpose4DParallelizeOneElementPerThread()
+  const std::vector<int64_t> X_dims{64, 128, 64, 2};
+  const std::vector<int64_t> perm{0, 2, 1, 3};
+  const std::vector<int64_t> Y_dims{64, 64, 128, 2};
+  TestTranspose(perm, X_dims, Y_dims);
+}
+
+TEST(TransposeOpTest, Transpose0231) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 2 and 3 into one dim
   const std::vector<int64_t> X_dims{64, 128, 16, 64};
   const std::vector<int64_t> perm{0, 2, 3, 1};
   const std::vector<int64_t> Y_dims{64, 16, 64, 128};
   TestTranspose(perm, X_dims, Y_dims);
 }
 
-TEST(TransposeOpTest, Transpose0312) {
+TEST(TransposeOpTest, Transpose0312) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 1 and 2 into one dim
   const std::vector<int64_t> X_dims{64, 16, 64, 128};
   const std::vector<int64_t> perm{0, 3, 1, 2};
   const std::vector<int64_t> Y_dims{64, 128, 16, 64};
   TestTranspose(perm, X_dims, Y_dims);
 }
+
 #endif
 
 }  // namespace test

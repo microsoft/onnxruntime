@@ -142,7 +142,7 @@ TEST(Unique, Axis0_Unsorted) {
                              0.f, 1.f,
                              1.f, 0.f};
 
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   bool sorted = false;
   const std::vector<int64_t> Y_dims{3, 2};
   const std::vector<float> Y{0.f, 1.f,
@@ -167,7 +167,7 @@ TEST(Unique, Axis0_Sorted) {
                              0.f, 1.f,
                              1.f, 0.f};
 
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   bool sorted = true;
   const std::vector<int64_t> Y_dims{3, 2};
   const std::vector<float> Y{0.f, 1.f,
@@ -192,7 +192,7 @@ TEST(Unique, Axis0_Unsorted_String) {
                                    "0.f", "1.f",
                                    "1.f", "0.f"};
 
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   bool sorted = false;
   const std::vector<int64_t> Y_dims{3, 2};
   const std::vector<std::string> Y{"0.f", "1.f",
@@ -222,7 +222,7 @@ TEST(Unique, Axis1_Unsorted) {
                               2, 1,
                               0, 1};
 
-  const int64_t axis = 1;
+  constexpr int64_t axis = 1;
   bool sorted = false;
   const std::vector<int64_t> Y_dims{2, 3, 2};
   const std::vector<int8_t> Y{1, 1,
@@ -256,7 +256,7 @@ TEST(Unique, Axis1_Sorted) {
                                2, 1,
                                0, 1};
 
-  const int64_t axis = 1;
+  constexpr int64_t axis = 1;
   bool sorted = true;
   const std::vector<int64_t> Y_dims{2, 3, 2};
   const std::vector<int64_t> Y{0, 1,
@@ -286,7 +286,7 @@ TEST(Unique, Axis2_Unsorted) {
                                1, 1, 0, 1,
                                2, 1, 0, 1};
 
-  const int64_t axis = 2;
+  constexpr int64_t axis = 2;
   bool sorted = false;
   const std::vector<int64_t> Y_dims{2, 2, 3};
   const std::vector<int64_t> Y{1, 1, 0,
@@ -314,7 +314,7 @@ TEST(Unique, Axis2_Sorted) {
                                1, 1, 0, 1,
                                2, 1, 0, 1};
 
-  const int64_t axis = 2;
+  constexpr int64_t axis = 2;
   bool sorted = true;
   const std::vector<int64_t> Y_dims{2, 2, 3};
   const std::vector<int64_t> Y{0, 1, 1,
@@ -335,7 +335,7 @@ TEST(Unique, Axis2_Sorted) {
 }
 
 TEST(Unique, InvalidAxis) {
-  const int64_t axis = 12;
+  constexpr int64_t axis = 12;
   const std::vector<int64_t> X_dims{2, 3};
   const std::vector<float> X{1.f, 4.f, 1.f, 2.f, 2.f, 0.f};
   const std::vector<int64_t> Y_dims{};

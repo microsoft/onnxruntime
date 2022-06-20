@@ -22,9 +22,9 @@ class TFModelInfo : public TestModelInfo {
   ~TFModelInfo() override = default;
 
   static std::unique_ptr<TestModelInfo> Create(_In_ const PATH_CHAR_TYPE* model_url);
+  TFModelInfo() = default;
 
  private:
-  TFModelInfo() = default;
   std::basic_string<PATH_CHAR_TYPE> model_url_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
     Inverse);
 
@@ -72,7 +72,7 @@ struct Inverse::ComputeImpl {
     using namespace inverse_internal;
     using CudaT = typename ToCudaType<T>::MappedType;
     const size_t input_count = static_cast<size_t>(input.Shape().Size());
-    auto info_cpu = onnxruntime::make_unique<int[]>(num_batches);
+    auto info_cpu = std::make_unique<int[]>(num_batches);
     const auto dim = static_cast<int>(rows);
     const auto n_batches = static_cast<int>(num_batches);
 
@@ -150,7 +150,7 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches, Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches * sizeof(int), Stream()));
   IAllocatorUniquePtr<int> pivots = GetScratchBuffer<int>(rows * num_batches);
 
   utils::MLTypeCallDispatcher<float, double, MLFloat16> t_disp(input->GetElementType());

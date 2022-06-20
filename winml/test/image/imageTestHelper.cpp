@@ -70,7 +70,7 @@ namespace ImageTestHelper {
         // else if()
         // TODO: for Gray8
         else {
-            std::cerr << "Unsupportted pixelFormat";
+            std::cerr << "Unsupported pixelFormat";
         }
         return tf;
     }
@@ -91,7 +91,7 @@ namespace ImageTestHelper {
         float* pCPUTensor;
         uint32_t uCapacity;
 
-        // CPU tensorization
+        // CPU tensor initialization
         TensorFloat tf = TensorFloat::Create(shape);
         com_ptr<ITensorNative> itn = tf.as<ITensorNative>();
         itn->GetBuffer(reinterpret_cast<BYTE**>(&pCPUTensor), &uCapacity);

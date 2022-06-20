@@ -15,7 +15,7 @@ Rewrite graph fusing Add + Layer Normalization subgraph to a single SkipLayerNor
 */
 class SkipLayerNormFusion : public GraphTransformer {
  public:
-  explicit SkipLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  explicit SkipLayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("SkipLayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

@@ -60,34 +60,4 @@ bool InsertSoftmaxCrossEntropyLossOutput::SatisfyCondition(const Graph& /*graph*
   return false;
 }
 
-Status AdjustBatchNormOutputs::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& /*logger*/) const {
-  auto& outputs = node.MutableOutputDefs();
-  const auto& inputs = node.InputDefs();
-  const NodeArg* scale_input_def = inputs[1];
-  auto scale_input_def_type_proto = scale_input_def->TypeAsProto();
-
-  NodeArg& running_mean_def = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("running_mean_def"), scale_input_def_type_proto);
-  NodeArg& running_var_def = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("running_var_def"), scale_input_def_type_proto);
-  NodeArg& saved_mean_def = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean_def"), scale_input_def_type_proto);
-  NodeArg& saved_var_def = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_var_def"), scale_input_def_type_proto);
-
-  outputs.push_back(&running_mean_def);
-  outputs.push_back(&running_var_def);
-  outputs.push_back(&saved_mean_def);
-  outputs.push_back(&saved_var_def);
-
-  // check Batch Normalization node has 5 output node args for training mode
-  ORT_ENFORCE(node.OutputDefs().size() == 5);
-
-  rule_effect = RewriteRuleEffect::kUpdatedCurrentNode;
-  return Status::OK();
-}
-
-bool AdjustBatchNormOutputs::SatisfyCondition(const Graph& /*graph*/, const Node& node, const logging::Logger& /*logger*/) const {
-  if (node.OutputDefs().size() == 1) {
-    return true;
-  }
-  return false;
-}
-
 }  // namespace onnxruntime

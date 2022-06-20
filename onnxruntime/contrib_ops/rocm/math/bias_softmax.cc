@@ -43,7 +43,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kRocmExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {
+    (*KernelDefBuilder::Create()).TypeConstraint("T", {
       DataTypeImpl::GetTensorType<float>(), 
       DataTypeImpl::GetTensorType<MLFloat16>()
     }),

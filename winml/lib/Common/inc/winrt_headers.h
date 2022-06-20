@@ -5,7 +5,7 @@
 
 #include "common.h"
 
-#include <winrt/windows.media.h>
+#include "winrt/windows.media.h"
 #include "winrt/windows.graphics.imaging.h"
 #include "winrt/windows.foundation.h"
 #include "winrt/windows.foundation.collections.h"

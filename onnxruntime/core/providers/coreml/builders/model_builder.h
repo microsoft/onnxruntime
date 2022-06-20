@@ -45,6 +45,7 @@ class ModelBuilder {
 
   std::unique_ptr<CoreML::Specification::Model> coreml_model_;
   std::unordered_set<std::string> scalar_outputs_;
+  std::unordered_set<std::string> int64_outputs_;
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
 
   std::unordered_set<std::string> skipped_initializers_;
@@ -69,6 +70,9 @@ class ModelBuilder {
 
   // Record the onnx scalar output names
   void AddScalarOutput(const std::string& output_name);
+
+  // Record the onnx int64 type output names
+  void AddInt64Output(const std::string& output_name);
 
   static const IOpBuilder* GetOpBuilder(const Node& node);
 };

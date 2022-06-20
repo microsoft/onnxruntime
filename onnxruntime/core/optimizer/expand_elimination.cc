@@ -36,7 +36,7 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     return false;
   }
 
-  auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
   if (initializer->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     return false;
   }

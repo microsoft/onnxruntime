@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/logging/logging.h>
-
 #include "model.h"
+
+#include "core/common/logging/logging.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
@@ -87,8 +87,8 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
 }
 
 bool Model::SupportsDynamicOutputShape() const {
-  // dynamic output shape is only supported on Android API level 29+
-  return GetAndroidSdkVer() >= 29 && dynamic_output_buffer_size_ > 0;
+  // dynamic output shape is only supported on Android API level 29+ (ANEURALNETWORKS_FEATURE_LEVEL_3)
+  return GetNNAPIFeatureLevel() >= ANEURALNETWORKS_FEATURE_LEVEL_3 && dynamic_output_buffer_size_ > 0;
 }
 
 Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
@@ -103,8 +103,8 @@ Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
   return Status::OK();
 }
 
-int32_t Model::GetAndroidSdkVer() const {
-  return nnapi_ ? nnapi_->android_sdk_version : 0;
+int32_t Model::GetNNAPIFeatureLevel() const {
+  return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
 }
 
 #pragma region Model::NNMemory
@@ -159,7 +159,7 @@ Execution::~Execution() {
 Status Execution::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
     const auto& input(inputs[i]);
-    ORT_RETURN_IF_ERROR(SetInputBuffer(i, input));
+    ORT_RETURN_IF_ERROR(SetInputBuffer(static_cast<int32_t>(i), input));
     ORT_RETURN_IF_ERROR(shaper_.UpdateShape(input.name, input.type.dimensions));
   }
 
@@ -169,7 +169,7 @@ Status Execution::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
 
 Status Execution::SetOutputBuffers(const std::vector<OutputBuffer>& outputs) {
   for (size_t i = 0; i < outputs.size(); i++) {
-    ORT_RETURN_IF_ERROR(SetOutputBuffer(i, outputs[i]));
+    ORT_RETURN_IF_ERROR(SetOutputBuffer(static_cast<int32_t>(i), outputs[i]));
   }
 
   return Status::OK();

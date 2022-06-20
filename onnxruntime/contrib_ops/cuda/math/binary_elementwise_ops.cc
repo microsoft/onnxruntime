@@ -9,14 +9,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kMSDomain,                                                                \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      x,                                                                                   \
+      kMSDomain,                                                                           \
+      ver,                                                                                 \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
 #define CONTRIB_BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                 \
@@ -61,7 +61,8 @@ namespace cuda {
 #define CONTRIB_BINARY_OP_HFD(name, ver)        \
   CONTRIB_BINARY_OP_TYPED(name, ver, MLFloat16) \
   CONTRIB_BINARY_OP_TYPED(name, ver, float)     \
-  CONTRIB_BINARY_OP_TYPED(name, ver, double)
+  CONTRIB_BINARY_OP_TYPED(name, ver, double)    \
+  CONTRIB_BINARY_OP_TYPED(name, ver, BFloat16)
 
 CONTRIB_BINARY_OP_HFD(BiasGelu, 1)
 

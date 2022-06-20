@@ -41,6 +41,7 @@ enum class Type {
   FLOAT16 = ANEURALNETWORKS_FLOAT16,
   TENSOR_QUANT8_SYMM_PER_CHANNEL = ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL,
   TENSOR_QUANT16_ASYMM = ANEURALNETWORKS_TENSOR_QUANT16_ASYMM,
+  TENSOR_QUANT8_ASYMM_SIGNED = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED,
 };
 
 enum class ExecutePreference {
@@ -48,6 +49,11 @@ enum class ExecutePreference {
   PREFER_FAST_SINGLE_ANSWER = ANEURALNETWORKS_PREFER_FAST_SINGLE_ANSWER,
   PREFER_SUSTAINED_SPEED = ANEURALNETWORKS_PREFER_SUSTAINED_SPEED
 };
+
+// handle clash with existing #define on Windows
+#ifdef _MSC_VER
+#undef NO_ERROR
+#endif
 
 enum class Result {
   NO_ERROR = ANEURALNETWORKS_NO_ERROR,
@@ -87,10 +93,10 @@ inline std::string TypeToStr(const Type& type) {
     return "TENSOR_BOOL8";
   } else if (type == Type::FLOAT16) {
     return "FLOAT16";
-  } else if (type == Type::FLOAT16) {
-    return "FLOAT16";
   } else if (type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL) {
     return "TENSOR_QUANT8_SYMM_PER_CHANNEL";
+  } else if (type == Type::TENSOR_QUANT8_ASYMM_SIGNED) {
+    return "TENSOR_QUANT8_ASYMM_SIGNED";
   } else {
     return "Unknown type";
   }
@@ -102,9 +108,9 @@ struct SymmPerChannelQuantParams {
   SymmPerChannelQuantParams(std::vector<float> scalesVec, uint32_t channelDim)
       : scales(std::move(scalesVec)) {
     params = {
-        .channelDim = channelDim,
-        .scaleCount = static_cast<uint32_t>(scales.size()),
-        .scales = scales.size() > 0 ? scales.data() : nullptr,
+        /*.channelDim = */ channelDim,
+        /*.scaleCount =*/static_cast<uint32_t>(scales.size()),
+        /*.scales = */ scales.size() > 0 ? scales.data() : nullptr,
     };
   }
   SymmPerChannelQuantParams(const SymmPerChannelQuantParams& other)

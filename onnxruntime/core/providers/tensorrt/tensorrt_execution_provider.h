@@ -6,6 +6,7 @@
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
+#include "tensorrt_execution_provider_info.h"
 
 namespace onnxruntime {
 
@@ -17,13 +18,17 @@ static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
 static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
 static const std::string kINT8CalibrationTableName = "ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME";
 static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE";
+static const std::string kDLAEnable = "ORT_TENSORRT_DLA_ENABLE";
+static const std::string kDLACore = "ORT_TENSORRT_DLA_CORE";
 static const std::string kDumpSubgraphs = "ORT_TENSORRT_DUMP_SUBGRAPHS";
 static const std::string kEngineCacheEnable = "ORT_TENSORRT_ENGINE_CACHE_ENABLE";
 static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
-// Old env variable for backward compatibility
-static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
+static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
+static const std::string kContextMemorySharingEnable= "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
+// Old env variable for backward compatibility
+static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
 
 class TensorrtLogger : public nvinfer1::ILogger {
@@ -35,18 +40,25 @@ class TensorrtLogger : public nvinfer1::ILogger {
   void log(Severity severity, const char* msg) noexcept override {
     if (severity <= verbosity_) {
       time_t rawtime = std::time(0);
+      struct tm stm;
+#ifdef _MSC_VER
+      gmtime_s(&stm, &rawtime);
+#else
+      gmtime_r(&rawtime, &stm);
+#endif
       char buf[256];
       strftime(&buf[0], 256,
                "%Y-%m-%d %H:%M:%S",
-               std::gmtime(&rawtime));
+               &stm);
       const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
                                                                             : severity == Severity::kWARNING ? "WARNING"
                                                                             : severity == Severity::kINFO    ? "   INFO"
                                                                                                              : "UNKNOWN");
-      if (severity <= Severity::kERROR)
+      if (severity <= Severity::kERROR) {
         LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
-      else
+      } else {
         LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+      }
     }
   }
 };
@@ -66,19 +78,6 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
-// Information needed to construct trt execution providers.
-struct TensorrtExecutionProviderInfo {
-  int device_id{0};
-  bool has_user_compute_stream{false};
-  void* user_compute_stream{nullptr};
-  bool has_trt_options{false};
-  size_t max_workspace_size{1 << 30};
-  bool fp16_enable{false};
-  bool int8_enable{false}; 
-  std::string int8_calibration_table_name{""};
-  bool int8_use_native_calibration_table{false};
-};
-
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -89,23 +88,32 @@ struct TensorrtFuncState {
   tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>* builder = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>* network = nullptr;
-  std::vector<std::unordered_map<std::string, int>> input_info;
-  std::vector<std::unordered_map<std::string, int>> output_info;
-  std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
+  std::vector<std::unordered_map<std::string, size_t>> input_info;
+  std::vector<std::unordered_map<std::string, size_t>> output_info;
+  std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
-  bool* fp16_enable_ptr = nullptr;
-  bool* int8_enable_ptr = nullptr;
+  bool fp16_enable;
+  bool int8_enable;
+  bool int8_calibration_cache_available;
+  bool dla_enable;
+  int dla_core;
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable;
   std::string engine_cache_path;
   nvinfer1::IRuntime* runtime = nullptr;
-
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
+  bool context_memory_sharing_enable;
+  size_t* max_context_mem_size_ptr = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
+  int (*engine_encryption)(const char*, char*, size_t);
+  // If sub-graph has dynamic input shape and the shape range changes, or the first time writing out engine cache, this flag is set to true and engine cache will be saved. Otherwise the flag is false.
+  // Note: For dynamic input shape, if update_engine_cache flag is true, profile cache will be saved as well.
+  bool update_engine_cache;
 };
 
 // Logical device representation.
@@ -123,48 +131,61 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const { return device_id_; }
 
-  common::Status Compile(const std::vector<Node*>& fused_nodes,
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
-  Status OnRunEnd() override;
+  Status OnRunEnd(bool sync_stream) override;
 
   Status SetComputeStream(void* stream) override;
 
   void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
+  ProviderOptions GetProviderOptions() const override {
+    return TensorrtExecutionProviderInfo::ToProviderOptions(info_);
+  }
+
  private:
+  TensorrtExecutionProviderInfo info_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
-  int min_subgraph_size_ = 1;
+  size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
-  std::string int8_calibration_cache_name_ = "INT8_calibration_table";
+  bool dla_enable_ = false;
+  int dla_core_ = 0;
+  bool force_sequential_engine_build_ = false;
+  std::string int8_calibration_cache_name_;
+  bool int8_calibration_cache_available_ = false;
   bool int8_use_native_tensorrt_calibration_table_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
-  std::string cache_path_;
-  nvinfer1::IRuntime* runtime_ = nullptr;
+  std::string cache_path_, engine_decryption_lib_path_;
+  tensorrt_ptr::unique_pointer<nvinfer1::IRuntime> runtime_ = nullptr;
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
-  mutable char model_path_[4096]; // Reserved for max path length
+  bool context_memory_sharing_enable_ = false;
+  size_t max_ctx_mem_size_ = 0;  
+  IAllocatorUniquePtr<void> context_memory_ = nullptr;
+  mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
+  int (*engine_encryption_)(const char*, char*, size_t);
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>> networks_;
-  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> input_info_;
-  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> output_info_;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
@@ -180,6 +201,13 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const GraphViewer& graph, bool* early_termination) const;
 
-  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
+  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
+
+  /** 
+  Get a unique_lock object to control the concurrency behavior. 
+  Every api call not in the thread-safe operations(https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading)
+  should be protected by a lock when invoked by multiple threads concurrently.
+  */
+  std::unique_lock<OrtMutex> GetApiLock() const;
 };
 }  // namespace onnxruntime

@@ -1,0 +1,60 @@
+[
+  {
+    "name": "sqrt with no attributes",
+    "operator": "Sqrt",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [9],
+            "dims": [1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [3],
+            "dims": [1],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[1]",
+        "inputs": [
+          {
+            "data": [1, 4, 9, 16],
+            "dims": [4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4],
+            "dims": [4],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "T[2,4]",
+        "inputs": [
+          {
+            "data": [1, 4, 9, 16, 25, 36, 49, 64],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [2, 4],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

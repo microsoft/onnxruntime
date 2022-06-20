@@ -68,7 +68,7 @@ DataLoader::DataLoader(const MapStringToString& input_name_map,
     data_files_ = std::move(partial_training_files);
   }
 
-  data_loader_thread_pool_ = onnxruntime::make_unique<onnxruntime::concurrency::ThreadPool>(
+  data_loader_thread_pool_ = std::make_unique<onnxruntime::concurrency::ThreadPool>(
       &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), ORT_TSTR("DataLoaderPool"), thread_pool_size_, true);
 }
 
@@ -153,7 +153,7 @@ Status DataLoader::LoadFile(const PathString& file_path, std::shared_ptr<DataSet
     Status s = LoadOneSample(coded_in, sample_size, data_set);
     if (!s.IsOK()) {
       return ORT_MAKE_STATUS(
-          ONNXRUNTIME, FAIL, "Failed to parse file '", ToMBString(file_path), "': ", s.ErrorMessage());
+          ONNXRUNTIME, FAIL, "Failed to parse file '", ToUTF8String(file_path), "': ", s.ErrorMessage());
     }
   }
   return Status::OK();

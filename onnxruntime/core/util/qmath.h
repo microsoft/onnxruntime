@@ -47,7 +47,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
 
   // Min max operation granularity: AVX512 can potentially handle 64 ~ 128 floats
   // per iteration.
-  const int granularity = 128;
+  constexpr int granularity = 128;
   std::ptrdiff_t block_size;
   std::ptrdiff_t num_blocks;
   if (concurrency::ThreadPool::ShouldParallelize(thread_pool) && num_of_elements > granularity) {
@@ -59,12 +59,12 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
     block_size = num_of_elements;
   }
 
-  for (int i = 0; i < num_blocks;  i++) {
+  for (int i = 0; i < num_blocks; i++) {
     aggregate[i].min = std::numeric_limits<float>::max();
     aggregate[i].max = std::numeric_limits<float>::lowest();
   }
 
-  const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), 2.0, static_cast<double>(block_size)};
+  const TensorOpCost unit_cost{static_cast<double>(block_size) * sizeof(float), 2.0, static_cast<double>(block_size)};
   concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     auto begin_idx = begin * block_size;
     auto end_idx = std::min(std::ptrdiff_t(num_of_elements), end * block_size);
@@ -105,8 +105,8 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
 }
 
 /**
- * @brief Run MlasQuantizeLinear in parallel, with provided thread pool 
-*/
+ * @brief Run MlasQuantizeLinear in parallel, with provided thread pool
+ */
 template <typename OutputType>
 void ParQuantizeLinear(const float* Input,
                        OutputType* Output,
@@ -114,7 +114,7 @@ void ParQuantizeLinear(const float* Input,
                        float Scale,
                        OutputType ZeroPoint,
                        concurrency::ThreadPool* thread_pool) {
-  const std::ptrdiff_t block_size = 128;
+  constexpr std::ptrdiff_t block_size = 128;
   const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
   const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
   concurrency::ThreadPool::TryParallelFor(thread_pool, num_blocks, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {

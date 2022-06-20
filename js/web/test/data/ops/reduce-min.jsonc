@@ -1,0 +1,67 @@
+[
+  {
+    "name": "reduceMin - keepdims=1",
+    "operator": "ReduceMin",
+    "attributes": [{ "name": "keepdims", "data": 1, "type": "int" }],
+    "cases": [
+      {
+        "name": "T[1,2,2,1]",
+        "inputs": [
+          {
+            "data": [1.0, 1.5, 2.0, 2.5],
+            "dims": [1, 2, 2, 1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0],
+            "dims": [1, 1, 1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "reduceMin - keepdims=0",
+    "operator": "ReduceMin",
+    "attributes": [{ "name": "keepdims", "data": 0, "type": "int" }],
+    "cases": [
+      {
+        "name": "T[1,1,1,1]",
+        "inputs": [
+          {
+            "data": [1.0],
+            "dims": [1, 1, 1, 1],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      },
+      {
+        "name": "Scalar",
+        "inputs": [
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -17,13 +17,30 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <thread>
+#include <mutex>
+
+#if defined(MLAS_TARGET_POWER) && defined(__linux__)
+#include <sys/auxv.h>
+#endif
+
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
+
 // N.B. Support building with downlevel versions of the Windows SDK.
 #ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo()
+{
+    has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+}
+#endif
+
 #elif defined(__linux__)
+
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
@@ -31,14 +48,25 @@ Abstract:
 #ifndef HWCAP_ASIMDDP
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() { has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0); }
 #endif
+
+#else
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() {}
+#endif
+
+#endif // Windows vs Linux vs Unknown
+#else // not MLAS_TARGET_ARM64 
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() {}
+#endif
+
 #endif // MLAS_TARGET_ARM64
-
-//
-// Stores the platform information.
-//
-
-MLAS_PLATFORM MlasPlatform;
 
 #ifdef MLAS_TARGET_AMD64_IX86
 
@@ -119,6 +147,11 @@ Return Value:
 --*/
 {
 
+    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<uint8_t, int8_t>;
+    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t, uint8_t>;
+    this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
+    this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
+
 #if defined(MLAS_TARGET_AMD64_IX86)
 
     //
@@ -126,13 +159,13 @@ Return Value:
     //
 
     this->GemmFloatKernel = MlasGemmFloatKernelSse;
+    this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchSse;
+    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchSse;
 
 #if defined(MLAS_TARGET_AMD64)
 
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->GemmDoubleKernel = MlasGemmDoubleKernelSse;
-    this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchSse;
-    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchSse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
@@ -153,8 +186,6 @@ Return Value:
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
-    this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<int8_t>;
-    this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t>;
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -163,16 +194,28 @@ Return Value:
 
 #endif
 
-    //
-    // Check if the processor supports the AVX and OSXSAVE features.
-    //
-
     unsigned Cpuid1[4];
 #if defined(_WIN32)
     __cpuid((int*)Cpuid1, 1);
 #else
     __cpuid(1, Cpuid1[0], Cpuid1[1], Cpuid1[2], Cpuid1[3]);
 #endif
+
+#if defined(_MSC_VER)
+
+    //
+    // Check if the processor supports SSE 4.1 instructions.
+    //
+
+    if ((Cpuid1[2] & 0x80000) != 0) {
+        this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
+    }
+
+#endif
+
+    //
+    // Check if the processor supports the AVX and OSXSAVE features.
+    //
 
     if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
 
@@ -222,6 +265,7 @@ Return Value:
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
+                this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
@@ -235,8 +279,10 @@ Return Value:
                 this->ErfKernelRoutine = MlasErfKernelFma3;
                 this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
-                this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t>;
-                this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t>;
+                this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t, int8_t>;
+                this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t, uint8_t>;
+                this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, int8_t>;
+                this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
 
                 //
@@ -263,9 +309,10 @@ Return Value:
                     this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
+                    this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
                 }
 
-#if !defined(MLAS_AVX512F_UNSUPPORTED)
+#if !defined(ORT_MINIMAL_BUILD)
 
                 //
                 // Check if the processor supports AVX512F features and the
@@ -285,26 +332,22 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
-                    this->NchwcBlockSize = 16;
-                    this->PreferredBufferAlignment = 64;
-
-#if !defined(MLAS_AVX512F_INTRINSICS_UNSUPPORTED)
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
-#endif
+                    this->NchwcBlockSize = 16;
+                    this->PreferredBufferAlignment = 64;
 
                     //
                     // Check if the processor supports AVX512 core features
                     // (AVX512BW/AVX512DQ/AVX512VL).
                     //
 
-#if !defined(MLAS_AVX512CORE_UNSUPPORTED)
-
                     if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
 
                         this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
+                        this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -315,14 +358,12 @@ Return Value:
                             this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
+                            this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                         }
                     }
-
-#endif // MLAS_AVX512CORE_UNSUPPORTED
-
                 }
 
-#endif // MLAS_AVX512F_UNSUPPORTED
+#endif // ORT_MINIMAL_BUILD
 
             }
 
@@ -336,6 +377,9 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
+    this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
+    this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
+    this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -346,16 +390,48 @@ Return Value:
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
 #elif defined(__linux__)
-    HasDotProductInstructions = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #else
     HasDotProductInstructions = false;
 #endif
 
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
+        this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
+        this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
+        this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
 #endif // MLAS_TARGET_ARM64
+#if defined(MLAS_TARGET_POWER)
+    this->GemmFloatKernel = MlasSgemmKernel;
+    this->GemmDoubleKernel = MlasDgemmKernel;
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+
+#if defined(__linux__)
+    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+
+    bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
+    if (HasP9Instructions) {
+        this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
+        this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelVSX;
+    }
+
+#if defined(POWER10)
+#if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
+    (defined(__clang__) && (__clang_major__ >= 12))
+    bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
+    if (HasP10Instructions) {
+        this->GemmFloatKernel = MlasSgemmKernelPOWER10;
+        this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
+        this->GemmU8X8Dispatch = &MlasGemm8X8DispatchPOWER10;
+    }
+#endif
+#endif
+
+#endif // __linux__
+#endif // MLAS_TARGET_POWER
 
 }
 
@@ -383,7 +459,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    return MlasPlatform.PreferredBufferAlignment;
+    return GetMlasPlatform().PreferredBufferAlignment;
 #else
     return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif

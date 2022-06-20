@@ -5,7 +5,7 @@
 #include <memory>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "miopen_common.h"
+#include "core/providers/rocm/miopen_common.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -64,7 +64,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
-  return onnxruntime::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
+  return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();

@@ -14,15 +14,15 @@ limitations under the License.
 ==============================================================================*/
 /* Modifications Copyright (c) Microsoft. */
 
+#include <thrust/count.h>
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
+
 #include "non_max_suppression_impl.h"
 #include "core/providers/cpu/object_detection/non_max_suppression_helper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-#include "core/framework/tensor.h"
-
-#include <thrust/device_vector.h>
-#include <thrust/execution_policy.h>
 
 #include <cub/cub.cuh>
 //TODO:fix the warnings
@@ -176,8 +176,8 @@ __launch_bounds__(kNmsBlockDim* kNmsBlockDim, 4) __global__
 // Variadic template helpers for Index selecting multiple arrays at the same
 // time
 template <typename Index>
-__device__ inline void SelectHelper(const Index i_selected,
-                                    const Index i_original) {}
+__device__ inline void SelectHelper(const Index /*i_selected */,
+                                    const Index /* i_original */) {}
 
 template <typename Index, typename T, typename... Args>
 __device__ inline void SelectHelper(const Index i_selected,
@@ -395,13 +395,12 @@ Status NonMaxSuppressionImpl(
   // STEP 2. filter boxes by scores
   int limited_num_boxes = num_boxes;
   if (pc.score_threshold_ != nullptr) {
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     thrust::device_ptr<float> sorted_scores_device_ptr(d_sorted_scores);
     limited_num_boxes = thrust::count_if(
+        thrust::cuda::par.on(stream),
         sorted_scores_device_ptr,
         sorted_scores_device_ptr + num_boxes,
         DeviceGreaterThan(score_threshold));
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(0));
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     if (limited_num_boxes == 0) {

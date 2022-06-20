@@ -67,7 +67,7 @@ inline size_t PopulateGrams(ForwardIter first, size_t ngrams, size_t ngram_size,
     size_t n = 1;
     Map* m = &c;
     while (true) {
-      auto p = m->emplace(*first, onnxruntime::make_unique<NgramPart<K>>(0));
+      auto p = m->emplace(*first, std::make_unique<NgramPart<K>>(0));
       ++first;
       if (n == ngram_size) {
         ORT_ENFORCE(p.first->second->id_ == 0, "Duplicate ngram detected, size: ", ngram_size, " id: ", ngram_id);
@@ -125,7 +125,7 @@ struct TfIdfVectorizer::Impl {
   // Contains output indexes
   // represents ngram_indexes output
   gsl::span<const int64_t> ngram_indexes_;
-  gsl::span<const float>   weights_;
+  gsl::span<const float> weights_;
 
   // This map contains references to pool_string_ entries
   // of pool_strings attribute
@@ -145,13 +145,13 @@ struct TfIdfVectorizer::Impl {
     assert(ngram_id != 0);
     --ngram_id;
     assert(ngram_id < ngram_indexes_.size());
-    auto output_idx = row_num * output_size_ + ngram_indexes_[ngram_id];
+    auto output_idx = static_cast<int64_t>(row_num) * output_size_ + ngram_indexes_[ngram_id];
     assert(static_cast<size_t>(output_idx) < frequencies.size());
     ++frequencies[output_idx];
   }
 };
 
-TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), impl_(new Impl) {
+TfIdfVectorizer::TfIdfVectorizer(const OpKernelInfo& info) : OpKernel(info), impl_(std::make_unique<Impl>()) {
   std::string mode;
   Status status = info.GetAttr("mode", &mode);
   ORT_ENFORCE(status.IsOK(), "mode is required");
@@ -389,7 +389,7 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   int32_t num_rows = 0;
   size_t B = 0;
   size_t C = 0;
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   if (input_dims.empty()) {
     num_rows = 1;
     C = 1;

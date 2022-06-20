@@ -22,7 +22,7 @@ void Capture::CapturePrintf(msvc_printf_check const char* format, ...) {
 // Modifications Copyright (c) Microsoft.
 void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) {
   static constexpr auto kTruncatedWarningText = "[...truncated...]";
-  static const int kMaxMessageSize = 2048;
+  static constexpr int kMaxMessageSize = 2048;
   char message_buffer[kMaxMessageSize];
   const auto message = gsl::make_span(message_buffer);
 
@@ -37,7 +37,11 @@ void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) 
     truncated = !error;
   }
 #else
+#ifdef __APPLE__
+  const int nbrcharacters = vsnprintf_l(message.data(), message.size(), nullptr, format, args);
+#else
   const int nbrcharacters = vsnprintf(message.data(), message.size(), format, args);
+#endif
   error = nbrcharacters < 0;
   truncated = (nbrcharacters >= 0 && static_cast<gsl::index>(nbrcharacters) > message.size());
 #endif

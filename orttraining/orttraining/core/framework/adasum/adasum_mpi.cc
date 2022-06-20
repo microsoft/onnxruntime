@@ -39,10 +39,10 @@ void AdasumMPI::InitializeVHDDReductionComms(WorkerGroupType worker_group) {
     ;
   int shift_val;
   int level;
-  reduction_comms_ = onnxruntime::make_unique<std::vector<MPI_Comm>>();
+  reduction_comms_ = std::make_unique<std::vector<MPI_Comm>>();
   reduction_comms_.get()->resize(log_size);
 
-  auto node_rank = onnxruntime::make_unique<std::vector<int>>();
+  auto node_rank = std::make_unique<std::vector<int>>();
   node_rank.get()->resize(size);
   for (level = 1, shift_val = 1; level < nearest_power_2;
         level = (level << 1), shift_val++) {

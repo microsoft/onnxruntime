@@ -31,8 +31,8 @@ class MlasPool2DTest : public MlasTestBase {
             size_t PaddingRightWidth,
             size_t StrideHeight,
             size_t StrideWidth) {
-    const size_t DilationHeight = 1;
-    const size_t DilationWidth = 1;
+    constexpr size_t DilationHeight = 1;
+    constexpr size_t DilationWidth = 1;
 
     int64_t OutputHeight64 =
         ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -
@@ -63,11 +63,11 @@ class MlasPool2DTest : public MlasTestBase {
     float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
 
     MlasPool2D(InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output);
-    if (PoolingKind == MlasMaximumPooling) {
+    if constexpr (PoolingKind == MlasMaximumPooling) {
       ReferenceMaximumPool2D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference);
-    } else if (PoolingKind == MlasAveragePoolingExcludePad) {
+    } else if constexpr (PoolingKind == MlasAveragePoolingExcludePad) {
       ReferenceAveragePool2D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, false);
-    } else if (PoolingKind == MlasAveragePoolingIncludePad) {
+    } else if constexpr (PoolingKind == MlasAveragePoolingIncludePad) {
       ReferenceAveragePool2D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, true);
     }
 

@@ -11,7 +11,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 bool ReluQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& /*logger*/) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return false;
   }
@@ -45,8 +45,8 @@ Status ReluQuantFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
   Initializer zero_point(*zp_tensor_proto, graph.ModelPath());
   if (zero_point.size() != 1 ||
-      zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 && zero_point.data<int8_t>()[0] != -128 ||
-      zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT8 && zero_point.data<uint8_t>()[0] != 0) {
+      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 && zero_point.data<int8_t>()[0] != -128) ||
+      (zero_point.data_type() == ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_UINT8 && zero_point.data<uint8_t>()[0] != 0)) {
     return Status::OK();
   }
 

@@ -23,6 +23,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateActivationOpBuilder("Sigmoid", op_registrations);
     CreateActivationOpBuilder("Tanh", op_registrations);
     CreateActivationOpBuilder("Relu", op_registrations);
+    CreateActivationOpBuilder("PRelu", op_registrations);
   }
 
   {  // Transpose
@@ -41,6 +42,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateReshapeOpBuilder("Reshape", op_registrations);
   }
 
+  {  // DepthToSpace
+    CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
+  }
+
   {  // Pool
     CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
     CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
@@ -54,6 +59,27 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Resize
     CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // Gemm/MatMul
+    CreateGemmOpBuilder("Gemm", op_registrations);
+    CreateGemmOpBuilder("MatMul", op_registrations);
+  }
+
+  {  // Clip
+    CreateClipOpBuilder("Clip", op_registrations);
+  }
+
+  {  // Squeeze
+    CreateSqueezeOpBuilder("Squeeze", op_registrations);
+  }
+
+  {  // ArgMax
+    CreateArgMaxOpBuilder("ArgMax", op_registrations);
+  }
+
+  {  // Cast
+    CreateCastOpBuilder("Cast", op_registrations);
   }
 
   return op_registrations;

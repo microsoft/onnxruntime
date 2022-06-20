@@ -7,18 +7,12 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
-#include "core/session/environment.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
-#include "core/providers/cpu/cpu_provider_factory_creator.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-#endif
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
-#endif
+#include "core/providers/provider_factory_creators.h"
+#include "core/session/environment.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -26,6 +20,17 @@
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
+
+#ifdef USE_CUDA
+namespace onnxruntime {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
+#ifdef USE_ROCM
+namespace onnxruntime {
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -39,6 +44,7 @@ static SessionOptions session_options = {
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
+    true,                              //enable_mem_reuse
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid
@@ -52,9 +58,10 @@ static SessionOptions session_options = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
-    {},                                //session_configurations
-    {},                                // initializers_to_share_map
-}; 
+    {},                                //config_options
+    {},                                //initializers_to_share_map
+    {},                                // external_initializers
+};
 
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
@@ -145,6 +152,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("true"))
       ("use_nccl", "Whether to use NCCL for distributed training.", cxxopts::value<bool>()->default_value("false"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("max_profile_records", "Maximum number of runtime profile data records to collect. 0 means use the default value.",
         cxxopts::value<size_t>()->default_value("0"))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
@@ -203,7 +213,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("false"))
       ("number_recompute_layers", "Number of layers to apply recompute.",
         cxxopts::value<int>()->default_value("0"))
-      ("use_invertible_layernorm_grad", "Specify whether to use invertible laynorm(dropping the input activation)",
+      ("use_memory_efficient_gradient", "Specify whether to use memory aware gradient builder.)",
         cxxopts::value<bool>()->default_value("false"))
       ("debug_break", "Specify whether to break at app start, useful for multi-gpu debugging.",
         cxxopts::value<bool>()->default_value("false"));
@@ -250,6 +260,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.num_train_steps_phase2 = flags["num_train_steps_phase2"].as<int>();
 
     params.batch_size = flags["train_batch_size"].as<int>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -372,6 +384,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+    params.use_gist = flags.count("use_gist") > 0;
 
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
@@ -509,7 +522,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
 
-    params.use_invertible_layernorm_grad = flags["use_invertible_layernorm_grad"].as<bool>();
+    params.use_memory_efficient_gradient = flags["use_memory_efficient_gradient"].as<bool>();
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
@@ -568,6 +581,7 @@ void setup_training_params(BertParameters& params) {
   params.model_with_loss_func_path = model_name_base + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
+  params.model_with_gist_nodes_path = model_name_base + ORT_TSTR("_with_gist.onnx");
 
 #if defined(USE_MPI)
   if (params.pipeline_parallel_size > 1) {
@@ -599,25 +613,33 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_CUDA
   {
-    CUDAExecutionProviderInfo info{};
+    OrtCUDAProviderOptions info;
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream = true;
+
     if (params.gpu_mem_limit_in_gb > 0) {
       info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
-    info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
+    info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 
-    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
-    params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);
+    params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
 #ifdef USE_ROCM
   {
-    ROCMExecutionProviderInfo info{};
+    OrtROCMProviderOptions info;
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    info.do_copy_in_default_stream = true;
 
-    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_ROCM(info));
-    params.input_allocator = std::make_shared<ROCMPinnedAllocator>(info.device_id, CUDA_PINNED);
+    if (params.gpu_mem_limit_in_gb > 0) {
+      info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
+    }
+    info.miopen_conv_exhaustive_search = true; // true, exhaustive search (slow)
+
+    params.providers.emplace(kRocmExecutionProvider, RocmProviderFactoryCreator::Create(&info));
+    params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
@@ -770,7 +792,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                                           onnx::TensorProto_DataType_INT64};
   const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
-  auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
+  auto random_perf_data_loader = std::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
   TrainingRunner runner{params, env, session_options};
   ORT_RETURN_IF_ERROR(runner.Initialize());
@@ -780,27 +802,27 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 }
 
 static Status RunTraining(const BertParameters& params, const Environment& env) {
-  const size_t max_num_files_preload = 2;
+  constexpr size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env, session_options);
+  auto runner = std::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
     auto rank_in_data_parallel_group = (MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size) % params_for_phase.data_parallel_size;
-    auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                                     params_for_phase.train_data_dir,
-                                                                     max_num_files_preload,
-                                                                     rank_in_data_parallel_group,
-                                                                     params_for_phase.data_parallel_size);
+    auto training_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+                                                             params_for_phase.train_data_dir,
+                                                             max_num_files_preload,
+                                                             rank_in_data_parallel_group,
+                                                             params_for_phase.data_parallel_size);
 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
     if (MPIContext::GetInstance().GetWorldRank() == 0) {
-      test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                              params_for_phase.test_data_dir,
-                                                              max_num_files_preload);
+      test_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+                                                      params_for_phase.test_data_dir,
+                                                      max_num_files_preload);
     }
 
     if (!params.perf_output_dir.empty()) {
@@ -828,11 +850,12 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while(keep_looping);
+  while (keep_looping)
+    ;
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   ort_params.log_severity,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,
@@ -853,7 +876,7 @@ int main(int argc, char* argv[]) {
   if (!params.convergence_test_output_file.empty()) {
     std::ofstream output_file(params.convergence_test_output_file);
     LOGS_DEFAULT_IF(!output_file, WARNING)
-        << "Failed to open convergence test output file: " << ToMBString(params.convergence_test_output_file);
+        << "Failed to open convergence test output file: " << ToUTF8String(params.convergence_test_output_file);
     output_file << ConvergenceTestDataRecord::GetCsvHeaderLine();
   }
 

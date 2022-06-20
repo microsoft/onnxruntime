@@ -5,9 +5,12 @@
 
 #pragma once
 
+#ifdef __APPLE__
+
 #include <unordered_map>
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
+#include "core/providers/common.h"
 
 namespace CoreML {
 namespace Specification {
@@ -33,5 +36,11 @@ common::Status HandleAutoPad(const std::vector<int64_t> input_shape,
 common::Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                                   const ONNX_NAMESPACE::TensorProto& tensor);
 
+// Copy the float array to a coreml weight
+void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
+                        const float* data, size_t num_elements);
+
 }  // namespace coreml
 }  // namespace onnxruntime
+
+#endif

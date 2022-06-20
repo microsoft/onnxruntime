@@ -3,15 +3,11 @@
 
 #pragma once
 
-#include <cstdint>
-#include <tuple>
-
 #include "boost/mp11.hpp"
 
+#include "core/common/basic_types.h"
 #include "core/common/type_list.h"
 #include "core/common/type_set_utils.h"
-
-#include "core/framework/data_types.h"
 
 /**
  * These utilities provide a way to control what types are enabled for an Op kernel implementation.
@@ -46,12 +42,8 @@
 namespace onnxruntime {
 namespace op_kernel_type_control {
 
-enum class OpArgDirection {
-  Input,
-  Output
-};
-
 using OpArgIndex = size_t;
+using OpArgDirection = ArgType;
 
 // constant to use for type lists that are valid across all opsets
 constexpr int kAllOpSets = -1;
@@ -177,7 +169,7 @@ struct EnabledTypes {
   ::onnxruntime::op_kernel_type_control::tags::OpArg<                           \
       ::onnxruntime::op_kernel_type_control::                                   \
           ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName), \
-      ::onnxruntime::op_kernel_type_control::OpArgDirection::ArgDirection,      \
+      ::onnxruntime::op_kernel_type_control::OpArgDirection::k##ArgDirection,      \
       ArgIndex>
 
 // INTERNAL
@@ -470,6 +462,8 @@ struct EnabledTypes {
  * // use MLTypeCallDispatcher to dispatch to implementations for enabled types
  * using Dispatcher = onnxruntime::utils::MLTypeCallDispatcherFromTypeList<MyOpFirstInputEnabledTypes>;
  */
+
+#include "core/framework/data_types.h"  // for types that might be used in type specifications
 
 // all allowed type specifications should be contained in the following file
 #include "core/providers/op_kernel_type_control_overrides.inc"

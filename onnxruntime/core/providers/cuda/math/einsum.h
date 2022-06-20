@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include "core/providers/cpu/math/einsum.h"
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cpu/math/einsum.h"
 #include "einsum_utils/einsum_auxiliary_ops.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 

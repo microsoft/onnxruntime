@@ -4,10 +4,12 @@
 #pragma once
 
 #include <cmath>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/util/math.h"
+#endif
+#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -34,7 +36,7 @@ class PoolProcessContext {
 
 class AveragePool {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return 0.0;
   }
 
@@ -57,7 +59,7 @@ class MaxPool;
 template <>
 class MaxPool<1 /*START_VERSION*/> {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return std::numeric_limits<float>::lowest();
   }
 
@@ -82,7 +84,7 @@ class MaxPool<8 /*START_VERSION*/> {
 
 class LpPool {
  public:
-  static float Initialize() {
+  constexpr static float Initialize() {
     return 0.0f;
   }
 
@@ -106,8 +108,7 @@ class PoolBase {
 
  protected:
   PoolBase(const OpKernelInfo& info)
-      : op_name_(info.GetKernelDef().OpName().rfind("QLinear", 0) != 0 ?
-                     info.GetKernelDef().OpName() : info.GetKernelDef().OpName().substr(7)),
+      : op_name_(info.GetKernelDef().OpName().rfind("QLinear", 0) != 0 ? info.GetKernelDef().OpName() : info.GetKernelDef().OpName().substr(7)),
         pool_attrs_(info, op_name_, GetStartVersion(info)) {
   }
 

@@ -21,6 +21,7 @@ struct LearningModelSessionAPITestsApi {
   VoidTest OverrideNamedDimension;
   VoidTest CloseSession;
   VoidTest SetIntraOpNumThreads;
+  VoidTest SetIntraOpThreadSpinning;
   VoidTest ModelBuilding_Gemm;
   VoidTest ModelBuilding_StandardDeviationNormalization;
   VoidTest ModelBuilding_DynamicMatmul;
@@ -33,6 +34,7 @@ struct LearningModelSessionAPITestsApi {
   VoidTest ModelBuilding_STFT;
   VoidTest ModelBuilding_MelSpectrogramOnThreeToneSignal;
   VoidTest ModelBuilding_MelWeightMatrix;
+  VoidTest SetName;
 };
 const LearningModelSessionAPITestsApi& getapi();
 
@@ -55,6 +57,7 @@ WINML_TEST(LearningModelSessionAPITests, AdapterIdAndDevice)
 WINML_TEST(LearningModelSessionAPITests, OverrideNamedDimension)
 WINML_TEST(LearningModelSessionAPITests, CloseSession)
 WINML_TEST(LearningModelSessionAPITests, SetIntraOpNumThreads)
+WINML_TEST(LearningModelSessionAPITests, SetIntraOpThreadSpinning)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_Gemm)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_StandardDeviationNormalization)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_DynamicMatmul)
@@ -67,4 +70,5 @@ WINML_TEST(LearningModelSessionAPITests, ModelBuilding_BlackmanWindow)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_STFT)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_MelSpectrogramOnThreeToneSignal)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_MelWeightMatrix)
+WINML_TEST(LearningModelSessionAPITests, SetName)
 WINML_TEST_CLASS_END()

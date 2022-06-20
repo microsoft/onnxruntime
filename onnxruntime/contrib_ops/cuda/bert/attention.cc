@@ -2,10 +2,9 @@
 // Licensed under the MIT License.
 
 #include "attention.h"
-#include "core/framework/tensorprotoutils.h"
+#include "attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "attention_impl.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -22,7 +21,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Attention<T>);
 
@@ -39,9 +38,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
+  const Tensor* extra_add_qk = context->Input<Tensor>(5);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past, extra_add_qk, device_prop.maxThreadsPerBlock));
 
   // input shape (batch_size, sequence_length, input_hidden_size)
   const auto& shape = input->Shape();
@@ -55,7 +55,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   int head_size = hidden_size / num_heads_;
 
-  std::vector<int64_t> output_shape(3);
+  TensorShapeVector output_shape(3);
   output_shape[0] = shape[0];
   output_shape[1] = shape[1];
   output_shape[2] = static_cast<int64_t>(hidden_size);
@@ -99,7 +99,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           Stream(),
           reinterpret_cast<const CudaT*>(gemm_buffer.get()),
           nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
-          nullptr == mask_index ? nullptr : &(mask_index->Shape().GetDims()),
+          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
           output->template MutableData<T>(),
           batch_size,
           sequence_length,
@@ -111,6 +111,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           is_unidirectional_,
           past_sequence_length,
           nullptr == past ? nullptr : past->template Data<T>(),
+          nullptr == extra_add_qk ? nullptr : extra_add_qk->template Data<T>(),
           nullptr == present ? nullptr : present->template MutableData<T>())) {
     // Get last error to reset it to cudaSuccess.
     CUDA_CALL(cudaGetLastError());

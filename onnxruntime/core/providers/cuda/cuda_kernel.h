@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "core/common/status.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/op_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
@@ -33,7 +30,7 @@ class CudaKernel : public OpKernel {
     if (s.IsOK()) {
       auto err = cudaGetLastError();
       if (err != cudaSuccess) {
-        s = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
       }
     }
 
@@ -53,6 +50,15 @@ class CudaKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
     return provider_->GetScratchBuffer<T>(count_or_bytes);
+  }
+
+  // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
+  // this GetTransientScratchBuffer will call IAllocator::Reserve() to allocate memory.
+  // IAllocator::Reserve() optionally implement some allocation logic that by-passes any arena-based
+  // logic (or similar for different allocator) that may be housed in the Alloc() implementation.
+  template <typename T>
+  inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
   }
 
   inline void AddDeferredReleaseCPUPtr(void* p) const {
@@ -82,7 +88,7 @@ class CudaKernel : public OpKernel {
       }
     }
 
-    CudaAsyncBuffer(const CudaKernel* op_kernel, const std::vector<T>& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
+    CudaAsyncBuffer(const CudaKernel* op_kernel, gsl::span<T const> vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 

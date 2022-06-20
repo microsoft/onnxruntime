@@ -162,7 +162,7 @@ Status GraphPartitioner::Partition(const onnxruntime::GraphViewer& graph,
 
   // create results
   for (const auto& iter : partitions_) {
-    std::unique_ptr<IndexedSubGraph> partition = onnxruntime::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> partition = std::make_unique<IndexedSubGraph>();
 
     for (auto& n : iter.second.nodes) {
       partition->nodes.push_back(n);

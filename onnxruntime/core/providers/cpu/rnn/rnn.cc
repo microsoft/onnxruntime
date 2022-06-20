@@ -9,11 +9,24 @@
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RNN,
     7,
+    13,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int>()),
+    RNN<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    RNN,
+    14,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int>()),

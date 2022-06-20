@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/onehot.h"
-#include "core/providers/cpu/tensor/onehot.h"
 
 using namespace onnxruntime::common;
 
@@ -17,9 +16,9 @@ namespace cuda {
       11,                                                                  \
       in_type##_##out_type##_##depth_type,                                 \
       kCudaExecutionProvider,                                              \
-      KernelDefBuilder()                                                   \
-          .InputMemoryType<OrtMemTypeCPUInput>(1) /* Keep depth in CPU */  \
-          .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep values in CPU */ \
+      (*KernelDefBuilder::Create())                                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 1) /* Keep depth in CPU */  \
+          .InputMemoryType(OrtMemTypeCPUInput, 2) /* Keep values in CPU */ \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>()) \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \
@@ -50,7 +49,7 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
 
   // prepare output shape
   int64_t prefix_dim_size, suffix_dim_size;
-  std::vector<int64_t> output_shape;
+  TensorShapeVector output_shape;
   ORT_RETURN_IF_ERROR(PrepareOutputShape(indices, depth_val, axis_, prefix_dim_size, suffix_dim_size, output_shape));
 
   // allocate output

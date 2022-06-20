@@ -108,6 +108,5 @@ class SparseSoftmaxCrossEntropyGrad final : public LossBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-
 }  // namespace cuda
 }  // namespace onnxruntime

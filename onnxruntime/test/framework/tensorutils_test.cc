@@ -25,7 +25,7 @@ void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
   TensorProto float_tensor_proto;
   float_tensor_proto.set_data_type(type);
   T f[4] = {1.1f, 2.2f, 3.3f, 4.4f};
-  const size_t len = sizeof(T) * 4;
+  constexpr size_t len = sizeof(T) * 4;
   char rawdata[len];
   for (int i = 0; i < 4; ++i) {
     memcpy(rawdata + i * sizeof(T), &(f[i]), sizeof(T));
@@ -109,7 +109,7 @@ void WriteDataToFile(FILE* fp, const std::vector<T>& test_data) {
 }
 
 std::unique_ptr<bool[]> BoolDataFromVector(const std::vector<bool>& test_data) {
-  auto arr = onnxruntime::make_unique<bool[]>(test_data.size());
+  auto arr = std::make_unique<bool[]>(test_data.size());
   std::copy(std::begin(test_data), std::end(test_data), arr.get());
   return arr;
 }
@@ -135,7 +135,7 @@ void CreateTensorWithExternalData(TensorProto_DataType type, const std::vector<T
   // set the tensor_proto to reference this external data
   onnx::StringStringEntryProto* location = tensor_proto.mutable_external_data()->Add();
   location->set_key("location");
-  location->set_value(ToMBString(filename));
+  location->set_value(ToUTF8String(filename));
   tensor_proto.mutable_dims()->Add(test_data.size());
   tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
   tensor_proto.set_data_type(type);
@@ -158,7 +158,7 @@ template <>
 void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const Path& model_path,
                              const std::vector<bool>& test_data) {
   // Unpack tensor with external data
-  auto arr = onnxruntime::make_unique<bool[]>(test_data.size());
+  auto arr = std::make_unique<bool[]>(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, arr.get(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 

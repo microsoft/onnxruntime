@@ -45,7 +45,7 @@ static void RunTest(
     if (!no_beta) {
       test.AddInput<float>("beta", beta_dims, beta_data);
     } else {
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -63,7 +63,7 @@ static void RunTest(
     if (!no_beta) {
       test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
     } else {
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -74,13 +74,42 @@ static void RunTest(
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (rocm_ep != nullptr) {
-        execution_providers.push_back(DefaultRocmExecutionProvider());
+      execution_providers.push_back(DefaultRocmExecutionProvider());
     } else {
-        execution_providers.push_back(DefaultCudaExecutionProvider());
+      execution_providers.push_back(DefaultCudaExecutionProvider());
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormNullInput) {
+  int batch_size = 1;
+  int sequence_length = 0;
+  int hidden_size = 4;
+
+  std::vector<float> input_data = {};
+
+  std::vector<float> skip_data = {};
+
+  std::vector<float> gamma_data = {
+      0.3f, 0.2f, 4.0f, 2.2f};
+
+  std::vector<float> beta_data = {
+      0.2f, 0.1f, 0.4f, 1.6f};
+
+  std::vector<float> output_data = {};
+
+  RunTest(input_data,
+          skip_data,
+          gamma_data,
+          beta_data,
+          std::vector<float>(),
+          output_data,
+          epsilon_,
+          batch_size,
+          sequence_length,
+          hidden_size);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1) {

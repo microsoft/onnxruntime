@@ -32,10 +32,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Shape", DataTypeImpl::GetTensorType<int64_t>())
-        .InputMemoryType<OrtMemTypeCPUInput>(GenerateInputMemoryType())  // all shape inputs are in CPU
+        .InputMemoryType(OrtMemTypeCPUInput, GenerateInputMemoryType())  // all shape inputs are in CPU
         .Alias(GenerateAliasMapping()),                                  // all output tensors are sharing the same bffer as input[0],
                                                                          // execept that the byte_offset is different
     View);

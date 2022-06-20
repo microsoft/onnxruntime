@@ -24,13 +24,13 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
 
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
       continue;
     }
 
-    std::vector<NodeArg*> gelu_input;
+    InlinedVector<NodeArg*> gelu_input;
     const TensorShapeProto* input1_shape = node.MutableInputDefs()[0]->Shape();
     const TensorShapeProto* input2_shape = node.MutableInputDefs()[1]->Shape();
 
@@ -76,7 +76,7 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    if (graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 

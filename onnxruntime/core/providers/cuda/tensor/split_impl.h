@@ -9,6 +9,18 @@
 namespace onnxruntime {
 namespace cuda {
 
+template<typename OutputIndexToMemoryMap>
+Status SplitSameSplitDimImpl(cudaStream_t stream,
+                 const size_t element_size,
+                 const int block_size_including_axis_dim,
+                 const int block_size_inside_axis_dim,
+                 const int64_t split_size,
+                 const int num_outputs,
+                 const void* input_data,
+                 OutputIndexToMemoryMap output_ptr,
+                 const size_t N);
+
+
 Status SplitImpl(cudaStream_t stream,
                  const size_t element_size,
                  const int block_size_including_axis_dim,

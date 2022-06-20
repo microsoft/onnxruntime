@@ -9,6 +9,7 @@
 #include "onnx/onnx-operators_pb.h"
 #include "onnx/defs/schema.h"
 #include "onnx/defs/function.h"
+#include "onnx/defs/parser.h"
 
 namespace ONNX_NAMESPACE {
 
@@ -20,12 +21,4 @@ inline static FunctionBodyHelper::NodeDef Const(const std::string& name, double 
   return FunctionBodyHelper::NodeDef{
       {name}, "Constant", {}, {{"value", ToTensor(value, elem_type)}}};
 }
-
-// Utility function to construct a FunctionProto from an opschema (for the signature information),
-// a sequence of NodeDefs (for the function body), and the relied opsets.
-bool BuildFunctionProto(FunctionProto& functionProto,
-                        const OpSchema& schema,
-                        const std::vector<FunctionBodyHelper::NodeDef>& node_defs,
-                        const std::vector<OperatorSetIdProto>& relied_opsets = {});
-
 }  // namespace ONNX_NAMESPACE

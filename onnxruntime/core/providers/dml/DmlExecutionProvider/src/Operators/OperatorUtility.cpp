@@ -3,7 +3,7 @@
 
 #include "precomp.h"
 #include "OperatorUtility.h"
-#include "core/providers/dml/OperatorAuthorHelper/OperatorRegistration.h"
+#include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
 
 namespace Dml
 {
@@ -143,16 +143,31 @@ namespace Dml
         static const OperatorInfo c_fusableOps[] =
         {
             OperatorInfo{ "Conv",                      onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Conv },
+            OperatorInfo{ "Conv",                      onnxruntime::kOnnxDomain, OnnxOperatorSet11::sc_sinceVer_Conv },
             OperatorInfo{ "ConvTranspose",             onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ConvTranspose },
+            OperatorInfo{ "ConvTranspose",             onnxruntime::kOnnxDomain, OnnxOperatorSet11::sc_sinceVer_ConvTranspose },
             OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_BatchNormalization },
+            OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_BatchNormalization },
+            OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_BatchNormalization },
+            OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet15::sc_sinceVer_BatchNormalization },
             OperatorInfo{ "InstanceNormalization",     onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_InstanceNormalization },
             OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_MeanVarianceNormalization },
+            OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_MeanVarianceNormalization },
+            OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_MeanVarianceNormalization },
             OperatorInfo{ "Gemm",                      onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Gemm },
+            OperatorInfo{ "Gemm",                      onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_Gemm },
+            OperatorInfo{ "Gemm",                      onnxruntime::kOnnxDomain, OnnxOperatorSet11::sc_sinceVer_Gemm },
+            OperatorInfo{ "Gemm",                      onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Gemm },
             OperatorInfo{ "MatMul",                    onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_MatMul },
+            OperatorInfo{ "MatMul",                    onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_MatMul },
+            OperatorInfo{ "MatMul",                    onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_MatMul },
 
             // The filter for activation functions maps to what DML's fused op internally fuses at the shader level.
             OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
+            OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
+            OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
             OperatorInfo{ "Sum",                       onnxruntime::kOnnxDomain, OnnxOperatorSet8::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
+            OperatorInfo{ "Sum",                       onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
         };
 
         // Not all activations can be fused - only simple elementwise activations (i.e. activation functions which
@@ -160,13 +175,19 @@ namespace Dml
         static const OperatorInfo c_activationOps[] =
         {
             OperatorInfo{ "Sigmoid",            onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Sigmoid },
+            OperatorInfo{ "Sigmoid",            onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Sigmoid },
             OperatorInfo{ "HardSigmoid",        onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_HardSigmoid },
             OperatorInfo{ "Tanh",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Tanh },
+            OperatorInfo{ "Tanh",               onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Tanh },
             OperatorInfo{ "ScaledTanh",         onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ScaledTanh },
             OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Relu },
+            OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Relu },
+            OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_Relu },
             OperatorInfo{ "LeakyRelu",          onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_LeakyRelu },
             OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_PRelu },
+            OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_PRelu },
             OperatorInfo{ "ThresholdedRelu",    onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ThresholdedRelu },
+            OperatorInfo{ "ThresholdedRelu",    onnxruntime::kOnnxDomain, OnnxOperatorSet10::sc_sinceVer_ThresholdedRelu },
             OperatorInfo{ "Elu",                onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Elu },
             OperatorInfo{ "Selu",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Selu },
             OperatorInfo{ "Softsign",           onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Softsign },
@@ -210,7 +231,7 @@ namespace Dml
                 return std::nullopt;
             }
 
-            if (opIt->inputCountFilter && *opIt->inputCountFilter != candidateOpInputCount)
+            if (opIt->inputCountFilter && *opIt->inputCountFilter != static_cast<uint32_t>(candidateOpInputCount))
             {
                 return std::nullopt;
             }
@@ -330,6 +351,41 @@ namespace Dml
             return std::string("fused_").append(name);
         }
 
+#if _DEBUG
+        // This asserts that an exact match for the operator exists in the tables of fusable ops, if a prior version exists
+        void AssertFusableOperatorSupportsVersionIfExists(
+            std::string_view type,
+            std::string_view domain,
+            int sinceVersion)
+        {
+            for (const OperatorInfo& operatorInfo : c_fusableOps)
+            {
+                if (operatorInfo.type == type && operatorInfo.domain == domain && operatorInfo.sinceVersion < sinceVersion)
+                {
+                    assert(std::end(c_fusableOps) != std::find(
+                        std::begin(c_fusableOps),
+                        std::end(c_fusableOps),
+                        OperatorInfo{ type, domain, sinceVersion }));
+
+                    break;
+                }
+            }
+
+            for (const OperatorInfo& operatorInfo : c_activationOps)
+            {
+                if (operatorInfo.type == type && operatorInfo.domain == domain && operatorInfo.sinceVersion < sinceVersion)
+                {
+                    assert(std::end(c_activationOps) != std::find(
+                        std::begin(c_activationOps),
+                        std::end(c_activationOps),
+                        OperatorInfo{ type, domain, sinceVersion }));
+
+                    break;
+                }
+            }
+        }
+#endif
+
     } // namespace FusionHelpers
 
     uint32_t GetDmlAdjustedAxis(int32_t onnxAxis, const MLOperatorKernelCreationContext& kernelCreationContext, uint32_t dmlDimCount)
@@ -359,7 +415,7 @@ namespace Dml
         }
     }
 
-    uint32_t MapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
+    std::optional<uint32_t> TryMapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
     {
         for (auto& nameAndIndex : nameAndIndexList)
         {
@@ -369,9 +425,11 @@ namespace Dml
             }
         }
 
-        ML_INVALID_ARGUMENT("Unknown mode value.");
+        return {};
     }
 
+    #pragma warning(push)
+    #pragma warning(suppress: 4702)
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode)
     {
         // The ONNX modes are "nearest" and "linear."  Other modes exist for compatibility,
@@ -387,9 +445,17 @@ namespace Dml
             {"BILINEAR", DML_INTERPOLATION_MODE_LINEAR},
             {"bilinear", DML_INTERPOLATION_MODE_LINEAR},
         };
-        return MapStringToIndex<DML_INTERPOLATION_MODE>(mode, mapping);
+        if (auto index = TryMapStringToIndex<DML_INTERPOLATION_MODE>(mode, mapping))
+        {
+            return *index;
+        }
+        ML_INVALID_ARGUMENT("Unknown interpolation mode");
+        return static_cast<DML_INTERPOLATION_MODE>(0);
     }
+    #pragma warning(pop)
 
+    #pragma warning(push)
+    #pragma warning(suppress: 4702)
     DML_DEPTH_SPACE_ORDER MapStringToDepthSpaceMode(std::string_view mode)
     {
         constexpr NameAndIndex mapping[] =
@@ -397,7 +463,13 @@ namespace Dml
             {"DCR", DML_DEPTH_SPACE_ORDER_DEPTH_COLUMN_ROW},
             {"CRD", DML_DEPTH_SPACE_ORDER_COLUMN_ROW_DEPTH},
         };
-        return MapStringToIndex<DML_DEPTH_SPACE_ORDER>(mode, mapping);
+        if (auto index = TryMapStringToIndex<DML_DEPTH_SPACE_ORDER>(mode, mapping))
+        {
+            return *index;
+        }
+        ML_INVALID_ARGUMENT("Unknown depth/space order");
+        return static_cast<DML_DEPTH_SPACE_ORDER>(0);
     }
+    #pragma warning(pop)
 
 } // namespace Dml

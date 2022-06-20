@@ -43,7 +43,7 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
   add = softmax = nullptr;
 
   // check node is add and has single output
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
       !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return false;
@@ -59,9 +59,23 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
     return false;
   }
 
+  // BiasSoftmax supports only float/float16/double - see ./onnxruntime/core/graph/contrib_ops/contrib_defs.cc
+  auto type_allowed = [](NodeArg* input) {
+    auto data_type = input->TypeAsProto()->tensor_type().elem_type();
+    if (data_type != ONNX_NAMESPACE::TensorProto_DataType_DOUBLE &&
+        data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+        data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      return false;
+    }
+    return true;
+  };
+  if (!type_allowed(input1) || !type_allowed(input2)) {
+    return false;
+  }
+
   // check add is only consumed by softmax with matching exec provider
   Node& softmax_node = *graph.GetNode(add_node.OutputNodesBegin()->Index());
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax_node, "Softmax", {1, 11, 13}) ||
       softmax_node.GetExecutionProviderType() != add_node.GetExecutionProviderType()) {
     return false;
   }
@@ -107,11 +121,12 @@ bool TrySelectInputAndBiasWithAlignment(
   // confirm all dimensions starting from softmax axis match for input and mask
   bool singlebatch_shape_matches = true;
 
-  int axis = 1;
+  // default axis = -1 if opset >= 13
+  int axis = graph_utils::MatchesOpSinceVersion(softmax_node, {1, 11}) ? 1 : -1;
   auto& softmax_attr = softmax_node.GetAttributes();
   if (softmax_attr.find("axis") != softmax_attr.end()) {
     auto& axis_attr = softmax_attr.at("axis");
-    axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : 1;
+    axis = utils::HasInt(axis_attr) ? (int)axis_attr.i() : axis;
   }
 
   int N1 = input1->Shape()->dim_size();
@@ -192,7 +207,7 @@ void FuseBiasSoftmaxSubgraph(
     NodeArg* mask,
     int broadcast_axis,
     int softmax_axis) {
-  std::vector<NodeArg*> fused_inputs{input, mask};
+  const std::array fused_inputs{input, mask};
 
   std::string fused_desc =
       "fused " + add_node.Name() + " and " + softmax_node.Name() + " into softmax(input + bias)";

@@ -100,7 +100,7 @@ class ValidNodes {
     using const_reference = const T&;
 
     /** Construct a NodeInterator and move to the first valid node. */
-    NodeIterator<TIterator>(const TIterator current, const TIterator end, const NodeFilterFunc& filter_fn) noexcept
+    NodeIterator(const TIterator current, const TIterator end, const NodeFilterFunc& filter_fn) noexcept
         : current_{current}, end_{end}, apply_filter_{filter_fn != nullptr}, filter_func_{&filter_fn} {
       // skip to next valid node, stopping at end if none are found
       while (current_ < end && (*current_ == nullptr ||

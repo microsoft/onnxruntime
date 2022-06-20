@@ -22,8 +22,8 @@
 #include "core/framework/utils.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
 
@@ -79,7 +79,7 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   return status;
 }
 
-static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
+constexpr static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
                                     const int64_t batch_size,
                                     const int64_t input_size,
                                     const int64_t batch_num,
@@ -88,7 +88,7 @@ static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
   return seq_num * batch_size * input_size + batch_num * input_size;
 }
 
-static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
+constexpr static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
                                      const int64_t batch_size,
                                      const int64_t input_size,
                                      const int64_t batch_num,
@@ -97,7 +97,7 @@ static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
   return batch_num * max_seq_len * input_size + seq_num * input_size;
 }
 
-static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
+constexpr static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
                                      const int64_t batch_size,
                                      const int64_t input_size,
                                      const int64_t batch_num,
@@ -107,7 +107,7 @@ static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
   return (seq_len - seq_num - 1) * batch_size * input_size + batch_num * input_size;
 }
 
-static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
+constexpr static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
                                       const int64_t batch_size,
                                       const int64_t input_size,
                                       const int64_t batch_num,
@@ -139,8 +139,14 @@ static Status ReverseSequenceImpl(const Tensor& X,
   for (int i = 0; i < batch_size; i++) {
     int64_t seq_len = sequence_lengths[i];
 
-    if (seq_len == 0)
+    if (seq_len == 0) {
       continue;
+    }
+
+    if (seq_len > max_seq_len || seq_len < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid sequence length: ", seq_len,
+                             ". Value must be in range [0,", max_seq_len, "]");
+    }
 
     for (int64_t j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(input_offset(max_seq_len, batch_size, input_size, i, j), input_size);

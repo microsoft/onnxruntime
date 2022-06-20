@@ -32,31 +32,28 @@
 namespace onnxruntime {
 namespace vitisai_ep {
 
-static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::Node* fused_node,
+static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::GraphViewer& graph_viewer,
                                                              const logging::Logger& logger) {
-  const auto* node_function = fused_node->GetFunctionBody();
-
-  ORT_ENFORCE(node_function != nullptr, "Could not extract function body for node: ",
-              fused_node->Name());
-
-  const Graph& node_subgraph = node_function->Body();
-  onnxruntime::Model model{node_subgraph.Name(), true, ModelMetaData{}, PathString{},
-                           IOnnxRuntimeOpSchemaRegistryList{}, node_subgraph.DomainToVersionMap(),
+  onnxruntime::Model model{graph_viewer.Name(), true, ModelMetaData{}, PathString{},
+                           IOnnxRuntimeOpSchemaRegistryList{}, graph_viewer.DomainToVersionMap(),
                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
+  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true);
 
   return model_proto;
 }
 
 VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
-                                 const onnxruntime::Node* fused_node,
-                                 const std::string &backend_type,
+                                 const onnxruntime::Node& fused_node,
+                                 const onnxruntime::GraphViewer& graph_viewer,
+                                 const std::string& backend_type,
+                                 const std::string& export_runtime_module,
+                                 const std::string& load_runtime_module,
                                  const logging::Logger* logger)
-  : backend_type_(backend_type)
+  : backend_type_(backend_type), export_runtime_module_(export_runtime_module),
+    load_runtime_module_(load_runtime_module)
 {
   SetLogger(logger);
 
@@ -65,27 +62,44 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
   allocator_ = context->allocator_handle;
   name_ = context->node_name;
 
-  model_proto_ = GetModelProtoFromFusedNode(fused_node, *GetLogger());
-
+  model_proto_ = GetModelProtoFromFusedNode(graph_viewer, *GetLogger());
   std::istringstream model_stream{model_proto_.SerializeAsString()};
-
   xg_ = pyxir::onnx::import_onnx_model(model_stream);
-  pyxir::partition(xg_, std::vector<std::string>{backend_type_}, "");
-
-  auto input_defs = fused_node->InputDefs();
-  for (auto idef : input_defs) {
-    in_tensor_names_.push_back(idef->Name());
-  }
-
-  auto output_defs = fused_node->OutputDefs();
-  for (auto odef : output_defs) {
-    out_tensor_names_.push_back(odef->Name());
-  }
   
-  pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
-  run_options->on_the_fly_quantization = true;
-  rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_, out_tensor_names_,
-                            "vai", run_options);
+  // If the `load_runtime_module` provider option is empty we  build a PyXIR
+  // runtime module from scratch. Otherwise, we load the runtime module from
+  // the provided file.   
+  if (load_runtime_module_.empty()) {
+    pyxir::partition(xg_, std::vector<std::string>{backend_type_}, "");
+
+    auto input_defs = fused_node.InputDefs();
+    for (auto idef : input_defs) {
+      in_tensor_names_.push_back(idef->Name());
+    }
+
+    auto output_defs = fused_node.OutputDefs();
+    for (auto odef : output_defs) {
+      out_tensor_names_.push_back(odef->Name());
+    }
+    
+    pyxir::RunOptionsHolder run_options(new pyxir::runtime::RunOptions());
+    run_options->on_the_fly_quantization = true;
+    run_options->export_runtime_module_path = export_runtime_module_;
+    rt_mod_ = pyxir::build_rt(xg_, backend_type_, in_tensor_names_,
+                              out_tensor_names_, "vai", run_options);
+  } else {
+    std::ifstream in_file(load_runtime_module_);
+    std::stringstream buffer;
+    buffer << in_file.rdbuf();
+    std::string serialized_rt_mod = buffer.str();
+    in_file.close();
+
+    std::istringstream sstream(serialized_rt_mod);
+    rt_mod_.reset(new pyxir::runtime::RuntimeModule());
+    rt_mod_->deserialize(sstream);
+    in_tensor_names_ = rt_mod_->get_in_tensor_names();
+    out_tensor_names_ = rt_mod_->get_out_tensor_names();
+  }
 }
 
 VitisAICustomOp::~VitisAICustomOp() {}
