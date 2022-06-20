@@ -107,13 +107,12 @@ using UpdateGptFeedsFunc = std::function<Status(
 using CreateEncoderInputsFunc = std::function<Status(
     const Tensor* original_encoder_input_ids,
     const OrtValue* attn_mask_value,
-    int num_beams,
     int pad_token_id,
     int start_token_id,
     AllocatorPtr allocator,
-    OrtValue& expanded_encoder_input_ids,
-    OrtValue& expanded_encoder_attention_mask,
-    OrtValue& expanded_decoder_input_ids)>;
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids)>;
 
 // Update decoder inputs given decoder outputs of last iteration (for encoder-decoder model like T5).
 template <typename T>
@@ -212,13 +211,12 @@ Status UpdateGptFeeds(
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
     const OrtValue* attn_mask_value,
-    int num_beams,
     int pad_token_id,
     int start_token_id,
     AllocatorPtr allocator,
-    OrtValue& expanded_encoder_input_ids,
-    OrtValue& expanded_encoder_attention_mask,
-    OrtValue& expanded_decoder_input_ids);
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids);
 
 // Update decoder inputs given decoder outputs of last iteration.
 template <typename T>
@@ -243,6 +241,9 @@ Status UpdateDecoderFeeds(
 // ---------------------------------------------------------------
 template <typename T>
 void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
+
+template <typename T>
+void ExpandCaches(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

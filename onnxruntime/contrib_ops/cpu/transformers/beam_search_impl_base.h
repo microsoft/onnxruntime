@@ -95,7 +95,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     this->sequences.Init(this->sequences_space, static_cast<int>(batch_beam_size), sequence_length, max_length);
   }
 
-  // Copy input_ids to sequences[0]
+  // Copy expanded input_ids to sequences[0]
   void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
                    size_t batch_beam_size,
                    int max_length,
@@ -109,8 +109,8 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     }
   }
 
-    // Copy input_ids to sequences[0]
-  void SetSequence2(gsl::span<const int32_t> input_ids_in_cpu,
+  // Copy unexpanded input_ids to sequences[0]
+  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
                    size_t batch_beam_size,
                    int beam_size,
                    int max_length,

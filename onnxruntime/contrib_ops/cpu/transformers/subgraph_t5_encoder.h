@@ -24,7 +24,6 @@ class T5EncoderSubgraph : public Subgraph {
       const Tensor& encoder_input_ids,
       const OrtValue* attn_mask_value,
       const std::vector<const OrtValue*>& implicit_inputs,
-      int num_beams,
       int pad_token_id,
       int start_token_id,
       std::vector<OrtValue>& feeds,

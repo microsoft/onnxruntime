@@ -15,65 +15,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-template <typename T>
-void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
-  // Input shape (batch_size, sequence_length). The input is required with data type T.
-  // Output shape (batch_size * num_beams, sequence_length)
-
-  const TensorShape& input_shape = input.Get<Tensor>().Shape();
-  const int64_t& batch_size = input_shape[0];
-  const int64_t& sequence_length = input_shape[1];
-
-  int64_t dims[] = {batch_size * num_beams, sequence_length};
-  TensorShape expanded_shape(&dims[0], 2);
-
-  MLDataType element_type = input.Get<Tensor>().DataType();
-  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
-
-  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
-
-  const T* input_data = input.Get<Tensor>().Data<T>();
-  T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
-  T* target = expanded_data;
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * sequence_length, sizeof(T) * sequence_length);
-      target += sequence_length;
-    }
-  }
-}
-
-template <typename T>
-void ExpandInputs2(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
-  // Input shape (batch_size, sequence_length). The input is required with data type T.
-  // Output shape (batch_size * num_beams, sequence_length)
-
-  const TensorShape& input_shape = input.Get<Tensor>().Shape();
-  const int64_t& batch_size = input_shape[0];
-  const int64_t& num_heads = input_shape[1];
-  const int64_t& sequence_length = input_shape[2];
-  const int64_t& head_size = input_shape[3];
-
-  int64_t dims[] = {batch_size * num_beams, num_heads, sequence_length, head_size};
-  TensorShape expanded_shape(&dims[0], 4);
-
-  MLDataType element_type = input.Get<Tensor>().DataType();
-  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
-
-  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
-
-  const T* input_data = input.Get<Tensor>().Data<T>();
-  T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
-  T* target = expanded_data;
-  const int64_t chunk_size = sequence_length * num_heads * head_size;
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
-      target += chunk_size;
-    }
-  }
-}
-
 /* T5 Decoder Subgraph.
 
    Inputs:
@@ -174,6 +115,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const std::vector<OrtValue>& encoder_fetches,
     std::vector<OrtValue>& decoder_feeds,
     const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+    int num_beam,
     void* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
@@ -197,19 +139,15 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   decoder_feeds.push_back(input_ids);
 
   // The encoder_attention_mask is copied from the second input of encoder.
-  // bugbug:expand
-  std::cout << "expand attn masks" << std::endl;
   OrtValue expanded_decoder_attention_masks;
-  ExpandInputs<int32_t>(encoder_feeds[1], 5, allocator, expanded_decoder_attention_masks);
+  BeamSearchCpuDeviceHelper::ExpandInputs<int32_t>(encoder_feeds[1], num_beam, allocator, expanded_decoder_attention_masks);
   decoder_feeds.push_back(expanded_decoder_attention_masks);
 
   //when first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output of encoder.
   //when first_past_input_index_ == 2, the past states are copied from the second output of encoder(zcode case).
-  // bugbug:expand
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
     OrtValue expanded_cache;
-    std::cout << "expand present" << std::endl;
-    ExpandInputs2<float>(encoder_fetches[j], 5, allocator, expanded_cache);
+    BeamSearchCpuDeviceHelper::ExpandCaches<float>(encoder_fetches[j], num_beam, allocator, expanded_cache);
     decoder_feeds.push_back(expanded_cache);
   }
 
