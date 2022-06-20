@@ -155,10 +155,15 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   const auto& exec_plan_vec = seq_exec_plan.execution_plan;
   VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
 
-// Enable TRACE_EXECUTION compile flag to dump execution plan
-#if defined(TRACE_EXECUTION)
-  std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
-#endif
+  // Enable TRACE_EXECUTION compile flag to dump execution plan
+  // #if defined(TRACE_EXECUTION)
+  static int32_t a = 0;
+  if (a == 0) {
+    std::cout << std::make_pair(&seq_exec_plan, &session_state) << std::endl;
+    a += 1;
+  }
+
+  // #endif
 
   const auto& graph_viewer = session_state.GetGraphViewer();
 
@@ -185,9 +190,8 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), 0 };
+  utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), 0};
 #endif
-
 
   for (size_t program_counter = state_.GetProgramCounterStart();
        program_counter < state_.GetProgramCounterEnd();
@@ -355,11 +359,14 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       std::ostringstream ss;
       ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
          << "' Status Message: " << compute_status.ErrorMessage();
-//If the computation failed, we still can record the memory consumption
+// If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-      MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
-                                                  MemoryInfo::MapType::DynamicActivation, "", 0);
+      if (partial_graph_index_ == 1) {
+        // Only record memory consumption after backward partial graph execution.
+        MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                    MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
+                                                    MemoryInfo::MapType::DynamicActivation, "", 0);
+      }
 #endif
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
@@ -449,7 +456,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     utils::DumpNodeOutputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
-    // free ml-values corresponding to this node
+    // Free ml-values corresponding to this node
     VLOGS(logger, 1) << "Releasing node ML values.";
     ORT_RETURN_IF_ERROR(ReleaseNodeMLValues(frame, seq_exec_plan, node_exec_plan, logger));
   }
@@ -477,10 +484,13 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
-                                              MemoryInfo::MapType::DynamicActivation, "", 0);
-  MemoryInfo::MemoryInfoProfile::Clear();
+  if (partial_graph_index_ == 1) {
+    // Only record memory consumption after backward partial graph execution.
+    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
+                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(),
+                                                MemoryInfo::MapType::DynamicActivation, "", 0);
+    MemoryInfo::MemoryInfoProfile::Clear();
+  }
 #endif
 
   if (frame.HasMemoryPatternPlanner()) {
