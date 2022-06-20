@@ -46,7 +46,7 @@ void FindValueIndices(gsl::span<const T> values, T value, /*out*/ std::vector<ui
 
 // Convert any negative axis into an absolute axis relative to the back end.
 // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
-uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount);
+uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount, bool validateAxis = true);
 
 void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount);
 
