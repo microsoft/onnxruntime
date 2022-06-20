@@ -6,7 +6,6 @@
     "current_failing_tests": [
         "^test_(blackmanwindow|dft|hammingwindow|hannwindow|melweightmatrix|stft).*", // https://github.com/microsoft/onnxruntime/pull/11778
         "^test_sequence_map.*", // https://github.com/microsoft/onnxruntime/pull/11731
-        "^test_(dequantizelinear|quantizelinear).*", // https://github.com/microsoft/onnxruntime/issues/11902
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_batchnorm_epsilon_old",
