@@ -580,8 +580,7 @@ Status UpdateDecoderFeeds(
 
   if (!has_hidden_state) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "BeamSearch CUDA Op does not support no hidden state senario
-                           (Decoder does not have input encoder_hidden_states)");
+                           "BeamSearch CUDA Op does not support no hidden state senario in decoder input");
   }
   ORT_UNUSED_PARAMETER(current_length);
 

@@ -44,12 +44,7 @@ namespace transformers {
 
 Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
-  bool has_hidden_state(false);
-  if (subgraph_inputs[2]->Name() == "encoder_hidden_states") {
-    has_hidden_state = true;
-  } else if (subgraph_inputs[2]->Name() == "past_key_self_0") {
-    has_hidden_state = false;
-  }
+  bool has_hidden_state = subgraph_inputs[2]->Name() == "encoder_hidden_states" ? true : false;
   SetPastInputIndex(has_hidden_state);
 
   ORT_RETURN_IF(first_past_input_index_ != 2 && first_past_input_index_ != 3,
