@@ -1422,9 +1422,10 @@ TEST(CApiTest, override_initializer) {
   size_t init_count = session.GetOverridableInitializerCount();
   ASSERT_EQ(init_count, 1U);
 
-  char* f1_init_name = session.GetOverridableInitializerName(0, allocator.get());
-  ASSERT_TRUE(strcmp("F1", f1_init_name) == 0);
-  allocator->Free(f1_init_name);
+  {
+    auto f1_init_name = session.GetOverridableInitializerNameAllocated(0, allocator.get());
+    ASSERT_TRUE(strcmp("F1", f1_init_name.get()) == 0);
+  }
 
   Ort::TypeInfo init_type_info = session.GetOverridableInitializerTypeInfo(0);
   ASSERT_EQ(ONNX_TYPE_TENSOR, init_type_info.GetONNXType());
@@ -1466,10 +1467,10 @@ TEST(CApiTest, end_profiling) {
   session_options_1.EnableProfiling("profile_prefix");
 #endif
   Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_1);
-  char* profile_file = session_1.EndProfiling(allocator.get());
-
-  ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
-  allocator->Free(profile_file);
+  {
+    auto profile_file = session_1.EndProfilingAllocated(allocator.get());
+    ASSERT_TRUE(std::string(profile_file.get()).find("profile_prefix") != std::string::npos);
+  }
   // Create session with profiling disabled
   Ort::SessionOptions session_options_2;
 #ifdef _WIN32
@@ -1478,9 +1479,10 @@ TEST(CApiTest, end_profiling) {
   session_options_2.DisableProfiling();
 #endif
   Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
-  profile_file = session_2.EndProfiling(allocator.get());
-  ASSERT_TRUE(std::string(profile_file) == std::string());
-  allocator->Free(profile_file);
+  {
+    auto profile_file = session_2.EndProfilingAllocated(allocator.get());
+    ASSERT_TRUE(std::string(profile_file.get()) == std::string());
+  }
 }
 
 TEST(CApiTest, get_profiling_start_time) {

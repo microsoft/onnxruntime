@@ -250,6 +250,16 @@ struct TypeInfo;
 struct Value;
 struct ModelMetadata;
 
+// Light functor to release memory with OrtAllocator
+namespace detail {
+struct AllocatedFree {
+  OrtAllocator* allocator_;
+  explicit AllocatedFree(OrtAllocator* allocator)
+      : allocator_(allocator) {}
+  void operator()(void* ptr) const { allocator_->Free(allocator_, ptr); }
+};
+}  // namespace detail
+
 /** \brief The Env (Environment)
 *
 * The Env holds the logging state used by all other objects.
@@ -436,10 +446,36 @@ struct Session : Base<OrtSession> {
   size_t GetOutputCount() const;                  ///< Returns the number of model outputs
   size_t GetOverridableInitializerCount() const;  ///< Returns the number of inputs that have defaults that can be overridden
 
+  // [[deprecated]] 
+  // This interface produces a pointer that must be released
+  // by the specified allocator and is often leaked. Not exception safe.
+  // use GetInputNameAllocated()
   char* GetInputName(size_t index, OrtAllocator* allocator) const;                   ///< Wraps OrtApi::SessionGetInputName
+  // [[deprecated]]
+  // This interface produces a pointer that must be released
+  // by the specified allocator and is often leaked. Not exception safe.
+  // use GetOutputNameAllocated()
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;                  ///< Wraps OrtApi::SessionGetOutputName
+
+  // The following two interfaces return unique pointers that use
+  // the specified allocator to free memory. The OrtAllocator instances must
+  // be valid at the point of memory release.
+  using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
+  AllocatedStringPtr GetInputNameAllocated(size_t index, OrtAllocator* allocator) const;
+  AllocatedStringPtr GetOutputNameAllocated(size_t index, OrtAllocator* allocator) const;
+
+  // [[deprecated]]
+  // This interface produces a pointer that must be released
+  // by the specified allocator and is often leaked. Not exception safe.
+  // use GetOverridableInitializerNameAllocated()
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
+  AllocatedStringPtr GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
+  // [[deprecated]]
+  // This interface produces a pointer that must be released
+  // by the specified allocator and is often leaked. Not exception safe.
+  // Use EndProfilingAllocated
   char* EndProfiling(OrtAllocator* allocator) const;                                 ///< Wraps OrtApi::SessionEndProfiling
+  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator) const;           ///< Wraps OrtApi::SessionEndProfiling
   uint64_t GetProfilingStartTimeNs() const;                                          ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
   ModelMetadata GetModelMetadata() const;                                            ///< Wraps OrtApi::SessionGetModelMetadata
 

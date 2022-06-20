@@ -656,16 +656,40 @@ inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const
   return out;
 }
 
+inline Session::AllocatedStringPtr Session::GetInputNameAllocated(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionGetInputName(p_, index, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+inline Session::AllocatedStringPtr Session::GetOutputNameAllocated(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionGetOutputName(p_, index, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
 inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionGetOverridableInitializerName(p_, index, allocator, &out));
   return out;
 }
 
+inline Session::AllocatedStringPtr Session::GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionGetOverridableInitializerName(p_, index, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
 inline char* Session::EndProfiling(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionEndProfiling(p_, allocator, &out));
   return out;
+}
+
+inline Session::AllocatedStringPtr Session::EndProfilingAllocated(OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionEndProfiling(p_, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
 inline uint64_t Session::GetProfilingStartTimeNs() const {
