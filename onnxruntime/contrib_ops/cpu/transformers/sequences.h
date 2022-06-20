@@ -1,7 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "gsl/gsl"
-#include "beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {

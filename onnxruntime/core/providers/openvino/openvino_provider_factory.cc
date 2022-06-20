@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "openvino_execution_provider.h"
+#include "openvino_provider_factory_creator.h"
 
 namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
@@ -30,7 +31,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   size_t num_of_threads_;
   bool use_compiled_network_;
   std::string blob_dump_path_;
-  void *context_; 
+  void* context_;
   bool enable_opencl_throttling_;
   bool enable_dynamic_shapes_;
 };

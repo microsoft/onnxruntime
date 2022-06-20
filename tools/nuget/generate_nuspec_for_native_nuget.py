@@ -188,7 +188,9 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
         xml_text.append("</dependencies>")
         return
 
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.8.2"/>'
+    dml_dependency = (
+        '<dependency id="Microsoft.AI.DirectML.Preview" version="1.9.0-devd10042c94985065a565c042540e15eb75b554663"/>'
+    )
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -208,7 +210,7 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
 
         xml_text.append("</dependencies>")
     else:
-        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML"
+        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML.Preview"
 
         xml_text.append("<dependencies>")
         # Support .Net Core

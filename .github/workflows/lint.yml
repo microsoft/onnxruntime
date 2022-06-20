@@ -13,21 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: black
-        uses: reviewdog/action-black@v3
+      - name: flake8
+        uses: reviewdog/action-flake8@v3
         with:
           github_token: ${{ secrets.github_token }}
           # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
           reporter: github-pr-check
           # Change reporter level if you need.
           # GitHub Status Check won't become failure with a warning.
-          level: error
-          filter_mode: file
-      - name: flake8
-        uses: reviewdog/action-flake8@v3
-        with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
           level: error
           filter_mode: file
       - name: pyflakes

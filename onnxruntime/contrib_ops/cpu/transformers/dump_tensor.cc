@@ -70,12 +70,17 @@ void DumpCpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1) {
 void DumpCpuTensor(const char* name, const Tensor& tensor) {
   const auto& shape = tensor.Shape();
 
+  if (nullptr != name) {
+    std::cout << std::string(name) << std::endl;
+  }
+  std::cout << "Shape:" << shape << std::endl;
+
   size_t num_dims = shape.NumDimensions();
   if (num_dims >= 3) {
     int dim0 = static_cast<int>(shape.SizeToDimension(num_dims - 2));
     int dim1 = static_cast<int>(shape[num_dims - 2]);
     int dim2 = static_cast<int>(shape[num_dims - 1]);
-    DumpCpuTensor(name, tensor, dim0, dim1, dim2);
+    DumpCpuTensor(nullptr, tensor, dim0, dim1, dim2);
     return;
   }
 
@@ -85,7 +90,7 @@ void DumpCpuTensor(const char* name, const Tensor& tensor) {
     num_rows = static_cast<size_t>(shape[0]);
   }
   size_t row_size = num_items / num_rows;
-  DumpCpuTensor(name, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
+  DumpCpuTensor(nullptr, tensor, static_cast<int>(num_rows), static_cast<int>(row_size));
 }
 
 void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1) const {

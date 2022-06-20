@@ -1,5 +1,8 @@
-#include "sequences.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/common/safeint.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,8 +23,10 @@ void Sequences::Init(gsl::span<int32_t> buffer, int batch_beam_size, int sequenc
 }
 
 gsl::span<const int32_t> Sequences::GetSequence(int beam_index) const {
-  gsl::span<const int32_t> buffer(sequences[current_sequences_buffer].data(), sequences[current_sequences_buffer].size());
-  gsl::span<const int32_t> sequence = buffer.subspan(SafeInt<size_t>(beam_index) * max_length_, static_cast<gsl::index>(current_length_));
+  gsl::span<const int32_t> buffer(sequences[current_sequences_buffer].data(),
+                                  sequences[current_sequences_buffer].size());
+  gsl::span<const int32_t> sequence = buffer.subspan(SafeInt<size_t>(beam_index) * max_length_,
+                                                     static_cast<gsl::index>(current_length_));
   return sequence;
 }
 
@@ -42,13 +47,16 @@ void Sequences::PrintSequences(const IConsoleDumper* dumper) const {
 void Sequences::AppendNextTokenToSequences(
     gsl::span<int32_t>& beam_indices,
     gsl::span<int32_t>& beam_next_tokens) {
-  gsl::span<const int32_t> input(sequences[current_sequences_buffer].data(), sequences[current_sequences_buffer].size());
+  gsl::span<const int32_t> input(sequences[current_sequences_buffer].data(),
+                                 sequences[current_sequences_buffer].size());
   gsl::span<int32_t> output = sequences[1 - current_sequences_buffer];
 
   for (int i = 0; i < batch_beam_size_; i++) {
     int beam_index = beam_indices[i];
-    gsl::span<const int32_t> source = input.subspan(SafeInt<size_t>(beam_index) * max_length_, static_cast<gsl::index>(current_length_));
-    gsl::span<int32_t> target = output.subspan(SafeInt<size_t>(i) * max_length_, static_cast<gsl::index>(current_length_));
+    gsl::span<const int32_t> source = input.subspan(SafeInt<size_t>(beam_index) * max_length_,
+                                                    static_cast<gsl::index>(current_length_));
+    gsl::span<int32_t> target = output.subspan(SafeInt<size_t>(i) * max_length_,
+                                               static_cast<gsl::index>(current_length_));
     gsl::copy(source, target);
   }
 

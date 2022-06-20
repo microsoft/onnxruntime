@@ -10,7 +10,7 @@ import sys
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob, iglob
-from os import environ, getcwd, path, remove, popen
+from os import environ, getcwd, path, popen, remove
 from pathlib import Path
 from shutil import copyfile
 
@@ -101,6 +101,7 @@ manylinux_tags = [
     "manylinux2014_ppc64",
     "manylinux2014_ppc64le",
     "manylinux2014_s390x",
+    "manylinux_2_27_x86_64",
 ]
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
@@ -116,6 +117,8 @@ try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
     class bdist_wheel(_bdist_wheel):
+        """Helper functions to create wheel package"""
+
         if is_openvino and is_manylinux:
 
             def get_tag(self):
@@ -123,11 +126,12 @@ try:
                 if platform.system() == "Linux":
                     # Get the right platform tag by querying the linker version
                     glibc_major, glibc_minor = popen("ldd --version | head -1").read().split()[-1].split(".")
-                    # See https://github.com/mayeut/pep600_compliance/blob/master/pep600_compliance/tools/manylinux-policy.json
+                    """# See https://github.com/mayeut/pep600_compliance/blob/master/
+                    pep600_compliance/tools/manylinux-policy.json"""
                     if glibc_major == "2" and glibc_minor == "17":
                         plat = "manylinux_2_17_x86_64.manylinux2014_x86_64"
                     else:  # For manylinux2014 and above, no alias is required
-                        plat = "manylinux_%s_%s_x86_64"%(glibc_major, glibc_minor)
+                        plat = "manylinux_%s_%s_x86_64" % (glibc_major, glibc_minor)
                 tags = next(sys_tags())
                 return (tags.interpreter, tags.abi, plat)
 
@@ -267,6 +271,7 @@ try:
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
+                assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 try:
@@ -284,16 +289,20 @@ except ImportError as error:
 
 
 class InstallCommand(InstallCommandBase):
-
     def finalize_options(self):
         ret = InstallCommandBase.finalize_options(self)
         self.install_lib = self.install_platlib
         return ret
 
+
 providers_cuda_or_rocm = "libonnxruntime_providers_" + ("rocm.so" if is_rocm else "cuda.so")
 providers_tensorrt_or_migraphx = "libonnxruntime_providers_" + ("migraphx.so" if is_rocm else "tensorrt.so")
 providers_openvino = "libonnxruntime_providers_openvino.so"
+
 # Additional binaries
+dl_libs = []
+libs = []
+
 if platform.system() == "Linux":
     libs = [
         "onnxruntime_pybind11_state.so",
@@ -342,7 +351,7 @@ else:
 
 if is_manylinux:
     if is_openvino:
-        ov_libs =[
+        ov_libs = [
             "libopenvino_intel_cpu_plugin.so",
             "libopenvino_intel_gpu_plugin.so",
             "libopenvino_intel_myriad_plugin.so",
@@ -500,7 +509,7 @@ if enable_training:
     # onnxruntime-training-1.7.0.dev20210408+cu111-cp36-cp36m-linux_x86_64.whl
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
-    if not is_openvino : 
+    if not is_openvino:
         # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 

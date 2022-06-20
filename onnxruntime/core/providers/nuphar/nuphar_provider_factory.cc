@@ -4,6 +4,7 @@
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 #include <atomic>
 #include "nuphar_execution_provider.h"
+#include "nuphar_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
 //#include "core/codegen/passes/utils/codegen_context.h"  // TODO: remove it
 
@@ -25,12 +26,12 @@ std::unique_ptr<IExecutionProvider> NupharExecutionProviderFactory::CreateProvid
   return std::make_unique<NupharExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool allow_unaligned_buffers, const char* settings) {
+std::shared_ptr<IExecutionProviderFactory> NupharProviderFactoryCreator::Create(bool allow_unaligned_buffers, const char* settings) {
   return std::make_shared<onnxruntime::NupharExecutionProviderFactory>(allow_unaligned_buffers, settings);
 }
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar, _In_ OrtSessionOptions* options, int allow_unaligned_buffers, _In_ const char* settings) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Nuphar(static_cast<bool>(allow_unaligned_buffers), settings));
+  options->provider_factories.push_back(onnxruntime::NupharProviderFactoryCreator::Create(static_cast<bool>(allow_unaligned_buffers), settings));
   return nullptr;
 }
