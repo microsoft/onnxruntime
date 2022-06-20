@@ -67,7 +67,7 @@ Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, O
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
     memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
-  } else {
+  } else if (tensor_location.device.Type() == OrtDevice::GPU) {
     // Use a tensor on cpu and copy it over to the desired device using
     // the data transfer manager.
     AllocatorPtr cpu_allocator = sess_state.GetAllocator(OrtDevice());
@@ -75,7 +75,10 @@ Status OrtValueLike(const SessionState& sess_state, const OrtValue& input_val, O
     memset(p_cpu_tensor->MutableDataRaw(), 0, p_cpu_tensor->SizeInBytes());
     // No need to free the cpu buffer, tensor destructor takes care of it using the cpu_allocator
     ORT_THROW_IF_ERROR(sess_state.GetDataTransferMgr().CopyTensor(*p_cpu_tensor, *p_tensor));
+  } else {
+    ORT_THROW("Cannot create tensor on device ", tensor_location.device.Type());
   }
+
   output_val.Init(p_tensor.release(),
                   DataTypeImpl::GetType<Tensor>(),
                   DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());

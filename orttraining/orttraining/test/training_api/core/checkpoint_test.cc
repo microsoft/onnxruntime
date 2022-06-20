@@ -166,7 +166,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
  */
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
-TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CPU) {
+TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   /// Phase 1 - Test Preparison
   /// Prepare the data and dest folder for saving checkpoint.
   /// Also cooked the data for test result comparison.

@@ -137,9 +137,10 @@ TEST(TrainingApiTest, OptimStep) {
   OrtValue& moment_1 = param_state.momentum_named_states.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;
-  OrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step, cuda_provider, cpu_provider);
+  CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_before_optimizer_step,
+                       cuda_provider, cpu_provider);
   std::vector<float> moment_1_vec;
-  OrtValueToVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
+  CudaOrtValueToCpuVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
   for (size_t i = 0; i < moment_1_vec.size(); i++) {
     ORT_ENFORCE(moment_1_vec[i] == 0.0f);
   }
@@ -150,11 +151,12 @@ TEST(TrainingApiTest, OptimStep) {
     std::vector<OrtValue> fetches;
     ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
     std::vector<float> grads;
-    OrtValueToVec(model->NamedParameters().at(param_name)->Gradient(), grads, cuda_provider, cpu_provider);
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Gradient(), grads,
+                         cuda_provider, cpu_provider);
     ORT_ENFORCE(optim->Step().IsOK());
 
     // get optim state and check if it is updated
-    OrtValueToVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
+    CudaOrtValueToCpuVec(moment_1, moment_1_vec, cuda_provider, cpu_provider);
     for (size_t i = 0; i < moment_1_vec.size(); i++) {
       if (grads[i] != 0.0f) {
         ORT_ENFORCE(moment_1_vec[i] != 0.0f);
@@ -162,7 +164,8 @@ TEST(TrainingApiTest, OptimStep) {
     }
 
     std::vector<float> param_vec_after_optimizer_step;
-    OrtValueToVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step, cuda_provider, cpu_provider);
+    CudaOrtValueToCpuVec(model->NamedParameters().at(param_name)->Data(), param_vec_after_optimizer_step,
+                         cuda_provider, cpu_provider);
     for (size_t i = 0; i < param_vec_after_optimizer_step.size(); ++i) {
       if (grads[i] != 0.0f && moment_1_vec[i] != 0.0f) {
         ORT_ENFORCE(param_vec_after_optimizer_step[i] != param_vec_before_optimizer_step[i]);
