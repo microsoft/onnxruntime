@@ -96,7 +96,7 @@ __global__ void FastGeluKernelVec(int input_length, int bias_length, const T* in
 }
 
 template <>
-bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
+bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
                           const float* input, const float* bias, float* output, bool /*use_half2*/) {
   constexpr int block_size = 256;
   const int grid_size = (input_length + block_size - 1) / block_size;
@@ -106,10 +106,10 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
 }
 
 template <>
-bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
+bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
                           const half* input, const half* bias, half* output, bool use_half2) {
   constexpr int block_size = 256;
-  if (use_half2 && prop.major >= 7) {
+  if (use_half2) {
       if (bias != nullptr) {
         if (0 == (bias_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
           const int grid_size = (input_length / 8 + block_size - 1) / block_size;
@@ -165,7 +165,7 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
 }
 
 template <>
-bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
+bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
                           const BFloat16* input, const BFloat16* bias, BFloat16* output, bool /*use_half2*/) {
   constexpr int block_size = 256;
   const int grid_size = (input_length + block_size - 1) / block_size;
