@@ -4993,6 +4993,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   }
 }
 
+#ifdef ENABLE_TRAINING
 TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
   {
@@ -5053,6 +5054,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
                          pre_graph_checker, post_graph_checker);
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
