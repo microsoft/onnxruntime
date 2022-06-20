@@ -15,15 +15,9 @@ class T5DecoderSubgraph : public Subgraph {
   T5DecoderSubgraph(
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
-      const GraphViewer& subgraph_in,
-      bool has_hidden_state = true) : Subgraph(node_in, attribute_name, subgraph_in),
-                                      has_hidden_state_(has_hidden_state) {
+      const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in),
+                                        has_hidden_state_(false) {
         first_present_output_index_ = 1;
-        if (!has_hidden_state_) {
-          first_past_input_index_ = 2;
-        } else {
-          first_past_input_index_ = 3;
-        }
       }
 
   // Create inputs for first inference of decoder subgraph.
@@ -38,6 +32,15 @@ class T5DecoderSubgraph : public Subgraph {
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;
+
+  void SetPastInputIndex(bool has_hidden_state) {
+    has_hidden_state_ = has_hidden_state;
+    if (!has_hidden_state_) {
+      first_past_input_index_ = 2;
+    } else {
+      first_past_input_index_ = 3;
+    }
+  }
 
   int GetFirstPastInputIndex() const {
     return first_past_input_index_;

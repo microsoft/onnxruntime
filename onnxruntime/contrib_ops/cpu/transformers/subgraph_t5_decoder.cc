@@ -44,6 +44,14 @@ namespace transformers {
 
 Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
+  bool has_hidden_state(false);
+  if (subgraph_inputs[2]->Name() == "encoder_hidden_states") {
+    has_hidden_state = true;
+  } else if (subgraph_inputs[2]->Name() == "past_key_self_0") {
+    has_hidden_state = false;
+  }
+  SetPastInputIndex(has_hidden_state);
+
   ORT_RETURN_IF(first_past_input_index_ != 2 && first_past_input_index_ != 3,
                 "kFirstPastInputIndex currently only supports 2 or 3");
   ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ || (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
@@ -141,7 +149,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   decoder_feeds.push_back(encoder_feeds[1]);
 
   //when first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output of encoder.
-  //when first_past_input_index_ == 2, the past states are copied from the second output of encoder(zcode case).
+  //when first_past_input_index_ == 2, the past states are copied from the second output of encoder.
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
     decoder_feeds.push_back(encoder_fetches[j]);
   }

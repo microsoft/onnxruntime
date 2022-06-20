@@ -59,10 +59,9 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
 
-  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5) or 2 (Zcode)
+  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
   ORT_ENFORCE(parameters_.model_type == IBeamSearchParameters::kModelTypeGpt ||
-              parameters_.model_type == IBeamSearchParameters::kModelTypeT5 ||
-              parameters_.model_type == IBeamSearchParameters::kModelTypeZcode);
+              parameters_.model_type == IBeamSearchParameters::kModelTypeT5);
 
   ONNX_NAMESPACE::GraphProto proto;
   if (parameters_.model_type != IBeamSearchParameters::kModelTypeGpt) {
@@ -89,8 +88,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                         gpt_subgraph_->head_size,
                                         gpt_subgraph_->num_layers);
     }
-  } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5 ||
-             parameters_.model_type == IBeamSearchParameters::kModelTypeZcode) {
+  } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -110,11 +108,9 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
     } else if (attribute_name == "decoder") {
       ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      bool has_hidden_states = parameters_.model_type == IBeamSearchParameters::kModelTypeZcode ? false : true;
       t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(node,
                                                                  attribute_name,
-                                                                 subgraph_session_state.GetGraphViewer(),
-                                                                 has_hidden_states);
+                                                                 subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
       decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
       parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,

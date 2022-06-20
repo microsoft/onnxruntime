@@ -587,7 +587,7 @@ Status UpdateDecoderFeeds(
 
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
-  //              encoder_attention_mask, encoder_hidden_states(absent in zcode senario),
+  //              encoder_attention_mask, encoder_hidden_states(optional),
   //              past_key_self_0, past_value_self_0, ...
   //              past_key_cross_0, past_value_cross_0, ...
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
@@ -602,6 +602,7 @@ Status UpdateDecoderFeeds(
   TensorShape input_ids_shape(&dims[0], 2);
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
 
+  // TODO: decouple has_hidden_state with full input_ids
   if (has_hidden_state) {
     gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
   } else {
