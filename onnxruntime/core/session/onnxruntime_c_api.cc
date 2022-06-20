@@ -2529,6 +2529,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::InvokeOp,
     &OrtApis::ReleaseOp,
     &OrtApis::SessionOptionsAppendExecutionProvider,
+    // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
