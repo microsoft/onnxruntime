@@ -2429,7 +2429,7 @@ if __name__ == "__main__":
         args.verbose,
     )
     if args.output and out_mp:
-        if args.save_as_exteranl_data:
+        if args.save_as_external_data:
             onnx.save_model(
                 out_mp,
                 args.output,
