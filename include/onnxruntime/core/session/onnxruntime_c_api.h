@@ -697,18 +697,6 @@ struct OrtApi {
   ORT_API2_STATUS(CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
-  /** \brief Create an OrtSession from an OrtInputStream
-  *
-  * \param[in] env
-  * \param[in] model_stream
-  * \param[in] options
-  * \param[out] out Returned newly created OrtSession. Must be freed with OrtApi::ReleaseSession
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  */
-  ORT_API2_STATUS(CreateSessionFromStream, _In_ const OrtEnv* env, _In_ OrtInputStream* model_stream,
-                  _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
-
   /** \brief Run the model in an ::OrtSession
   *
   * Will not return until the model run has completed. Multiple threads might be used to run the model based on
@@ -3477,6 +3465,18 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
+
+  /** \brief Create an OrtSession from an OrtInputStream
+  *
+  * \param[in] env
+  * \param[in] model_stream
+  * \param[in] options
+  * \param[out] out Returned newly created OrtSession. Must be freed with OrtApi::ReleaseSession
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(CreateSessionFromStream, _In_ const OrtEnv* env, _In_ OrtInputStream* model_stream,
+                  _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 };
 
 /*
