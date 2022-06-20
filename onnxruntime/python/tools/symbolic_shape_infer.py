@@ -2430,7 +2430,15 @@ if __name__ == "__main__":
     )
     if args.output and out_mp:
         if args.save_as_exteranl_data:
-            onnx.save_model(out_mp, args.output, save_as_external_data=True, all_tensors_to_one_file=args.all_tensors_to_one_file, location=args.external_data_location, size_threshold=args.external_data_size_threshold, convert_attribute=False)
+            onnx.save_model(
+                out_mp,
+                args.output,
+                save_as_external_data=True,
+                all_tensors_to_one_file=args.all_tensors_to_one_file,
+                location=args.external_data_location,
+                size_threshold=args.external_data_size_threshold,
+                convert_attribute=False
+            )
         else:
             onnx.save(out_mp, args.output)
         logger.info("Done!")
