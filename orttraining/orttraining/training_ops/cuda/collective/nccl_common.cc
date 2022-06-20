@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cuda/collective/nccl_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
-#include "orttraining/core/framework/communication/mpi/mpi_include.h"
+#include <mpi.h>
 
 namespace onnxruntime {
 namespace cuda {

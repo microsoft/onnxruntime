@@ -8,8 +8,9 @@
 #include "core/framework/op_kernel.h"
 #endif
 
-#include "orttraining/core/framework/communication/mpi/mpi_include.h"
-
+#ifdef USE_MPI
+#include <mpi.h>
+#endif
 namespace onnxruntime {
 namespace training {
 #ifdef USE_MPI
