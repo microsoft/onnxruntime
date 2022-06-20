@@ -13,14 +13,14 @@ namespace OperatorHelper
 
     // Convert any negative axis into an absolute axis relative to the back end.
     // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
-    uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount)
+    uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount, bool validateAxis)
     {
         if (signedOnnxAxis < 0)
         {
             signedOnnxAxis += dimCount;
         }
         uint32_t absoluteAxis = gsl::narrow_cast<uint32_t>(signedOnnxAxis);
-        ML_CHECK_VALID_ARGUMENT(absoluteAxis < dimCount);
+        ML_CHECK_VALID_ARGUMENT(!validateAxis || absoluteAxis < dimCount);
         return absoluteAxis;
     }
 
