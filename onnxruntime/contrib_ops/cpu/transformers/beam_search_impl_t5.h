@@ -100,7 +100,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   const OrtValue* encoder_input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
 
-  const OrtValue* encoder_attn_mask_value = this->context_.GetInputOrtValue(10);
+  const OrtValue* encoder_attn_mask_value = this->context_.GetInputOrtValue(9);
 
   BeamSearchCpuState cpu_state;
   cpu_state.Init(this->cpu_allocator_,

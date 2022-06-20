@@ -300,9 +300,7 @@ Status BeamSearchBase<T>::Initialize() {
 
   CHECK_SCALAR_INPUT(num_return_sequences, 4, true);
 
-  CHECK_SCALAR_INPUT(temperature, 5, true);
-
-  CHECK_SCALAR_INPUT(length_penalty, 6, true);
+  CHECK_SCALAR_INPUT(length_penalty, 5, true);
 
   ORT_RETURN_IF(parameters_->num_return_sequences > parameters_->num_beams,
                 "'num_return_sequences' has to be smaller or equal to 'num_beams'.");

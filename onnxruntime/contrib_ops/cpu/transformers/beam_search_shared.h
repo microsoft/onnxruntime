@@ -77,7 +77,7 @@ class IBeamScorer {
 struct IBeamSearchParameters {
   static constexpr int kModelTypeGpt = 0;
   static constexpr int kModelTypeT5 = 1;
-  static constexpr int kModelTypeZcode = 2;
+  static constexpr int kModelTypeBart = 2;
 
   // Parameters from node attributes
   int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5
