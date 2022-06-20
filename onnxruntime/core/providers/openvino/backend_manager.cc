@@ -7,8 +7,11 @@
 #include <inference_engine.hpp>
 
 #include <fstream>
+
 #include <vector>
+
 #include <string>
+
 #include <memory>
 
 #include "contexts.h"
