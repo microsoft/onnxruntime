@@ -141,7 +141,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   decoder_feeds.push_back(encoder_feeds[1]);
 
   //when first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output of encoder.
-  //when first_past_input_index_ == 2, the past states are copied from the second output of encoder(bart case).
+  //when first_past_input_index_ == 2, the past states are copied from the second output of encoder(zcode case).
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
     decoder_feeds.push_back(encoder_fetches[j]);
   }

@@ -59,10 +59,10 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
 
-  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5) or 2 (Bart)
+  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5) or 2 (Zcode)
   ORT_ENFORCE(parameters_.model_type == IBeamSearchParameters::kModelTypeGpt ||
               parameters_.model_type == IBeamSearchParameters::kModelTypeT5 ||
-              parameters_.model_type == IBeamSearchParameters::kModelTypeBart);
+              parameters_.model_type == IBeamSearchParameters::kModelTypeZcode);
 
   ONNX_NAMESPACE::GraphProto proto;
   if (parameters_.model_type != IBeamSearchParameters::kModelTypeGpt) {
@@ -90,7 +90,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                         gpt_subgraph_->num_layers);
     }
   } else if (parameters_.model_type == IBeamSearchParameters::kModelTypeT5 ||
-             parameters_.model_type == IBeamSearchParameters::kModelTypeBart) {
+             parameters_.model_type == IBeamSearchParameters::kModelTypeZcode) {
     if (attribute_name == "encoder") {
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
@@ -110,7 +110,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
     } else if (attribute_name == "decoder") {
       ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-      bool has_hidden_states = parameters_.model_type == IBeamSearchParameters::kModelTypeBart ? false : true;
+      bool has_hidden_states = parameters_.model_type == IBeamSearchParameters::kModelTypeZcode ? false : true;
       t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(node,
                                                                  attribute_name,
                                                                  subgraph_session_state.GetGraphViewer(),
