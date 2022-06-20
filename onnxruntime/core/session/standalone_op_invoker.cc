@@ -54,14 +54,6 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp*) {
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetExecutionProvider,
-                    _In_ const OrtKernelInfo*,
-                    _Outptr_ OrtExecutionProvider**) {
-  API_IMPL_BEGIN
-  return CreateStatus(ORT_NOT_IMPLEMENTED, "GetExecutionProvider is not implemented for minimal build.");
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo,
                     _In_ const OrtKernelInfo* info,
                     _Outptr_ OrtKernelInfo** info_copy) {
