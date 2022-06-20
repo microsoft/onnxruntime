@@ -8,12 +8,12 @@
 #include <string>
 #include <memory>
 
+#include <inference_engine.hpp>
+
 #include "contexts.h"
 #include "backend_manager.h"
 #include "ibackend.h"
 #include "backend_utils.h"
-
-#include <inference_engine.hpp>
 
 namespace onnxruntime {
 namespace openvino_ep {
