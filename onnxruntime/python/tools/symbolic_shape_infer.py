@@ -2437,7 +2437,7 @@ if __name__ == "__main__":
                 all_tensors_to_one_file=args.all_tensors_to_one_file,
                 location=args.external_data_location,
                 size_threshold=args.external_data_size_threshold,
-                convert_attribute=False
+                convert_attribute=False,
             )
         else:
             onnx.save(out_mp, args.output)
