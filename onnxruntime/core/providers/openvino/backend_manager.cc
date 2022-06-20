@@ -6,13 +6,10 @@
 
 #include <inference_engine.hpp>
 
-#include <fstream>
-
 #include <vector>
-
 #include <string>
-
 #include <memory>
+#include <fstream>
 
 #include "contexts.h"
 #include "ibackend.h"
