@@ -78,6 +78,11 @@ class Shaper {
                                         bool nchw,
                                         const std::string& output_name);
 
+  // Note: `pads` should be in the layout expected by NNAPI, i.e., [begin_1, end_1, begin_2, end_2, ...]
+  common::Status Pad(const std::string& input_name,
+                     const std::vector<int32_t>& pads,
+                     const std::string& output_name);
+
   // If the shape of certain input is dynamic
   // Use the following 2 functions to update the particular shape
   // and calculate the new output shape
@@ -134,6 +139,10 @@ class Shaper {
                                             const uint32_t output_h, const uint32_t output_w,
                                             bool nchw,
                                             const std::string& output_name);
+
+  common::Status PadImpl(const std::string& input_name,
+                         const std::vector<int32_t>& pads,
+                         const std::string& output_name);
 
   std::unordered_map<std::string, Shape> shape_map_;
   std::vector<std::function<common::Status(Shaper&)>> shape_ops_;

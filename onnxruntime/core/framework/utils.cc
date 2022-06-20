@@ -273,7 +273,7 @@ const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
 static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session_state,
                                                      const std::string& input_name,
                                                      MLValueCopyInfo& copy_info) {
-  std::vector<SessionState::NodeInfo> node_info_vec;
+  InlinedVector<SessionState::NodeInfo> node_info_vec;
 #ifdef ENABLE_TRAINING
   if (session_state.GetInputNodeInfo(input_name, node_info_vec) == Status::OK()) {
 #else
