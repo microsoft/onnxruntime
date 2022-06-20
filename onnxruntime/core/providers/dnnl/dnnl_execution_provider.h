@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include <memory>
 #include <map>
 #include <list>
+#include <memory>
 #include <memory.h>
 
-#include "core/platform/ort_mutex.h"
-#include "dnnl_op_manager.h"
+#include "core/providers/dnnl/dnnl_op_manager.h"
+#include "core/providers/dnnl/dnnl_custom_threadpool.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_primitive.h"
 
@@ -18,9 +18,11 @@ namespace onnxruntime {
 // Information needed to construct DNNL execution providers.
 struct DNNLExecutionProviderInfo {
   bool create_arena{true};
+  void* threadpool_args{nullptr};
 
-  explicit DNNLExecutionProviderInfo(bool use_arena)
-      : create_arena(use_arena) {}
+  explicit DNNLExecutionProviderInfo(bool use_arena, void* threadpool_args)
+      : create_arena(use_arena),
+        threadpool_args(threadpool_args) {}
   DNNLExecutionProviderInfo() = default;
 };
 
@@ -36,7 +38,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
-
+  common::Status SetComputeStream(void* threadpool_args) override;
  private:
   // DnnlOpManager contains information about supported Dnnl Operators
   DnnlOpManager opManager_;
@@ -48,6 +50,12 @@ class DNNLExecutionProvider : public IExecutionProvider {
   bool debug_log_ = false;
   //enable fusion by default
   bool enable_fusion_ = true;
+  // This threadpool can be defined at EP creation time, by using
+  // DNNLExecutionProviderInfo.ort_threadpool when using a standalone threadpool other than OpenMP
+  // or at InferenceSession creation time when using ORT's threadpool (this is done automagically),
+  // if a valid DNNLExecutionProviderInfo.ort_threadpool is passed then this one is used over the
+  // one passed at InferenceSession creation time.
+  std::unique_ptr<DnnlThreadPoolIface> threadpool_;
 };
 
 }  // namespace onnxruntime

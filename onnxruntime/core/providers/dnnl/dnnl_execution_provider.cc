@@ -5,16 +5,22 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
+
+#include <fstream>
+#include <iomanip>
 #include <unordered_set>
-#include "dnnl_execution_provider.h"
-#include "dnnl_fwd.h"
-#include "dnnl_node_capability.h"
+#ifdef DNNL_OPENMP
+#include <omp.h>
+#endif
+
+#include "core/platform/ort_mutex.h"
+#include "core/providers/shared_library/provider_api.h"
+
+#include "core/providers/dnnl/dnnl_fwd.h"
+#include "core/providers/dnnl/dnnl_node_capability.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_transformer.h"
 
-#include <iomanip>
-#include <fstream>
-#include "gsl/gsl"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -56,6 +62,9 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
   if (!fusion_env.empty()) {
     enable_fusion_ = (std::stoi(fusion_env) == 0 ? false : true);
   }
+
+  // Set custom threadpool in case we received one
+  ORT_THROW_IF_ERROR(SetComputeStream(info.threadpool_args));
 }  // namespace onnxruntime
 
 DNNLExecutionProvider::~DNNLExecutionProvider() {
@@ -309,7 +318,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       ort_dnnl::DnnlSubgraphPrimitive* subgraph_primitive = reinterpret_cast<ort_dnnl::DnnlSubgraphPrimitive*>(state);
 
@@ -363,13 +372,58 @@ Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
                           });
           ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
         }
-
-        return subgraph_primitive->Predict(inputs, outputs);
+        return subgraph_primitive->Predict(inputs, outputs, threadpool_.get());
       }
     };
 
     node_compute_funcs.push_back(std::move(compute_info));
   }
+  return Status::OK();
+}
+
+Status DNNLExecutionProvider::SetComputeStream(void* threadpool_args) {
+  // Prevent the threadpool from being redefined
+#ifdef DNNL_ORT_THREAD
+  if (threadpool_ == nullptr && threadpool_args != nullptr) {
+    threadpool_ = std::make_unique<DnnlORTThreadPool>(static_cast<ORTThreadPool*>(threadpool_args));
+  }
+#else
+  // If provided arguments set them as the number of threads, else call
+  // calc which usually = numcores
+  auto num_threads = static_cast<int*>(threadpool_args);
+#if defined(DNNL_OPENMP)
+  // On Java we have limitations to the number of threads so let OpenMP decide
+#if !defined(DNNL_JAVA)
+  // If the user provided a value select between 3 cases
+  // if num_threads < 0 OpenMP decides the number of threads
+  if (num_threads != nullptr) {
+    // The user provided a valid number of threads
+    if (*num_threads > 0) {
+      omp_set_num_threads(*num_threads);
+    } else if (*num_threads == 0) {
+      // If 0 then the user selected the default num_threads = num_physical_cores
+      omp_set_num_threads(DnnlCalcNumThreads());
+    }
+  // If nullptr then set the default num_threads = num_physical_cores
+  } else {
+    omp_set_num_threads(DnnlCalcNumThreads());
+  }
+#else
+  (void)num_threads;
+#endif  // !defined(DNNL_JAVA)
+
+#elif defined(DNNL_EIGEN_THREAD)
+  if (threadpool_ == nullptr) {
+    if (num_threads == nullptr) {
+      threadpool_ = std::make_unique<DnnlEigenThreadPool>();
+    } else if (*num_threads <= 0) {
+      threadpool_ = std::make_unique<DnnlEigenThreadPool>();
+    } else {
+      threadpool_ = std::make_unique<DnnlEigenThreadPool>(*num_threads);
+    }
+  }
+#endif
+#endif
   return Status::OK();
 }
 

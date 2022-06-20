@@ -455,6 +455,13 @@ def parse_arguments():
         'e.g. --dnnl_opencl_root "C:/Program Files (x86)/IntelSWTools/sw_dev_tools/OpenCL/sdk"',
     )
     parser.add_argument(
+        "--dnnl_thread",
+        action="store",
+        default="openmp",
+        choices=["openmp", "eigen", "ort"],
+        help="Specify the CPU runtime you want to use for oneDNN provider" "e.g. --dnnl_thread ort",
+    )
+    parser.add_argument(
         "--use_openvino",
         nargs="?",
         const="CPU_FP32",
@@ -936,6 +943,7 @@ def generate_build_tree(
     if args.use_dnnl:
         cmake_args.append("-Donnxruntime_DNNL_GPU_RUNTIME=" + args.dnnl_gpu_runtime)
         cmake_args.append("-Donnxruntime_DNNL_OPENCL_ROOT=" + args.dnnl_opencl_root)
+        cmake_args.append("-Donnxruntime_DNNL_THREAD=" + args.dnnl_thread)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
     if args.use_migraphx:

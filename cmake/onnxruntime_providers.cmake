@@ -567,6 +567,23 @@ if (onnxruntime_USE_DNNL)
     target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ORTTRAINING_ROOT})
   endif()
 
+  # Needed for custom threadpool support
+  target_link_libraries(onnxruntime_providers_dnnl PRIVATE onnxruntime_common)
+  if(MSVC AND (CMAKE_BUILD_TYPE STREQUAL "Debug"))
+    # Work around MSVC not realizing things are defined only once in onnxruntime_common.lib(debug_alloc.obj) : error LNK2005: 
+    # "void * __cdecl operator new(unsigned __int64)" (??2@YAPEAX_K@Z) already defined in provider_bridge_provider.obj
+    # "void __cdecl operator delete(void *)" (??3@YAXPEAX@Z) already defined in provider_bridge_provider.obj
+    target_link_options(onnxruntime_providers_dnnl PRIVATE "/FORCE:MULTIPLE")
+  endif()
+  # Need to detect Debug build since it causes errors in some ops with specific threadpools
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(DNNL_DEBUG_MODE)
+  endif()
+  if(onnxruntime_BUILD_JAVA)
+    add_compile_definitions(DNNL_JAVA)
+  endif()
+
+
   if(APPLE)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/dnnl/exported_symbols.lst")
     set_target_properties(onnxruntime_providers_dnnl PROPERTIES

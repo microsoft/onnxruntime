@@ -534,6 +534,19 @@ typedef struct OrtOpenVINOProviderOptions {
   unsigned char enable_dynamic_shapes;  ///< 0 = disabled, nonzero = enabled
 } OrtOpenVINOProviderOptions;
 
+/** \brief OneDNN Provider Options
+ *
+ * \see OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
+ */
+typedef struct OrtDnnlProviderOptions {
+#ifdef __cplusplus
+  OrtDnnlProviderOptions() : use_arena{true}, enable_training{false}, threadpool_args{nullptr} {}
+#endif
+  int use_arena;              // If arena is used, use_arena 0 = not used, nonzero = used
+  int enable_training;        // Enable or disable training ops, enable_training 0 = not enabled, nonzero = enabled
+  void* threadpool_args;      // Used to enable ORT threadpool when using the test runner
+} OrtDnnlProviderOptions;
+
 struct OrtApi;
 typedef struct OrtApi OrtApi;
 

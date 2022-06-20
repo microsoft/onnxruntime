@@ -35,11 +35,9 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("Log", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("LRN", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("MatMul", std::unique_ptr<DnnlNodeCapability>(new DnnlMatMulNodeCapability())));
-  dnnl_ops_map_.emplace(std::make_pair("MatMulInteger", std::unique_ptr<DnnlNodeCapability>(new DnnlMatMulIntegerNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("MaxPool", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Mul", std::unique_ptr<DnnlNodeCapability>(new DnnlBinaryNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Pow", std::unique_ptr<DnnlNodeCapability>(new DnnlPowNodeCapability())));
-  dnnl_ops_map_.emplace(std::make_pair("QAttention", std::unique_ptr<DnnlNodeCapability>(new DnnlQAttentionNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("ReduceL1", std::unique_ptr<DnnlNodeCapability>(new DnnlReduceNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("ReduceL2", std::unique_ptr<DnnlNodeCapability>(new DnnlReduceNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("ReduceLogSum", std::unique_ptr<DnnlNodeCapability>(new DnnlReduceNodeCapability())));
@@ -64,6 +62,14 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("Tanh", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Transpose", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Unsqueeze", std::unique_ptr<DnnlNodeCapability>(new DnnlSqueezeNodeCapability())));
+#if !(defined(DNNL_DEBUG_MODE) && defined(DNNL_ORT_THREAD))
+  // Matmul primitive in this ops presents errors when using the ORTT in Debug mode
+  // so disable them while we solve the issue
+  dnnl_ops_map_.emplace(std::make_pair("QAttention",
+                                       std::unique_ptr<DnnlNodeCapability>(new DnnlQAttentionNodeCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("MatMulInteger",
+                                       std::unique_ptr<DnnlNodeCapability>(new DnnlMatMulIntegerNodeCapability())));
+#endif  // !defined(DNNL_DEBUG_MODE) && !defined(DNNL_ORT_THREAD)
 #if defined(ENABLE_TRAINING)
   dnnl_ops_map_.emplace(std::make_pair("AveragePoolGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("ConvGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));

@@ -171,7 +171,8 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
 #ifdef USE_DNNL
     bool use_dnnl = flags.count("use_dnnl") > 0;
     if (use_dnnl) {
-      params.providers.emplace(kDnnlExecutionProvider, DnnlProviderFactoryCreator::Create(1));
+      OrtDnnlProviderOptions dnnl_options;
+      params.providers.emplace(kDnnlExecutionProvider, DnnlProviderFactoryCreator::Create(&dnnl_options));
     }
 #endif
 

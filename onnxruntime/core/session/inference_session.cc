@@ -517,7 +517,13 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
       ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
     }
   }
-
+#ifndef DNNL_OPENMP
+  // This is safetly called only when we are not using OpenMP, preprocessor directive will probably be
+  // removed in the future
+  if (provider_type == onnxruntime::kDnnlExecutionProvider) {
+    ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(static_cast<void*>(GetIntraOpThreadPoolToUse())));
+  }
+#endif
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {
     is_concurrent_run_supported_ = false;

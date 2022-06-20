@@ -641,7 +641,9 @@ TEST_P(ModelTest, Run) {
       }
 #ifdef USE_DNNL
       else if (provider_name == "dnnl") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
+        OrtDnnlProviderOptions dnnl_options;
+        dnnl_options.use_arena = false;
+        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, &dnnl_options));
       }
 #endif
       else if (provider_name == "tensorrt") {

@@ -5,6 +5,8 @@
 #include "dnnl_subgraph.h"
 #include "dnnl.hpp"
 #include "core/platform/ort_mutex.h"
+#include "core/providers/dnnl/dnnl_custom_threadpool.h"
+#include "dnnl_threadpool.hpp"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -32,7 +34,10 @@ class DnnlSubgraphPrimitive {
   void AddKernels();
 
   //run inference
-  onnxruntime::common::Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs, const std::unordered_map<std::string, OnnxTensorData>& outputs);
+  onnxruntime::common::Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
+                                      const std::unordered_map<std::string, OnnxTensorData>& outputs,
+                                      DnnlThreadPoolIface* tp);
+
 
   void SetOrderedInputs(std::vector<std::string>&& inputs);
   void SetOrderedOutputs(std::vector<std::string>&& outputs);
@@ -43,7 +48,7 @@ class DnnlSubgraphPrimitive {
   dnnl::memory::format_tag GetDnnlFormat(size_t dim_size);
   dnnl::engine GetCPUEngine();
   dnnl::engine GetEngine();
-  dnnl::stream GetStream();
+  dnnl::stream GetStream(DnnlThreadPoolIface* tp);
 
   //obtain a dnnl::memory with specified name, memory descriptor and engine, will perform extra reorder/reshape if necessary before returning
   dnnl::memory GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose = false);

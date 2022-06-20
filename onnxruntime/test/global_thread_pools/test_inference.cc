@@ -74,7 +74,8 @@ static Ort::Session GetSessionObj(Ort::Env& env, T model_uri, int provider_type)
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_DNNL
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, 1));
+    OrtDnnlProviderOptions dnnl_options;
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, &dnnl_options));
     std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return Ort::Session(nullptr);

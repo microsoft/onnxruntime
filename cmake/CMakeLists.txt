@@ -1469,6 +1469,13 @@ endif()
 
 if (onnxruntime_USE_DNNL)
   include(dnnl)
+  if (onnxruntime_DNNL_THREAD STREQUAL "eigen")
+    add_compile_definitions(DNNL_EIGEN_THREAD)
+  elseif (onnxruntime_DNNL_THREAD STREQUAL "ort")
+    add_compile_definitions(DNNL_ORT_THREAD)
+  else()
+    add_compile_definitions(DNNL_OPENMP)
+  endif()
 endif()
 
 # TVM EP
