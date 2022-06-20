@@ -36,7 +36,7 @@ struct Barrier {
 using NotificationIndex = size_t;
 
 struct ExecutionContext;
-using CommandFn = std::function<bool(ExecutionContext&)>;
+using CommandFn = std::function<Status(ExecutionContext&, bool&)>;
 
 // a logic stream to execute command.
 // each command in the logic stream will be executed in FIFO
@@ -65,7 +65,7 @@ class CountDownBarrier {
   CountDownBarrier() : v_{0} {};
 
   void Set(int32_t v) {
-    ORT_ENFORCE(v > 0);
+    ORT_ENFORCE(v >= 0);
     v_.store(v, std::memory_order_relaxed);
   }
 
@@ -91,6 +91,8 @@ struct ExecutionContext {
   std::vector<std::unique_ptr<Stream> > device_streams;
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
+  const bool& terminate_flag_;
+  Status task_status_{Status::OK()};
 
   ExecutionContext(const SessionState& sess_state,
                    std::vector<std::unique_ptr<LogicStream>>& logic_streams,
@@ -100,16 +102,22 @@ struct ExecutionContext {
                    std::vector<OrtValue>& fetches,
                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
-                   const logging::Logger& sess_logger) : session_state(&sess_state),
+                   const logging::Logger& sess_logger,
+                   const bool& terminate_flag) : session_state(&sess_state),
                                                          logger(&sess_logger),
-                                                         count_down_barriers_(num_barriers) {
+                                                         count_down_barriers_(num_barriers),
+                                                         terminate_flag_(terminate_flag) {
     int32_t valid_streams = 0;
     //1. bind logic stream to device stream;
     for (auto& logic_stream : logic_streams) {
       if (logic_stream->commands_.size() > 0) {
         auto& stream_handle_registry = sess_state.GetStreamHandleRegistryInstance();
         auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->ep_->Type());
-        device_streams.emplace_back(create_stream_fn(logic_stream->ep_));
+        if (create_stream_fn) {
+          device_streams.emplace_back(create_stream_fn(logic_stream->ep_));
+        } else {
+          device_streams.push_back(nullptr);
+        }
         valid_streams++;
       } else {
         device_streams.push_back(nullptr);
@@ -118,7 +126,10 @@ struct ExecutionContext {
 
     for (auto i = 0; i < notification_owners.size(); ++i) {
       auto& stream = device_streams[notification_owners[i]];
-      notifications.push_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
+      if (stream)
+        notifications.push_back(std::move(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0)));
+      else
+        notifications.push_back(nullptr);
     }
 
     // create frame
@@ -142,7 +153,7 @@ struct ExecutionContext {
   }
 
   void WaitAll() {
-    while (remain_tasks_.Get()) {
+    while (task_status_.IsOK() && remain_tasks_.Get()) {
       onnxruntime::concurrency::SpinPause();
     }
     for (auto& device_stream : device_streams) {
@@ -150,6 +161,15 @@ struct ExecutionContext {
         device_stream->Flush();
       }
     }
+  }
+
+  void SetStatus(Status& status) {
+    // TODO: if multiple worker report non-ok status,
+    // what is our strategy? currently we just keep 
+    // a random one. as long as it is not OK, the
+    // execution will fail.
+    if (task_status_.IsOK() && !status.IsOK())
+      task_status_ = status;
   }
 
   ~ExecutionContext() {
@@ -189,14 +209,40 @@ struct ExecutionContext {
 };
 
 void LogicStream::RunSince(ExecutionContext& ctx, size_t since) {
+  if (!ctx.task_status_.IsOK()) {
+    // already in bad status, terminate it
+    ctx.CompleteTask();
+    return;
+  }
   while (since < commands_.size()) {
-    if (commands_[since](ctx)) {
-      since++;
-    } else {
+    if (ctx.terminate_flag_) {
+      ctx.SetStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true."));
       return;
     }
+    bool continue_flag = true;
+    Status status;
+    ORT_TRY {
+      status = commands_[since](ctx, continue_flag);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    if (!status.IsOK()) {
+      //terminate it
+      ctx.SetStatus(status);
+      ctx.CompleteTask();
+      return;
+    }
+    if (!continue_flag) {
+      //break but not terminate
+      return;
+    }
+    since++;
   }
   ctx.CompleteTask();
+  return;
 }
 
 struct ParallelExecutionPlanImpl {
@@ -211,7 +257,9 @@ struct ParallelExecutionPlanImpl {
                          const std::vector<int>& fetch_mlvalue_idxs,
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                         const logging::Logger& logger);
+                         const logging::Logger& logger,
+                         const bool& terminate_flag, 
+                         const bool only_execute_path_to_fetches);
 
   const std::vector<int>& GetRefCounts() const { return value_ref_counts_; }
 
@@ -383,8 +431,9 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           // push a barrier
           int barrier_id = num_barriers_++;
           downstream_map_[notification_index].push_back({i, static_cast<int>(logic_streams_[i]->commands_.size())});
-          logic_streams_[i]->commands_.push_back([barrier_id](ExecutionContext& ctx) {
-            return ctx.DecCountDownBarrier(barrier_id);
+          logic_streams_[i]->commands_.push_back([barrier_id](ExecutionContext& ctx, bool& continue_flag) {
+            continue_flag = ctx.DecCountDownBarrier(barrier_id);
+            return Status::OK();
           });
           // push a wait command if has EP registered it.
           auto wait_handle = session_state.GetStreamHandleRegistryInstance().GetWaitHandle(
@@ -392,12 +441,13 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
               node->GetExecutionProviderType());
           if (wait_handle) {
             const std::string& upstream_node_name = it->Name();
-            logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](ExecutionContext& ctx) {
+            logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](ExecutionContext& ctx, bool& continue_flag) {
               wait_handle(*ctx.device_streams[cur_stream_idx], *ctx.notifications[notification_index]);
               // update streams clock status
               ctx.device_streams[cur_stream_idx]->UpdateStreamClock(ctx.notifications[notification_index]->stream, ctx.notifications[notification_index]->timestamp);
               LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
-              return true;
+              continue_flag = true;
+              return Status::OK();
             });
           }
         }
@@ -407,13 +457,18 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         dependence_graph_[it->Index()].insert(node_index);
       }
       // push launch kernel command
-      logic_streams_[i]->commands_.push_back([this, node, node_index, cur_stream_idx, i, &value_map](ExecutionContext& ctx) {
+      logic_streams_[i]->commands_.push_back([this, node, node_index, cur_stream_idx, i, &value_map](ExecutionContext& ctx, bool& continue_flag) {
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         // TODO: set terminate flag from run_option
-        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, false, ctx.device_streams[cur_stream_idx].get());
+        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, ctx.terminate_flag_, ctx.device_streams[cur_stream_idx].get());
+        // a temporary hack
+        if (p_kernel->Info().GetKernelDef().OpName() == "If" || p_kernel->Info().GetKernelDef().OpName() == "Loop" || p_kernel->Info().GetKernelDef().OpName() == "Scan")
+          if (kernel_ctx.GetComputeStream()) {
+            kernel_ctx.GetComputeStream()->Flush();
+          }
         if (p_kernel->IsAsync()) {
-          assert(false);
+          ORT_THROW("Async Kernel Support is not implemented yet.");
         } else {
 #ifdef USE_CUDA
           static std::atomic_int color = 0;
@@ -427,7 +482,7 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
           eventAttrib.message.ascii = p_kernel->Node().OpType().c_str();
           nvtxRangePushEx(&eventAttrib);
 #endif
-          ORT_ENFORCE(p_kernel->Compute(&kernel_ctx).IsOK(), MakeString("kernel fail on node ") + node->Name());
+          ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
 
           ctx.RecycleNodeInputs(node_index);
 #ifdef USE_CUDA
@@ -435,22 +490,25 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
 #endif
         }
         LOGS(*ctx.logger, INFO) << "stream " << i << " complete with " << node->Name();
-        return true;
+        continue_flag = true;
+        return Status::OK();
       });
       // check if any notification generated by this node, if yes, push a activate
       auto notification_it = node_to_notification.find(node_index);
       if (notification_it != node_to_notification.end()) {
         NotificationIndex notification_index = notification_it->second;
-        logic_streams_[i]->commands_.push_back([notification_index, i, node](ExecutionContext& ctx) {
+        logic_streams_[i]->commands_.push_back([notification_index, i, node](ExecutionContext& ctx, bool& continue_flag) {
           if (ctx.notifications[notification_index])
-            ctx.notifications[notification_index]->Activate();
+            ctx.notifications[notification_index]->ActivateAndUpdate();
           LOGS(*ctx.logger, INFO) << "stream " << i << " send notification for " << node->Name();
-          return true;
+          continue_flag = true;
+          return Status::OK();
         });
         // notify downstreams
-        logic_streams_[i]->commands_.push_back([this, notification_index](ExecutionContext& ctx) {
+        logic_streams_[i]->commands_.push_back([this, notification_index](ExecutionContext& ctx, bool& continue_flag) {
           ScheduleDownstream(ctx, notification_index);
-          return true;
+          continue_flag = true;
+          return Status::OK();
         });
       }
     }
@@ -479,12 +537,15 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
     const auto& input_node_args = node->InputDefs();
     for (int input_index_local = 0; input_index_local < input_node_args.size(); ++input_index_local) {
       const auto* input_arg = input_node_args[input_index_local];
-      OrtValueIndex input_idx_global;
-      ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
-      value_consumer_map_[input_idx_global].insert(node_index);
-      if (node_outputs.find(input_idx_global) != node_outputs.end()) {
-        value_ref_counts_[input_idx_global]++;
-        node_value_map_[node_index].push_back(input_idx_global);
+      //skip optional inputs
+      if (input_arg->Exists()) {
+        OrtValueIndex input_idx_global;
+        ORT_THROW_IF_ERROR(value_map.GetIdx(input_arg->Name(), input_idx_global));
+        value_consumer_map_[input_idx_global].insert(node_index);
+        if (node_outputs.find(input_idx_global) != node_outputs.end()) {
+          value_ref_counts_[input_idx_global]++;
+          node_value_map_[node_index].push_back(input_idx_global);
+        }
       }
     }
   }
@@ -519,7 +580,11 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                                   std::vector<OrtValue>& fetches,
                                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                  const logging::Logger& logger) {
+                                                  const logging::Logger& logger,
+                                                  const bool& terminate_flag,
+                                                  const bool only_execute_path_to_fetches) {
+  if (only_execute_path_to_fetches)
+    ORT_THROW("NOT IMPLEMENTED YET.");
   // prepare the execution context, notifications got initialized.
   ExecutionContext ctx(session_state,
                        logic_streams_,
@@ -530,7 +595,8 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                        fetches,
                        fetch_allocators,
                        num_barriers_,
-                       logger);
+                       logger, 
+                       terminate_flag);
 
   auto* tp = session_state.GetInterOpThreadPool();
 
@@ -543,7 +609,7 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
   }
 
   ctx.WaitAll();
-
+  ORT_RETURN_IF_ERROR(ctx.task_status_);
   ORT_RETURN_IF_ERROR(ctx.frame->GetOutputs(fetches));
   return Status::OK();
 }
@@ -560,9 +626,11 @@ ParallelExecutionPlan::~ParallelExecutionPlan() {
 common::Status ParallelExecutionPlan::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
                                               const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
                                               std::vector<OrtValue>& fetches,
-                                              const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
-                                              const logging::Logger& logger) {
-  return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger);
+                                              const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                              const logging::Logger& logger,
+                                              const bool& terminate_flag, 
+                                              const bool only_execute_path_to_fetches) {
+  return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger, terminate_flag, only_execute_path_to_fetches);
 }
 
 const std::vector<AllocPlanPerValue>& ParallelExecutionPlan::GetAllocPlanPerValue() const {

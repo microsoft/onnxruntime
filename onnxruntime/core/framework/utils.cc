@@ -573,7 +573,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
-    if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+    if (false && execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
       ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                           feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                           feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
@@ -584,7 +584,9 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       auto ret = paral_plan->Execute(session_state,
                                      feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                      feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
-                                     logger);
+                                     logger,
+                                     terminate_flag,
+                                     only_execute_path_to_fetches);
       ORT_RETURN_IF_ERROR(ret);
   }
   } else {
@@ -619,7 +621,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     }
 
     // no device copies are needed so simple execute
-    if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
+    if (false && execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
       ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                           feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                           feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
@@ -630,7 +632,9 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       auto ret = paral_plan->Execute(session_state,
                                      feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                      feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
-                                     logger);
+                                     logger,
+                                     terminate_flag,
+                                     only_execute_path_to_fetches);
       ORT_RETURN_IF_ERROR(ret);
     }
     

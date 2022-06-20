@@ -110,6 +110,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
+  bool use_ep_level_unified_stream_ = false;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;

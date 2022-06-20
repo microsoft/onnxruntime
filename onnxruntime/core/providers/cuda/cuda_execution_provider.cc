@@ -247,12 +247,19 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
   if (info.has_user_compute_stream) {
     external_stream_ = true;
+    use_ep_level_unified_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
   } else {
     if (info.external_allocator_info.UseExternalAllocator()) {
+      use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
-    } else {
-      //CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+    } else if (info.enable_cuda_graph){
+      // current cuda graph implementation only works with single stream
+      // use EP level unified stream for all the reqeust
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+      use_ep_level_unified_stream_ = true;
+    }
+    else {
       stream_ = nullptr;
     }
   }
@@ -2513,7 +2520,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
 }
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  RegisterCudaStreamHandles(stream_handle_registry);
+  RegisterCudaStreamHandles(stream_handle_registry, stream_, use_ep_level_unified_stream_);
 }
 
 }  // namespace onnxruntime

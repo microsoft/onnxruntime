@@ -1971,8 +1971,8 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 }
 
 #ifdef USE_CUDA
-
-TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+// disable it, since we are going to enable parallel execution with cuda ep
+TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
