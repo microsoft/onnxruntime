@@ -253,8 +253,7 @@ def create_bert_attention(
     # Needed so that we don't see the new LayerNormalization function added in version 17.
     # TODO(https://github.com/microsoft/onnxruntime/issues/11916): Remove once fixed.
     opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
-    model = helper.make_model(graph, opset_imports=(opsetid,))
-    return model
+    return helper.make_model(graph, opset_imports=(opsetid,))
 
 
 def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, use_float_mask=False):
@@ -417,8 +416,7 @@ def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, 
         initializers,
     )
 
-    model = helper.make_model(graph)
-    return model
+    return helper.make_model(graph)
 
 
 if __name__ == "__main__":
