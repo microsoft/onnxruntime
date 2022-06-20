@@ -1977,6 +1977,11 @@ def run_nodejs_tests(nodejs_binding_dir):
     run_subprocess(args, cwd=nodejs_binding_dir)
 
 
+def install_python_wheel_build_deps():
+    dep_packages = ["setuptools>=41.4.0", "wheel==0.37.1"]
+    run_subprocess([sys.executable, "-m", "pip", "install"] + dep_packages)
+
+
 def build_python_wheel(
     source_dir,
     build_dir,
@@ -2001,6 +2006,8 @@ def build_python_wheel(
     use_ninja=False,
     build_eager_mode=False,
 ):
+    install_python_wheel_build_deps()
+
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
