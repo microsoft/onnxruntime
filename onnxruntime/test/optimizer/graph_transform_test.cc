@@ -83,7 +83,6 @@
 #include "test/util/include/temp_dir.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#include "orttraining/core/optimizer/cast_gelu_fusion.h"
 #endif
 
 using namespace std;
@@ -3686,148 +3685,6 @@ TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
   TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0,
                            1, 0, 1);
 }
-
-TEST_F(GraphTransformationTests, CastGeluFusionTest) {
-  // Only forward nodes.
-  {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
-      auto* cast_out_0 = builder.MakeIntermediate();
-      auto* gelu_out = builder.MakeIntermediate();
-      auto* cast_out_1 = builder.MakeIntermediate();
-      auto* identity_out = builder.MakeOutput();
-
-      builder.AddNode("Cast", {input_arg}, {cast_out_0})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
-      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-      builder.AddNode("Identity", {cast_out_1}, {identity_out});
-    };
-
-    auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
-    };
-
-    auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 0);
-    };
-
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<CastGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 5,
-                         pre_graph_checker, post_graph_checker);
-  }
-
-  // Both forward and backward nodes.
-  {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* x_arg = builder.MakeInput<MLFloat16>({{2, -1, 3, -1}});
-      auto* dy_arg = builder.MakeInput<MLFloat16>(std::nullopt);
-      auto* cast_out_0 = builder.MakeIntermediate();
-      auto* gelu_out = builder.MakeIntermediate();
-      auto* cast_out_1 = builder.MakeIntermediate();
-      auto* cast_out_2 = builder.MakeIntermediate();
-      auto* gelu_grad_out = builder.MakeIntermediate();
-      auto* cast_out_3 = builder.MakeIntermediate();
-      auto* identity_out_0 = builder.MakeOutput();
-      auto* identity_out_1 = builder.MakeOutput();
-
-      builder.AddNode("Cast", {x_arg}, {cast_out_0})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
-      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-      builder.AddNode("Identity", {cast_out_1}, {identity_out_0});
-      builder.AddNode("Cast", {dy_arg}, {cast_out_2})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-      builder.AddNode("GeluGrad", {cast_out_2, cast_out_0}, {gelu_grad_out}, kMSDomain);
-      builder.AddNode("Cast", {gelu_grad_out}, {cast_out_3})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-      builder.AddNode("Identity", {cast_out_3}, {identity_out_1});
-    };
-
-    auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 4);
-    };
-
-    auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 0);
-    };
-
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<CastGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 5,
-                         pre_graph_checker, post_graph_checker);
-  }
-
-  // Subgraph output as graph output.
-  {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
-      auto* cast_out_0 = builder.MakeIntermediate();
-      auto* gelu_out = builder.MakeIntermediate();
-      auto* cast_out_1 = builder.MakeOutput();
-
-      builder.AddNode("Cast", {input_arg}, {cast_out_0})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
-      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
-    };
-
-    auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
-    };
-
-    auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
-    };
-
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<CastGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 5,
-                         pre_graph_checker, post_graph_checker);
-  }
-
-  // Cast not between half and float.
-  {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* x_arg = builder.MakeInput<MLFloat16>({{2, -1, 3, -1}});
-      auto* dy_arg = builder.MakeInput<MLFloat16>(std::nullopt);
-      auto* cast_out_0 = builder.MakeIntermediate();
-      auto* gelu_out = builder.MakeIntermediate();
-      auto* cast_out_1 = builder.MakeIntermediate();
-      auto* cast_out_2 = builder.MakeIntermediate();
-      auto* gelu_grad_out = builder.MakeIntermediate();
-      auto* cast_out_3 = builder.MakeIntermediate();
-      auto* identity_out_0 = builder.MakeOutput();
-      auto* identity_out_1 = builder.MakeOutput();
-
-      builder.AddNode("Cast", {x_arg}, {cast_out_0})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
-      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
-      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-      builder.AddNode("Identity", {cast_out_1}, {identity_out_0});
-      builder.AddNode("Cast", {dy_arg}, {cast_out_2})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
-      builder.AddNode("GeluGrad", {cast_out_2, cast_out_0}, {gelu_grad_out}, kMSDomain);
-      builder.AddNode("Cast", {gelu_grad_out}, {cast_out_3})
-          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-      builder.AddNode("Identity", {cast_out_3}, {identity_out_1});
-    };
-
-    auto pre_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 4);
-    };
-
-    auto post_graph_checker = [&](Graph& graph) {
-      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 4);
-    };
-
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<CastGeluFusion>();
-    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 5,
-                         pre_graph_checker, post_graph_checker);
-  }
-}
 #endif
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
@@ -5133,6 +4990,67 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
       ASSERT_EQ(op_to_count["Cast"], expected_casts_count);
     }
+  }
+}
+
+TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
+  using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 0);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<BFloat16>({{2, -1, 3, -1}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
   }
 }
 
