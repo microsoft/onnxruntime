@@ -250,7 +250,10 @@ def create_bert_attention(
         initializers,
     )
 
-    model = helper.make_model(graph)
+    # Needed so that we don't see the new LayerNormalization function added in version 17.
+    # TODO(https://github.com/microsoft/onnxruntime/issues/11916): Remove once fixed.
+    opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
+    model = helper.make_model(graph, opset_imports=(opsetid,))
     return model
 
 
