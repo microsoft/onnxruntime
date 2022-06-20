@@ -403,6 +403,7 @@ struct Session : Base<OrtSession> {
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);                                                             ///< Wraps OrtApi::CreateSession
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionWithPrepackedWeightsContainer
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);                                        ///< Wraps OrtApi::CreateSessionFromArray
+  Session(Env& env, OrtInputStream& model_stream, const SessionOptions& options);                                                             ///< Wraps OrtApi::CreateSessionFromIStream
 
   /** \brief Run the model returning results in an Ort allocated vector.
   * 

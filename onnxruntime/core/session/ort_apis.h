@@ -19,6 +19,7 @@ ORT_API(void, ReleaseCustomOpDomain, _Frees_ptr_opt_ OrtCustomOpDomain*);
 ORT_API(void, ReleaseMapTypeInfo, _Frees_ptr_opt_ OrtMapTypeInfo*);
 ORT_API(void, ReleaseSequenceTypeInfo, _Frees_ptr_opt_ OrtSequenceTypeInfo*);
 ORT_API(void, ReleaseModelMetadata, _Frees_ptr_opt_ OrtModelMetadata*);
+//ORT_API(void, ReleaseInputStream, _Frees_ptr_opt_ OrtInputStream*);
 
 _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL CreateStatus(OrtErrorCode code, _In_z_ const char* msg)
     NO_EXCEPTION ORT_MUST_USE_RESULT;
@@ -43,6 +44,8 @@ ORT_API_STATUS_IMPL(CreateSession, _In_ const OrtEnv* env, _In_ const ORTCHAR_T*
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
 ORT_API_STATUS_IMPL(CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
+                    _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
+ORT_API_STATUS_IMPL(CreateSessionFromStream, _In_ const OrtEnv* env, _In_ OrtInputStream* model_stream,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
 ORT_API_STATUS_IMPL(Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,

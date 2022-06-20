@@ -269,6 +269,7 @@ ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
+//ORT_RUNTIME_CLASS(InputStream);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -345,6 +346,10 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  ///< Temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
+
+typedef struct OrtInputStream {
+  size_t(ORT_API_CALL* Read)(unsigned char* buffer, size_t count);                ///< Stream read callback
+} OrtInputStream;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
 */
@@ -690,6 +695,18 @@ struct OrtApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(CreateSessionFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
+                  _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
+
+  /** \brief Create an OrtSession from an OrtInputStream
+  *
+  * \param[in] env
+  * \param[in] model_stream
+  * \param[in] options
+  * \param[out] out Returned newly created OrtSession. Must be freed with OrtApi::ReleaseSession
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(CreateSessionFromStream, _In_ const OrtEnv* env, _In_ OrtInputStream* model_stream,
                   _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 
   /** \brief Run the model in an ::OrtSession
