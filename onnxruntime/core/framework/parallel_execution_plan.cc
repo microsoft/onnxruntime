@@ -444,7 +444,8 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
             logic_streams_[i]->commands_.push_back([wait_handle, cur_stream_idx, notification_index, i, node, upstream_node_name](ExecutionContext& ctx, bool& continue_flag) {
               wait_handle(*ctx.device_streams[cur_stream_idx], *ctx.notifications[notification_index]);
               // update streams clock status
-              ctx.device_streams[cur_stream_idx]->UpdateStreamClock(ctx.notifications[notification_index]->stream, ctx.notifications[notification_index]->timestamp);
+              if (ctx.device_streams[cur_stream_idx])
+                ctx.device_streams[cur_stream_idx]->UpdateStreamClock(ctx.notifications[notification_index]->stream, ctx.notifications[notification_index]->timestamp);
               LOGS(*ctx.logger, INFO) << "stream " << i << " wait on " << upstream_node_name << " for " << node->Name();
               continue_flag = true;
               return Status::OK();

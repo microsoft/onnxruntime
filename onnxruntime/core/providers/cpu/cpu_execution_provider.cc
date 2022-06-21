@@ -2157,13 +2157,4 @@ std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
 }
 
-std::unique_ptr<Stream> CreateCPUStream(const IExecutionProvider* provider) {
-  ORT_ENFORCE(provider && provider->Type() == kCpuExecutionProvider);
-  return std::make_unique<Stream>(nullptr, provider);
-}
-
-void CPUExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  stream_handle_registry.RegisterCreateStreamFn(kCpuExecutionProvider, CreateCPUStream);
-}
-
 }  // namespace onnxruntime
