@@ -221,6 +221,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
+  auto beam_batch_size = logits_shape[0];
 
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
 
@@ -236,7 +237,11 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       gsl::span<T> target = next_token_logits.subspan(i * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                            cudaMemcpyDeviceToDevice, cuda_stream));
-      current_logits += input_length * vocab_size;
+      if (beam_batch_size == batch_beam_size) {
+        current_logits += input_length * vocab_size;
+      } else if (beam_batch_size == batch_size && i % num_beams == 0) {
+        current_logits += input_length * vocab_size;
+      }
     }
   }
 

@@ -119,7 +119,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     for (size_t i = 0; i < batch_beam_size; i++) {
       for (int j = 0; j < sequence_length; j++) {
         const size_t index = SafeInt<gsl::index>(i) * max_length + j;
-        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length * beam_size + j];
+        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i / beam_size) * sequence_length + j];
       }
     }
   }

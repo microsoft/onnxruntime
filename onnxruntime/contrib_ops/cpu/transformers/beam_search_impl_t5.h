@@ -110,7 +110,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                  this->IsCuda());
 
   IAllocatorUniquePtr<char> buffer;
-  OrtValue expanded_decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
+  OrtValue decoder_input_ids;  // Tensor in CPU, and it will be used to initialize sequence in cpu_state
   ORT_RETURN_IF_ERROR(this->encoder_subgraph_.CreateInitialFeeds(
       encoder_input_ids,
       encoder_attn_mask_value,
@@ -121,7 +121,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       this->create_encoder_inputs_func_,
       this->add_to_feeds_func_,
       buffer,
-      expanded_decoder_input_ids));
+      decoder_input_ids));
 
   ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
                                              encoder_feeds_fetches_manager,
@@ -150,7 +150,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // ------------------------------------
 
   // Copy decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
-  cpu_state.SetSequence(expanded_decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>(),
+  cpu_state.SetSequence(decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>(),
                         static_cast<size_t>(parameters->BatchBeamSize()),
                         parameters->num_beams,
                         parameters->max_length,
