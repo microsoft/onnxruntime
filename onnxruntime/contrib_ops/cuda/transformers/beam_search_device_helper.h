@@ -71,6 +71,8 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper);
 
 // ---------------------------------------------------------------
@@ -88,6 +90,11 @@ Status UpdateDecoderFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 }  // namespace BeamSearchCudaDeviceHelper
