@@ -82,65 +82,81 @@ void ReleaseNode(onnxruntime::Node* node) {
   }
 }
 
-using NodeHolder = std::unique_ptr<onnxruntime::Node, void(*)(onnxruntime::Node*)>;
+using NodePtr = std::unique_ptr<onnxruntime::Node, void (*)(onnxruntime::Node*)>;
 
-using StandAloneNodes = std::unordered_map<const onnxruntime::OpKernel*, NodeHolder>;
+class NodeRepo {
+ private:
+  using StandAloneNodesMap = InlinedHashMap<const onnxruntime::OpKernel*, NodePtr>;
 
-StandAloneNodes& GetNodes() {
-  static StandAloneNodes nodes;
-  return nodes;
-}
+  NodeRepo() = default;
+  ~NodeRepo() = default;
 
-std::mutex& GetMutex() {
-  static std::mutex mtx;
-  return mtx;
-}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NodeRepo);
 
-void AddNode(const onnxruntime::OpKernel* kernel, NodeHolder& node_holder) {
-  std::lock_guard<std::mutex> guard(GetMutex());
-  StandAloneNodes& nodes = GetNodes();
-  auto iter = nodes.find(kernel);
-  if (iter != nodes.end()) {
-    ORT_THROW("kernel mapped twice to a node!");
+  static std::mutex& GetMutex() {
+    static std::mutex mtx;
+    return mtx;
   }
-  nodes.insert({kernel, std::move(node_holder)});
-}
 
-void DelNode(const onnxruntime::OpKernel* kernel) {
-  std::lock_guard<std::mutex> guard(GetMutex());
-  GetNodes().erase(kernel);
-}
+  static NodeRepo& GetRepo() {
+    static NodeRepo node_repo;
+    return node_repo;
+  }
 
-void UpdateNode(const onnxruntime::OpKernel* kernel,
-                int input_count,
-                int output_count) {
-  std::lock_guard<std::mutex> guard(GetMutex());
-  StandAloneNodes& nodes = GetNodes();
-  auto iter = nodes.find(kernel);
-  if (iter != nodes.end()) {
-    Node* node = iter->second.get();
+  StandAloneNodesMap node_map_;
+
+ public:
+  static void AddNode(const onnxruntime::OpKernel* kernel, NodePtr& node_ptr) {
+    std::lock_guard<std::mutex> guard(GetMutex());
+    auto& node_map = GetRepo().node_map_;
+    auto iter = node_map.find(kernel);
+    if (iter != node_map.end()) {
+      ORT_THROW("kernel mapped twice to a node!");
+    }
+    node_map.insert({kernel, std::move(node_ptr)});
+  }
+
+  static onnxruntime::Status ValidateNode(const onnxruntime::OpKernel* kernel,
+                                          const int& input_count,
+                                          const int& output_count) {
+    std::lock_guard<std::mutex> guard(GetMutex());
+    auto& node_map = GetRepo().node_map_;
+    auto iter = node_map.find(kernel);
+    ORT_ENFORCE(iter != node_map.end(), "Node does not exist");
+    auto* node = iter->second.get();
     auto& input_defs = node->MutableInputDefs();
     auto& output_defs = node->MutableOutputDefs();
-    if (input_defs.size() == static_cast<size_t>(input_count) &&
-        output_defs.size() == static_cast<size_t>(output_count)) {
-      return;  // already done init
+    // initialize inputs and outputs for only once
+    if (input_defs.size() == 0 && output_defs.size() == 0) {
+      for (int i = 0; i < input_count; ++i) {
+        input_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
+      }
+      for (int i = 0; i < output_count; ++i) {
+        output_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
+      }
+    } else if (input_defs.size() != static_cast<size_t>(input_count) ||
+               output_defs.size() != static_cast<size_t>(output_count)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid node input or output count");
     }
-    for (auto* input_arg : input_defs) {
-      delete input_arg;
-    }
-    for (auto* output_arg : output_defs) {
-      delete output_arg;
-    }
-    input_defs.clear();
-    output_defs.clear();
-    for (int i = 0; i < input_count; ++i) {
-      input_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
-    }
-    for (int i = 0; i < output_count; ++i) {
-      output_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
+    return Status::OK();
+  }
+
+  static void DelNode(const onnxruntime::OpKernel* kernel) {
+    std::lock_guard<std::mutex> guard(GetMutex());
+    auto& node_map = GetRepo().node_map_;
+    node_map.erase(kernel);
+  }
+
+  static const Node* FindNode(const onnxruntime::OpKernel* kernel) {
+    auto& node_map = GetRepo().node_map_;
+    auto iter = node_map.find(kernel);
+    if (iter == node_map.end()) {
+      return nullptr;
+    } else {
+      return iter->second.get();
     }
   }
-}
+};
 
 // For invoking kernels without a graph
 class StandAloneKernelContext : public OpKernelContext {
@@ -371,9 +387,10 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
                                                ep->Type(),
                                                &kernel_create_info);
   ORT_RETURN_IF_ERROR(status);
+
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
-  NodeHolder node_holder(new onnxruntime::Node(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain), ReleaseNode);
+  NodePtr node_holder(new onnxruntime::Node(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain), ReleaseNode);
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
     node_holder->AddAttributeProto(*attr_proto);
@@ -383,12 +400,14 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   kernel_def_builder->SetName(op_name);
   kernel_def_builder->SetDomain(domain);
   kernel_def_builder->SinceVersion(version);
+
   OpKernelInfo instant_kernel_info(*node_holder.get(), *kernel_def_builder->Build(), *ep, {}, {}, {});
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
+
   FuncManager func_mgr;
   status = kernel_create_info->kernel_create_func(func_mgr, instant_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
-  AddNode(op_kernel.get(), node_holder);
+  NodeRepo::AddNode(op_kernel.get(), node_holder);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
 }
@@ -402,7 +421,8 @@ onnxruntime::Status InvokeOp(_In_ const OrtKernelContext* context,
   auto ctx = reinterpret_cast<const OpKernelContext*>(context);
   AllocatorPtr allocator{};
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
-  UpdateNode(reinterpret_cast<const onnxruntime::OpKernel*>(ort_op), input_count, output_count);
+  auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
+  ORT_RETURN_IF_ERROR(NodeRepo::ValidateNode(kernel, input_count, output_count));
   StandAloneKernelContext standalone_kernel_ctx(input_values,
                                                 input_count,
                                                 output_values,
@@ -410,7 +430,6 @@ onnxruntime::Status InvokeOp(_In_ const OrtKernelContext* context,
                                                 allocator,
                                                 ctx->GetOperatorThreadPool(),
                                                 ctx->Logger());
-  auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
   return kernel->Compute(&standalone_kernel_ctx);
 }
 
@@ -489,7 +508,7 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp* op) {
   if (op) {
     auto kernel = reinterpret_cast<onnxruntime::OpKernel*>(op);
-    onnxruntime::standalone::DelNode(kernel);
+    onnxruntime::standalone::NodeRepo::DelNode(kernel);
     delete kernel;
   }
 }

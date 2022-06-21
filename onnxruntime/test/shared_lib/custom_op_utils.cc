@@ -213,9 +213,9 @@ StandaloneCustomKernel::StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKe
   const char* add_type_constraint_names[1] = {"T"};
   int add_type_constraint_values[1] = {1};
   op_add_ = ort.CreateOp(info_copy_, "Add", "", 14,
-               (const char**)add_type_constraint_names,
-               (const ONNXTensorElementDataType*)add_type_constraint_values,
-               1, nullptr, 0);
+                         (const char**)add_type_constraint_names,
+                         (const ONNXTensorElementDataType*)add_type_constraint_values,
+                         1, nullptr, 0);
   ORT_ENFORCE(op_add_, "op_add not initialzied");
   InitTopK(ort_);
   ORT_ENFORCE(op_topk_, "op_topk not initialzied");
@@ -242,9 +242,9 @@ void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort) {
 
   OrtOpAttr* top_attrs[3] = {axis, largest, sorted};
   op_topk_ = ort.CreateOp(info_copy_, "TopK", "", 14,
-                     (const char**)type_constraint_names,
-                     (const ONNXTensorElementDataType*)type_constraint_values,
-                     2, top_attrs, 3);
+                          (const char**)type_constraint_names,
+                          (const ONNXTensorElementDataType*)type_constraint_values,
+                          2, top_attrs, 3);
 
   ort.ReleaseOpAttr(axis);
   ort.ReleaseOpAttr(largest);
@@ -468,13 +468,23 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
                         -0.042245108634233475f, -0.08389100432395935f, -0.2509208619594574f, -0.18825212121009827f,
                         -0.18779152631759644f, -0.11083387583494186f};
 
-  ort_.ReleaseOp(op_conv);
-
   for (int i = 0; i < 3 * 2 * 5; ++i) {
     if (std::abs(Y_values[i] - Y_expected[i]) > 1e-6) {
       ORT_THROW("Conv op give unexpected output.");
     }
   }
+
+  bool failed = false;
+  const OrtValue* invalid_inputs[] = {(OrtValue*)X, (OrtValue*)W, (OrtValue*)nullptr};
+  //the call supposed to fail because of growed inputs
+  try {
+    ort_.InvokeOp(context, op_conv, invalid_inputs, 3, outputs, 1);
+  } catch (const Ort::Exception& e) {
+    failed = e.GetOrtErrorCode() == ORT_INVALID_ARGUMENT;
+  }
+
+  ORT_ENFORCE(failed, "invalid input is not triggering expected exception");
+  ort_.ReleaseOp(op_conv);
 }
 
 void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
