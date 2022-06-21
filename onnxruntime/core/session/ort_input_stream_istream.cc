@@ -15,7 +15,7 @@ class OrtInputStreamIStreamBuf final : public std::streambuf {
 
  protected:
   int_type underflow() override {
-    size_t num_read = stream_.Read(buffer_.data(), buffer_.size());
+    size_t num_read = stream_.Read(buffer_.data(), buffer_.size(), stream_.user_object);
 
     if (num_read > 0) {
       setg(buffer_.data(), buffer_.data(), buffer_.data() + num_read);

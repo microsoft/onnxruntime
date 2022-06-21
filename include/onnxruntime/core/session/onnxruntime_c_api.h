@@ -348,7 +348,8 @@ typedef enum OrtMemType {
 } OrtMemType;
 
 typedef struct OrtInputStream {
-  size_t(ORT_API_CALL* Read)(char* buffer, size_t count);                ///< Stream read callback
+  size_t(ORT_API_CALL* Read)(char* buffer, size_t count, void* user_object);  ///< Stream read callback
+  void* user_object;
 } OrtInputStream;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
