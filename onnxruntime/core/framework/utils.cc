@@ -553,7 +553,8 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
+                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
+                                       Stream* parent_stream = nullptr) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
@@ -586,7 +587,8 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                      feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                      logger,
                                      terminate_flag,
-                                     only_execute_path_to_fetches);
+                                     only_execute_path_to_fetches,
+                                     parent_stream);
       ORT_RETURN_IF_ERROR(ret);
   }
   } else {
@@ -634,7 +636,8 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                      feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
                                      logger,
                                      terminate_flag,
-                                     only_execute_path_to_fetches);
+                                     only_execute_path_to_fetches,
+                                     parent_stream);
       ORT_RETURN_IF_ERROR(ret);
     }
     
@@ -650,14 +653,15 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
+                            const logging::Logger& logger, bool only_execute_path_to_fetches,
+                            Stream* parent_stream) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
+                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches, parent_stream);
 
   return status;
 }
@@ -728,9 +732,10 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger) {
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                               Stream* parent_stream) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger);
+                                 execution_mode, terminate_flag, logger, false, parent_stream);
   return status;
 }
 

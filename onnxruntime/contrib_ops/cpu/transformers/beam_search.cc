@@ -588,7 +588,8 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
 #endif
 
     status = utils::ExecuteSubgraph(session_state_, feeds_fetches_manager, feeds, fetches, {},
-                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger(),
+                                    context_.GetComputeStream());
 
     ORT_RETURN_IF_ERROR(status);
 

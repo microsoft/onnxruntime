@@ -33,7 +33,9 @@ class ParallelExecutionPlan : public SequentialExecutionPlan {
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger,
-                         const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false);
+                         const bool& terminate_flag = false, 
+                         const bool only_execute_path_to_fetches = false,
+                         Stream* parent_stream = nullptr);
   const std::vector<int>& GetRefCounts() const;
   const std::vector<AllocPlanPerValue>& GetAllocPlanPerValue() const;
   std::unique_ptr<ParallelExecutionPlanImpl> impl_;

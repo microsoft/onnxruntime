@@ -134,7 +134,7 @@ class ExecutionFrame final : public IExecutionFrame {
                  // optional custom allocators. key is index in fetches
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state,
-                 const std::vector<std::unique_ptr<Stream>>* device_streams);
+                 const std::vector<Stream*>* device_streams);
 
   ~ExecutionFrame() override;
 
@@ -233,7 +233,7 @@ class ExecutionFrame final : public IExecutionFrame {
   // inferred_shapes_ is generated together with mem_patterns_.
   std::unordered_map<int, TensorShape> inferred_shapes_;
 
-  const std::vector<std::unique_ptr<Stream>>* device_streams_;
+  const std::vector<Stream*>* device_streams_;
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

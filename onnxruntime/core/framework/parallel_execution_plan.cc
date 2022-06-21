@@ -88,7 +88,11 @@ struct ExecutionContext {
   const logging::Logger* logger;
   std::vector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unique_ptr<ReleasePlan> release_plan;
-  std::vector<std::unique_ptr<Stream> > device_streams;
+  // size of device_streams is the same as size of logic streams
+  std::vector<Stream*> device_streams;
+  // this is the container that host the ownership of device streams
+  // the size is not the same as device_streams.
+  std::vector<std::unique_ptr<Stream>> device_streams_containers;
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
   const bool& terminate_flag_;
@@ -103,7 +107,8 @@ struct ExecutionContext {
                    const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
                    const logging::Logger& sess_logger,
-                   const bool& terminate_flag) : session_state(&sess_state),
+                   const bool& terminate_flag,
+                   Stream* parent_stream) : session_state(&sess_state),
                                                          logger(&sess_logger),
                                                          count_down_barriers_(num_barriers),
                                                          terminate_flag_(terminate_flag) {
@@ -113,8 +118,25 @@ struct ExecutionContext {
       if (logic_stream->commands_.size() > 0) {
         auto& stream_handle_registry = sess_state.GetStreamHandleRegistryInstance();
         auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->ep_->Type());
+        // TODO: in theory, we should make current subgraph's stream depends on parent stream.
+        // but in current code structure, it causing issues with the resource sharing and stream
+        // lifetime. it also may cause additional cost of stream sync for single stream case.
+        // In first phase, let's just put all the subgraph execution on the parent stream.
+        if (parent_stream) {
+          // if current logic stream is not on the same EP instance as parent stream
+          // and the EP instance does have async streams (not EP like CPU)
+          // throw error as we don't have the code to setup the dependency at this moment.
+          if (logic_stream->ep_ != parent_stream->provider && create_stream_fn) {
+            ORT_THROW("Subgraph has nodes running on EP: ", logic_stream->ep_->Type(),
+                      " while parent graph node running on EP: ", parent_stream->provider->Type(),
+                      ", this is not supported yet.");
+          }
+          device_streams.push_back(parent_stream);
+        }
         if (create_stream_fn) {
-          device_streams.emplace_back(create_stream_fn(logic_stream->ep_));
+          auto device_stream = create_stream_fn(logic_stream->ep_);
+          device_streams.push_back(device_stream.get());
+          device_streams_containers.emplace_back(std::move(device_stream));
         } else {
           device_streams.push_back(nullptr);
         }
@@ -156,7 +178,8 @@ struct ExecutionContext {
     while (task_status_.IsOK() && remain_tasks_.Get()) {
       onnxruntime::concurrency::SpinPause();
     }
-    for (auto& device_stream : device_streams) {
+    //only flush the streams owned by current context
+    for (auto& device_stream : device_streams_containers) {
       if (device_stream) {
         device_stream->Flush();
       }
@@ -173,7 +196,7 @@ struct ExecutionContext {
   }
 
   ~ExecutionContext() {
-    for (auto& stream : device_streams) {
+    for (auto& stream : device_streams_containers) {
       if (stream) {
         auto& allocators = stream->provider->GetAllocators();
         for (auto& alloc : allocators) {
@@ -259,7 +282,8 @@ struct ParallelExecutionPlanImpl {
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& logger,
                          const bool& terminate_flag, 
-                         const bool only_execute_path_to_fetches);
+                         const bool only_execute_path_to_fetches,
+                         Stream* stream);
 
   const std::vector<int>& GetRefCounts() const { return value_ref_counts_; }
 
@@ -462,12 +486,12 @@ ParallelExecutionPlanImpl::ParallelExecutionPlanImpl(const SessionState& session
         auto* p_kernel = ctx.session_state->GetKernel(node_index);
         auto* intra_tp = ctx.session_state->GetThreadPool();
         // TODO: set terminate flag from run_option
-        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, ctx.terminate_flag_, ctx.device_streams[cur_stream_idx].get());
+        OpKernelContextInternal kernel_ctx(*ctx.session_state, *ctx.frame, *p_kernel, *ctx.logger, ctx.terminate_flag_, ctx.device_streams[cur_stream_idx]);
         // a temporary hack
-        if (p_kernel->Info().GetKernelDef().OpName() == "If" || p_kernel->Info().GetKernelDef().OpName() == "Loop" || p_kernel->Info().GetKernelDef().OpName() == "Scan")
+        /*if (p_kernel->Info().GetKernelDef().OpName() == "If" || p_kernel->Info().GetKernelDef().OpName() == "Loop" || p_kernel->Info().GetKernelDef().OpName() == "Scan")
           if (kernel_ctx.GetComputeStream()) {
             kernel_ctx.GetComputeStream()->Flush();
-          }
+          }*/
         if (p_kernel->IsAsync()) {
           ORT_THROW("Async Kernel Support is not implemented yet.");
         } else {
@@ -583,7 +607,8 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                                                   const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                   const logging::Logger& logger,
                                                   const bool& terminate_flag,
-                                                  const bool only_execute_path_to_fetches) {
+                                                  const bool only_execute_path_to_fetches,
+                                                  Stream* parent_stream) {
   if (only_execute_path_to_fetches)
     ORT_THROW("NOT IMPLEMENTED YET.");
   // prepare the execution context, notifications got initialized.
@@ -597,7 +622,8 @@ common::Status ParallelExecutionPlanImpl::Execute(const SessionState& session_st
                        fetch_allocators,
                        num_barriers_,
                        logger, 
-                       terminate_flag);
+                       terminate_flag,
+                       parent_stream);
 
   auto* tp = session_state.GetInterOpThreadPool();
 
@@ -630,8 +656,9 @@ common::Status ParallelExecutionPlan::Execute(const SessionState& session_state,
                                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                               const logging::Logger& logger,
                                               const bool& terminate_flag, 
-                                              const bool only_execute_path_to_fetches) {
-  return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger, terminate_flag, only_execute_path_to_fetches);
+                                              const bool only_execute_path_to_fetches,
+                                              Stream* parent_stream) {
+  return impl_->Execute(session_state, feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, logger, terminate_flag, only_execute_path_to_fetches, parent_stream);
 }
 
 const std::vector<AllocPlanPerValue>& ParallelExecutionPlan::GetAllocPlanPerValue() const {
