@@ -45,6 +45,7 @@ from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E4
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
 from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
+from models.t5.t5_helper import PRETRAINED_T5_MODELS  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -65,7 +66,8 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--model_name_or_path",
         required=True,
         type=str,
-        help="Model path, or pretrained model name in the list: " + ", ".join(PRETRAINED_GPT2_MODELS),
+        help="Model path, or pretrained model name in the list: "
+        + ", ".join(PRETRAINED_GPT2_MODELS + PRETRAINED_T5_MODELS),
     )
 
     parser.add_argument(
@@ -305,6 +307,7 @@ def t5_to_onnx(args: argparse.Namespace):
         disable_auto_mixed_precision=False,
         use_int32_inputs=True,
     )
+
     args.encoder_decoder_init_onnx = paths[0]
     args.decoder_onnx = paths[1]
 
@@ -1184,7 +1187,6 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
         sentences (Optional[List[str]], optional): input text. Defaults to None.
 
     Raises:
-        ValueError: --decoder_onnx is not specified for GPT2 model
         ValueError: Path does not exist: --encoder_decoder_init_onnx
         ValueError: Path does not exist: --decoder_onnx
         ValueError: --decoder_onnx and --encoder_decoder_init_onnx are not used together for T5
@@ -1197,7 +1199,8 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
 
     if args.model_type == "gpt2":
         if not args.decoder_onnx:
-            raise ValueError("--decoder_onnx shall be specified for gpt2 model")
+            onnx_filename = "gpt2_past_{}.onnx".format("fp16" if args.precision == Precision.FLOAT16 else "fp32")
+            args.decoder_onnx = Path(Path(args.output).parent, onnx_filename).as_posix()
     elif args.model_type == "t5":
         if args.encoder_decoder_init_onnx and not os.path.exists(args.encoder_decoder_init_onnx):
             raise ValueError(f"Path does not exist: --encoder_decoder_init_onnx {args.encoder_decoder_init_onnx}")
