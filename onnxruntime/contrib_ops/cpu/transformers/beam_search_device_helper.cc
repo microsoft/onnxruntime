@@ -91,6 +91,36 @@ void ExpandCaches(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
   }
 }
 
+template <typename T>
+void ExpandHiddenStates(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
+  // Input shape (batch_size, num_heads, sequence_length, head_size). The input is required with data type T.
+  // Output shape (batch_size * num_beams, num_heads, sequence_length, head_size)
+
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& sequence_length = input_shape[1];
+  const int64_t& hidden_size = input_shape[2];
+
+  int64_t dims[] = {batch_size * num_beams, sequence_length, hidden_size};
+  TensorShape expanded_shape(&dims[0], 3);
+
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
+
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  // const T* input_data = input.Get<Tensor>().Data<T>();
+  // T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
+  // T* target = expanded_data;
+  // const int64_t chunk_size = sequence_length * hidden_size;
+  // for (int i = 0; i < batch_size; i++) {
+  //   for (int j = 0; j < num_beams; j++) {
+  //     memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
+  //     target += chunk_size;
+  //   }
+  // }
+}
+
 Status CreateGptInputs(
     const Tensor* original_input_ids,
     int num_beams,
@@ -237,33 +267,30 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
-  if (input_length > 1) {
-    const T* current_logits = logits_data + (input_length - 1) * vocab_size;
-    for (int i = 0; i < batch_beam_size; i++) {
-      gsl::span<const T> source(current_logits, vocab_size);
-      gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
-                                                      static_cast<gsl::index>(vocab_size));
-      gsl::copy(source, target);
-      if (beam_batch_size == batch_beam_size) {
-        current_logits += input_length * vocab_size;
-      } else if (beam_batch_size == batch_size && i % num_beams == 0) {
-        current_logits += input_length * vocab_size;
-      }
+
+  const T* current_logits = logits_data + (input_length - 1) * vocab_size;
+  for (int i = 0; i < batch_beam_size; i++) {
+    gsl::span<const T> source(current_logits, vocab_size);
+    gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
+                                                    static_cast<gsl::index>(vocab_size));
+    gsl::copy(source, target);
+    if (beam_batch_size == batch_beam_size) {
+      current_logits += input_length * vocab_size;
+    } else if (beam_batch_size == batch_size && i != 0 && i % num_beams == 0) {
+      current_logits += input_length * vocab_size;
     }
   }
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("logits", logits);
-  if (input_length > 1) {
-    dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
-  }
+  dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
 #endif
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(batch_beam_size,  // rows
                                     vocab_size,       // elements per row
-                                    input_length > 1 ? next_token_logits.data() : logits_data,
+                                    next_token_logits.data(),
                                     next_token_scores.data(),
                                     true,
                                     thread_pool));
@@ -736,6 +763,7 @@ template Status UpdateDecoderFeeds<float>(
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 template void ExpandCaches<float>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
+template void ExpandHiddenStates<float>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

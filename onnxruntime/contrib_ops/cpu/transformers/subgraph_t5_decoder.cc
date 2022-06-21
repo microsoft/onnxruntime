@@ -156,9 +156,15 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // of encoder.
   // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
-    OrtValue expanded_cache;
-    BeamSearchCpuDeviceHelper::ExpandCaches<float>(encoder_fetches[j], num_beam, allocator, expanded_cache);
-    decoder_feeds.push_back(expanded_cache);
+    if (j == 1) {
+      OrtValue expanded_hidden_states;
+      BeamSearchCpuDeviceHelper::ExpandHiddenStates<float>(encoder_fetches[j], num_beam, allocator, expanded_hidden_states);
+      decoder_feeds.push_back(expanded_hidden_states);
+    } else {
+      OrtValue expanded_cache;
+      BeamSearchCpuDeviceHelper::ExpandCaches<float>(encoder_fetches[j], num_beam, allocator, expanded_cache);
+      decoder_feeds.push_back(expanded_cache);
+    }
   }
 
   // Pass through implicit inputs.
