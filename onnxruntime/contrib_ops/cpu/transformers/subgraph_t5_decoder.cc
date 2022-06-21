@@ -44,28 +44,38 @@ namespace transformers {
 
 Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                    const std::vector<const NodeArg*>& subgraph_outputs) {
-  ORT_RETURN_IF(num_subgraph_inputs < 7 || (num_subgraph_inputs - kFirstPastInputIndex) % 4 != 0,
-                "number of outputs expected to be 3 + 4 * layers, got:", num_subgraph_inputs);
-  ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - kFirstPresentOutputIndex) % 2 != 0,
+  bool has_hidden_state = subgraph_inputs[2]->Name() == "encoder_hidden_states" ? true : false;
+  SetPastInputIndex(has_hidden_state);
+
+  ORT_RETURN_IF(first_past_input_index_ != 2 && first_past_input_index_ != 3,
+                "kFirstPastInputIndex currently only supports 2 or 3");
+  ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ ||
+                (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
+                "number of outputs expected to be kFirstPastInputIndex + 4 * layers, got:", num_subgraph_inputs);
+  ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - first_present_output_index_) % 2 != 0,
                 "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "decoder subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
   ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
-                "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
-  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "encoder_hidden_states",
-                "decoder subgraph input 2 shall be named as encoder_hidden_states, got: ", subgraph_inputs[2]->Name());
+                "decoder subgraph input 1 shall be named as encoder_attention_mask, got: ",
+                subgraph_inputs[1]->Name());
+  if (first_past_input_index_ == 3) {
+    ORT_RETURN_IF(subgraph_inputs[2]->Name() != "encoder_hidden_states",
+                  "decoder subgraph input 2 shall be named as encoder_hidden_states, got: ",
+                  subgraph_inputs[2]->Name());
+  }
 
   // check subgraph outputs
   ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits",
                 "decoder subgraph output 0 shall be named as logits, got: ", subgraph_outputs[0]->Name());
 
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
-  const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[kFirstPresentOutputIndex]->Shape();
+  const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[first_present_output_index_]->Shape();
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
-  num_layers = (static_cast<int>(subgraph_outputs.size()) - kFirstPresentOutputIndex) / 2;
+  num_layers = (static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) / 2;
 
   constexpr auto int32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
@@ -80,7 +90,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(float_type != float32_type && float_type != float16_type,
                 "decoder subgraph input 2 (encoder_hidden_states) shall have float or float16 type");
 
-  for (int i = kFirstPastInputIndex; i < num_subgraph_inputs; i++) {
+  for (int i = first_past_input_index_; i < num_subgraph_inputs; i++) {
     ORT_RETURN_IF(subgraph_inputs[i]->TypeAsProto()->tensor_type().elem_type() != float_type,
                   "decoder subgraph past inputs shall have same data type as that of encoder_hidden_states");
   }
@@ -136,8 +146,10 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // The encoder_attention_mask is copied from the second input of encoder.
   decoder_feeds.push_back(encoder_feeds[1]);
 
-  // The encoder_hidden_states and past states are copied from the second output of encoder.
-  for (size_t j = 1; j < encoder_fetches.size(); j++) {
+  // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
+  // of encoder.
+  // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
+  for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
     decoder_feeds.push_back(encoder_fetches[j]);
   }
 
