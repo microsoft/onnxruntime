@@ -276,7 +276,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     gsl::copy(source, target);
     if (beam_batch_size == batch_beam_size) {
       current_logits += input_length * vocab_size;
-    } else if (beam_batch_size == batch_size && i != 0 && i % num_beams == 0) {
+    } else if (beam_batch_size == batch_size && i % num_beams == num_beams - 1) {
       current_logits += input_length * vocab_size;
     }
   }
