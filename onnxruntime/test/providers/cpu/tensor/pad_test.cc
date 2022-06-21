@@ -72,7 +72,15 @@ static void RunAllOpsetAllDomainPadTests(
     bool pads_is_initializer;
     bool value_is_initializer;
   };
-  std::vector<TestParams> all_test_params{{true, true}, {false, false}};
+  const std::vector<TestParams> all_test_params {
+    {false, false},
+#if defined(USE_NNAPI) && defined(__ANDROID__)
+    // only enable when building NNAPI EP on Android
+    // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
+    // TODO try to enable when we move from QEMU to arm64 CI machines
+    {true, true},
+#endif
+  };
   for (const auto& test_params : all_test_params) {
     // opset 10
     if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
