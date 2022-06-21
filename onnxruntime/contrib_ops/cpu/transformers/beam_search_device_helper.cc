@@ -61,64 +61,36 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
 }
 
 template <typename T>
-void ExpandCaches(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
-  // Input shape (batch_size, num_heads, sequence_length, head_size). The input is required with data type T.
-  // Output shape (batch_size * num_beams, num_heads, sequence_length, head_size)
+void ExpandBuffer(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape) {
+  // Input shape (batch_size, xxx). The input is required with data type T.
+  // Output shape (batch_size * num_beams, xxx)
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
-  const int64_t& num_heads = input_shape[1];
-  const int64_t& sequence_length = input_shape[2];
-  const int64_t& head_size = input_shape[3];
+  const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
 
-  int64_t dims[] = {batch_size * num_beams, num_heads, sequence_length, head_size};
-  TensorShape expanded_shape(&dims[0], 4);
+  int64_t dims[4] = {0};
+  input_shape.CopyDims(dims, input_shape.NumDimensions());
+  dims[0] = batch_size * num_beams;
+  TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
 
   MLDataType element_type = input.Get<Tensor>().DataType();
   ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
-
   Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  if (only_copy_shape) {
+    return;
+  }
 
   const T* input_data = input.Get<Tensor>().Data<T>();
   T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
   T* target = expanded_data;
-  const int64_t chunk_size = sequence_length * num_heads * head_size;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
       memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
       target += chunk_size;
     }
   }
-}
-
-template <typename T>
-void ExpandHiddenStates(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
-  // Input shape (batch_size, num_heads, sequence_length, head_size). The input is required with data type T.
-  // Output shape (batch_size * num_beams, num_heads, sequence_length, head_size)
-
-  const TensorShape& input_shape = input.Get<Tensor>().Shape();
-  const int64_t& batch_size = input_shape[0];
-  const int64_t& sequence_length = input_shape[1];
-  const int64_t& hidden_size = input_shape[2];
-
-  int64_t dims[] = {batch_size * num_beams, sequence_length, hidden_size};
-  TensorShape expanded_shape(&dims[0], 3);
-
-  MLDataType element_type = input.Get<Tensor>().DataType();
-  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
-
-  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
-
-  // const T* input_data = input.Get<Tensor>().Data<T>();
-  // T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
-  // T* target = expanded_data;
-  // const int64_t chunk_size = sequence_length * hidden_size;
-  // for (int i = 0; i < batch_size; i++) {
-  //   for (int j = 0; j < num_beams; j++) {
-  //     memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
-  //     target += chunk_size;
-  //   }
-  // }
 }
 
 Status CreateGptInputs(
@@ -762,8 +734,8 @@ template Status UpdateDecoderFeeds<float>(
     const transformers::IConsoleDumper* dumper);
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
-template void ExpandCaches<float>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
-template void ExpandHiddenStates<float>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
+template void ExpandBuffer<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape);
+template void ExpandBuffer<float>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

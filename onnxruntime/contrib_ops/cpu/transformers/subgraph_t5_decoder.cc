@@ -146,10 +146,12 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
 
   // The encoder_attention_mask is copied from the second input of encoder.
   OrtValue expanded_decoder_attention_masks;
-  BeamSearchCpuDeviceHelper::ExpandInputs<int32_t>(encoder_feeds[1],
+  std::cout << "expanded_decoder_attention_masks 149" << std::endl;
+  BeamSearchCpuDeviceHelper::ExpandBuffer<int32_t>(encoder_feeds[1],
                                                    num_beam,
                                                    allocator,
-                                                   expanded_decoder_attention_masks);
+                                                   expanded_decoder_attention_masks, false);
+  std::cout << "after crash 149" << std::endl;
   decoder_feeds.push_back(expanded_decoder_attention_masks);
 
   // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
@@ -158,11 +160,11 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
       OrtValue expanded_hidden_states;
-      BeamSearchCpuDeviceHelper::ExpandHiddenStates<float>(encoder_fetches[j], num_beam, allocator, expanded_hidden_states);
+      BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_hidden_states, true);
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
       OrtValue expanded_cache;
-      BeamSearchCpuDeviceHelper::ExpandCaches<float>(encoder_fetches[j], num_beam, allocator, expanded_cache);
+      BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_cache, false);
       decoder_feeds.push_back(expanded_cache);
     }
   }

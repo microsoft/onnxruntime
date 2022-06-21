@@ -243,10 +243,7 @@ template <typename T>
 void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 template <typename T>
-void ExpandCaches(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
-
-template <typename T>
-void ExpandHiddenStates(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
+void ExpandBuffer(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib
