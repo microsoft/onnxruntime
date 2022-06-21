@@ -269,7 +269,6 @@ ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
-//ORT_RUNTIME_CLASS(InputStream);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -347,6 +346,11 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief Input stream interface
+*
+* Holds pointer to a callback function to read from a stream. Can be used to load models from streams,
+* \see OrtApi::CreateSessionFromStream.
+*/
 typedef struct OrtInputStream {
   size_t(ORT_API_CALL* Read)(char* buffer, size_t count, void* user_object);  ///< Stream read callback
   void* user_object;
