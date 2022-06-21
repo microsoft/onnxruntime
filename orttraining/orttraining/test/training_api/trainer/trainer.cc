@@ -25,6 +25,7 @@ struct TestRunnerParameters {
   std::string optimizer_training_graph_path;
   std::string checkpoint_to_load_path;
   std::string model_name;
+  std::string synthetic_input_type;
 
   // Data configs.
   std::string train_data_dir;
@@ -74,6 +75,8 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
         cxxopts::value<std::string>()->default_value(""))
       ("model_name", "The name of the model.",
         cxxopts::value<std::string>()->default_value("model_test"))
+      ("synthetic_input_type", "Input type can be 'dummy'(input, target) or 'attention'(input_id, attention, target)",
+        cxxopts::value<std::string>()->default_value("attention"))
 
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
         cxxopts::value<std::string>()->default_value("bert_data/128/books_wiki_en_corpus/train"))
@@ -102,6 +105,7 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
     } else {
       params.model_evaluation_graph_path = eval_path;
     }
+    params.synthetic_input_type = flags["synthetic_input_type"].as<std::string>();
 
     params.optimizer_training_graph_path = flags["optimizer_training_graph_path"].as<std::string>();
     params.checkpoint_to_load_path = flags["checkpoint_to_load_path"].as<std::string>();
@@ -142,7 +146,7 @@ void InitSyntheticDataLoader(
     onnxruntime::training::test::training_api::SyntheticDataLoader& data_loader,
     const TestRunnerParameters& params,
     int64_t num_of_batches_per_epoch) {
-  bool sample_model = false;
+  bool sample_model = params.synthetic_input_type == "dummy" ? true : false;
   if (sample_model) {
     std::vector<int64_t> input1_shape{params.train_batch_size, 784};
     std::vector<int64_t> target_shape{params.train_batch_size};
