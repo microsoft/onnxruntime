@@ -144,6 +144,20 @@ struct OrtTrainingApi {
                   size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
                   size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
+  /** \brief Set the learning rate for this training session.
+  *
+  * This function allows users to set the learning rate for the training session. The training
+  * session by default starts with a learning rate of 0.001. It can be overwritten by invoking
+  * this function with the desired learning rate.
+  *
+  * \param[in] sess The training session on which the learning rate needs to be set.
+  * \param[in] learning_rate Desired learning rate to set.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ float learning_rate);
+
   /** \brief Performs the weight updates for the trainable parameters using the optimizer model.
   *
   * This function performs the weight update step that updates the trainable parameters such that they
@@ -160,6 +174,36 @@ struct OrtTrainingApi {
   */
   ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess,
                   _In_opt_ const OrtRunOptions* run_options);
+
+  /** \brief Registers the use of a linear learning rate scheduler for the training session.
+  *
+  * Register a linear learning rate scheduler that decays the learning rate by linearly updated
+  * multiplicative factor from the initial learning rate set on the training session to 0. The decay
+  * is performed after the initial warm up phase where the learning rate is linearly incremented
+  * from 0 to the initial learning rate set on the training session.
+  *
+  * \param[in] sess The training session that should use the linear learning rate scheduler.
+  * \param[in] warmup_step_count The number of steps in the warm up phase.
+  * \param[in] total_step_count The total number of training steps.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ int64_t warmup_step_count,
+                  _In_ int64_t total_step_count);
+
+  /** \brief Update the learning rate based on the registered learing rate scheduler.
+  *
+  * Takes a scheduler step that updates the learning rate that is being used by the training session.
+  * This function should typically be called before invoking the optimizer step for each round,
+  * or as determined necessary to update the learning rate being used by the training session.
+  *
+  * \param[in] sess The training session that has the registered learning rate scheduler.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(SchedulerStep, _Inout_ OrtTrainingSession* sess);
 
   /** \brief Frees up the memory used up by the training session.
   *

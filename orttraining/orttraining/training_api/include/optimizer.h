@@ -68,14 +68,14 @@ struct Optimizer {
 
   Status LoadStateDict(const OptimizerCheckpointState& optimizer_checkpoint_states);
 
+  inline Status SetLearningRate(float lr) {
+    optimizer_state_.learning_rate = lr;
+    return Status::OK();
+  }
+
  private:
   int64_t GetStep() const {
     return optimizer_state_.step;
-  }
-
-  Status SetLearningRate(float lr) {
-    optimizer_state_.learning_rate = lr;
-    return Status::OK();
   }
 
   // Generates optimizer momentum states for applicable optimizer types

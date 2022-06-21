@@ -256,10 +256,9 @@ int RunTraining(const TestRunnerParameters& params) {
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
   InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
 
-  // TODO(baiju): Add C API for LRScheduler
-  // int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
-  // int64_t warmup_step_count = total_step_count / 3;
-  // Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
+  const int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
+  const int64_t warmup_step_count = total_step_count / 3;
+  ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLinearLRScheduler(session, warmup_step_count, total_step_count));
 
   std::cout << "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;
@@ -309,7 +308,7 @@ int RunTraining(const TestRunnerParameters& params) {
 #endif
 
         // Update learning rate.
-        // EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
+        ORT_RETURN_ON_ERROR(g_ort_training_api->SchedulerStep(session));
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         onnxruntime::profile::NvtxRangeCreator resetgrad_range(
