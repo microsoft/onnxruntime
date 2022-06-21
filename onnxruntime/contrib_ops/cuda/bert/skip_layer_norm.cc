@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Modifications: Remove GetDeviceProp in LaunchFastGeluKernel.
+// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/cuda/cuda_common.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
@@ -100,7 +104,6 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   if (!LaunchSkipLayerNormKernel<CudaT>(
-          GetDeviceProp(),
           Stream(),
           reinterpret_cast<CudaT*>(output->template MutableData<T>()),
           reinterpret_cast<const CudaT*>(input->template Data<T>()),

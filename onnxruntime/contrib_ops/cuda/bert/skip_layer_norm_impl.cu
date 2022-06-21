@@ -1,4 +1,4 @@
-/* 
+/*
  The implementation of this file is based on skipLayerNorm plugin in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
 
@@ -18,6 +18,11 @@ limitations under the License.
 */
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Modifications: Add SkipLayerNormKernelSmallVec and SkipLayerNormKernelVec to 
+//                leverage vectorized load/write.
+// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/layer_norm.cuh"
@@ -75,35 +80,59 @@ __global__ void SkipLayerNormKernel(
   LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
-template <unsigned TPB>
-__global__ void SkipLayerNormKernelSmall2(
-    const int ld, const half2* input, const half2* skip, const half2* beta, const half2* gamma,
-    const half2* bias, const half epsilon, half2* output, bool hasBias) {
-  const int idx = (ld / 2) * blockIdx.x + threadIdx.x;
+template <unsigned TPB, int ILP>
+__global__ void SkipLayerNormKernelSmallVec(
+    const int ld, const half* input, const half* skip, const half* beta, const half* gamma,
+    const half* bias, const half epsilon, half* output, bool hasBias) {
+  const half rld = half(1.f) / half(ld);
+  const int idx = blockIdx.x * ld + threadIdx.x * ILP; // grid_size = n / ld
+
+  using VecT = aligned_vector<half, ILP>;
   using BlockReduce = cub::BlockReduce<cub::KeyValuePair<half, half>, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ half mu;      // mean
   __shared__ half rsigma;  // 1 / std.dev.
   KeyValuePairSum pair_sum;
-  half2 input_vec;
-  half2 beta_vec;
-  half2 gamma_vec;
-  cub::KeyValuePair<half, half> thread_data;
-  if (2 * threadIdx.x < ld) {
-    input_vec = input[idx];
-    const half2 skip_vec = skip[idx];
-    const half2 bias_vec = (hasBias) ? bias[threadIdx.x] : __float2half2_rn(0.f);
-    const half rld = half(1.f) / half(ld);
-    beta_vec = (beta == nullptr) ? __float2half2_rn(0.f) : beta[threadIdx.x];
-    gamma_vec = gamma[threadIdx.x];
 
-    input_vec += skip_vec;
-    if (hasBias) {
-      input_vec += bias_vec;
+  using VecT = aligned_vector<half, ILP>;
+  half input_v[ILP], skip_v[ILP], beta_v[ILP], gamma_v[ILP], bias_v[ILP], output_v[ILP];
+
+  VecT* input_val = reinterpret_cast<VecT*>(&input_v);
+  *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
+
+  VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
+  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
+
+  if (beta != nullptr) {
+    VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
+    *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
+  }
+
+  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
+  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+
+  if (hasBias) {
+    VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+    *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
+  }
+
+  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
+
+  cub::KeyValuePair<half, half> thread_data;
+  if (ILP * threadIdx.x < ld) {
+    half rldval_sum = half(0.f);
+    half rldvalsq_sum = half(0.f);
+    #pragma unroll
+    for (int i = 0; i < ILP; i++) {
+      input_v[i] += skip_v[i];
+      if (hasBias) {
+        input_v[i] += bias_v[i];
+      }
+      const half rldval = rld * input_v[i];
+      rldval_sum += rldval;
+      rldvalsq_sum += rldval * input_v[i];
     }
-    thread_data = cub::KeyValuePair<half, half>(rld * (__low2half(input_vec) + __high2half(input_vec)),
-                                                rld * (__low2half(input_vec) * __low2half(input_vec)) +
-                                                rld * (__high2half(input_vec) * __high2half(input_vec)));
+    thread_data = cub::KeyValuePair<half, half>(rldval_sum, rldvalsq_sum);
   } else {
     thread_data = cub::KeyValuePair<half, half>(half(0.f), half(0.f));
   }
@@ -113,54 +142,84 @@ __global__ void SkipLayerNormKernelSmall2(
     rsigma = Rsqrt(sumKV.value - mu * mu + epsilon);
   }
   __syncthreads();
-  if (2 * threadIdx.x < ld) {
-    half output_low = __low2half(gamma_vec) * (__low2half(input_vec) - mu) * rsigma + __low2half(beta_vec);
-    half output_high = __high2half(gamma_vec) * (__high2half(input_vec) - mu) * rsigma + __high2half(beta_vec);
-    output[idx] = __halves2half2(output_low, output_high);
+  if (ILP * threadIdx.x < ld) {
+    #pragma unroll
+    for (int i = 0; i < ILP; i++) {
+      output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
+                                        gamma_v[i] * (input_v[i] - mu) * rsigma;
+    }
+    *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
   }
 }
 
-template <unsigned TPB>
-__global__ void SkipLayerNormKernelVec2(
-    const int ld, const half2* input, const half2* skip, const half2* beta, const half2* gamma, const half2* bias,
-    const half epsilon, half2* output, bool hasBias) {
-  const int idx = TPB * blockIdx.x + threadIdx.x;
-  half2 input_vec = input[idx];
-  const half2 skip_vec = skip[idx];
-  const half2 beta_vec = (beta == nullptr) ? __float2half2_rn(0.f) : beta[threadIdx.x];
-  const half2 gamma_vec = gamma[threadIdx.x];
-  const half2 bias_vec = (hasBias) ? bias[threadIdx.x] : __float2half2_rn(0.f);
+template <unsigned TPB, int ILP>
+__global__ void SkipLayerNormKernelVec(
+    const int ld, const half* input, const half* skip, const half* beta, const half* gamma, 
+    const half* bias, const half epsilon, half* output, bool hasBias) {
   const half rld = half(1.f) / half(ld);
+  const int idx = blockIdx.x * ld + threadIdx.x * ILP; // TPB = "ld / ILP", grid_size = n / ld
 
-  input_vec += skip_vec;
-  if (hasBias) {
-    input_vec += bias_vec;
-  }
-  cub::KeyValuePair<half, half> thread_data(rld * (__low2half(input_vec) + __high2half(input_vec)),
-                                            rld * (__low2half(input_vec) * __low2half(input_vec)) +
-                                            rld * (__high2half(input_vec) * __high2half(input_vec)));
+  using VecT = aligned_vector<half, ILP>;
   using BlockReduce = cub::BlockReduce<cub::KeyValuePair<half, half>, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
-  __shared__ half mu;     // mean
-  __shared__ half rsigma; // 1 / std.dev.
-
+  __shared__ half mu;      // mean
+  __shared__ half rsigma;  // 1 / std.dev.
   KeyValuePairSum pair_sum;
-  const cub::KeyValuePair<half, half> sumKV = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
 
+  using VecT = aligned_vector<half, ILP>;
+  half input_v[ILP], skip_v[ILP], beta_v[ILP], gamma_v[ILP], bias_v[ILP], output_v[ILP];
+
+  VecT* input_val = reinterpret_cast<VecT*>(&input_v);
+  *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
+
+  VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
+  *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
+
+  if (beta != nullptr) {
+    VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
+    *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
+  }
+
+  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
+  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+
+  if (hasBias) {
+    VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+    *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
+  }
+
+  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
+  
+  half rldval_sum = half(0.f);
+  half rldvalsq_sum = half(0.f);
+  #pragma unroll
+  for (int i = 0; i < ILP; i++) {
+    input_v[i] += skip_v[i];
+    if (hasBias) {
+      input_v[i] += bias_v[i];
+    }
+    const half rldval = rld * input_v[i];
+    rldval_sum += rldval;
+    rldvalsq_sum += rldval * input_v[i];
+  }
+  cub::KeyValuePair<half, half> thread_data(rldval_sum, rldvalsq_sum);
+  const cub::KeyValuePair<half, half> sumKV = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
   if (threadIdx.x == 0) {
     mu = sumKV.key;
     rsigma = Rsqrt(sumKV.value - mu * mu + epsilon);
   }
   __syncthreads();
-
-  half output_low = __low2half(gamma_vec) * (__low2half(input_vec) - mu) * rsigma + __low2half(beta_vec);
-  half output_high = __high2half(gamma_vec) * (__high2half(input_vec) - mu) * rsigma + __high2half(beta_vec);
-  output[idx] = __halves2half2(output_low, output_high);
+  
+  #pragma unroll
+  for (int i = 0; i < ILP; i++) {
+    output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
+                                      gamma_v[i] * (input_v[i] - mu) * rsigma;
+  }
+  *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&output_v[0]);
 }
 
 /* float32 */
-bool ComputeSkipLayerNorm(
-    const cudaDeviceProp& prop, cudaStream_t stream, const int ld, const int n, const float* input,
+bool ComputeSkipLayerNorm(cudaStream_t stream, const int ld, const int n, const float* input,
     const float* skip, const float* beta, const float* gamma, const float* bias, const float epsilon,
     float* output, bool use_half2) {
   // this must be true because n is the total size of the tensor
@@ -188,41 +247,37 @@ bool ComputeSkipLayerNorm(
 
 /* half16 */
 bool ComputeSkipLayerNorm(
-    const cudaDeviceProp& prop, cudaStream_t stream, const int ld, const int n, const half* input,
-    const half* skip, const half* beta, const half* gamma, const half* bias, const half epsilon, half* output, bool use_half2) {
+    cudaStream_t stream, const int ld, const int n, const half* input, const half* skip, const half* beta,
+    const half* gamma, const half* bias, const half epsilon, half* output, bool use_half2) {
   // this must be true because n is the total size of the tensor
   assert(n % ld == 0);
-  if (use_half2 && 0 == (n & 1) && prop.major >= 7) {
+  if (use_half2 && 0 == (n & 1)) {
     const int grid_size = n / ld;
-    const half2* input2 = reinterpret_cast<const half2*>(input);
-    const half2* skip2 = reinterpret_cast<const half2*>(skip);
-    const half2* beta2 = reinterpret_cast<const half2*>(beta);
-    const half2* gamma2 = reinterpret_cast<const half2*>(gamma);
-    const half2* bias2 = reinterpret_cast<const half2*>(bias);
-    half2* output2 = reinterpret_cast<half2*>(output);
-    const half2 epsilon2 = __half2half2(epsilon);
     bool hasBias = (bias == nullptr) ? false : true;
-
     if (ld <= 32) {
       constexpr int block_size = 32;
-      SkipLayerNormKernelSmall2<block_size>
-          <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
+      SkipLayerNormKernelSmallVec<block_size, 2>
+         <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
+    } else if (ld == 64) {
+      constexpr int block_size = 64 / 2;
+      SkipLayerNormKernelVec<block_size, 2>
+          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 128) {
       constexpr int block_size = 128 / 2;
-      SkipLayerNormKernelVec2<block_size>
-          <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
+      SkipLayerNormKernelVec<block_size, 2>
+          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 384) {
       constexpr int block_size = 384 / 2;
-      SkipLayerNormKernelVec2<block_size>
-          <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
+      SkipLayerNormKernelVec<block_size, 2>
+          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 768) {
       constexpr int block_size = 768 / 2;
-      SkipLayerNormKernelVec2<block_size>
-          <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
+      SkipLayerNormKernelVec<block_size, 2>
+          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 1024) {
       constexpr int block_size = 1024 / 2;
-      SkipLayerNormKernelVec2<block_size>
-          <<<grid_size, block_size, 0, stream>>>(ld, input2, skip2, beta2, gamma2, bias2, epsilon, output2, hasBias);
+      SkipLayerNormKernelVec<block_size, 2>
+          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else {
       constexpr int block_size = 256;
       SkipLayerNormKernel<half, block_size>
@@ -232,6 +287,10 @@ bool ComputeSkipLayerNorm(
     const int grid_size = n / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
+      SkipLayerNormKernelSmall<half, block_size>
+          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
+    } else if (ld <= 64) {
+      constexpr int block_size = 64;
       SkipLayerNormKernelSmall<half, block_size>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
     } else if (ld <= 128) {
@@ -253,7 +312,6 @@ bool ComputeSkipLayerNorm(
 
 template<>
 bool LaunchSkipLayerNormKernel(
-    const cudaDeviceProp& prop,
     cudaStream_t stream,
     half* output,
     const half* input,
@@ -268,7 +326,6 @@ bool LaunchSkipLayerNormKernel(
     bool use_half2) {
 
   return ComputeSkipLayerNorm(
-         prop,
          stream,
          hidden_size,
          element_count,
@@ -284,7 +341,6 @@ bool LaunchSkipLayerNormKernel(
 
 template<>
 bool LaunchSkipLayerNormKernel(
-    const cudaDeviceProp& prop,
     cudaStream_t stream,
     float* output,
     const float* input,
@@ -299,7 +355,6 @@ bool LaunchSkipLayerNormKernel(
     bool use_half2) {
 
   return ComputeSkipLayerNorm(
-         prop,
          stream,
          hidden_size,
          element_count,
@@ -316,4 +371,3 @@ bool LaunchSkipLayerNormKernel(
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-

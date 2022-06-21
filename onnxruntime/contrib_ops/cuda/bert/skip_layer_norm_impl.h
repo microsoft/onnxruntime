@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Modifications: Remove cudaDeviceProp in LaunchSkipLayerNormKernel.
+// Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 namespace onnxruntime {
@@ -9,7 +13,6 @@ namespace cuda {
 
 template <typename T>
 bool LaunchSkipLayerNormKernel(
-    const cudaDeviceProp& prop,
     cudaStream_t stream,
     T* output,        // output tensor
     const T* input,   // input tensor
