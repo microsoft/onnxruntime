@@ -61,7 +61,7 @@ TEST(CApiTest, model_from_array) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
 TEST(CApiTest, model_from_stream) {
   const char* model_path = "testdata/matmul_1.onnx";
-  std::ifstream file(model_path, std::ios::binary | std::ios::ate);
+  std::ifstream file(model_path, std::ios::binary);
   if (!file)
     ORT_THROW("Error reading model");
 
