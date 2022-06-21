@@ -404,10 +404,12 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                         std::vector<OrtValue>& next_inputs,
                         gsl::span<const int32_t>& beam_indices,
                         AllocatorPtr allocator,
+                        int gpt_subgraph_first_past_input_idx,
+                        int gpt_subgraph_first_present_output_idx,
                         void* stream) {
-  int num_present_tensors = static_cast<int>(last_outputs.size()) - transformers::GptSubgraph::kFirstPresentOutputIndex;
+  int num_present_tensors = static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
   for (int i = 0; i < num_present_tensors; ++i) {
-    const OrtValue& present = last_outputs[transformers::GptSubgraph::kFirstPresentOutputIndex + i];
+    const OrtValue& present = last_outputs[gpt_subgraph_first_present_output_idx + i];
 
     // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
@@ -436,7 +438,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                                            cudaMemcpyDeviceToDevice, reinterpret_cast<cudaStream_t>(stream)));
     }
 
-    next_inputs[transformers::GptSubgraph::kFirstPastInputIndex + i] = past;
+    next_inputs[gpt_subgraph_first_past_input_idx + i] = past;
   }
 
   return Status::OK();
@@ -449,9 +451,11 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
                        int num_present_tensors,
                        gsl::span<const int32_t>& beam_indices,
                        AllocatorPtr allocator,
+                       int t5_decoder_first_past_input_idx,
+                       int t5_decoder_first_present_output_idx,
                        void* stream) {
   for (int i = 0; i < num_present_tensors; ++i) {
-    const OrtValue& present = last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
+    const OrtValue& present = last_outputs[t5_decoder_first_present_output_idx + i];
 
     // shape is like (batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
@@ -472,7 +476,7 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
                                            cudaMemcpyDeviceToDevice, reinterpret_cast<cudaStream_t>(stream)));
     }
 
-    next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] = past;
+    next_inputs[t5_decoder_first_past_input_idx + i] = past;
   }
 
   return Status::OK();
@@ -489,6 +493,8 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper) {
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
@@ -532,13 +538,15 @@ Status UpdateGptFeeds(
 
   // Update past state
   if (num_beams == 1) {
-    const int k = transformers::GptSubgraph::kFirstPastInputIndex - transformers::GptSubgraph::kFirstPresentOutputIndex;
+    const int k = gpt_subgraph_first_past_input_idx - gpt_subgraph_first_present_output_idx;
     // feed present_* output to past_* inputs one by one
-    for (size_t i = transformers::GptSubgraph::kFirstPresentOutputIndex; i < last_outputs.size(); ++i) {
+    for (size_t i = gpt_subgraph_first_present_output_idx; i < last_outputs.size(); ++i) {
       next_inputs[i + k] = last_outputs[i];
     }
   } else {
-    ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream));
+    ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator,
+                                            gpt_subgraph_first_past_input_idx,
+                                            gpt_subgraph_first_present_output_idx, stream));
   }
 
   // Make sure data is ready before next subgraph execution.
@@ -557,6 +565,11 @@ Status UpdateDecoderFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences&,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
@@ -564,6 +577,12 @@ Status UpdateDecoderFeeds(
   //              past_key_self_0, past_value_self_0, ...
   //              past_key_cross_0, past_value_cross_0, ...
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
+
+  if (!has_hidden_state) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "BeamSearch CUDA Op does not support no hidden state senario in decoder input");
+  }
+  ORT_UNUSED_PARAMETER(current_length);
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
@@ -589,13 +608,14 @@ Status UpdateDecoderFeeds(
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
     for (int i = 0; i < num_present_tensors; ++i) {
-      next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] =
-          last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
+      next_inputs[t5_decoder_first_past_input_idx + i] =
+          last_outputs[t5_decoder_first_present_output_idx + i];
       return Status::OK();
     }
   }
 
-  return PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator, stream);
+  return PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator,
+                            t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, stream);
 }
 
 // Explicit template instantiations of functions
@@ -640,6 +660,8 @@ template Status UpdateGptFeeds<float>(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper);
 
 // Float16
@@ -672,6 +694,8 @@ template Status UpdateGptFeeds<MLFloat16>(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper);
 
 template Status UpdateDecoderFeeds<float>(
@@ -683,6 +707,11 @@ template Status UpdateDecoderFeeds<float>(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 template Status UpdateDecoderFeeds<MLFloat16>(
@@ -694,6 +723,11 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 }  // namespace BeamSearchCudaDeviceHelper

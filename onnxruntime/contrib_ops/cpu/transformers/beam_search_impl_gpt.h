@@ -104,6 +104,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             beam_next_tokens,
                             beam_indices,
                             this->parameters_->num_beams,
+                            gpt_subgraph_.GetFirstPastInputIndex(),
+                            gpt_subgraph_.GetFirstPresentOutputIndex(),
                             this->GetConsoleDumper());
 }
 

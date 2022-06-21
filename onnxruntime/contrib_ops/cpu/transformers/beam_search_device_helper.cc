@@ -334,10 +334,12 @@ template <typename T>
 void PickGptPastState(const std::vector<OrtValue>& last_outputs,
                       std::vector<OrtValue>& next_inputs,
                       gsl::span<const int32_t>& beam_indices,
+                      int gpt_subgraph_first_past_input_idx,
+                      int gpt_subgraph_first_present_output_idx,
                       AllocatorPtr allocator) {
-  int num_present_tensors = static_cast<int>(last_outputs.size()) - transformers::GptSubgraph::kFirstPresentOutputIndex;
+  int num_present_tensors = static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
   for (int i = 0; i < num_present_tensors; ++i) {
-    const OrtValue& present = last_outputs[transformers::GptSubgraph::kFirstPresentOutputIndex + i];
+    const OrtValue& present = last_outputs[gpt_subgraph_first_present_output_idx + i];
 
     // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
@@ -364,7 +366,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
       gsl::copy(present_value, past_value);
     }
 
-    next_inputs[transformers::GptSubgraph::kFirstPastInputIndex + i] = past;
+    next_inputs[gpt_subgraph_first_past_input_idx + i] = past;
   }
 }
 
@@ -379,6 +381,8 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
@@ -434,12 +438,14 @@ Status UpdateGptFeeds(
   // Update past state
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
-    const int k = transformers::GptSubgraph::kFirstPastInputIndex - transformers::GptSubgraph::kFirstPresentOutputIndex;
-    for (size_t i = transformers::GptSubgraph::kFirstPresentOutputIndex; i < last_outputs.size(); ++i) {
+    const int k = gpt_subgraph_first_past_input_idx - gpt_subgraph_first_present_output_idx;
+    for (size_t i = gpt_subgraph_first_present_output_idx; i < last_outputs.size(); ++i) {
       next_inputs[i + k] = last_outputs[i];
     }
   } else {
-    PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator);
+    PickGptPastState<T>(last_outputs, next_inputs, beam_indices,
+                        gpt_subgraph_first_past_input_idx,
+                        gpt_subgraph_first_present_output_idx, allocator);
   }
   return Status::OK();
 }
@@ -449,6 +455,7 @@ Status UpdateGptFeeds(
 // ---------------------------------------------------------------
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     int start_token_id,
@@ -476,24 +483,30 @@ Status CreateEncoderInputs(
                        encoder_input_ids);
 
   OrtValue encoder_attention_mask;
-  auto mask_type = DataTypeImpl::GetType<int32_t>();
-  Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
+  if (attn_mask_value != nullptr) {
+    const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
+    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
+                         allocator->Info(), encoder_attention_mask);
+  } else {
+    auto mask_type = DataTypeImpl::GetType<int32_t>();
+    Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, encoder_attention_mask);
 
-  // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
-  int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
-  int32_t* mask = mask_data;
-  for (int i = 0; i < batch_size; i++) {
-    int32_t abs_position = 0;
-    for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
-      // T5Tokenizer might add one EOS pad token at the end.
-      // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
-      // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
-      if (*word_id == pad_token_id && abs_position == 0) {
-        *mask = 0;
-      } else {
-        *mask = 1;
-        abs_position++;
+    // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
+    int32_t* mask_data = encoder_attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+    const int32_t* word_id = original_encoder_input_ids->Data<int32_t>();
+    int32_t* mask = mask_data;
+    for (int i = 0; i < batch_size; i++) {
+      int32_t abs_position = 0;
+      for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
+        // T5Tokenizer might add one EOS pad token at the end.
+        // That EOS token shall have attention mask 1 even when EOS token is same as pad token.
+        // Here we only set attention mask to be 0 for left padding only, so as to be parity with huggingface.
+        if (*word_id == pad_token_id && abs_position == 0) {
+          *mask = 0;
+        } else {
+          *mask = 1;
+          abs_position++;
+        }
       }
     }
   }
@@ -525,9 +538,11 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
                      std::vector<OrtValue>& next_inputs,
                      int num_present_tensors,
                      gsl::span<const int32_t>& beam_indices,
+                     int t5_decoder_first_past_input_idx,
+                     int t5_decoder_first_present_output_idx,
                      AllocatorPtr allocator) {
   for (int i = 0; i < num_present_tensors; ++i) {
-    const OrtValue& present = last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
+    const OrtValue& present = last_outputs[t5_decoder_first_present_output_idx + i];
 
     // shape is like (batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
@@ -547,7 +562,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
       gsl::copy(present_beam, past_beam);
     }
 
-    next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] = past;
+    next_inputs[t5_decoder_first_past_input_idx + i] = past;
   }
 }
 
@@ -562,26 +577,44 @@ Status UpdateDecoderFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(stream);
 
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
-  //              encoder_attention_mask, encoder_hidden_states,
+  //              encoder_attention_mask, encoder_hidden_states(optional),
   //              past_key_self_0, past_value_self_0, ...
   //              past_key_cross_0, past_value_cross_0, ...
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
-  int64_t dims[] = {batch_beam_size, 1};
-  TensorShape input_ids_shape(&dims[0], 2);
 
   // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   OrtValue input_ids;
+  int sequence_length = has_hidden_state ? 1 : current_length;
+  int64_t dims[] = {batch_beam_size, sequence_length};
+  TensorShape input_ids_shape(&dims[0], 2);
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
 
-  gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
+  // TODO: decouple has_hidden_state with full input_ids
+  if (has_hidden_state) {
+    gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
+  } else {
+    int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_beam_size; i++) {
+      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+      const int32_t* sequence_data = sequence.data();
+      for (int j = 0; j < current_length; j++) {
+        input_ids_data[i * current_length + j] = sequence_data[j];
+      }
+    }
+  }
 
   next_inputs[0] = input_ids;
 
@@ -597,11 +630,12 @@ Status UpdateDecoderFeeds(
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
     for (int i = 0; i < num_present_tensors; ++i) {
-      next_inputs[transformers::T5DecoderSubgraph::kFirstPastInputIndex + i] =
-          last_outputs[transformers::T5DecoderSubgraph::kFirstPresentOutputIndex + i];
+      next_inputs[t5_decoder_first_past_input_idx + i] =
+          last_outputs[t5_decoder_first_present_output_idx + i];
     }
   } else {
-    PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator);
+    PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices,
+                       t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, allocator);
   }
   return Status::OK();
 }
@@ -653,6 +687,8 @@ template Status UpdateGptFeeds<float>(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int gpt_subgraph_first_past_input_idx,
+    int gpt_subgraph_first_present_output_idx,
     const transformers::IConsoleDumper* dumper);
 
 template Status UpdateDecoderFeeds<float>(
@@ -664,6 +700,11 @@ template Status UpdateDecoderFeeds<float>(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     int num_beams,
+    int t5_decoder_first_past_input_idx,
+    int t5_decoder_first_present_output_idx,
+    bool has_hidden_state,
+    int current_length,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);

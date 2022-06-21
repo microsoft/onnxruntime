@@ -155,6 +155,12 @@ class NodeRef {
 
   /// <param name="name">Name of the attribute to return</param>
   /// <returns>
+  /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type string.
+  /// </returns>
+  virtual std::optional<std::string> GetAttributeString(std::string_view name) const = 0;
+
+  /// <param name="name">Name of the attribute to return</param>
+  /// <returns>
   /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type int[].
   /// </returns>
   virtual std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const = 0;

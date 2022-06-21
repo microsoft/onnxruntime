@@ -93,7 +93,7 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r ${0/%install_deps_aten\.sh/requirements\.txt}
-  if ![[ ${PYTHON_EXE} = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
+  if ! [[ ${PYTHON_EXE} = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
     ${PYTHON_EXE} -m pip install -r ${0/%install_deps_aten\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu\/requirements.txt}
   else
     ${PYTHON_EXE} -m pip install torch==1.11.0

@@ -59,7 +59,7 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
 
-  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5).
+  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
   ORT_ENFORCE(parameters_.model_type == IBeamSearchParameters::kModelTypeGpt ||
               parameters_.model_type == IBeamSearchParameters::kModelTypeT5);
 

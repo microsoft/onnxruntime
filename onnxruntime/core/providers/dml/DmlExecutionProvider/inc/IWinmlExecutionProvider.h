@@ -92,7 +92,7 @@ namespace Windows::AI::MachineLearning::Adapter
         const onnxruntime::Node& node, 
         MLOperatorTensorGetter& constantInputGetter,
         const void* executionHandle,
-        DmlGraphNodeCreateInfo* graphNodeCreateInfo
+        /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
         )>;
 
     struct GraphNodeFactoryRegistration
