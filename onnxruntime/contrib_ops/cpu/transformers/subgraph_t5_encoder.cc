@@ -96,24 +96,23 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
 
 // Create inputs for first inference of subgraph.
 Status T5EncoderSubgraph::CreateInitialFeeds(
-    const Tensor& encoder_input_ids,
+    const Tensor& original_encoder_input_ids,
     const OrtValue* attn_mask_value,
     const std::vector<const OrtValue*>& implicit_inputs,
-    int num_beams,
     int pad_token_id,
     int start_token_id,
     std::vector<OrtValue>& feeds,
     const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
     const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
     IAllocatorUniquePtr<char>& buffer,
-    OrtValue& expanded_decoder_input_ids) {
+    OrtValue& decoder_input_ids) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // The ordering is the same as used in Setup.
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Allocate subgraph inputs to be same device as encoder_input_ids.
-  AllocatorPtr cpu_allocator = session_state_->GetAllocator(encoder_input_ids.Location());
+  AllocatorPtr cpu_allocator = session_state_->GetAllocator(original_encoder_input_ids.Location());
   if (cpu_allocator == nullptr) {
     const IExecutionProvider* provider = GetProvider();
     cpu_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
@@ -121,22 +120,21 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
   ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
 
   // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
-  OrtValue expanded_encoder_input_ids;
-  OrtValue expanded_encoder_attention_mask;
-  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&encoder_input_ids,
+  OrtValue encoder_input_ids;
+  OrtValue encoder_attention_mask;
+  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
                                                  attn_mask_value,
-                                                 num_beams,
                                                  pad_token_id,
                                                  start_token_id,
                                                  cpu_allocator,
-                                                 expanded_encoder_input_ids,
-                                                 expanded_encoder_attention_mask,
-                                                 expanded_decoder_input_ids));
+                                                 encoder_input_ids,
+                                                 encoder_attention_mask,
+                                                 decoder_input_ids));
 
   const IExecutionProvider* provider = GetProvider();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(
       provider,
-      {expanded_encoder_input_ids, expanded_encoder_attention_mask, expanded_decoder_input_ids},
+      {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
       feeds,
       buffer));
 

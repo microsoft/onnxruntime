@@ -115,7 +115,6 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
       encoder_input_ids,
       encoder_attn_mask_value,
       this->implicit_inputs_,
-      parameters->num_beams,
       parameters->pad_token_id,
       parameters->decoder_start_token_id,
       encoder_feeds,
@@ -150,9 +149,10 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   // Initialize resources
   // ------------------------------------
 
-  // Copy expanded_decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
+  // Copy decoder_input_ids (in CPU) to sequence. It contains decoder_start_token_id for each beam.
   cpu_state.SetSequence(expanded_decoder_input_ids.Get<Tensor>().DataAsSpan<int32_t>(),
                         static_cast<size_t>(parameters->BatchBeamSize()),
+                        parameters->num_beams,
                         parameters->max_length,
                         parameters->sequence_length);
 
@@ -211,6 +211,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              encoder_fetches,
                                                              decoder_feeds,
                                                              this->device_copy_int32_func_,
+                                                             parameters->num_beams,
                                                              this->cuda_stream_));
   }
 

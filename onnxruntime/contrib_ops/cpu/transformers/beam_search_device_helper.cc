@@ -60,6 +60,37 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
   }
 }
 
+template <typename T>
+void ExpandCaches(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded) {
+  // Input shape (batch_size, num_heads, sequence_length, head_size). The input is required with data type T.
+  // Output shape (batch_size * num_beams, num_heads, sequence_length, head_size)
+
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& num_heads = input_shape[1];
+  const int64_t& sequence_length = input_shape[2];
+  const int64_t& head_size = input_shape[3];
+
+  int64_t dims[] = {batch_size * num_beams, num_heads, sequence_length, head_size};
+  TensorShape expanded_shape(&dims[0], 4);
+
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
+
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  const T* input_data = input.Get<Tensor>().Data<T>();
+  T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
+  T* target = expanded_data;
+  const int64_t chunk_size = sequence_length * num_heads * head_size;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
+      target += chunk_size;
+    }
+  }
+}
+
 Status CreateGptInputs(
     const Tensor* original_input_ids,
     int num_beams,
@@ -200,6 +231,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
+  auto beam_batch_size = logits_shape[0];
 
   // Get logits for the last token:
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
@@ -212,7 +244,11 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
                                                       static_cast<gsl::index>(vocab_size));
       gsl::copy(source, target);
-      current_logits += input_length * vocab_size;
+      if (beam_batch_size == batch_beam_size) {
+        current_logits += input_length * vocab_size;
+      } else if (beam_batch_size == batch_size && i % num_beams == 0) {
+        current_logits += input_length * vocab_size;
+      }
     }
   }
 
@@ -456,13 +492,12 @@ Status UpdateGptFeeds(
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
     const OrtValue* attn_mask_value,
-    int num_beams,
     int pad_token_id,
     int start_token_id,
     AllocatorPtr allocator,
-    OrtValue& expanded_encoder_input_ids,
-    OrtValue& expanded_encoder_attention_mask,
-    OrtValue& expanded_decoder_input_ids) {
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids) {
   const TensorShape& input_ids_shape = original_encoder_input_ids->Shape();
   ORT_ENFORCE(input_ids_shape.NumDimensions() == 2);
   const int64_t& batch_size = input_ids_shape[0];
@@ -475,14 +510,12 @@ Status CreateEncoderInputs(
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
   // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
-  OrtValue encoder_input_ids;
   Tensor::InitOrtValue(element_type,
                        input_ids_shape,
                        const_cast<Tensor*>(original_encoder_input_ids)->MutableData<int32_t>(),
                        allocator->Info(),
                        encoder_input_ids);
 
-  OrtValue encoder_attention_mask;
   if (attn_mask_value != nullptr) {
     const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
     Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
@@ -511,20 +544,14 @@ Status CreateEncoderInputs(
     }
   }
 
-  // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
-  // for encoder_input_ids and encoder_attention_mask
-  // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  ExpandInputs<int32_t>(encoder_input_ids, num_beams, allocator, expanded_encoder_input_ids);
-  ExpandInputs<int32_t>(encoder_attention_mask, num_beams, allocator, expanded_encoder_attention_mask);
-
   // decoder_input_ids is optional.
   if (start_token_id >= 0) {
-    // Expanded decoder_input_ids has shape (batch_size * num_beams, 1), and filled with start token ID
-    int64_t dims[] = {batch_size * num_beams, 1};
+    // Filled decoder_input_ids with start token ID
+    int64_t dims[] = {batch_size, 1};
     TensorShape decoder_input_ids_shape(&dims[0], 2);
-    Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, expanded_decoder_input_ids);
-    int32_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-    for (int i = 0; i < batch_size * num_beams; i++, data++) {
+    Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, decoder_input_ids);
+    int32_t* data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_size; i++, data++) {
       *data = start_token_id;
     }
   }
@@ -708,6 +735,7 @@ template Status UpdateDecoderFeeds<float>(
     const transformers::IConsoleDumper* dumper);
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
+template void ExpandCaches<float>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

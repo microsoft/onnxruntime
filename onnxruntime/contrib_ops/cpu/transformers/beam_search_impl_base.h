@@ -95,7 +95,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
     this->sequences.Init(this->sequences_space, static_cast<int>(batch_beam_size), sequence_length, max_length);
   }
 
-  // Copy input_ids to sequences[0]
+  // Copy expanded input_ids to sequences[0]
   void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
                    size_t batch_beam_size,
                    int max_length,
@@ -105,6 +105,21 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
       for (int j = 0; j < sequence_length; j++) {
         const size_t index = SafeInt<gsl::index>(i) * max_length + j;
         sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j];
+      }
+    }
+  }
+
+  // Copy unexpanded input_ids to sequences[0]
+  void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
+                   size_t batch_beam_size,
+                   int beam_size,
+                   int max_length,
+                   int sequence_length) {
+    gsl::span<int32_t> sequences_0 = sequences_space;
+    for (size_t i = 0; i < batch_beam_size; i++) {
+      for (int j = 0; j < sequence_length; j++) {
+        const size_t index = SafeInt<gsl::index>(i) * max_length + j;
+        sequences_0[index] = input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length * beam_size + j];
       }
     }
   }

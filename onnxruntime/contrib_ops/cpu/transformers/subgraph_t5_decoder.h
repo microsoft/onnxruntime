@@ -28,6 +28,7 @@ class T5DecoderSubgraph : public Subgraph {
       const std::vector<OrtValue>& encoder_fetches,
       std::vector<OrtValue>& decoder_feeds,
       const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+      int num_beam,
       void* stream);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,

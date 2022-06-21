@@ -121,6 +121,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const std::vector<OrtValue>& encoder_fetches,
     std::vector<OrtValue>& decoder_feeds,
     const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+    int num_beam,
     void* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
@@ -144,13 +145,20 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   decoder_feeds.push_back(input_ids);
 
   // The encoder_attention_mask is copied from the second input of encoder.
-  decoder_feeds.push_back(encoder_feeds[1]);
+  OrtValue expanded_decoder_attention_masks;
+  BeamSearchCpuDeviceHelper::ExpandInputs<int32_t>(encoder_feeds[1],
+                                                   num_beam,
+                                                   allocator,
+                                                   expanded_decoder_attention_masks);
+  decoder_feeds.push_back(expanded_decoder_attention_masks);
 
   // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
   // of encoder.
   // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
-    decoder_feeds.push_back(encoder_fetches[j]);
+    OrtValue expanded_cache;
+    BeamSearchCpuDeviceHelper::ExpandCaches<float>(encoder_fetches[j], num_beam, allocator, expanded_cache);
+    decoder_feeds.push_back(expanded_cache);
   }
 
   // Pass through implicit inputs.
