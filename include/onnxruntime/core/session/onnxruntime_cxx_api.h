@@ -446,35 +446,68 @@ struct Session : Base<OrtSession> {
   size_t GetOutputCount() const;                  ///< Returns the number of model outputs
   size_t GetOverridableInitializerCount() const;  ///< Returns the number of inputs that have defaults that can be overridden
 
-  // [[deprecated]] 
-  // This interface produces a pointer that must be released
-  // by the specified allocator and is often leaked. Not exception safe.
-  // use GetInputNameAllocated()
+  /** \deprecated use GetInputNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */ 
   char* GetInputName(size_t index, OrtAllocator* allocator) const;                   ///< Wraps OrtApi::SessionGetInputName
-  // [[deprecated]]
-  // This interface produces a pointer that must be released
-  // by the specified allocator and is often leaked. Not exception safe.
-  // use GetOutputNameAllocated()
+  /** \deprecated use GetOutputNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */ 
   char* GetOutputName(size_t index, OrtAllocator* allocator) const;                  ///< Wraps OrtApi::SessionGetOutputName
 
-  // The following two interfaces return unique pointers that use
-  // the specified allocator to free memory. The OrtAllocator instances must
-  // be valid at the point of memory release.
   using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
+
+  /** \brief Returns a copy of input name at the specified index. Replaces GetInputName().
+  * 
+  * \param index must less than the value returned by GetInputCount()
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
   AllocatedStringPtr GetInputNameAllocated(size_t index, OrtAllocator* allocator) const;
+
+  /** \brief Returns a copy of output name at then specified index.
+  * 
+  * \param index must less than the value returned by GetOutputCount()
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
   AllocatedStringPtr GetOutputNameAllocated(size_t index, OrtAllocator* allocator) const;
 
-  // [[deprecated]]
-  // This interface produces a pointer that must be released
-  // by the specified allocator and is often leaked. Not exception safe.
-  // use GetOverridableInitializerNameAllocated()
+  /** \deprecated use GetOverridableInitializerNameAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */ 
   char* GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
+
+  /** \brief Returns a copy of the overridable initializer name at then specified index.
+  * 
+  * \param index must less than the value returned by GetOverridableInitializerCount()
+  * \param allocator to allocate memory for the copy of the name returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
   AllocatedStringPtr GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
-  // [[deprecated]]
-  // This interface produces a pointer that must be released
-  // by the specified allocator and is often leaked. Not exception safe.
-  // Use EndProfilingAllocated
+
+  /** \deprecated use EndProfilingAllocated()
+  * [[deprecated]] 
+  * This interface produces a pointer that must be released
+  * by the specified allocator and is often leaked. Not exception safe.
+  */
   char* EndProfiling(OrtAllocator* allocator) const;                                 ///< Wraps OrtApi::SessionEndProfiling
+
+  /** \brief Returns a copy of the profiling file name.
+  * 
+  * \param allocator to allocate memory for the copy of the string returned
+  * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+  *  The OrtAllocator instances must be valid at the point of memory release.
+  */
   AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator) const;           ///< Wraps OrtApi::SessionEndProfiling
   uint64_t GetProfilingStartTimeNs() const;                                          ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
   ModelMetadata GetModelMetadata() const;                                            ///< Wraps OrtApi::SessionGetModelMetadata
