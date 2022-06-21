@@ -1416,12 +1416,12 @@ void RegisterTrainingOpSchemas() {
 ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulatorV2)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("in-place accumulator for tensors")
-      .Input(0, "old_sum", "historical result of accumulator", "T")
+      .SetDoc("In-place accumulator for tensors. Differs from older op by adding cotrol input for reset, and optional output buffer.")
+      .Input(0, "accumulation_buffer", "historical result of accumulator", "T")
       .Input(1, "value", "the value that will be added to the accumulator", "T_GRAD")
-      .Input(2, "overwrite_flag", "Indicates if tensor should be overwritten instead of accumulated", "T_BOOL", OpSchema::Optional)
+      .Input(2, "overwrite_flag", "Indicates if tensor should be overwritten. Default is accumulation", "T_BOOL", OpSchema::Optional)
       .Output(0, "updated_flag", "Whether the update was completed", "T_BOOL")
-      .Output(1, "new_sum", "updated result of accumulator", "T", OpSchema::Optional)
+      .Output(1, "accumulation_buffer_out", "updated result of accumulator", "T", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
@@ -1435,8 +1435,8 @@ ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulatorV2)
           {"tensor(bool)"},
           "Constrain types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        updateOutputShape(ctx, 0, {});
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        updateOutputShape(ctx, 0, {});
         if (ctx.getNumOutputs() == 2){
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
           if (hasNInputShapes(ctx, 1)) {

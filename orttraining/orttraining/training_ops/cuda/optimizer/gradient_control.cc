@@ -107,6 +107,7 @@ Status InPlaceAccumulator<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) cons
       InPlaceAccumulatorV2<T, T_GRAD>);
 
 REGISTER_IN_PLACE_TENSOR_ACCUMULATORV2_TYPED(float, float)
+REGISTER_IN_PLACE_TENSOR_ACCUMULATORV2_TYPED(float, MLFloat16)
 
 template <typename T, typename T_GRAD>
 Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) const {
@@ -119,7 +120,7 @@ Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) co
   const bool overwrite = overwrite_tensor != nullptr ? *(overwrite_tensor->template Data<bool>()) : false;
 
   if (overwrite) {
-    const void* source = right_addee_buffer.template Data<T_GRAD>();
+    const T_GRAD* source = right_addee_buffer.template Data<T_GRAD>();
     T* target = left_addee_buffer.template MutableData<T>();
     if (std::is_same<T, T_GRAD>::value) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, right_addee_buffer.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));

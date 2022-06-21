@@ -50,18 +50,44 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
 static void RunReductionTests(const OpDef& op_def, bool axes_as_input = false,
                               bool check_not_have_shape_inferencing = false) {
   std::vector<std::vector<int64_t>> x_shapes = {
-      {4, 3, 2}, {4, 3, 2}, {4, 3, 2}, {4, 3, 2}, {4, 3, 2}, {4, 3, 2}, {4, 3, 2}, {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
   };
   std::vector<std::vector<int64_t>> y_shapes = {
-      {1, 1, 1}, {}, {1, 3, 1}, {2}, {4, 1, 2}, {4, 3}, {4, 1, 2}, {4},
+      {1, 1, 1},
+      {},
+      {1, 3, 1},
+      {2},
+      {4, 1, 2},
+      {4, 3},
+      {4, 1, 2},
+      {4},
   };
   std::vector<std::vector<int64_t>> axes_vec = {
       {},  // default case
-      {0, 1, 2}, {0, 2}, {0, 1}, {1}, {2}, {-2}, {-2, -1},
+      {0, 1, 2},
+      {0, 2},
+      {0, 1},
+      {1},
+      {2},
+      {-2},
+      {-2, -1},
   };
   std::vector<int64_t> keepdims_ip = {
       -1,  // default case
-      0,  1, 0, 1, 0, 1, 0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
   };
 
   GradientChecker<float, float, float> gradient_checker;
@@ -2084,32 +2110,21 @@ TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 
-  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
-  test.AddInput<float>("value", {3}, {4, 5, 6});
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
 
-  test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
+  test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
 
   test.Run();
-}
-
-TEST(GradientUtilsTest, InPlaceAccumulatorV2_CUDA) {
-  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
-
-  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
-  test.AddInput<float>("value", {3}, {4, 5, 6});
-  test.AddOutput<bool>("updated",{},{true});
-  test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
-
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
   OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
 
-  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
-  test.AddInput<float>("value", {3}, {4, 5, 6});
-  test.AddOutput<bool>("updated",{},{true});
-  test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddOutput<bool>("updated", {}, {true});
+  test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider});
 }
@@ -2117,16 +2132,47 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
 TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
   OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
 
-  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
-  test.AddInput<float>("value", {3}, {4, 5, 6});
-  test.AddInput<bool>("overwrite",{1},{true});
-  test.AddOutput<bool>("updated",{},{true});
-  test.AddOutput<float>("new_sum", {3}, {4, 5, 6});
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddInput<bool>("overwrite", {1}, {true});
+  test.AddOutput<bool>("updated", {}, {true});
+  test.AddOutput<float>("new_sum", {3}, {4.f, 5.f, 6.f});
 
   test.Run();
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddOutput<bool>("updated", {}, {true});
+  test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  std::vector<float> old_sum = {1.0f, 2.0f, 3.0f};
+  std::vector<float> value = {4.0f, 5.0f, 6.0f};
+  std::vector<float> new_sum = {4.0f, 5.0f, 6.0f};
+ 
+  std::vector<MLFloat16> value_half(3);
+  ConvertFloatToMLFloat16(value.data(), value_half.data(), 3);
+
+  test.AddInput<float>("old_sum", {3}, old_sum);
+  test.AddInput<MLFloat16>("value", {3}, value_half);
+  test.AddInput<bool>("overwrite", {1}, {true});
+  test.AddOutput<bool>("updated", {}, {true});
+  test.AddOutput<float>("new_sum", {3}, new_sum);
+
+  // Didn't implement mixed precision InPlaceAccumulatorV2 in CPU
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
+}
+
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 

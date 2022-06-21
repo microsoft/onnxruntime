@@ -9,6 +9,20 @@
 
 namespace onnxruntime {
 namespace contrib {
+template <typename T>
+void getBroadcastSpanFunc(ProcessBroadcastSpanFuncs& funcs) {
+  ProcessBroadcastSpanFuncs add_funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+      }};
+  funcs = std::move(add_funcs);
+}
 ONNX_OPERATOR_KERNEL_EX(
     InPlaceAccumulator,
     kMSDomain,
@@ -44,17 +58,9 @@ Status InPlaceAccumulator<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  //Copy from Add CPU kernel
-  ProcessBroadcastSpanFuncs funcs{
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
-      }};
+  // Copy from Add CPU kernel
+  ProcessBroadcastSpanFuncs funcs;
+  getBroadcastSpanFunc<T>(funcs);
 
   UntypedBroadcastTwo(*context, funcs);
 
@@ -105,18 +111,9 @@ Status InPlaceAccumulatorV2<T>::Compute(OpKernelContext* context) const {
     memcpy(accumulation_buffer_data, updated_data, new_value->SizeInBytes());
   } else {
     // Copy from Add CPU kernel
-    ProcessBroadcastSpanFuncs funcs{
-        [](BroadcastHelper& per_iter_bh) {
-          per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
-        },
-        [](BroadcastHelper& per_iter_bh) {
-          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
-        },
-        [](BroadcastHelper& per_iter_bh) {
-          per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
-        }};
+    ProcessBroadcastSpanFuncs funcs;
+    getBroadcastSpanFunc<T>(funcs);
 
-    // UntypedBroadcastTwo(*context, funcs);
     InputBroadcaster input_broadcaster(*accumulation_buffer, *new_value);
     OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(), *accumulation_buffer);
     BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, nullptr);
@@ -131,8 +128,8 @@ Status InPlaceAccumulatorV2<T>::Compute(OpKernelContext* context) const {
   Tensor* accumulated_value_out = context->Output(1, new_value->Shape());
   if (nullptr != accumulated_value_out) {
     void* output_data = accumulated_value_out->template MutableData<T>();
-    if (output_data != accumulation_buffer_data){
-    memcpy(output_data, accumulation_buffer_data, new_value->SizeInBytes());
+    if (output_data != accumulation_buffer_data) {
+      memcpy(output_data, accumulation_buffer_data, new_value->SizeInBytes());
     }
   }
 
