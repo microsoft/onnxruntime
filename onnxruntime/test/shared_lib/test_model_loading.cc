@@ -65,14 +65,6 @@ TEST(CApiTest, model_from_stream) {
   if (!file)
     ORT_THROW("Error reading model");
 
-  auto read_callback = [](char* buffer, size_t count, void* user_object) -> size_t {
-    std::ifstream* file = static_cast<std::ifstream*>(user_object);
-    file->read(buffer, count);
-    return file->gcount();
-  };
-
-  OrtInputStream stream { read_callback, &file };
-
 #if (!ORT_MINIMAL_BUILD)
   bool should_throw = false;
 #else
@@ -81,7 +73,7 @@ TEST(CApiTest, model_from_stream) {
 
   auto create_session = [&](Ort::SessionOptions& so) {
     try {
-      Ort::Session session(*ort_env.get(), stream, so);
+      Ort::Session session(*ort_env.get(), file, so);
       ASSERT_FALSE(should_throw) << "Creation of session should have thrown";
     } catch (const std::exception& ex) {
       ASSERT_TRUE(should_throw) << "Creation of session should not have thrown. Exception:" << ex.what();
