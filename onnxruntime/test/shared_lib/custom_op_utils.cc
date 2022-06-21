@@ -483,7 +483,7 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
     failed = e.GetOrtErrorCode() == ORT_INVALID_ARGUMENT;
   }
 
-  ORT_ENFORCE(failed, "invalid input is not triggering expected exception");
+  ORT_ENFORCE(failed, "invalid input did not trigger exception");
   ort_.ReleaseOp(op_conv);
 }
 

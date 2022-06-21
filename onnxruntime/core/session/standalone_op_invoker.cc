@@ -110,9 +110,7 @@ class NodeRepo {
     std::lock_guard<std::mutex> guard(GetMutex());
     auto& node_map = GetRepo().node_map_;
     auto iter = node_map.find(kernel);
-    if (iter != node_map.end()) {
-      ORT_THROW("kernel mapped twice to a node!");
-    }
+    ORT_ENFORCE(iter == node_map.end(), "kernel alreayd mapped to a node");
     node_map.insert({kernel, std::move(node_ptr)});
   }
 
@@ -122,7 +120,7 @@ class NodeRepo {
     std::lock_guard<std::mutex> guard(GetMutex());
     auto& node_map = GetRepo().node_map_;
     auto iter = node_map.find(kernel);
-    ORT_ENFORCE(iter != node_map.end(), "Node does not exist");
+    ORT_ENFORCE(iter != node_map.end(), "matching node is missing");
     auto* node = iter->second.get();
     auto& input_defs = node->MutableInputDefs();
     auto& output_defs = node->MutableOutputDefs();
@@ -136,7 +134,7 @@ class NodeRepo {
       }
     } else if (input_defs.size() != static_cast<size_t>(input_count) ||
                output_defs.size() != static_cast<size_t>(output_count)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid node input or output count");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "inconsistent node input or output count");
     }
     return Status::OK();
   }
@@ -390,7 +388,8 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
 
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
-  NodePtr node_holder(new onnxruntime::Node(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain), ReleaseNode);
+  auto tmp_node_holder = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
+  NodePtr node_holder(tmp_node_holder.release(), ReleaseNode);
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
     node_holder->AddAttributeProto(*attr_proto);
@@ -516,8 +515,8 @@ ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp* op) {
 ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ OrtKernelInfo** info_copy) {
   API_IMPL_BEGIN
   auto kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  auto temporary_info_holder = std::make_unique<onnxruntime::OpKernelInfo>(*kernel_info);
-  *info_copy = reinterpret_cast<OrtKernelInfo*>(temporary_info_holder.release());
+  auto tmp_info_holder = std::make_unique<onnxruntime::OpKernelInfo>(*kernel_info);
+  *info_copy = reinterpret_cast<OrtKernelInfo*>(tmp_info_holder.release());
   return nullptr;
   API_IMPL_END
 }
