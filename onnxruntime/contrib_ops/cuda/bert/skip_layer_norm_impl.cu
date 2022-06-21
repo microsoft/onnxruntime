@@ -20,7 +20,7 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Modifications: Add SkipLayerNormKernelSmallVec and SkipLayerNormKernelVec to 
+// Modifications: Add SkipLayerNormKernelSmallVec and SkipLayerNormKernelVec to
 //                leverage vectorized load/write.
 // Copyright (c) Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
@@ -85,7 +85,7 @@ __global__ void SkipLayerNormKernelSmallVec(
     const int ld, const half* input, const half* skip, const half* beta, const half* gamma,
     const half* bias, const half epsilon, half* output, bool hasBias) {
   const half rld = half(1.f) / half(ld);
-  const int idx = blockIdx.x * ld + threadIdx.x * ILP; // grid_size = n / ld
+  const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
   using VecT = aligned_vector<half, ILP>;
   using BlockReduce = cub::BlockReduce<cub::KeyValuePair<half, half>, TPB>;
@@ -154,7 +154,7 @@ __global__ void SkipLayerNormKernelSmallVec(
 
 template <unsigned TPB, int ILP>
 __global__ void SkipLayerNormKernelVec(
-    const int ld, const half* input, const half* skip, const half* beta, const half* gamma, 
+    const int ld, const half* input, const half* skip, const half* beta, const half* gamma,
     const half* bias, const half epsilon, half* output, bool hasBias) {
   const half rld = half(1.f) / half(ld);
   const int idx = blockIdx.x * ld + threadIdx.x * ILP; // TPB = "ld / ILP", grid_size = n / ld
@@ -189,7 +189,7 @@ __global__ void SkipLayerNormKernelVec(
   }
 
   VecT* output_val = reinterpret_cast<VecT*>(&output_v);
-  
+
   half rldval_sum = half(0.f);
   half rldvalsq_sum = half(0.f);
   #pragma unroll
@@ -209,7 +209,7 @@ __global__ void SkipLayerNormKernelVec(
     rsigma = Rsqrt(sumKV.value - mu * mu + epsilon);
   }
   __syncthreads();
-  
+
   #pragma unroll
   for (int i = 0; i < ILP; i++) {
     output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
@@ -240,7 +240,8 @@ bool ComputeSkipLayerNorm(cudaStream_t stream, const int ld, const int n, const 
         <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   } else {
     constexpr int block_size = 256;
-    SkipLayerNormKernel<float, block_size><<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
+    SkipLayerNormKernel<float, block_size>
+        <<<grid_size, block_size, 0, stream>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
