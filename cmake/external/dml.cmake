@@ -40,7 +40,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
   get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
-  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.Preview.1.9.0-devd10042c94985065a565c042540e15eb75b554663)
+  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.Preview.1.9.0-devb9b146539f535988728c8eb4791840db54add4a7)
   set(DML_SHARED_LIB DirectML.dll)
 
   # Restore nuget packages, which will pull down the DirectML redist package.
