@@ -1520,50 +1520,49 @@ TEST(CApiTest, model_metadata) {
     // Fetch model metadata
     auto model_metadata = session.GetModelMetadata();
 
-    char* producer_name = model_metadata.GetProducerName(allocator.get());
-    ASSERT_TRUE(strcmp("Hari", producer_name) == 0);
-    allocator.get()->Free(producer_name);
+    {
+      auto producer_name = model_metadata.GetProducerNameAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("Hari", producer_name.get()) == 0);
+    }
 
-    char* graph_name = model_metadata.GetGraphName(allocator.get());
-    ASSERT_TRUE(strcmp("matmul test", graph_name) == 0);
-    allocator.get()->Free(graph_name);
+    {
+      auto graph_name = model_metadata.GetGraphNameAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("matmul test", graph_name.get()) == 0);
+    }
 
-    char* domain = model_metadata.GetDomain(allocator.get());
-    ASSERT_TRUE(strcmp("", domain) == 0);
-    allocator.get()->Free(domain);
+    {
+      auto domain = model_metadata.GetDomainAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", domain.get()) == 0);
+    }
 
-    char* description = model_metadata.GetDescription(allocator.get());
-    ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description) == 0);
-    allocator.get()->Free(description);
+    {
+      auto description = model_metadata.GetDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description.get()) == 0);
+    }
 
-    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
-    ASSERT_TRUE(strcmp("graph description", graph_description) == 0);
-    allocator.get()->Free(graph_description);
+    {
+      auto graph_description = model_metadata.GetGraphDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("graph description", graph_description.get()) == 0);
+    }
 
     int64_t version = model_metadata.GetVersion();
     ASSERT_TRUE(version == 1);
 
-    int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
-                                                                              num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 2);
+    {
+      auto custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeysAllocated(allocator.get());
+      ASSERT_EQ(custom_metadata_map_keys.size(), 2U);
+    }
 
-    allocator.get()->Free(custom_metadata_map_keys[0]);
-    allocator.get()->Free(custom_metadata_map_keys[1]);
-    allocator.get()->Free(custom_metadata_map_keys);
-
-    char* lookup_value_1 = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value_1,
+    auto lookup_value_1 = model_metadata.LookupCustomMetadataMapAllocated("ort_config", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_1.get(),
                        "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, "
                        "\"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
-    allocator.get()->Free(lookup_value_1);
 
-    char* lookup_value_2 = model_metadata.LookupCustomMetadataMap("dummy_key", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value_2, "dummy_value") == 0);
-    allocator.get()->Free(lookup_value_2);
+    auto lookup_value_2 = model_metadata.LookupCustomMetadataMapAllocated("dummy_key", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_2.get(), "dummy_value") == 0);
 
     // key doesn't exist in custom metadata map
-    char* lookup_value_3 = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
+    auto lookup_value_3 = model_metadata.LookupCustomMetadataMapAllocated("key_doesnt_exist", allocator.get());
     ASSERT_TRUE(lookup_value_3 == nullptr);
   }
 
@@ -1577,21 +1576,20 @@ TEST(CApiTest, model_metadata) {
     auto model_metadata = session.GetModelMetadata();
 
     // Model description is empty
-    char* description = model_metadata.GetDescription(allocator.get());
-    ASSERT_TRUE(strcmp("", description) == 0);
-    allocator.get()->Free(description);
+    {
+      auto description = model_metadata.GetDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", description.get()) == 0);
+    }
 
     // Graph description is empty
-    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
-    ASSERT_TRUE(strcmp("", graph_description) == 0);
-    allocator.get()->Free(graph_description);
+    {
+      auto graph_description = model_metadata.GetGraphDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", graph_description.get()) == 0);
+    }
 
     // Model does not contain custom metadata map
-    int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
-                                                                              num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
-    ASSERT_TRUE(custom_metadata_map_keys == nullptr);
+    auto custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeysAllocated(allocator.get());
+    ASSERT_TRUE(custom_metadata_map_keys.empty());
   }
 }
 
