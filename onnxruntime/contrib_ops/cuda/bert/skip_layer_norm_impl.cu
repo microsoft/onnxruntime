@@ -241,7 +241,7 @@ bool ComputeSkipLayerNorm(cudaStream_t stream, const int ld, const int n, const 
   } else {
     constexpr int block_size = 256;
     SkipLayerNormKernel<float, block_size>
-        <<<grid_size, block_size, 0, stream>>(ld, input, skip, beta, gamma, bias, epsilon, output);
+        <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output);
   }
   return CUDA_CALL(cudaPeekAtLastError());
 }
@@ -256,28 +256,28 @@ bool ComputeSkipLayerNorm(
     const int grid_size = n / ld;
     bool hasBias = (bias == nullptr) ? false : true;
     if (ld <= 32) {
-      constexpr int block_size = 32;
-      SkipLayerNormKernelSmallVec<block_size, 2>
+      constexpr int block_size = 32 / 4;
+      SkipLayerNormKernelSmallVec<block_size, 4>
          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 64) {
-      constexpr int block_size = 64 / 2;
-      SkipLayerNormKernelVec<block_size, 2>
+      constexpr int block_size = 64 / 4;
+      SkipLayerNormKernelVec<block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 128) {
-      constexpr int block_size = 128 / 2;
-      SkipLayerNormKernelVec<block_size, 2>
+      constexpr int block_size = 128 / 4;
+      SkipLayerNormKernelVec<block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 384) {
-      constexpr int block_size = 384 / 2;
-      SkipLayerNormKernelVec<block_size, 2>
+      constexpr int block_size = 384 / 4;
+      SkipLayerNormKernelVec<block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 768) {
-      constexpr int block_size = 768 / 2;
-      SkipLayerNormKernelVec<block_size, 2>
+      constexpr int block_size = 768 / 4;
+      SkipLayerNormKernelVec<block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else if (ld == 1024) {
-      constexpr int block_size = 1024 / 2;
-      SkipLayerNormKernelVec<block_size, 2>
+      constexpr int block_size = 1024 / 4;
+      SkipLayerNormKernelVec<block_size, 4>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, epsilon, output, hasBias);
     } else {
       constexpr int block_size = 256;

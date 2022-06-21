@@ -183,7 +183,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {
           true);
 }
 
-TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec2) {
+TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16_vec) {
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 64;
