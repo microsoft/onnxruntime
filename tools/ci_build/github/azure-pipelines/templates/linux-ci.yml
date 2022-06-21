@@ -11,7 +11,7 @@ parameters:
   DockerImageTag: ''
   BuildConfig: ''
   ArtifactName: 'drop-linux'
-  TimeoutInMinutes: 180
+  TimeoutInMinutes: 120
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
   AllowReleasedOpsetOnly: '1' 
   # to inject strategy, you need to pass in the whole yaml structure - 
