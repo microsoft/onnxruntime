@@ -13,7 +13,7 @@ namespace {
 const NnApi LoadNnApi() {
   NnApi nnapi = {};
   nnapi.android_sdk_version = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
-  nnapi.nnapi_runtime_feature_level = ANEURALNETWORKS_FEATURE_LEVEL_5;
+  nnapi.nnapi_runtime_feature_level = ANEURALNETWORKS_FEATURE_LEVEL_7;
 
   nnapi.ANeuralNetworksMemory_createFromFd =
       [](size_t, int, int, size_t, ANeuralNetworksMemory**) { return static_cast<int>(ANEURALNETWORKS_NO_ERROR); };
@@ -90,7 +90,7 @@ const NnApi LoadNnApi() {
       [](const ANeuralNetworksDevice*, const char**) { return static_cast<int>(ANEURALNETWORKS_NO_ERROR); };
   nnapi.ANeuralNetworksDevice_getFeatureLevel =
       [](const ANeuralNetworksDevice*, int64_t* feature_level) {
-        *feature_level = ANEURALNETWORKS_FEATURE_LEVEL_5;
+        *feature_level = ANEURALNETWORKS_FEATURE_LEVEL_7;
         return static_cast<int>(ANEURALNETWORKS_NO_ERROR);
       };
   nnapi.ANeuralNetworksDevice_getType =
@@ -179,7 +179,7 @@ const NnApi LoadNnApi() {
       [](ANeuralNetworksExecution*, bool) { return static_cast<int>(ANEURALNETWORKS_NO_ERROR); };
   nnapi.ANeuralNetworksExecution_setReusable =
       [](ANeuralNetworksExecution*, bool) { return static_cast<int>(ANEURALNETWORKS_NO_ERROR); };
-  nnapi.ANeuralNetworks_getRuntimeFeatureLevel = []() { return int64_t(ANEURALNETWORKS_FEATURE_LEVEL_5); };
+  nnapi.ANeuralNetworks_getRuntimeFeatureLevel = []() { return int64_t(ANEURALNETWORKS_FEATURE_LEVEL_7); };
   nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId =
       [](const ANeuralNetworksDiagnosticCompilationInfo*) -> int32_t { return 0; };
   nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion =
