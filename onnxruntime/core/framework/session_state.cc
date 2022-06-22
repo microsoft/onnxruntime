@@ -1188,10 +1188,9 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
       LOGS(logger, VERBOSE) << "All nodes have been placed on [" << node_placements.begin()->first << "].";
     } else {
       for (const auto& [provider, node_strs] : node_placements) {
-        std::ostringstream all_nodes_str;
-        std::copy(node_strs.begin(), node_strs.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
-        LOGS(logger, VERBOSE) << " Provider: [" << provider << "]"
-                              << ": [" << all_nodes_str.str() << "]";
+        for (const auto& node_str : node_strs) {
+          LOGS(logger, VERBOSE) << " Provider: [" << provider << "], node: [" << node_str << "]";
+        }
       }
     }
   }
