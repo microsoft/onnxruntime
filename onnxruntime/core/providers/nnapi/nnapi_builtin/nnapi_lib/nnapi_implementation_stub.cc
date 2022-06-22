@@ -165,6 +165,60 @@ const NnApi LoadNnApi() {
   nnapi.ANeuralNetworksExecution_setReusable =
       [](ANeuralNetworksExecution*, bool) { return int(ANEURALNETWORKS_NO_ERROR); };
   nnapi.ANeuralNetworks_getRuntimeFeatureLevel = []() { return int64_t(ANEURALNETWORKS_FEATURE_LEVEL_5); };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> int32_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> int64_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> const uint8_t* { return nullptr; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> const char* { return ""; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> int32_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> ANeuralNetworksDiagnosticDataClass { return {}; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> ANeuralNetworksDiagnosticDataClass { return {}; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> uint64_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> bool { return false; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> bool { return false; };
+  nnapi.SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> bool { return false; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> int32_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> int64_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> const uint8_t* { return nullptr; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> const char* { return ""; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> ANeuralNetworksDiagnosticExecutionMode { return {}; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> ANeuralNetworksDiagnosticDataClass { return {}; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> ANeuralNetworksDiagnosticDataClass { return {}; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint32_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint64_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint64_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint64_t { return 0; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> bool { return false; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> bool { return false; };
+  nnapi.SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> bool { return false; };
+  nnapi.SL_ANeuralNetworksDiagnostic_registerCallbacks =
+      [](ANeuralNetworksDiagnosticCompilationFinishedCallback,
+         ANeuralNetworksDiagnosticExecutionFinishedCallback,
+         void*) -> void {};
 
   return nnapi;
 }
