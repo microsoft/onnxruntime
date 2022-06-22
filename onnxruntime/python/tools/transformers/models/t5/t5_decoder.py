@@ -16,7 +16,7 @@ import onnx
 import torch
 from past_helper import PastKeyValuesHelper
 from t5_encoder import T5EncoderInputs
-from transformers import T5Config
+from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
 
@@ -36,7 +36,7 @@ class T5DecoderInit(torch.nn.Module):
         self,
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
-        config: T5Config,
+        config: Union[T5Config, MT5Config],
         decoder_start_token_id: int = None,
     ):
         super().__init__()
@@ -131,7 +131,7 @@ class T5DecoderInputs:
 
     @staticmethod
     def create_dummy(
-        config: T5Config,
+        config: Union[T5Config, MT5Config],
         batch_size: int,
         encode_sequence_length: int,
         past_decode_sequence_length: int,
@@ -157,6 +157,10 @@ class T5DecoderInputs:
         num_attention_heads: int = config.num_heads
         num_layers: int = config.num_layers
         vocab_size: int = config.vocab_size
+
+        # Do not use head_size = hidden_size / num_attention_heads here.
+        # For example, mt5-small, d_model=512 and num_heads=6
+        head_size: int = config.d_kv
 
         sequence_length: int = 1  # fixed for decoding
         decoder_input_ids = torch.randint(
@@ -189,13 +193,13 @@ class T5DecoderInputs:
                 batch_size,
                 num_attention_heads,
                 past_decode_sequence_length,
-                int(hidden_size / num_attention_heads),
+                head_size,
             ]
             cross_attention_past_shape = [
                 batch_size,
                 num_attention_heads,
                 encode_sequence_length,
-                int(hidden_size / num_attention_heads),
+                head_size,
             ]
 
             past = []

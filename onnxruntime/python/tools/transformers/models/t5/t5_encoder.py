@@ -10,12 +10,12 @@ import random
 import sys
 import tempfile
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 import numpy
 import onnx
 import torch
-from transformers import T5Config
+from transformers import MT5Config, T5Config
 
 from onnxruntime import InferenceSession
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class T5Encoder(torch.nn.Module):
     """T5 encoder outputs only the last hidden state"""
 
-    def __init__(self, encoder, config: T5Config):
+    def __init__(self, encoder, config: Union[T5Config, MT5Config]):
         super().__init__()
         self.encoder = encoder
         self.config = config

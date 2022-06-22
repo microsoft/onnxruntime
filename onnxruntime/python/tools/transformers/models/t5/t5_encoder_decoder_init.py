@@ -9,7 +9,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import numpy
 import onnx
@@ -17,7 +17,7 @@ import torch
 from past_helper import PastKeyValuesHelper
 from t5_decoder import T5DecoderInit
 from t5_encoder import T5Encoder, T5EncoderInputs
-from transformers import T5Config
+from transformers import T5Config, MT5Config
 
 from onnxruntime import InferenceSession
 
@@ -35,7 +35,7 @@ class T5EncoderDecoderInit(torch.nn.Module):
         encoder: torch.nn.Module,
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
-        config: T5Config,
+        config: Union[T5Config, MT5Config],
         decoder_start_token_id: Optional[int] = None,
     ):
         super().__init__()
@@ -64,7 +64,7 @@ class T5EncoderDecoderInitInputs:
 
     @staticmethod
     def create_dummy(
-        config: T5Config,
+        config: Union[T5Config, MT5Config],
         batch_size: int,
         encode_sequence_length: int,
         use_decoder_input_ids: int,
