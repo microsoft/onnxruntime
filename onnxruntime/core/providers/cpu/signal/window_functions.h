@@ -20,22 +20,34 @@ class VariableOutputDataTypeBase : public OpKernel {
 class HannWindow final : public VariableOutputDataTypeBase {
  public:
   explicit HannWindow(const OpKernelInfo& info) : VariableOutputDataTypeBase(info) {
+    is_periodic_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("periodic", 1));
   }
   Status Compute(OpKernelContext* ctx) const override;
+
+ private:
+  bool is_periodic_ = true;
 };
 
 class HammingWindow final : public VariableOutputDataTypeBase {
  public:
   explicit HammingWindow(const OpKernelInfo& info) : VariableOutputDataTypeBase(info) {
+    is_periodic_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("periodic", 1));
   }
   Status Compute(OpKernelContext* ctx) const override;
+
+ private:
+  bool is_periodic_ = true;
 };
 
 class BlackmanWindow final : public VariableOutputDataTypeBase {
  public:
   explicit BlackmanWindow(const OpKernelInfo& info) : VariableOutputDataTypeBase(info) {
+    is_periodic_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("periodic", 1));
   }
   Status Compute(OpKernelContext* ctx) const override;
+
+ private:
+  bool is_periodic_ = true;
 };
 
 class MelWeightMatrix final : public VariableOutputDataTypeBase {

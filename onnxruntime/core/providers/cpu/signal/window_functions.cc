@@ -48,13 +48,14 @@ ONNX_CPU_OPERATOR_KERNEL(MelWeightMatrix, 17,
 
 template <typename T>
 struct CosineSumWindow {
-  Status operator()(Tensor* Y, size_t size, float a0, float a1, float a2) {
+  Status operator()(Tensor* Y, size_t size, float a0, float a1, float a2, bool is_periodic) {
     auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
 
     // Calculate the radians to increment per sample
     constexpr double pi = 3.14159265;
     constexpr double tau = 2 * pi;
-    const double angular_increment = tau / size;
+    const size_t denominator = is_periodic ? size : size - 1;
+    const double angular_increment = tau / denominator;
 
     for (size_t i = 0; i < size; i++) {
       auto a2_component = a2 == 0 ? 0 : (a2 * cos(2 * angular_increment * i));
@@ -68,7 +69,7 @@ struct CosineSumWindow {
 };
 
 static Status create_cosine_sum_window(OpKernelContext* ctx, onnx::TensorProto_DataType output_datatype, float a0,
-                                       float a1, float a2) {
+                                       float a1, float a2, bool is_periodic) {
   // Get the size of the window
   auto size = signal::get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(0));
 
@@ -78,7 +79,7 @@ static Status create_cosine_sum_window(OpKernelContext* ctx, onnx::TensorProto_D
 
   utils::MLTypeCallDispatcher<float, double, int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t>
       dispatcher(output_datatype);
-  return dispatcher.InvokeRet<Status, CosineSumWindow>(Y, size, a0, a1, a2);
+  return dispatcher.InvokeRet<Status, CosineSumWindow>(Y, size, a0, a1, a2, is_periodic);
 }
 
 Status HannWindow::Compute(OpKernelContext* ctx) const {
@@ -87,7 +88,7 @@ Status HannWindow::Compute(OpKernelContext* ctx) const {
   float a0 = .5f;
   float a1 = a0;
   float a2 = 0;
-  return create_cosine_sum_window(ctx, data_type_, a0, a1, a2);
+  return create_cosine_sum_window(ctx, data_type_, a0, a1, a2, is_periodic_);
 }
 
 Status HammingWindow::Compute(OpKernelContext* ctx) const {
@@ -96,7 +97,7 @@ Status HammingWindow::Compute(OpKernelContext* ctx) const {
   float a0 = 25.f / 46.f;
   float a1 = 1 - a0;
   float a2 = 0;
-  return create_cosine_sum_window(ctx, data_type_, a0, a1, a2);
+  return create_cosine_sum_window(ctx, data_type_, a0, a1, a2, is_periodic_);
 }
 
 Status BlackmanWindow::Compute(OpKernelContext* ctx) const {
@@ -106,7 +107,7 @@ Status BlackmanWindow::Compute(OpKernelContext* ctx) const {
   float a2 = alpha / 2.f;
   float a0 = .5f - a2;
   float a1 = .5f;
-  return create_cosine_sum_window(ctx, data_type_, a0, a1, a2);
+  return create_cosine_sum_window(ctx, data_type_, a0, a1, a2, is_periodic_);
 }
 
 static inline double hz_to_mel_scale(double hz) { return 2595 * std::log10(1 + hz / 700); }
