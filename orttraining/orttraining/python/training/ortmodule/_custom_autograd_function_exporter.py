@@ -7,7 +7,7 @@ import sys
 import torch
 import torch.utils.checkpoint
 import warnings
-from torch.onnx import symbolic_helper
+from torch.onnx import symbolic_helper, _globals
 
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from ._fallback import _FallbackManager, ORTModuleONNXModelException, ORTModuleTorchModelException, wrap_exception
@@ -37,7 +37,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 "wrap exportable sub-nn.Module's as ORTModule."
             )
         inplace = kwargs["inplace"]
-        training_mode = symbolic_helper.check_training_mode
+        # TODO move to public API once exporter team exposes that
+        training_mode = _globals.GLOBALS.training_mode
         cconv = n.cconv()
         input_tensor_types = []
         input_requires_grads = []
