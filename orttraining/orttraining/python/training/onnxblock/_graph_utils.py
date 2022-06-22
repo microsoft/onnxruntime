@@ -3,8 +3,9 @@
 # _graph_utils.py
 
 import copy
-import onnx
 import random
+
+import onnx
 
 from onnxruntime.capi._pybind_state import GradientGraphBuilder
 
@@ -21,44 +22,52 @@ def get_output_from_output_name(onnx_model, output_name):
 
 
 def get_random_number():
-    """Return a random number in the range 0, 1000."""
+    """Return a random number in the range 0, 100000."""
 
-    return random.randint(0, 1000)
+    return random.randint(0, 100000)
 
 
 def generate_random_graph_name(token):
     """Return a string that can be used in the graph as a graph attribute name."""
 
-    return f"{get_random_number()}.{token}"
+    return f"onnx::{token}::{get_random_number()}"
 
 
-def build_gradient_graph(
-    accessor, user_args_requiring_grad, user_args_not_requiring_grad, output_names
-):
+def _reorder_outputs(model, user_output_names, args_requiring_gradient_names):
+    graph_outputs = {output.name: output for output in model.graph.output}
+    ordered_graph_outputs = [graph_outputs[name] for name in user_output_names]
+
+    for arg in args_requiring_gradient_names:
+        gradient_name = f"{arg}_grad"
+        ordered_graph_outputs.append(graph_outputs[gradient_name])
+
+    del model.graph.output[:]
+    model.graph.output.extend(ordered_graph_outputs)
+
+
+def build_gradient_graph(accessor, user_args_requiring_grad, user_args_not_requiring_grad, output_names):
     """Builds the gradient graph on top of the given input forward only graph."""
 
     model = accessor.model
 
     # Collect names of parameters that need gradients computed
-    all_args_requiring_gradient = set()
+    all_args_requiring_gradient = []
     # Move all trainable and non trainable initializers to graph inputs.
     # This allows training to pass in the parameters from outside the graph
     # so as to share the parameters across multiple sessions.
     graph_inputs = model.graph.input
     initializers = []
     for initializer in model.graph.initializer:
-        if not initializer.name[0].isdigit():
+        if not initializer.name.startswith("onnx::"):
             # Move only those initializers as inputs that are not local
             # to the onnx model. i.e. initializers that are model parameters.
-            # These are tpically those initializers without any number prefixed
+            # These are tpically those initializers without any onnx:: prefixed
             # to their names.
             graph_inputs.append(
-                onnx.helper.make_tensor_value_info(
-                    initializer.name, initializer.data_type, initializer.dims
-                )
+                onnx.helper.make_tensor_value_info(initializer.name, initializer.data_type, initializer.dims)
             )
             if initializer.name not in user_args_not_requiring_grad:
-                all_args_requiring_gradient.add(initializer.name)
+                all_args_requiring_gradient.append(initializer.name)
         else:
             # All other initializers stay where they were.
             initializers.append(initializer)
@@ -74,7 +83,7 @@ def build_gradient_graph(
     # args_requiring_grad. So, add these arguments to set of arguments
     # whose gradient should be built.
     for argument_name in user_args_requiring_grad:
-        all_args_requiring_gradient.add(argument_name)
+        all_args_requiring_gradient.append(argument_name)
 
     # Assumption is that the first graph output is the loss output
     if isinstance(output_names, str):
@@ -82,13 +91,16 @@ def build_gradient_graph(
     builder = GradientGraphBuilder(
         model.SerializeToString(),
         set(output_names),
-        all_args_requiring_gradient,
+        set(all_args_requiring_gradient),
         output_names[0],
     )
     builder.build()
     gradient_model = onnx.load_from_string(builder.get_model())
 
-    # copy the gradient graph into the user's graph
+    # Reorder gradient outputs for the gradient model based on the all_args_requiring_gradient order
+    _reorder_outputs(gradient_model, output_names, all_args_requiring_gradient)
+
+    # copy the gradient model into the user's model
     model.CopyFrom(gradient_model)
 
     return all_args_requiring_gradient
@@ -117,9 +129,7 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
     """
 
     # TODO: Avoid hard coded input/output strings
-    gradient_output_names = {
-        f"{arg_name}_grad" for arg_name in all_args_requiring_gradient_names
-    }
+    gradient_output_names = {f"{arg_name}_grad" for arg_name in all_args_requiring_gradient_names}
 
     graph_inputs = grad_model.graph.input
     graph_nodes = grad_model.graph.node
@@ -139,12 +149,8 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
 
         # gradient accumulation node inputs and output names
         grad_name = graph_output.name
-        grad_accumulation_buffer_name = (
-            f"{grad_name}.{gradient_accumulation_name}.{gradient_buffer_name_suffix}"
-        )
-        grad_accumulation_output_name = (
-            f"{grad_name}.{gradient_accumulation_name}.{gradient_output_name_suffix}"
-        )
+        grad_accumulation_buffer_name = f"{grad_name}.{gradient_accumulation_name}.{gradient_buffer_name_suffix}"
+        grad_accumulation_output_name = f"{grad_name}.{gradient_accumulation_name}.{gradient_output_name_suffix}"
 
         # Gradient accumulation node
         acc_node = onnx.helper.make_node(
@@ -167,9 +173,7 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
         grad_accumulation_output.name = grad_accumulation_output_name
         graph_outputs.append(grad_accumulation_output)
 
-    lazy_reset_grad_input = onnx.helper.make_tensor_value_info(
-        lazy_reset_grad_input_name, onnx.TensorProto.BOOL, [1]
-    )
+    lazy_reset_grad_input = onnx.helper.make_tensor_value_info(lazy_reset_grad_input_name, onnx.TensorProto.BOOL, [1])
     graph_inputs.append(lazy_reset_grad_input)
 
     del grad_model.graph.output[:]
@@ -183,18 +187,18 @@ def get_model_parameters(model, args_not_requiring_gradient):
     non_trainable_params = []
     for initializer in model.graph.initializer:
         # All model parameters should have their names not begin with
-        # a digit. So, check to see if the initializer's first char
-        # is a digit. If not, it is either a trainable, or a non
+        # `onnx::`. So, check to see if the initializer begins with
+        # `onnx::`. If not, it is either a trainable, or a non
         # trainable parameter.
         # Note that this assumption can be made because the export logic
         # does not change the names of the original model parameters.
         # and the original model parameters don't have their names begin
-        # with a digit.
+        # `onnx::`.
         # On the other hand, const initializers are generated by export
-        # logic and have a digit prefix.
+        # logic and have a `onnx::` prefix.
         # TODO: validate this assumption. If assumption is not valid,
         # the alternative is to enforce the user to provide the parameter names.
-        if not initializer.name[0].isdigit():
+        if not initializer.name.startswith("onnx::"):
             if initializer.name in args_not_requiring_gradient:
                 non_trainable_params.append(initializer)
             else:
@@ -215,9 +219,7 @@ def build_graph_outputs(model, output_names):
     if isinstance(output_names, str):
         output_names = [output_names]
 
-    name_value_info_mapping = {
-        value_info.name: value_info for value_info in model.graph.value_info
-    }
+    name_value_info_mapping = {value_info.name: value_info for value_info in model.graph.value_info}
     name_graph_output_mapping = {output.name: output for output in model.graph.output}
 
     # collect all new graph outputs (i.e. graph outputs that are not
@@ -229,9 +231,7 @@ def build_graph_outputs(model, output_names):
         elif output_name in name_value_info_mapping:
             graph_outputs.append(name_value_info_mapping[output_name])
         else:
-            raise LookupError(
-                f"The provided name {output_name} is not a graph value info or a graph output."
-            )
+            raise LookupError(f"The provided name {output_name} is not a graph value info or a graph output.")
 
     # Clear all existing graph outputs
     del model.graph.output[:]

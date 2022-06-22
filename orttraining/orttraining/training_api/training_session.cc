@@ -9,23 +9,17 @@ namespace api {
 
 TrainingSession::TrainingSession(const Environment& session_env,
                                  const SessionOptions& session_options,
-                                 const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters)
-    : environment_(session_env),
-      session_options_{session_options},
-      named_parameters_{parameters} {}
-
-Status TrainingSession::Initialize(const std::string& train_model_uri, const std::optional<std::string>& eval_model_uri,
-                                   const std::optional<std::string>& optim_model_uri) {
-  module_ = std::move(std::make_unique<Module>(train_model_uri, named_parameters_, session_options_,
-                                               environment_, eval_model_uri));
-
-  if (optim_model_uri.has_value()) {
-    optimizer_ = std::move(std::make_unique<Optimizer>(optim_model_uri.value(), named_parameters_,
-                                                       session_options_, environment_));
-  }
-
-  return Status::OK();
-}
+                                 const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
+                                 const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
+                                 const ModelIdentifiers& model_identifiers)
+    : named_parameters_{parameters},
+      module_{std::make_unique<Module>(model_identifiers.train_model, named_parameters_,
+                                       session_options, session_env, providers, model_identifiers.eval_model)},
+      optimizer_{model_identifiers.optim_model.has_value()
+                     ? std::make_unique<Optimizer>(
+                           model_identifiers.optim_model.value(), named_parameters_,
+                           session_options, session_env, providers)
+                     : std::unique_ptr<Optimizer>()} {}
 
 size_t TrainingSession::GetTrainModeOutputCount() const noexcept {
   return module_->GetTrainModeOutputCount();
