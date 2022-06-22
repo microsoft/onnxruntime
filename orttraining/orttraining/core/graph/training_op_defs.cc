@@ -1436,7 +1436,9 @@ ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulatorV2)
           "Constrain types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-        updateOutputShape(ctx, 0, {});
+        ONNX_NAMESPACE::TensorShapeProto updated_shape;
+        updated_shape.add_dim()->set_dim_value(1);
+        updateOutputShape(ctx, 0, updated_shape);
         if (ctx.getNumOutputs() == 2){
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
           if (hasNInputShapes(ctx, 1)) {

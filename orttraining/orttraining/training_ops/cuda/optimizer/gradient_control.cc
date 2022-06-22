@@ -140,7 +140,7 @@ Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) co
         right_addee_buffer.Shape().Size());
   }
 
-  Tensor& updated_output = *ctx->Output(0, {});
+  Tensor& updated_output = *ctx->Output(0, {1});
   bool* updated_output_ptr = updated_output.MutableData<bool>();
   *updated_output_ptr = true;
 

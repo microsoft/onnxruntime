@@ -121,7 +121,7 @@ Status InPlaceAccumulatorV2<T>::Compute(OpKernelContext* context) const {
     BroadcastLooper(broadcast_helper, funcs);
   }
 
-  Tensor* updated_output = context->Output(0, {});
+  Tensor* updated_output = context->Output(0, {1});
   bool* updated_output_ptr = updated_output->template MutableData<bool>();
   *updated_output_ptr = true;
 
