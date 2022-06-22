@@ -543,8 +543,10 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
         initializers,
     )
 
-    model = helper.make_model(graph)
-    return model
+    # Needed so that we don't see the new LayerNormalization function added in version 17.
+    # TODO(https://github.com/microsoft/onnxruntime/issues/11916): Remove once fixed.
+    opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
+    return helper.make_model(graph, opset_imports=(opsetid,))
 
 
 if __name__ == "__main__":
