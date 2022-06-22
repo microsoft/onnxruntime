@@ -60,6 +60,48 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
   }
 }
 
+// TODO(wy): Dispatch it to avoid passing multiple functions to interface.
+template <typename T>
+Status ExpandBuffer(void* stream,
+                    const OrtValue& input,
+                    int num_beams,
+                    AllocatorPtr allocator,
+                    OrtValue& expanded,
+                    bool only_copy_shape) {
+  // Input shape (batch_size, xxx). The input is required with data type T.
+  // Output shape (batch_size * num_beams, xxx)
+  ORT_UNUSED_PARAMETER(stream);
+
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
+
+  int64_t dims[4] = {0};
+  input_shape.CopyDims(dims, input_shape.NumDimensions());
+  dims[0] = batch_size * num_beams;
+  TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
+
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  if (only_copy_shape) {
+    return Status::OK();
+  }
+
+  const T* input_data = input.Get<Tensor>().Data<T>();
+  T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
+  T* target = expanded_data;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
+      target += chunk_size;
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CreateGptInputs(
     const Tensor* original_input_ids,
     int num_beams,
@@ -200,37 +242,45 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
+  auto logits_batch_size = logits_shape[0];
 
   // Get logits for the last token:
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
-  if (input_length > 1) {
+
+  if (input_length > 1 || logits_batch_size == batch_size) {
     const T* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(current_logits, vocab_size);
       gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
                                                       static_cast<gsl::index>(vocab_size));
       gsl::copy(source, target);
-      current_logits += input_length * vocab_size;
+      if (logits_batch_size == batch_beam_size) {
+        current_logits += input_length * vocab_size;
+      } else if (logits_batch_size == batch_size && i % num_beams == num_beams - 1) {
+        current_logits += input_length * vocab_size;
+      }
     }
   }
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("logits", logits);
-  if (input_length > 1) {
+  if (input_length > 1 || logits_batch_size == batch_size) {
     dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
   }
 #endif
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
-  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(batch_beam_size,  // rows
-                                    vocab_size,       // elements per row
-                                    input_length > 1 ? next_token_logits.data() : logits_data,
-                                    next_token_scores.data(),
-                                    true,
-                                    thread_pool));
+  ORT_RETURN_IF_ERROR(
+    SoftmaxCPU<T>(
+      batch_beam_size,  // rows
+      vocab_size,       // elements per row
+      (input_length == 1 && logits_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
+      next_token_scores.data(),
+      true,
+      thread_pool));
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
@@ -456,13 +506,12 @@ Status UpdateGptFeeds(
 Status CreateEncoderInputs(
     const Tensor* original_encoder_input_ids,
     const OrtValue* attn_mask_value,
-    int num_beams,
     int pad_token_id,
     int start_token_id,
     AllocatorPtr allocator,
-    OrtValue& expanded_encoder_input_ids,
-    OrtValue& expanded_encoder_attention_mask,
-    OrtValue& expanded_decoder_input_ids) {
+    OrtValue& encoder_input_ids,
+    OrtValue& encoder_attention_mask,
+    OrtValue& decoder_input_ids) {
   const TensorShape& input_ids_shape = original_encoder_input_ids->Shape();
   ORT_ENFORCE(input_ids_shape.NumDimensions() == 2);
   const int64_t& batch_size = input_ids_shape[0];
@@ -475,14 +524,12 @@ Status CreateEncoderInputs(
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
   // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
-  OrtValue encoder_input_ids;
   Tensor::InitOrtValue(element_type,
                        input_ids_shape,
                        const_cast<Tensor*>(original_encoder_input_ids)->MutableData<int32_t>(),
                        allocator->Info(),
                        encoder_input_ids);
 
-  OrtValue encoder_attention_mask;
   if (attn_mask_value != nullptr) {
     const Tensor& attention_mask = attn_mask_value->Get<Tensor>();
     Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attention_mask)->MutableData<int32_t>(),
@@ -511,20 +558,14 @@ Status CreateEncoderInputs(
     }
   }
 
-  // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
-  // for encoder_input_ids and encoder_attention_mask
-  // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
-  ExpandInputs<int32_t>(encoder_input_ids, num_beams, allocator, expanded_encoder_input_ids);
-  ExpandInputs<int32_t>(encoder_attention_mask, num_beams, allocator, expanded_encoder_attention_mask);
-
   // decoder_input_ids is optional.
   if (start_token_id >= 0) {
-    // Expanded decoder_input_ids has shape (batch_size * num_beams, 1), and filled with start token ID
-    int64_t dims[] = {batch_size * num_beams, 1};
+    // Filled decoder_input_ids with start token ID
+    int64_t dims[] = {batch_size, 1};
     TensorShape decoder_input_ids_shape(&dims[0], 2);
-    Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, expanded_decoder_input_ids);
-    int32_t* data = expanded_decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-    for (int i = 0; i < batch_size * num_beams; i++, data++) {
+    Tensor::InitOrtValue(element_type, decoder_input_ids_shape, allocator, decoder_input_ids);
+    int32_t* data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    for (int i = 0; i < batch_size; i++, data++) {
       *data = start_token_id;
     }
   }
@@ -602,7 +643,7 @@ Status UpdateDecoderFeeds(
   TensorShape input_ids_shape(&dims[0], 2);
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
 
-  // TODO: decouple has_hidden_state with full input_ids
+  // TODO(wy): decouple has_hidden_state with full input_ids
   if (has_hidden_state) {
     gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
   } else {
@@ -708,6 +749,30 @@ template Status UpdateDecoderFeeds<float>(
     const transformers::IConsoleDumper* dumper);
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
+
+template Status ExpandBuffer<int32_t>(
+  void* stream,
+  const OrtValue& input,
+  int num_beams,
+  AllocatorPtr allocator,
+  OrtValue& expanded,
+  bool only_copy_shape);
+
+template Status ExpandBuffer<float>(
+  void* stream,
+  const OrtValue& input,
+  int num_beams,
+  AllocatorPtr allocator,
+  OrtValue& expanded,
+  bool only_copy_shape);
+
+template Status ExpandBuffer<MLFloat16>(
+  void* stream,
+  const OrtValue& input,
+  int num_beams,
+  AllocatorPtr allocator,
+  OrtValue& expanded,
+  bool only_copy_shape);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib
