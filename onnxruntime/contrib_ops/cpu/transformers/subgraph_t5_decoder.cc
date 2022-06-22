@@ -167,11 +167,11 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
       OrtValue expanded_hidden_states;
       if (is_output_float16_) {
         ORT_RETURN_IF_ERROR(expand_buffer_float16_func(stream,
-                                                      encoder_fetches[j],
-                                                      num_beam,
-                                                      allocator,
-                                                      expanded_hidden_states,
-                                                      true));
+                                                       encoder_fetches[j],
+                                                       num_beam,
+                                                       allocator,
+                                                       expanded_hidden_states,
+                                                       true));
       } else {
         ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
                                                      encoder_fetches[j],
