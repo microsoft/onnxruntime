@@ -157,6 +157,12 @@ Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
   SHAPER_FUNC(ResizeUsingOutputSizes, input_name, output_h, output_w, nchw, output_name);
 }
 
+Status Shaper::Pad(const std::string& input_name,
+                   const std::vector<int32_t>& pads,
+                   const std::string& output_name) {
+  SHAPER_FUNC(Pad, input_name, pads, output_name);
+}
+
 #undef SHAPER_FUNC
 
 Status Shaper::ConvImpl(const std::string& input_name,
@@ -488,6 +494,19 @@ Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
     output_dimen[2] = output_w;
   }
   shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::PadImpl(const std::string& input_name,
+                       const std::vector<int32_t>& pads,
+                       const std::string& output_name) {
+  Shape padded_shape = shape_map_.at(input_name);
+  const size_t rank = padded_shape.size();
+  ORT_RETURN_IF_NOT(pads.size() == 2 * rank, "Expected 2*rank (", 2 * rank, ") pad values but got ", pads.size());
+  for (size_t i = 0; i < rank; ++i) {
+    padded_shape[i] += pads[2*i] + pads[2*i + 1];
+  }
+  shape_map_[output_name] = padded_shape;
   return Status::OK();
 }
 

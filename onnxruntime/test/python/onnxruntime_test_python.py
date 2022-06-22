@@ -37,6 +37,12 @@ available_providers_without_tvm = [
     provider for provider in onnxrt.get_available_providers() if provider not in {"TvmExecutionProvider"}
 ]
 
+available_providers_without_tvm_and_tensorrt = [
+    provider
+    for provider in onnxrt.get_available_providers()
+    if provider not in {"TvmExecutionProvider", "TensorrtExecutionProvider"}
+]
+
 
 class TestInferenceSession(unittest.TestCase):
     def run_model(self, session_object, run_options):
@@ -933,7 +939,9 @@ class TestInferenceSession(unittest.TestCase):
         so1.register_custom_ops_library(shared_library)
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
-        sess1 = onnxrt.InferenceSession(custom_op_model, sess_options=so1, providers=available_providers_without_tvm)
+        sess1 = onnxrt.InferenceSession(
+            custom_op_model, sess_options=so1, providers=available_providers_without_tvm_and_tensorrt
+        )
         # Run with input data
         input_name_0 = sess1.get_inputs()[0].name
         input_name_1 = sess1.get_inputs()[1].name
@@ -949,12 +957,16 @@ class TestInferenceSession(unittest.TestCase):
         so2 = so1
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
-        sess2 = onnxrt.InferenceSession(custom_op_model, sess_options=so2, providers=available_providers_without_tvm)
+        sess2 = onnxrt.InferenceSession(
+            custom_op_model, sess_options=so2, providers=available_providers_without_tvm_and_tensorrt
+        )
 
         # Create another SessionOptions instance with the same shared library referenced
         so3 = onnxrt.SessionOptions()
         so3.register_custom_ops_library(shared_library)
-        sess3 = onnxrt.InferenceSession(custom_op_model, sess_options=so3, providers=available_providers_without_tvm)
+        sess3 = onnxrt.InferenceSession(
+            custom_op_model, sess_options=so3, providers=available_providers_without_tvm_and_tensorrt
+        )
 
     def testOrtValue(self):
 

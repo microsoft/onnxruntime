@@ -59,7 +59,7 @@ namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) {
   parameters_.ParseFromAttributes(info);
 
-  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5).
+  // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
   ORT_ENFORCE(parameters_.model_type == IBeamSearchParameters::kModelTypeGpt ||
               parameters_.model_type == IBeamSearchParameters::kModelTypeT5);
 
@@ -183,7 +183,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
         device_copy_int32_func_ ? device_copy_int32_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<int32_t>,
         create_encoder_inputs_func_ ? create_encoder_inputs_func_ : BeamSearchCpuDeviceHelper::CreateEncoderInputs,
-        update_decoder_feeds_func_ ? update_decoder_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateDecoderFeeds<float>};
+        update_decoder_feeds_func_ ? update_decoder_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateDecoderFeeds<float>,
+        expand_buffer_int32_func_ ? expand_buffer_int32_func_ : BeamSearchCpuDeviceHelper::ExpandBuffer<int32_t>,
+        expand_buffer_float_func_ ? expand_buffer_float_func_ : BeamSearchCpuDeviceHelper::ExpandBuffer<float>,
+        expand_buffer_float16_func_ ? expand_buffer_float16_func_ : BeamSearchCpuDeviceHelper::ExpandBuffer<MLFloat16>};
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
     return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -198,7 +201,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         device_copy_func_,
         device_copy_int32_func_,
         create_encoder_inputs_func_,
-        update_decoder_feeds_fp16_func_};
+        update_decoder_feeds_fp16_func_,
+        expand_buffer_int32_func_,
+        expand_buffer_float_func_,
+        expand_buffer_float16_func_};
 
     ORT_RETURN_IF_ERROR(impl.Initialize());
 

@@ -15,6 +15,7 @@ struct GlobalContext {
   bool enable_vpu_fast_compile = false;
   bool use_compiled_network = false;
   bool enable_opencl_throttling = false;
+  bool enable_dynamic_shapes = false;
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;

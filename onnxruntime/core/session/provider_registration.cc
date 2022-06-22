@@ -4,8 +4,89 @@
 #include <string>
 
 #include "core/common/common.h"
+#include "core/framework/error_code_helper.h"
+#include "core/framework/provider_options.h"
+#include "core/providers/provider_factory_creators.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
+
+using namespace onnxruntime;
+
+namespace {
+
+OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider_options_keys,
+                                _In_reads_(num_keys) const char* const* provider_options_values,
+                                _In_ size_t num_keys,
+                                ProviderOptions& provider_options) {
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    // arbitrary length to validate the key/value. adjust if/when needed.
+    // TODO: are any other input validation checks required here (and in the other functions that process
+    // provider options)?
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    provider_options[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  return nullptr;
+}
+}  // namespace
+/**
+ * Implementation of OrtApis functions for provider registration.
+ *
+ * EPs that use the provider bridge are handled in provider_bridge_ort.cc
+ */
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
+                    _In_ OrtSessionOptions* options,
+                    _In_ const char* provider_name,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys) {
+  API_IMPL_BEGIN
+  ProviderOptions provider_options;
+  OrtStatus* status = ParseProviderOptions(provider_options_keys,
+                                           provider_options_values,
+                                           num_keys,
+                                           provider_options);
+  if (status != nullptr) {
+    return status;
+  }
+
+  auto create_not_supported_status = [&provider_name]() {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
+  };
+
+  if (strcmp(provider_name, "SNPE") == 0) {
+#if defined(USE_SNPE)
+    options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "XNNPACK") == 0) {
+#if defined(USE_XNNPACK)
+    options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
+  } else {
+    ORT_UNUSED_PARAMETER(options);
+    status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Unknown provider name. Currently supported values are 'SNPE' and 'XNNPACK'");
+  }
+
+  return status;
+  API_IMPL_END
+}
 
 #if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
@@ -13,11 +94,18 @@ static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
 }
 #endif
 
-// we need stubs for functions called from C# when building an iOS app using Xamarin.
-// in that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
-// TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
+/**
+ * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings
+ * and are not implemented in provider_bridge_ort.cc.
+ *
+ * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for 
+ * provider_bridge_ort.cc being excluded in a minimal build.
+ * 
+ * These are required when building an iOS app using Xamarin as all external symbols must be defined at compile time.
+ * In that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
+ * TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
+ */
 #ifdef __APPLE__
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,15 +115,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessio
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("DML");
-}
-#endif
-
-#ifndef USE_MIGRAPHX
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX,
-                    _In_ OrtSessionOptions* options, int device_id) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateNotEnabledStatus("MIGraphX");
 }
 #endif
 
@@ -73,22 +152,10 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
 
 #endif  // __APPLE__
 
-/*
-OrtApis::SessionOptionsAppendExecutionProvider_<EP> stubs for EPs not included in this build.
-
-2 cases:
-
-1) EP is included in ORT via build settings. Need to include stub if EP not enabled.
-2) EP is built as separate library and uses the provider bridge. Need to include in a minimal build 
-   as the provider bridge is excluded in that case.
-
-TODO: When the NNAPI or CoreML EPs are setup to use the provider bridge the source code for that will be included
-      in a minimal build and these stubs should move to provider_bridge_ort.cc.
-*/
-
-// EPs in the first case
-
-// EPs in the second case
+/**
+ * Stubs for EP functions from OrtApis that are implemented in provider_bridge_ort.cc in a full build.
+ * That file is not included in a minimal build.
+ */
 #if defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
                     _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* provider_options) {
@@ -208,19 +275,4 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
   ORT_UNUSED_PARAMETER(migraphx_options);
   return CreateNotEnabledStatus("MIGraphX");
 }
-
-#ifndef USE_SNPE
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_SNPE,
-                    _In_ OrtSessionOptions* options,
-                    _In_reads_(num_keys) const char* const* provider_options_keys,
-                    _In_reads_(num_keys) const char* const* provider_options_values,
-                    _In_ size_t num_keys) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(provider_options_keys);
-  ORT_UNUSED_PARAMETER(provider_options_values);
-  ORT_UNUSED_PARAMETER(num_keys);
-  return CreateNotEnabledStatus("SNPE");
-}
-#endif
-
 #endif
