@@ -179,8 +179,7 @@ def parse_arguments():
     parser.add_argument(
         "--enable_training_torch_interop", action="store_true", help="Enable training kernels interop with torch."
     )
-    parser.add_argument(
-        "--enable_training_on_device", action='store_true', help="Enable on device training in ORT.")
+    parser.add_argument("--enable_training_on_device", action="store_true", help="Enable on device training in ORT.")
     parser.add_argument("--disable_nccl", action="store_true", help="Disable Nccl.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
