@@ -38,9 +38,7 @@ enum class Type {
   TENSOR_QUANT16_SYMM = ANEURALNETWORKS_TENSOR_QUANT16_SYMM,
   TENSOR_FLOAT16 = ANEURALNETWORKS_TENSOR_FLOAT16,
   TENSOR_BOOL8 = ANEURALNETWORKS_TENSOR_BOOL8,
-  FLOAT16 = ANEURALNETWORKS_FLOAT16,
   TENSOR_QUANT8_SYMM_PER_CHANNEL = ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL,
-  TENSOR_QUANT16_ASYMM = ANEURALNETWORKS_TENSOR_QUANT16_ASYMM,
   TENSOR_QUANT8_ASYMM_SIGNED = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED,
 };
 
@@ -81,8 +79,6 @@ inline std::string TypeToStr(const Type& type) {
     return "TENSOR_INT32";
   } else if (type == Type::TENSOR_QUANT8_ASYMM) {
     return "TENSOR_QUANT8_ASYMM";
-  } else if (type == Type::TENSOR_QUANT16_ASYMM) {
-    return "TENSOR_QUANT16_ASYMM";
   } else if (type == Type::TENSOR_QUANT16_SYMM) {
     return "TENSOR_QUANT16_SYMM";
   } else if (type == Type::BOOL) {
@@ -91,8 +87,6 @@ inline std::string TypeToStr(const Type& type) {
     return "TENSOR_FLOAT16";
   } else if (type == Type::TENSOR_BOOL8) {
     return "TENSOR_BOOL8";
-  } else if (type == Type::FLOAT16) {
-    return "FLOAT16";
   } else if (type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL) {
     return "TENSOR_QUANT8_SYMM_PER_CHANNEL";
   } else if (type == Type::TENSOR_QUANT8_ASYMM_SIGNED) {

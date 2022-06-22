@@ -2,7 +2,7 @@
           nnapi_implementation.cc
           NeuralNetworksTypes.h
 These files are copied from TensorFlow Lite project
-https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/nnapi
+https://github.com/tensorflow/tensorflow/tree/v2.9.1/tensorflow/lite/nnapi
 
 These files do not need to be updated frequently, unless new functionalities are
 introduced in new Android OS versions, and we will integrate the new functionalities.
