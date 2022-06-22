@@ -215,7 +215,7 @@ StandaloneCustomKernel::StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKe
   op_add_ = ort.CreateOp(info_copy_, "Add", "", 14,
                          (const char**)add_type_constraint_names,
                          (const ONNXTensorElementDataType*)add_type_constraint_values,
-                         1, nullptr, 0);
+                         1, nullptr, 0, 2, 1);
   ORT_ENFORCE(op_add_, "op_add not initialzied");
   InitTopK(ort_);
   ORT_ENFORCE(op_topk_, "op_topk not initialzied");
@@ -244,7 +244,7 @@ void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort) {
   op_topk_ = ort.CreateOp(info_copy_, "TopK", "", 14,
                           (const char**)type_constraint_names,
                           (const ONNXTensorElementDataType*)type_constraint_values,
-                          2, top_attrs, 3);
+                          2, top_attrs, 3, 2, 2);
 
   ort.ReleaseOpAttr(axis);
   ort.ReleaseOpAttr(largest);
@@ -312,7 +312,7 @@ void StandaloneCustomKernel::InitGru(Ort::CustomOpApi ort) {
   op_gru_ = ort.CreateOp(info_copy_, "GRU", "", 14,
                          (const char**)type_constraint_names,
                          (const ONNXTensorElementDataType*)type_constraint_values,
-                         2, gru_attrs, 6);
+                         2, gru_attrs, 6, 6, 2);
 
   ort.ReleaseOpAttr(activations);
   ort.ReleaseOpAttr(activation_alpha);
@@ -428,7 +428,7 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   op_conv = ort_.CreateOp(info_copy_, "Conv", "", 11,
                           (const char**)type_constraint_names,
                           (const ONNXTensorElementDataType*)type_constraint_values,
-                          1, conv_attrs, 5);
+                          1, conv_attrs, 5, 2, 1);
   ORT_ENFORCE(op_conv, "op_conv not initialzied");
 
   ort_.ReleaseOpAttr(dilations);

@@ -3395,6 +3395,8 @@ struct OrtApi {
                   _In_opt_ int type_constraint_count,
                   _In_opt_ const OrtOpAttr* const* attr_values,
                   _In_opt_ int attr_count,
+                  _In_opt_ int input_count,
+                  _In_opt_ int output_count,
                   _Outptr_ OrtOp** ort_op);
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp

@@ -363,6 +363,8 @@ ORT_API_STATUS_IMPL(CreateOp,
                     int type_constraint_count,
                     _In_opt_ const OrtOpAttr* const* attr_values,
                     int attr_count,
+                    int input_count,
+                    int output_count,
                     _Outptr_ OrtOp** ort_op);
 
 ORT_API_STATUS_IMPL(InvokeOp,

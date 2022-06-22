@@ -125,15 +125,16 @@ class NodeRepo {
     auto& input_defs = node->MutableInputDefs();
     auto& output_defs = node->MutableOutputDefs();
     // initialize inputs and outputs for only once
-    if (input_defs.size() == 0 && output_defs.size() == 0) {
+    /*if (input_defs.size() == 0 && output_defs.size() == 0) {
       for (int i = 0; i < input_count; ++i) {
         input_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
       }
       for (int i = 0; i < output_count; ++i) {
         output_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
       }
-    } else if (input_defs.size() != static_cast<size_t>(input_count) ||
-               output_defs.size() != static_cast<size_t>(output_count)) {
+    } else */
+    if (input_defs.size() != static_cast<size_t>(input_count) ||
+        output_defs.size() != static_cast<size_t>(output_count)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "inconsistent node input or output count");
     }
     return Status::OK();
@@ -143,16 +144,6 @@ class NodeRepo {
     std::lock_guard<std::mutex> guard(GetMutex());
     auto& node_map = GetRepo().node_map_;
     node_map.erase(kernel);
-  }
-
-  static const Node* FindNode(const onnxruntime::OpKernel* kernel) {
-    auto& node_map = GetRepo().node_map_;
-    auto iter = node_map.find(kernel);
-    if (iter == node_map.end()) {
-      return nullptr;
-    } else {
-      return iter->second.get();
-    }
   }
 };
 
@@ -366,6 +357,8 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
                              int type_constraint_count,
                              const OrtOpAttr* const* attr_values,
                              int attr_count,
+                             int input_count,
+                             int output_count,
                              OrtOp** op) {
   *op = nullptr;
   auto kernel_info = reinterpret_cast<const OpKernelInfo*>(info);
@@ -387,7 +380,15 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   ORT_RETURN_IF_ERROR(status);
 
   std::vector<onnxruntime::NodeArg*> input_args;
+  for (int i = 0; i < input_count; ++i) {
+    auto arg_ptr = std::make_unique<onnxruntime::NodeArg>(std::to_string(i), nullptr);
+    input_args.push_back(arg_ptr.release());
+  }
   std::vector<onnxruntime::NodeArg*> output_args;
+  for (int i = 0; i < output_count; ++i) {
+    auto arg_ptr = std::make_unique<onnxruntime::NodeArg>(std::to_string(i), nullptr);
+    output_args.push_back(arg_ptr.release());
+  }
   auto tmp_node_holder = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
   NodePtr node_holder(tmp_node_holder.release(), ReleaseNode);
   for (int i = 0; i < attr_count; ++i) {
@@ -467,6 +468,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     int type_constraint_count,
                     _In_opt_ const OrtOpAttr* const* attr_values,
                     int attr_count,
+                    int input_count,
+                    int output_count,
                     _Outptr_ OrtOp** ort_op) {
   API_IMPL_BEGIN
   auto status = onnxruntime::standalone::CreateOp(info,
@@ -478,6 +481,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                                                   type_constraint_count,
                                                   attr_values,
                                                   attr_count,
+                                                  input_count,
+                                                  output_count,
                                                   ort_op);
   if (status.IsOK()) {
     return nullptr;

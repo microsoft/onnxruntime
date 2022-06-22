@@ -992,7 +992,9 @@ struct CustomOpApi {
                   _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
                   int type_constraint_count,
                   _In_opt_ const OrtOpAttr* const* attr_values,
-                  int attr_count);
+                  _In_opt_ int attr_count,
+                  _In_ int input_count,
+                  _In_ int output_count);
 
   void InvokeOp(_In_ const OrtKernelContext* context,
                 _In_ const OrtOp* ort_op,
