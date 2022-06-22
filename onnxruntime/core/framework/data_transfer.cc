@@ -23,7 +23,10 @@ common::Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
 
 common::Status IDataTransfer::CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const {
   for (const auto& pair : src_dst_pairs) {
-    ORT_RETURN_IF_ERROR(CopyTensor(pair.src, pair.dst));
+    if (pair.src_stream)
+      ORT_RETURN_IF_ERROR(CopyTensorAsync(pair.src, pair.dst, pair.src_stream));
+    else
+      ORT_RETURN_IF_ERROR(CopyTensor(pair.src, pair.dst));
   }
 
   return Status::OK();

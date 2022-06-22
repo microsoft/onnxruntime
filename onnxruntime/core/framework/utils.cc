@@ -165,6 +165,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
                                  const MLValueCopyInfo& copy_info,
                                  const OrtValue& source_mlvalue,
                                  OrtValue& target_mlvalue,
+                                 Stream* stream,
 #if !defined(DISABLE_SPARSE_TENSORS)
                                  std::vector<IDataTransfer::SrcDstPair>* copy_tensor_pairs = nullptr,
                                  std::vector<IDataTransfer::SparseSrcDstPair>* copy_sparse_pairs = nullptr)
@@ -189,9 +190,10 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
 
     if (copy_tensor_pairs != nullptr) {
-      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor});
+      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, stream});
     } else {
-      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+      ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(source_tensor, *p_output_tensor, stream) :
+                                   session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
     }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -222,7 +224,8 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (copy_tensor_pairs != nullptr) {
         copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter)});
       } else {
-        ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+        ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), stream) :
+            session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
       }
       ++source_iter;
       ++target_iter;
@@ -470,6 +473,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   for (size_t idx = 0; idx < num_feeds; ++idx) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
+                                           /*copy input from cpu to device doesn't need to sync from src stream*/ nullptr,
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], orig_feeds[idx], new_feeds[idx],
@@ -510,13 +514,14 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 #endif
 
   // copy_info.target_device is not set leaving to be equal to CPU.
-  return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue);
+  return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue, nullptr);
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
                                                const std::vector<OrtValue>& fetches,
                                                std::vector<OrtValue>& user_fetches,
-                                               const std::vector<MLValueCopyInfo>& copy_info) {
+                                               const std::vector<MLValueCopyInfo>& copy_info,
+                                               const std::vector<Stream*>& fetch_streams) {
   auto num_outputs = fetches.size();
   user_fetches.resize(num_outputs);
 
@@ -527,7 +532,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
                                            &batched_data_transfers, &batched_sparse_data_transfers));
 #else
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx],
@@ -570,6 +575,10 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
+  auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
+
+  DeviceStreamColloection device_stream_collection(paral_plan->NumStreams());
+  ORT_RETURN_IF_ERROR(paral_plan->BindToDeviceStream(parent_stream, device_stream_collection));
 
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
@@ -580,15 +589,13 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                           feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                           logger));
     } else {
-      auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
-
       auto ret = paral_plan->Execute(session_state,
                                      feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                      feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                      logger,
+                                     device_stream_collection,
                                      terminate_flag,
-                                     only_execute_path_to_fetches,
-                                     parent_stream);
+                                     only_execute_path_to_fetches);
       ORT_RETURN_IF_ERROR(ret);
   }
   } else {
@@ -623,26 +630,35 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     }
 
     // no device copies are needed so simple execute
+    std::vector<Stream*> fetches_streams;
     if (false && execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
       ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                           feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                           feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
                                           logger));
+      for (size_t i = 0; i < p_fetches->size(); ++i) {
+        fetches_streams.push_back(nullptr);
+      }
     } else {
-      auto* paral_plan = const_cast<SessionState&>(session_state).GetParalllelExecutionPlan();
-
       auto ret = paral_plan->Execute(session_state,
                                      feeds_fetches_info.feeds_mlvalue_idxs, *p_feeds,
                                      feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
                                      logger,
+                                     device_stream_collection,
                                      terminate_flag,
-                                     only_execute_path_to_fetches,
-                                     parent_stream);
+                                     only_execute_path_to_fetches);
       ORT_RETURN_IF_ERROR(ret);
+      auto& value_to_stream_map = paral_plan->GetValueToStreamMap();
+      auto& device_streams = device_stream_collection.GetStreams();
+      for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
+        auto it = value_to_stream_map.find(fetch_idx);
+        ORT_ENFORCE(it != value_to_stream_map.end());
+        fetches_streams.push_back(device_streams[it->second]); 
+      }
     }
     
     if (device_copy_checks.output_copy_needed == DeviceCopyCheck::Copy) {
-      ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info));
+      ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info, fetches_streams));
     }
   }
 

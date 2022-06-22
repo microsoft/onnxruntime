@@ -38,6 +38,7 @@ class IDataTransfer {
   struct SrcDstPair {
     std::reference_wrapper<const Tensor> src;
     std::reference_wrapper<Tensor> dst;
+    Stream* src_stream; // producer stream of src
   };
 
   // batched copy. default implementation copies each entry sequentially, and returns on first failure.

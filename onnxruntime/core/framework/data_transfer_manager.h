@@ -21,6 +21,7 @@ class DataTransferManager {
   const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const;
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
+  common::Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream* stream) const;
   common::Status CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const;
   #if !defined(DISABLE_SPARSE_TENSORS)
   common::Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const;

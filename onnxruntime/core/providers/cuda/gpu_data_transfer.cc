@@ -77,7 +77,7 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   auto& dst_device = dst.Location().device;
 
   if (dst_device.Type() == OrtDevice::GPU) {
-    if (src_device.Type() == OrtDevice::CPU && src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
+    if (src_device.Type() == OrtDevice::CPU) {
       // copy from pinned memory to GPU, this is non-blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(stream->handle)));
     } else if (src_device.Type() == OrtDevice::GPU) {
@@ -85,20 +85,11 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
       if (dst_data != src_data) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream->handle)));
       }
-    } else {
-      if (src_device.MemType() != OrtDevice::MemType::CUDA_PINNED)
-        return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
-                                             ::onnxruntime::common::FAIL,
-                                             "Copy from CPU non-pinned memory to Cuda can't be async."); 
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
-    if (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
+    if (dst_device.Type() == OrtDevice::CPU) {
       // copying from GPU to pinned memory, this is non-blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, static_cast<cudaStream_t>(stream->handle)));
-    } else {
-      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
-                                           ::onnxruntime::common::FAIL,
-                                           "Copy from Cuda to CPU non-pinned memory can't be async."); 
     }
   } else {
     return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,
