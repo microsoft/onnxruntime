@@ -177,9 +177,7 @@ def run_migraphx(
             for batch_size in batch_sizes:
                 if batch_size <= 0:
                     continue
-                for sequence_length in sequence_lengths:
-
-                    
+                for sequence_length in sequence_lengths:                    
                     if max_sequence_length is not None and sequence_length > max_sequence_length:
                         continue
 
@@ -188,6 +186,7 @@ def run_migraphx(
                     logger.info(
                         "Run migraphx on {} with input shape {}".format(model_name, [batch_size, sequence_length])
                     )
+                    logger.info(f"Run migraphx on {onnx_model_file}") 
 
                     model = migraphx.parse_onnx(onnx_model_file,
                                                 default_dim_value=batch_size,
@@ -203,7 +202,7 @@ def run_migraphx(
                         config,
                         input_value_type,
                     )
-                    # inputs = {"input_ids": numpy.random.randint(low=0, high=1, size=(batch_size,sequence_length), dtype=numpy.int64)}
+                    
                     try:
                         runtimes = timeit.repeat(lambda: model.run(inputs), repeat=repeat_times, number=1)
                         result = {
@@ -222,6 +221,9 @@ def run_migraphx(
                             "custom_layer_num": config_modifier.get_layer_num(),
                             "datetime": str(datetime.now()),
                         }
+
+                        if numpy.var(runtimes, dtype=numpy.float64) * 1000.0 > 1:
+                            runtimes = runtimes[1:]
 
                         result.update(get_latency_result(runtimes, batch_size))
 
