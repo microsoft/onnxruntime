@@ -338,10 +338,6 @@ def test_mse_loss_training_graph_execution():
         # assert loss is close
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
 
-        # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
-            assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
-
 
 def test_crossentropy_loss_training_graph_execution():
     # Given
@@ -377,10 +373,6 @@ def test_crossentropy_loss_training_graph_execution():
         # assert loss is close
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
 
-        # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
-            assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
-
 
 def test_bcewithlogits_loss_training_graph_execution():
     # Given
@@ -415,10 +407,6 @@ def test_bcewithlogits_loss_training_graph_execution():
         # Then
         # assert loss is close
         assert np.allclose(ort_outs[0], _to_numpy(torch_outs))
-
-        # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs[1:], pt_model.parameters()):
-            assert np.allclose(ort_grad, _to_numpy(pt_param.grad))
 
 
 @pytest.mark.parametrize(
