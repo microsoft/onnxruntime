@@ -20,6 +20,9 @@ Example 2: convert T5 model with beam search in two steps:
 
 Example 3: convert T5 model with beam search. All in one step:
     python convert_beam_search.py -m t5-small --model_type t5 --output ./models/t5/onnx_models/t5_small_beam_search.onnx
+
+Example 4: convert MT5 model with external data file like mt5-base-beamsearch.onnx.data in below example.
+    python convert_beam_search.py -m google/mt5-base --model_type mt5 --output mt5-base-beamsearch.onnx -e
 """
 
 import argparse
@@ -39,6 +42,7 @@ from transformers import (
     GPT2Config,
     GPT2LMHeadModel,
     GPT2Tokenizer,
+    MT5Config,
     MT5ForConditionalGeneration,
     T5Config,
     T5ForConditionalGeneration,
@@ -52,8 +56,10 @@ from gpt2_helper import PRETRAINED_GPT2_MODELS  # noqa: E402
 from models.gpt2.convert_to_onnx import main as convert_gpt2_to_onnx  # noqa: E402
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "t5"))
+from benchmark_helper import setup_logger
 from models.t5.convert_to_onnx import export_onnx_models as export_t5_onnx_models  # noqa: E402
 from models.t5.t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS  # noqa: E402
+from onnx_model import OnnxModel
 
 logger = logging.getLogger("")
 
@@ -306,9 +312,11 @@ def t5_to_onnx(args: argparse.Namespace):
         overwrite=True,
         disable_auto_mixed_precision=False,
         use_int32_inputs=True,
-        model_type=args.model_type
+        model_type=args.model_type,
     )
 
+    print(f"onnx model for encoder: {paths[0]}")
+    print(f"onnx model for decoder: {paths[1]}")
     args.encoder_decoder_init_onnx = paths[0]
     args.decoder_onnx = paths[1]
 
@@ -586,8 +594,10 @@ def convert_model(args: argparse.Namespace):
 
     if is_gpt2:
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-    else:
+    elif args.model_type == "t5":
         config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    else:
+        config = MT5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
 
     if args.verbose:
         print(config)
@@ -600,8 +610,8 @@ def convert_model(args: argparse.Namespace):
     if args.vocab_size != -1:
         vocab_size = args.vocab_size
 
-    model = onnx.load(args.decoder_onnx)
-    model.graph.name = f"{args.model_type} decoder subgraph"
+    model = onnx.load_model(args.decoder_onnx, load_external_data=True)
+    model.graph.name = f"{args.model_type} decoder"
 
     if args.model_type == "gpt2":
         verify_gpt2_subgraph(model.graph, args.precision)
@@ -647,12 +657,12 @@ def convert_model(args: argparse.Namespace):
         ]
     )
 
-    if args.model_type == "t5":
+    if args.model_type in ["t5", "mt5"]:
         if enable_shape_inference:
             print(f"Run symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
             shape_inference(args.encoder_decoder_init_onnx)
-        init_model = onnx.load(args.encoder_decoder_init_onnx)
-        init_model.graph.name = f"{args.model_type} encoder decoder init subgraph"
+        init_model = onnx.load_model(args.encoder_decoder_init_onnx, load_external_data=True)
+        init_model.graph.name = f"{args.model_type} encoder and decoder init"
         verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
         node.attribute.extend(
             [
@@ -735,7 +745,18 @@ def convert_model(args: argparse.Namespace):
     )
 
     # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
-    onnx.save(new_model, args.output)
+    if args.use_external_data_format:
+        OnnxModel.save(
+            new_model,
+            args.output,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            size_threshold=1024,
+            convert_attribute=False,
+        )
+    else:
+        onnx.save(new_model, args.output)
+    print(f"model save to {args.output}")
 
 
 def test_torch_performance(
@@ -1185,6 +1206,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     """
 
     args = parse_arguments(argv)
+    setup_logger(args.verbose)
 
     if args.model_type == "gpt2":
         if not args.decoder_onnx:

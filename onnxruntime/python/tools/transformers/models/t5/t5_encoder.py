@@ -20,6 +20,7 @@ from transformers import MT5Config, T5Config
 from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from onnx_model import OnnxModel  # noqa: E402
 from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -132,13 +133,13 @@ class T5EncoderHelper:
 
             if use_external_data_format:
                 model = onnx.load_model(temp_onnx_model_path, load_external_data=True)
-                onnx.save_model(
+                OnnxModel.save(
                     model,
                     onnx_model_path,
                     save_as_external_data=True,
                     all_tensors_to_one_file=True,
-                    location=os.path.basename(onnx_model_path) + ".data",
                     size_threshold=4096,
+                    convert_attribute=False,
                 )
 
     @staticmethod

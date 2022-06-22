@@ -22,6 +22,7 @@ from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from io_binding_helper import TypeHelper  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
 from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -278,13 +279,13 @@ class T5DecoderHelper:
         #    input_ids: (batch_size, sequence_length)
         #    encoder_attention_mask: (batch_size, encode_sequence_length)
         #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, hidden_size/num_heads)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, hidden_size/num_heads)
+        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
+        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
         # Shape of output tensors:
         #    logits: (batch_size, sequence_length, vocab_size)
-        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, hidden_size/num_heads)
-        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, hidden_size/num_heads)
+        #    past_self_*: (batch_size, num_heads, past_decode_sequence_length + sequence_length, head_size)
+        #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
         input_names = ["input_ids"]
         input_names.append("encoder_attention_mask")
@@ -346,13 +347,13 @@ class T5DecoderHelper:
 
             if use_external_data_format:
                 model = onnx.load_model(temp_onnx_model_path, load_external_data=True)
-                onnx.save_model(
+                OnnxModel.save(
                     model,
                     onnx_model_path,
                     save_as_external_data=True,
                     all_tensors_to_one_file=True,
-                    location=os.path.basename(onnx_model_path) + ".data",
                     size_threshold=4096,
+                    convert_attribute=False,
                 )
 
     @staticmethod
