@@ -1,10 +1,16 @@
-#include "Demangle.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "demangle.h"
 
 #ifndef _MSC_VER
 #include <cxxabi.h>
 #endif
 #include <string.h>
 #include <string>
+
+namespace onnxruntime {
+namespace profiling {
 
 static constexpr int kMaxSymbolSize = 1024;
 
@@ -41,3 +47,7 @@ std::string demangle(const char* name) {
 std::string demangle(const std::string& name) {
   return demangle(name.c_str());
 }
+
+}  // namespace profiling
+}  // namespace onnxruntime
+

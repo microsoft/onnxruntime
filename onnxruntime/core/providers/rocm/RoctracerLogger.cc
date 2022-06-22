@@ -53,6 +53,7 @@ void RoctracerLogger::clearLogs() {
   kernelRows_.clear();
   copyRows_.clear();
   mallocRows_.clear();
+  gpuTraceBuffers_->clear();
   for (int i = 0; i < CorrelationDomain::size; ++i) {
     externalCorrelations_[i].clear();
   }

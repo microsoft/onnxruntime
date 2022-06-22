@@ -350,7 +350,10 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
 namespace logging {
 
-const char* Category::onnxruntime = "onnxruntime";
+// This is defined in core/common/logging/logging.cc
+// Redefining it here causes link issues
+
+//const char* Category::onnxruntime = "onnxruntime";
 
 }  // namespace logging
 
