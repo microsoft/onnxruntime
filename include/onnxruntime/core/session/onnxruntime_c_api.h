@@ -346,6 +346,16 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief Input stream interface
+*
+* Holds pointer to a callback function to read from a stream. Can be used to load models from streams,
+* \see OrtApi::CreateSessionFromStream.
+*/
+typedef struct OrtInputStream {
+  size_t(ORT_API_CALL* Read)(char* buffer, size_t count, void* user_object);  ///< Stream read callback
+  void* user_object;
+} OrtInputStream;
+
 /** \brief Algorithm to use for cuDNN Convolution Op
 */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -3355,13 +3365,13 @@ struct OrtApi {
                   _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 
   /** \brief: Create attribute of onnxruntime operator
-  * 
+  *
   * \param[in] name of the attribute
   * \param[in] data of the attribute
   * \param[in] data length
   * \param[in] data type
   * \param[out] attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOpAttr,
@@ -3374,14 +3384,14 @@ struct OrtApi {
   /* \brief: Release op attribute
   *
   * \param[in] attribute created by OrtApi::CreateOpAttr
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(OpAttr);
 
   /** \brief: Create onnxruntime native operator
-  * 
-  * \param[in] kernel info 
+  *
+  * \param[in] kernel info
   * \param[in] operator name
   * \param[in] operator domain
   * \param[in] operator opset
@@ -3391,7 +3401,7 @@ struct OrtApi {
   * \param[in] attributes used to initialize the operator
   * \param[in] number of the attributes
   * \param[out] operator that has been created
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(CreateOp,
@@ -3408,14 +3418,14 @@ struct OrtApi {
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp
   * The inputs must follow the order as specified in onnx specification
-  * 
+  *
   * \param[in] kernel context
   * \param[in] operator that has been created
   * \param[in] inputs
   * \param[in] number of inputs
   * \param[in] outputs
   * \param[in] number of outputs
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_API2_STATUS(InvokeOp,
@@ -3429,7 +3439,7 @@ struct OrtApi {
   /* \brief: Release an onnxruntime operator
   *
   * \param[in] operator created by OrtApi::CreateOp
-  * 
+  *
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(Op);
@@ -3472,6 +3482,18 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
+
+  /** \brief Create an OrtSession from an OrtInputStream
+  *
+  * \param[in] env
+  * \param[in] model_stream
+  * \param[in] options
+  * \param[out] out Returned newly created OrtSession. Must be freed with OrtApi::ReleaseSession
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(CreateSessionFromStream, _In_ const OrtEnv* env, _In_ OrtInputStream* model_stream,
+                  _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 };
 
 /*

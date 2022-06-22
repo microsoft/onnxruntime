@@ -30,6 +30,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/inference_session.h"
+#include "core/session/ort_input_stream_istream.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
 #include "core/framework/data_types.h"
@@ -605,19 +606,24 @@ ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* opti
 }
 
 namespace {
-// provide either model_path, modal_data + model_data_length, or model_istream.
+// provide either model_path, modal_data + model_data_length, or model_stream.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
                                                 _In_ const OrtEnv* env,
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
-                                                _In_opt_ void* model_istream,
+                                                _In_opt_ OrtInputStream* model_stream,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
+
+  std::unique_ptr<std::istream> stream_wrapper;
+  if (model_stream != nullptr) {
+    stream_wrapper = std::make_unique<onnxruntime::OrtInputStreamIStream>(*model_stream, 65536);
+  }
 
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
@@ -635,7 +641,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env->GetEnvironment(),
-          *reinterpret_cast<std::istream*>(model_istream));
+          *stream_wrapper);
     }
 #else
     return OrtApis::CreateStatus(ORT_FAIL, "Loading config from ONNX models is not supported in this build.");
@@ -664,7 +670,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     } else if (model_data != nullptr) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
     } else {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(*reinterpret_cast<std::istream*>(model_istream)));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(*stream_wrapper));
     }
   }
 
@@ -749,7 +755,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromIStream, _In_ const OrtEnv* env, _In_ void* model_istream,
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromStream, _In_ const OrtEnv* env, _In_ OrtInputStream* model_stream,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> sess;
@@ -757,7 +763,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromIStream, _In_ const OrtEnv* env, _
   *out = nullptr;
 
   ORT_TRY {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, nullptr, 0, model_istream, sess));
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, nullptr, 0, model_stream, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
@@ -2559,7 +2565,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::InvokeOp,
     &OrtApis::ReleaseOp,
     &OrtApis::SessionOptionsAppendExecutionProvider,
-    &OrtApis::CreateSessionFromIStream,
+    &OrtApis::CreateSessionFromStream,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

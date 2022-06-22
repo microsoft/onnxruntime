@@ -606,7 +606,14 @@ inline Session::Session(Env& env, const void* model_data, size_t model_data_leng
 }
 
 inline Session::Session(Env& env, std::istream& model_istream, const SessionOptions& options) {
-  ThrowOnError(GetApi().CreateSessionFromIStream(env, &model_istream, options, &p_));
+  auto read_callback = [](char* buffer, size_t count, void* user_object) -> size_t {
+    std::istream* file = static_cast<std::istream*>(user_object);
+    file->read(buffer, count);
+    return file->gcount();
+  };
+  OrtInputStream input_stream { read_callback, &model_istream };
+
+  ThrowOnError(GetApi().CreateSessionFromStream(env, &input_stream, options, &p_));
 }
 
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,

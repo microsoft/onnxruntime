@@ -383,4 +383,7 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     _In_ size_t num_keys);
+
+ORT_API_STATUS_IMPL(CreateSessionFromStream, _In_ const OrtEnv* env, _In_ OrtInputStream* model_stream,
+                    _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 }  // namespace OrtApis
