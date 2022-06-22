@@ -374,7 +374,7 @@ common::Status ParallelExecutionPlanImpl::BindToDeviceStream(Stream* parent_stre
         }
         device_stream_map.SetDeviceStream(i, parent_stream);
       }
-      if (create_stream_fn) {
+      else if (create_stream_fn) {
         auto device_stream = create_stream_fn(logic_stream->ep_);
         device_stream_map.SetDeviceStream(i, std::move(device_stream));
       } else {

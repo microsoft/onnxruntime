@@ -652,8 +652,12 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       auto& device_streams = device_stream_collection.GetStreams();
       for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
         auto it = value_to_stream_map.find(fetch_idx);
-        ORT_ENFORCE(it != value_to_stream_map.end());
-        fetches_streams.push_back(device_streams[it->second]); 
+        if (it != value_to_stream_map.end()) {
+          fetches_streams.push_back(device_streams[it->second]); 
+        } else {
+          fetches_streams.push_back(nullptr);
+        }
+        
       }
     }
     
