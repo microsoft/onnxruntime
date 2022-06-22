@@ -16,13 +16,11 @@
 // Provides C++ classes to more easily use the Neural Networks API.
 #ifndef ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
 #define ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
-#include <vector>
 #include <numeric>
+#include <optional>
+#include <vector>
 
 #include "NeuralNetworksTypes.h"
-
-// Move to std::optional when we switch to c++ 17
-#include "core/common/optional.h"
 
 namespace android {
 namespace nn {
@@ -125,7 +123,7 @@ struct OperandType {
   ANeuralNetworksOperandType operandType;
   Type type;
   std::vector<uint32_t> dimensions;
-  onnxruntime::optional<SymmPerChannelQuantParams> channelQuant;
+  std::optional<SymmPerChannelQuantParams> channelQuant;
 
   explicit OperandType(Type type, const std::vector<uint32_t>& d, float scale = 0.0f, int32_t zeroPoint = 0);
   explicit OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant);
