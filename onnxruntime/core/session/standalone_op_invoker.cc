@@ -33,6 +33,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _In_ int,
                     _In_ const OrtOpAttr* const*,
                     _In_ int,
+                    _In_ int,
+                    _In_ int,
                     _Out_ OrtOp**) {
   API_IMPL_BEGIN
   return CreateStatus(ORT_NOT_IMPLEMENTED, "CreateOp is not implemented for minimal build.");
@@ -83,69 +85,54 @@ void ReleaseNode(onnxruntime::Node* node) {
 }
 
 using NodePtr = std::unique_ptr<onnxruntime::Node, void (*)(onnxruntime::Node*)>;
+using StandAloneNodesMap = InlinedHashMap<const onnxruntime::OpKernel*, NodePtr>;
 
 class NodeRepo {
  private:
-  using StandAloneNodesMap = InlinedHashMap<const onnxruntime::OpKernel*, NodePtr>;
 
   NodeRepo() = default;
   ~NodeRepo() = default;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NodeRepo);
 
-  static std::mutex& GetMutex() {
-    static std::mutex mtx;
-    return mtx;
-  }
-
-  static NodeRepo& GetRepo() {
-    static NodeRepo node_repo;
-    return node_repo;
-  }
-
-  StandAloneNodesMap node_map_;
+  static std::mutex kMtx;
+  static StandAloneNodesMap kNodeMap;
 
  public:
   static void AddNode(const onnxruntime::OpKernel* kernel, NodePtr& node_ptr) {
-    std::lock_guard<std::mutex> guard(GetMutex());
-    auto& node_map = GetRepo().node_map_;
-    auto iter = node_map.find(kernel);
-    ORT_ENFORCE(iter == node_map.end(), "kernel alreayd mapped to a node");
-    node_map.insert({kernel, std::move(node_ptr)});
+    std::lock_guard<std::mutex> guard(kMtx);
+    auto iter = kNodeMap.find(kernel);
+    ORT_ENFORCE(iter == kNodeMap.end(), "kernel already mapped to existing node");
+    kNodeMap.insert({kernel, std::move(node_ptr)});
   }
 
   static onnxruntime::Status ValidateNode(const onnxruntime::OpKernel* kernel,
                                           const int& input_count,
                                           const int& output_count) {
-    std::lock_guard<std::mutex> guard(GetMutex());
-    auto& node_map = GetRepo().node_map_;
-    auto iter = node_map.find(kernel);
-    ORT_ENFORCE(iter != node_map.end(), "matching node is missing");
+    std::lock_guard<std::mutex> guard(kMtx);
+    auto iter = kNodeMap.find(kernel);
+    ORT_ENFORCE(iter != kNodeMap.end(), "matching node is missing");
     auto* node = iter->second.get();
     auto& input_defs = node->MutableInputDefs();
     auto& output_defs = node->MutableOutputDefs();
-    // initialize inputs and outputs for only once
-    /*if (input_defs.size() == 0 && output_defs.size() == 0) {
-      for (int i = 0; i < input_count; ++i) {
-        input_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
-      }
-      for (int i = 0; i < output_count; ++i) {
-        output_defs.push_back(new onnxruntime::NodeArg(std::to_string(i), nullptr));
-      }
-    } else */
-    if (input_defs.size() != static_cast<size_t>(input_count) ||
-        output_defs.size() != static_cast<size_t>(output_count)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "inconsistent node input or output count");
+    if (input_defs.size() != static_cast<size_t>(input_count)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid node input count");
+    }
+    if (output_defs.size() != static_cast<size_t>(output_count)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid node output count");
     }
     return Status::OK();
   }
 
   static void DelNode(const onnxruntime::OpKernel* kernel) {
-    std::lock_guard<std::mutex> guard(GetMutex());
-    auto& node_map = GetRepo().node_map_;
-    node_map.erase(kernel);
+    std::lock_guard<std::mutex> guard(kMtx);
+    kNodeMap.erase(kernel);
   }
 };
+
+std::mutex NodeRepo::kMtx;
+
+StandAloneNodesMap NodeRepo::kNodeMap;
 
 // For invoking kernels without a graph
 class StandAloneKernelContext : public OpKernelContext {
