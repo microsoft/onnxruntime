@@ -149,18 +149,13 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
 
   // The encoder_attention_mask is copied from the second input of encoder.
   OrtValue expanded_decoder_attention_masks;
-  std::cout << "expanded_decoder_attention_masks 149" << std::endl;
   ORT_RETURN_IF_ERROR(expand_buffer_int32_func(stream,
                                                encoder_feeds[1],
                                                num_beam,
                                                allocator,
                                                expanded_decoder_attention_masks,
                                                false));
-  // BeamSearchCpuDeviceHelper::ExpandBuffer<int32_t>(encoder_feeds[1],
-  //                                                  num_beam,
-  //                                                  allocator,
-  //                                                  expanded_decoder_attention_masks, false);
-  std::cout << "after crash 149" << std::endl;
+
   decoder_feeds.push_back(expanded_decoder_attention_masks);
 
   // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
@@ -168,6 +163,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
+      ORT_RETURN_IF(has_hidden_state_ == false, "Invalid hidden_states expension: has_hidden_state_ == false");
       OrtValue expanded_hidden_states;
       if (is_output_float16_) {
         ORT_RETURN_IF_ERROR(expand_buffer_float16_func(stream,
@@ -184,8 +180,6 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                      expanded_hidden_states,
                                                      true));
       }
-
-      //BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_hidden_states, true);
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
       OrtValue expanded_cache;
@@ -204,7 +198,6 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                      expanded_cache,
                                                      false));
       }
-      //BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_cache, false);
       decoder_feeds.push_back(expanded_cache);
     }
   }

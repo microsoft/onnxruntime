@@ -248,16 +248,18 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
 
-  const T* current_logits = logits_data + (input_length - 1) * vocab_size;
-  for (int i = 0; i < batch_beam_size; i++) {
-    gsl::span<const T> source(current_logits, vocab_size);
-    gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
-                                                    static_cast<gsl::index>(vocab_size));
-    gsl::copy(source, target);
-    if (beam_batch_size == batch_beam_size) {
-      current_logits += input_length * vocab_size;
-    } else if (beam_batch_size == batch_size && i % num_beams == num_beams - 1) {
-      current_logits += input_length * vocab_size;
+  if (input_length > 1 || beam_batch_size == batch_size) {
+    const T* current_logits = logits_data + (input_length - 1) * vocab_size;
+    for (int i = 0; i < batch_beam_size; i++) {
+      gsl::span<const T> source(current_logits, vocab_size);
+      gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
+                                                      static_cast<gsl::index>(vocab_size));
+      gsl::copy(source, target);
+      if (beam_batch_size == batch_beam_size) {
+        current_logits += input_length * vocab_size;
+      } else if (beam_batch_size == batch_size && i % num_beams == num_beams - 1) {
+        current_logits += input_length * vocab_size;
+      }
     }
   }
 
@@ -268,12 +270,14 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
-  ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(batch_beam_size,  // rows
-                                    vocab_size,       // elements per row
-                                    next_token_logits.data(),
-                                    next_token_scores.data(),
-                                    true,
-                                    thread_pool));
+  ORT_RETURN_IF_ERROR(
+    SoftmaxCPU<T>(
+      batch_beam_size,  // rows
+      vocab_size,       // elements per row
+      (input_length == 1 && beam_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
+      next_token_scores.data(),
+      true,
+      thread_pool));
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
