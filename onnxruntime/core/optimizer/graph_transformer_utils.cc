@@ -60,6 +60,7 @@
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/cast_gelu_fusion.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
@@ -242,6 +243,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
 #ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<CastGeluFusion>(cuda_rocm_eps));
 #endif
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_rocm_eps));

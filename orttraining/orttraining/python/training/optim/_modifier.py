@@ -23,6 +23,10 @@ class FP16OptimizerModifier(object):
     def apply(self):
         if self.can_be_modified():
             self.override_function()
+        else:
+            from termcolor import cprint
+            cprint("override optimizer function failed", "red")
+            raise Exception
 
     def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finite_check=False):
         try:
