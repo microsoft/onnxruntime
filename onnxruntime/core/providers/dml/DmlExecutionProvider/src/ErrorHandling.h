@@ -3,7 +3,7 @@
 
 #pragma once
 #ifdef ORT_NO_EXCEPTIONS
-#define ORT_CATCH_RETURN 
+#define ORT_CATCH_RETURN
 #else
 #define ORT_CATCH_RETURN CATCH_RETURN()
 #endif

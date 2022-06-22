@@ -12,8 +12,8 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/containers.h"
-#include "sequences.h"
-#include "beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -52,7 +52,7 @@ class BeamHypotheses {
   // Output results. Note that it will clear all beams.
   void Output(int top_k,                            // number of sequences to return
               int max_length,                       // max sequence length
-              gsl::span<int32_t>& sequences,        // buffer filled with pad token ID, with shape (num_return_sequences, max_length)
+              gsl::span<int32_t>& sequences,        // buffer with pad token, shape (num_return_sequences, max_length)
               gsl::span<float>& sequences_scores);  // buffer for sequence scores, with shape (num_return_sequences)
 
  private:
@@ -60,7 +60,9 @@ class BeamHypotheses {
   float length_penalty_;
   bool early_stopping_;
   float worst_score_;
-  std::priority_queue<HypothesisScore, onnxruntime::FastAllocVector<HypothesisScore>, HypothesisScoreCompare> beams_;  // min-heap for top k
+
+  // Min-heap for top k
+  std::priority_queue<HypothesisScore, onnxruntime::FastAllocVector<HypothesisScore>, HypothesisScoreCompare> beams_;
 };
 
 class BeamSearchScorer : public IBeamScorer {
@@ -103,7 +105,7 @@ class BeamSearchScorer : public IBeamScorer {
   int eos_token_id_;
 
   IAllocatorUniquePtr<bool> done_ptr_;  // Allocated buffer for done_
-  gsl::span<bool> done_;                // List of flags indicates whether each batch is finished or not. Its shape is (batch_size).
+  gsl::span<bool> done_;                // Flags indicates whether each batch is finished or not. Shape is (batch_size).
 
   IAllocatorUniquePtr<float> next_beam_scores_ptr_;
   gsl::span<float> next_beam_scores_;
@@ -117,7 +119,7 @@ class BeamSearchScorer : public IBeamScorer {
   IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
   gsl::span<int32_t> hypothesis_buffer_;                // Span of the allocated buffer
   size_t hypothesis_buffer_length_;                     // Total number of elements
-  size_t hypothesis_buffer_offset_;                     // Offset of avaiable buffer, or length of used buffer.
+  size_t hypothesis_buffer_offset_;                     // Offset of available buffer, or length of used buffer.
 
   onnxruntime::FastAllocVector<BeamHypotheses> beam_hyps_;
 };

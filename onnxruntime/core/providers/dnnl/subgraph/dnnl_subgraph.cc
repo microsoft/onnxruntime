@@ -104,6 +104,9 @@ dnnl::memory::data_type DnnlTensor::Type() const {
       return dnnl::memory::data_type::s8;
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       return dnnl::memory::data_type::u8;
+      // Same here, we use u8 as the handler for bool
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      return dnnl::memory::data_type::u8;
     default:
       ORT_THROW("Unsupported data type: ", data_type);
   }
@@ -200,6 +203,14 @@ NodeAttributes& DnnlNode::Attributes() {
 
 int DnnlNode::SinceVersion() {
   return since_version_;
+}
+
+void DnnlNode::AppendPostOp(std::string op) {
+  postops_.push_back(op);
+}
+
+const std::vector<std::string>& DnnlNode::GetPostOps() {
+  return postops_;
 }
 
 DnnlSubgraph::DnnlSubgraph(const GraphViewer& graph_viewer) {

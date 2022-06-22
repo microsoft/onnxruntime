@@ -15,7 +15,8 @@ endif()
 cmake_policy(SET CMP0104 OLD)
 
 # Project
-project(onnxruntime C CXX)
+project(onnxruntime C CXX ASM)
+
 # Needed for Java
 set(CMAKE_C_STANDARD 99)
 
@@ -51,6 +52,7 @@ option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
+option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
@@ -74,6 +76,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorRT Builder" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -106,6 +109,7 @@ option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled 
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_USE_TVM "Build with TVM support" OFF)
 option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
+option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -181,6 +185,9 @@ option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
 option(onnxruntime_ENABLE_ROCM_PROFILING "Enable ROCM kernel profiling" OFF)
 
 option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
+
+# ATen fallback support
+option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
@@ -429,6 +436,7 @@ if (onnxruntime_DISABLE_EXCEPTIONS)
   add_compile_definitions("ORT_NO_EXCEPTIONS")
   add_compile_definitions("MLAS_NO_EXCEPTION")
   add_compile_definitions("ONNX_NO_EXCEPTIONS")
+  add_compile_definitions("JSON_NOEXCEPTION")  # https://json.nlohmann.me/api/macros/json_noexception/
 
   if (MSVC)
     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -902,10 +910,12 @@ if (onnxruntime_ENABLE_CPUINFO)
       message(FATAL_ERROR "universal binary is not supported for apple framework")
     endif()
   else()
-    if (onnxruntime_BUILD_WEBASSEMBLY)
-    set(CPUINFO_SUPPORTED FALSE)
+    # if xnnpack is enabled in a wasm build it needs clog from cpuinfo, but we won't internally use cpuinfo
+    # so we don't set CPUINFO_SUPPORTED in the CXX flags below.
+    if (onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_USE_XNNPACK)
+      set(CPUINFO_SUPPORTED FALSE)
     else()
-    set(CPUINFO_SUPPORTED TRUE)
+      set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
       # Exclude Windows ARM build and Windows Store
@@ -934,7 +944,11 @@ if (CPUINFO_SUPPORTED)
     set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
   endif()
 
-  string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  # if this is a wasm build with xnnpack (only type of wasm build where cpuinfo is involved)
+  # we do not use cpuinfo in ORT code, so don't define CPUINFO_SUPPORTED.
+  if (NOT onnxruntime_BUILD_WEBASSEMBLY)
+    string(APPEND CMAKE_CXX_FLAGS " -DCPUINFO_SUPPORTED")
+  endif()
 
   if (onnxruntime_PREFER_SYSTEM_LIB)
     find_package(cpuinfo)
@@ -977,8 +991,8 @@ include(eigen)
 set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
 
 if(NOT onnxruntime_DISABLE_ABSEIL)
-  set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set 
-    absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set 
+  set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
+    absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set
     absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ABSEIL_LIBS})
 else()
@@ -993,6 +1007,11 @@ if (onnxruntime_USE_CUDA)
       else()
         list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64 ${onnxruntime_CUDA_HOME}/lib64)
       endif()
+endif()
+
+if(onnxruntime_USE_SNPE)
+    include(find_snpe.cmake)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR}  ORT_BINARY_DIR)
@@ -1142,6 +1161,11 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
+if (onnxruntime_USE_SNPE)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_SNPE=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES snpe)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_SNPE=1)
+endif()
 if (onnxruntime_USE_NUPHAR)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
@@ -1187,6 +1211,12 @@ if (onnxruntime_USE_COREML)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_COREML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
+if (onnxruntime_USE_XNNPACK)
+  list(APPEND ORT_PROVIDER_FLAGS -DUSE_XNNPACK=1)
+  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_XNNPACK=1)
+  list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
+endif()
+
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
@@ -1257,7 +1287,7 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
   endif()
-  
+
   # Keep BinSkim happy
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
@@ -1487,6 +1517,16 @@ if (onnxruntime_USE_TVM)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+endif()
+
+# XNNPACK EP
+if (onnxruntime_USE_XNNPACK)
+  if (onnxruntime_DISABLE_CONTRIB_OPS)
+    message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available "
+                         "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
+  endif()
+
+  include(xnnpack)
 endif()
 
 # onnxruntime-extensions
@@ -1929,10 +1969,14 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING)
+  set(onnxruntime_ENABLE_ATEN ON)
+endif()
+
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)
 endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
@@ -2101,4 +2145,3 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
     COMMENT "Installing protobuf"
   )
 endif()
-

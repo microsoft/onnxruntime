@@ -7,10 +7,7 @@
 #include "core/common/logging/logging.h"
 #endif
 #include "orttraining/core/framework/distributed_run_context.h"
-
-#if defined(USE_MPI)
-#include <mpi.h>
-#endif
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 
 namespace onnxruntime {
 namespace training {

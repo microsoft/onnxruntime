@@ -42,28 +42,30 @@ class T5EncoderInputs:
 
     @staticmethod
     def create_dummy(
-        batch_size: int, sequence_length: int, vocab_size: int, device: torch.device
+        batch_size: int, sequence_length: int, vocab_size: int, device: torch.device, use_int32_inputs: bool = False
     ):  # -> T5EncoderInputs
         """Create dummy inputs for T5 encoder.
 
         Args:
             batch_size (int): batch size
             sequence_length (int): sequence length
-            vocab_size (int): vocaburary size
+            vocab_size (int): vocabulary size
             device (torch.device): device of output tensors
 
         Returns:
             T5EncoderInputs: dummy inputs for encoder
         """
+        dtype = torch.int32 if use_int32_inputs else torch.int64
+
         input_ids = torch.randint(
             low=0,
             high=vocab_size - 1,
             size=(batch_size, sequence_length),
-            dtype=torch.int64,
+            dtype=dtype,
             device=device,
         )
 
-        attention_mask = torch.ones([batch_size, sequence_length], dtype=torch.int64, device=device)
+        attention_mask = torch.ones([batch_size, sequence_length], dtype=dtype, device=device)
         if sequence_length >= 2:
             for i in range(batch_size):
                 padding_position = random.randint(0, sequence_length - 1)
@@ -83,6 +85,7 @@ class T5EncoderHelper:
         onnx_model_path: str,
         verbose: bool = True,
         use_external_data_format: bool = False,
+        use_int32_inputs: bool = False,
     ):
         """Export encoder to ONNX
 
@@ -95,11 +98,12 @@ class T5EncoderHelper:
         """
         config = encoder.config
         encoder_inputs = T5EncoderInputs.create_dummy(
-            batch_size=2, sequence_length=4, vocab_size=config.vocab_size, device=device
+            batch_size=2,
+            sequence_length=4,
+            vocab_size=config.vocab_size,
+            device=device,
+            use_int32_inputs=use_int32_inputs,
         )
-
-        with torch.no_grad():
-            outputs = encoder(encoder_inputs.input_ids, encoder_inputs.attention_mask)
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         torch_onnx_export(
@@ -131,13 +135,16 @@ class T5EncoderHelper:
         return ort_session.run(None, ort_inputs)
 
     @staticmethod
-    def verify_onnx(model: T5Encoder, ort_session: InferenceSession, device: torch.device):
+    def verify_onnx(
+        model: T5Encoder, ort_session: InferenceSession, device: torch.device, use_int32_inputs: bool = False
+    ):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         inputs = T5EncoderInputs.create_dummy(
             batch_size=4,
             sequence_length=11,
             vocab_size=model.config.vocab_size,
             device=device,
+            use_int32_inputs=use_int32_inputs,
         )
         input_list = inputs.to_list()
         torch_outputs = model(*input_list)

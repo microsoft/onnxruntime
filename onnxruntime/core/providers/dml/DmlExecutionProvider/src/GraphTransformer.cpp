@@ -89,14 +89,12 @@ namespace Dml
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
 
-            bool allow64BitInputThroughStrides = false;
             if (!IsNodeSupportedByDml(
                 node,
                 *registry,
                 m_providerImpl->GetSupportedDeviceDataTypeMask(),
-                *m_providerImpl->GetInternalRegistrationInfoMap().get(),
-                allow64BitInputThroughStrides,
-                nullptr))
+                *m_providerImpl->GetInternalRegistrationInfoMap().get()
+                ))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;

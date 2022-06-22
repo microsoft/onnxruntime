@@ -81,6 +81,8 @@ class DnnlNode {
   std::vector<DnnlTensor*>& Inputs();
   std::vector<DnnlTensor*>& Outputs();
   int SinceVersion();
+  void AppendPostOp(std::string op);
+  const std::vector<std::string>& GetPostOps();
 
  private:
   int since_version_;
@@ -91,6 +93,7 @@ class DnnlNode {
   std::string op_type_;
   size_t index_ = std::numeric_limits<size_t>::max();
   std::unique_ptr<NodeAttributes> attr_ = NodeAttributes::Create();
+  std::vector<std::string> postops_;
 };
 
 class DnnlSubgraph {

@@ -26,7 +26,7 @@ from optimizer import optimize_model
 
 logger = logging.getLogger(__name__)
 
-PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3B", "t5-11B"]
+PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b"]
 
 
 class T5Helper:
@@ -110,9 +110,17 @@ class T5Helper:
         verbose: bool = True,
         use_external_data_format: bool = False,
         use_decoder_input_ids: bool = True,
+        use_int32_inputs: bool = False,
     ):
         if isinstance(model, T5Encoder):
-            T5EncoderHelper.export_onnx(model, device, onnx_model_path, verbose, use_external_data_format)
+            T5EncoderHelper.export_onnx(
+                model,
+                device,
+                onnx_model_path,
+                verbose,
+                use_external_data_format,
+                use_int32_inputs,
+            )
         elif isinstance(model, T5EncoderDecoderInit):
             T5EncoderDecoderInitHelper.export_onnx(
                 model,
@@ -121,9 +129,17 @@ class T5Helper:
                 use_decoder_input_ids,
                 verbose,
                 use_external_data_format,
+                use_int32_inputs,
             )
         else:
-            T5DecoderHelper.export_onnx(model, device, onnx_model_path, verbose, use_external_data_format)
+            T5DecoderHelper.export_onnx(
+                model,
+                device,
+                onnx_model_path,
+                verbose,
+                use_external_data_format,
+                use_int32_inputs,
+            )
 
     @staticmethod
     def auto_mixed_precision(
@@ -234,11 +250,13 @@ class T5Helper:
         model: Union[T5Encoder, T5Decoder, T5DecoderInit, T5EncoderDecoderInit],
         ort_session: InferenceSession,
         device: torch.device,
+        use_int32_inputs: bool,
     ):
         """Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good."""
         if isinstance(model, T5Encoder):
-            return T5EncoderHelper.verify_onnx(model, ort_session, device)
-        elif isinstance(model, T5EncoderDecoderInit):
-            return T5EncoderDecoderInitHelper.verify_onnx(model, ort_session, device)
-        else:
-            return T5DecoderHelper.verify_onnx(model, ort_session, device)
+            return T5EncoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
+
+        if isinstance(model, T5EncoderDecoderInit):
+            return T5EncoderDecoderInitHelper.verify_onnx(model, ort_session, device, use_int32_inputs)
+
+        return T5DecoderHelper.verify_onnx(model, ort_session, device, use_int32_inputs)

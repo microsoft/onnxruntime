@@ -7,6 +7,7 @@ py3nvml
 packaging
 transformers >= 4.0
 scipy
+sentencepiece
 
 # please follow https://pytorch.org/ to install PyTorch for your OS
 torch >= 1.8

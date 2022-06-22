@@ -551,6 +551,27 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_MIGraphX(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider(
+    const std::string& provider_name,
+    const std::unordered_map<std::string, std::string>& provider_options) {
+  auto num_entries = provider_options.size();
+  std::vector<const char*> keys, values;
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+
+    for (const auto& entry : provider_options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(p_, provider_name.c_str(),
+                                                              keys.data(), values.data(), num_entries));
+
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
   ThrowOnError(GetApi().SessionOptionsSetCustomCreateThreadFn(p_, ort_custom_create_thread_fn));
   return *this;
