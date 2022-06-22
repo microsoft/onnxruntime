@@ -62,11 +62,11 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
 
 template <typename T>
 Status ExpandBuffer(void* stream,
-                  const OrtValue& input,
-                  int num_beams,
-                  AllocatorPtr allocator,
-                  OrtValue& expanded,
-                  bool only_copy_shape) {
+                    const OrtValue& input,
+                    int num_beams,
+                    AllocatorPtr allocator,
+                    OrtValue& expanded,
+                    bool only_copy_shape) {
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
   ORT_UNUSED_PARAMETER(stream);
