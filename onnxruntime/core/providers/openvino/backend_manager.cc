@@ -269,7 +269,7 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
       use_dynamic_backend = false;
     #endif
   }
-  if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
+  else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
