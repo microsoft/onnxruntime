@@ -131,7 +131,17 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
+
+template <typename T>
+using ExpandBufferFunc = std::function<Status(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape)>;
 }  // namespace BeamSearchDeviceHelper
+
 
 // These are CPU specific device helper implementations
 namespace BeamSearchCpuDeviceHelper {
@@ -243,7 +253,13 @@ template <typename T>
 void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 template <typename T>
-void ExpandBuffer(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape);
+Status ExpandBuffer(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib

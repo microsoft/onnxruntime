@@ -33,7 +33,10 @@ class BeamSearchT5 : public BeamSearchBase<T> {
                const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
                const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
-               const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func)
+               const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<T>& update_decoder_feeds_func,
+               const BeamSearchDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+               const BeamSearchDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
+               const BeamSearchDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func)
       : BeamSearchBase<T>(context, decoder_session_state, thread_pool,
                           cuda_stream, cuda_dumper, params,
                           topk_func, process_logits_func, device_copy_func, device_copy_int32_func),
@@ -43,7 +46,10 @@ class BeamSearchT5 : public BeamSearchBase<T> {
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
         create_encoder_inputs_func_(create_encoder_inputs_func),
-        update_decoder_feeds_func_(update_decoder_feeds_func) {
+        update_decoder_feeds_func_(update_decoder_feeds_func),
+        expand_buffer_int32_func_(expand_buffer_int32_func),
+        expand_buffer_float_func_(expand_buffer_float_func),
+        expand_buffer_float16_func_(expand_buffer_float16_func) {
   }
 
   // Execute beam search in iterations util stopping criteria is reached.
@@ -62,6 +68,9 @@ class BeamSearchT5 : public BeamSearchBase<T> {
 
   BeamSearchDeviceHelper::CreateEncoderInputsFunc create_encoder_inputs_func_;
   BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<T> update_decoder_feeds_func_;
+  BeamSearchDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
+  BeamSearchDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
+  BeamSearchDeviceHelper::ExpandBufferFunc<MLFloat16> expand_buffer_float16_func_;
 };
 
 template <typename T>
@@ -211,6 +220,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              encoder_fetches,
                                                              decoder_feeds,
                                                              this->device_copy_int32_func_,
+                                                             this->expand_buffer_int32_func_,
+                                                             this->expand_buffer_float_func_,
+                                                             this->expand_buffer_float16_func_,
                                                              parameters->num_beams,
                                                              this->cuda_stream_));
   }

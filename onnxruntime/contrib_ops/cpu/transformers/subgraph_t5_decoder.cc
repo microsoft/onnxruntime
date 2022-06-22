@@ -121,6 +121,9 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const std::vector<OrtValue>& encoder_fetches,
     std::vector<OrtValue>& decoder_feeds,
     const BeamSearchDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func,
+    const BeamSearchDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+    const BeamSearchDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
+    const BeamSearchDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
     void* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
@@ -147,10 +150,16 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // The encoder_attention_mask is copied from the second input of encoder.
   OrtValue expanded_decoder_attention_masks;
   std::cout << "expanded_decoder_attention_masks 149" << std::endl;
-  BeamSearchCpuDeviceHelper::ExpandBuffer<int32_t>(encoder_feeds[1],
-                                                   num_beam,
-                                                   allocator,
-                                                   expanded_decoder_attention_masks, false);
+  ORT_RETURN_IF_ERROR(expand_buffer_int32_func(stream,
+                                               encoder_feeds[1],
+                                               num_beam,
+                                               allocator,
+                                               expanded_decoder_attention_masks,
+                                               false));
+  // BeamSearchCpuDeviceHelper::ExpandBuffer<int32_t>(encoder_feeds[1],
+  //                                                  num_beam,
+  //                                                  allocator,
+  //                                                  expanded_decoder_attention_masks, false);
   std::cout << "after crash 149" << std::endl;
   decoder_feeds.push_back(expanded_decoder_attention_masks);
 
@@ -160,11 +169,42 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
       OrtValue expanded_hidden_states;
-      BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_hidden_states, true);
+      if (is_output_float16_) {
+        ORT_RETURN_IF_ERROR(expand_buffer_float16_func(stream,
+                                                      encoder_fetches[j],
+                                                      num_beam,
+                                                      allocator,
+                                                      expanded_hidden_states,
+                                                      true));
+      } else {
+        ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
+                                                     encoder_fetches[j],
+                                                     num_beam,
+                                                     allocator,
+                                                     expanded_hidden_states,
+                                                     true));
+      }
+
+      //BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_hidden_states, true);
       decoder_feeds.push_back(expanded_hidden_states);
     } else {
       OrtValue expanded_cache;
-      BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_cache, false);
+      if (is_output_float16_) {
+        ORT_RETURN_IF_ERROR(expand_buffer_float16_func(stream,
+                                                       encoder_fetches[j],
+                                                       num_beam,
+                                                       allocator,
+                                                       expanded_cache,
+                                                       false));
+      } else {
+        ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
+                                                     encoder_fetches[j],
+                                                     num_beam,
+                                                     allocator,
+                                                     expanded_cache,
+                                                     false));
+      }
+      //BeamSearchCpuDeviceHelper::ExpandBuffer<float>(encoder_fetches[j], num_beam, allocator, expanded_cache, false);
       decoder_feeds.push_back(expanded_cache);
     }
   }

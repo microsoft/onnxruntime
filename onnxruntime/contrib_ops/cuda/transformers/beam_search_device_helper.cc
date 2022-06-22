@@ -622,6 +622,53 @@ Status UpdateDecoderFeeds(
                             t5_decoder_first_past_input_idx, t5_decoder_first_present_output_idx, stream);
 }
 
+template <typename T>
+Status ExpandBuffer(void* stream,
+                    const OrtValue& input,
+                    int num_beams,
+                    AllocatorPtr allocator,
+                    OrtValue& expanded,
+                    bool only_copy_shape) {
+  // Input shape (batch_size, xxx). The input is required with data type T.
+  // Output shape (batch_size * num_beams, xxx)
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
+
+  int64_t dims[4] = {0};
+  input_shape.CopyDims(dims, input_shape.NumDimensions());
+  dims[0] = batch_size * num_beams;
+  TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
+
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  if (only_copy_shape) {
+    return Status::OK();
+  }
+
+  cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream);
+
+  const T* input_data = input.Get<Tensor>().Data<T>();
+  T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();
+  T* target = expanded_data;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      CUDA_RETURN_IF_ERROR(
+        cudaMemcpyAsync(
+          target,
+          input_data + i * chunk_size,
+          sizeof(T) * chunk_size,
+          cudaMemcpyDeviceToDevice,
+          cuda_stream));
+      target += chunk_size;
+    }
+  }
+
+  return Status::OK();
+}
+
 // Explicit template instantiations of functions
 template void InitBeamState<float>(transformers::IBeamSearchState<float>* beam_state,
                                    gsl::span<int32_t>& sequence_lengths,
@@ -734,6 +781,29 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
 
+template Status ExpandBuffer<int32_t>(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
+
+template Status ExpandBuffer<float>(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
+
+template Status ExpandBuffer<MLFloat16>(
+    void* stream,
+    const OrtValue& input,
+    int num_beams,
+    AllocatorPtr allocator,
+    OrtValue& expanded,
+    bool only_copy_shape);
 }  // namespace BeamSearchCudaDeviceHelper
 }  // namespace contrib
 }  // namespace onnxruntime

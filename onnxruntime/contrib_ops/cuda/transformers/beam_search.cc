@@ -49,7 +49,10 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                        BeamSearchCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
   SetDeviceHelpers_EncoderDecoder(BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<float>,
-                                  BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>);
+                                  BeamSearchCudaDeviceHelper::UpdateDecoderFeeds<MLFloat16>,
+                                  BeamSearchCudaDeviceHelper::ExpandBuffer<int32_t>,
+                                  BeamSearchCudaDeviceHelper::ExpandBuffer<float>,
+                                  BeamSearchCudaDeviceHelper::ExpandBuffer<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
 }

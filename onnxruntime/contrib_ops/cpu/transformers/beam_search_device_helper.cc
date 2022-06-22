@@ -61,9 +61,15 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
 }
 
 template <typename T>
-void ExpandBuffer(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape) {
+Status ExpandBuffer(void* stream,
+                  const OrtValue& input,
+                  int num_beams,
+                  AllocatorPtr allocator,
+                  OrtValue& expanded,
+                  bool only_copy_shape) {
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
+  ORT_UNUSED_PARAMETER(stream);
 
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
   const int64_t& batch_size = input_shape[0];
@@ -79,7 +85,7 @@ void ExpandBuffer(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
   Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
 
   if (only_copy_shape) {
-    return;
+    return Status::OK();
   }
 
   const T* input_data = input.Get<Tensor>().Data<T>();
@@ -91,6 +97,8 @@ void ExpandBuffer(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
       target += chunk_size;
     }
   }
+
+  return Status::OK();
 }
 
 Status CreateGptInputs(
@@ -734,8 +742,30 @@ template Status UpdateDecoderFeeds<float>(
     const transformers::IConsoleDumper* dumper);
 
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
-template void ExpandBuffer<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape);
-template void ExpandBuffer<float>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded, bool only_copy_shape);
+
+template Status ExpandBuffer<int32_t>(
+  void* stream,
+  const OrtValue& input,
+  int num_beams,
+  AllocatorPtr allocator,
+  OrtValue& expanded,
+  bool only_copy_shape);
+
+template Status ExpandBuffer<float>(
+  void* stream,
+  const OrtValue& input,
+  int num_beams,
+  AllocatorPtr allocator,
+  OrtValue& expanded,
+  bool only_copy_shape);
+
+template Status ExpandBuffer<MLFloat16>(
+  void* stream,
+  const OrtValue& input,
+  int num_beams,
+  AllocatorPtr allocator,
+  OrtValue& expanded,
+  bool only_copy_shape);
 
 }  // namespace BeamSearchCpuDeviceHelper
 }  // namespace contrib
