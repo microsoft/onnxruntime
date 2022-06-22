@@ -144,6 +144,14 @@ class OrtOpTests(unittest.TestCase):
         cpu_tensor_copied = ort_tensor.cpu()
         assert cpu_tensor_copied.stride() == (0, 0, 0)
 
+    def test_softmax(self):
+        device = self.get_device()
+        cpu_tensor = torch.rand(3, 5)
+        ort_tensor = cpu_tensor.to(device)
+        cpu_result = torch.softmax(cpu_tensor, dim=1)
+        ort_result = torch.softmax(ort_tensor, dim=1)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+
 
 if __name__ == "__main__":
     unittest.main()

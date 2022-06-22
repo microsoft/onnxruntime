@@ -17,7 +17,7 @@
 #include "GraphPartitioner.h"
 
 //#define PRINT_PARTITON_INFO
-  
+
 using namespace Windows::AI::MachineLearning::Adapter;
 
 namespace Dml
@@ -87,7 +87,7 @@ namespace Dml
 
         m_nodeIndices.push_back(index);
     }
-     
+
     void GraphPartition::AddInput(const std::string& name)
     {
         assert(!IsFinalized());
@@ -117,7 +117,7 @@ namespace Dml
             assert(partitionToMerge->IsDmlGraphPartition() == IsDmlGraphPartition());
 
             partitionToMerge->m_mergedPartition = this;
-                
+
             m_nodeIndices.insert(m_nodeIndices.begin(), partitionToMerge->m_nodeIndices.begin(), partitionToMerge->m_nodeIndices.end());
             m_inputs.insert(partitionToMerge->m_inputs.begin(), partitionToMerge->m_inputs.end());
             m_outputs.insert(partitionToMerge->m_outputs.begin(), partitionToMerge->m_outputs.end());
@@ -126,12 +126,12 @@ namespace Dml
 
     // Adds the outputs of a node to the specified partition
     void AddNodeOutputsToPartitionMap(
-        const onnxruntime::Node& node, 
+        const onnxruntime::Node& node,
         GraphPartition* partition,
         std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap
     )
     {
-        for (uint32_t i = 0; i < node.OutputDefs().size(); ++i) 
+        for (uint32_t i = 0; i < node.OutputDefs().size(); ++i)
         {
             const auto* arg = node.OutputDefs()[i];
             if (arg->Exists())
@@ -164,14 +164,10 @@ namespace Dml
 
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
-        bool allow64BitInputThroughStrides,
-        _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap, // Only used when allow64BitInputThroughStrides is true
         _In_opt_ const InternalRegistrationInfo* regInfo,
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
-
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
 
         if (regInfo != nullptr)
@@ -254,13 +250,9 @@ namespace Dml
         const onnxruntime::KernelRegistry& registry,
         const KernelTypeStrResolver& kernel_type_str_resolver,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
-        const InternalRegistrationInfoMap& internalRegInfoMap,
-        bool allow64BitInputThroughStrides,
-        _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap
+        const InternalRegistrationInfoMap& internalRegInfoMap
         )
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
-
         const onnxruntime::KernelCreateInfo* createInfo;
         Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, kernel_type_str_resolver,
                                            &createInfo);
@@ -281,7 +273,7 @@ namespace Dml
         }
 
         // Check whether the node uses any data types which are unsupported by the device.
-        if (!DoesNodeContainSupportedDataTypes(node, allow64BitInputThroughStrides, nodeNameToPartitionMap, internalRegInfo.get(), supportedDeviceDataTypeMask))
+        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask))
         {
             return false;
         }
@@ -310,11 +302,10 @@ namespace Dml
 
         // Find the highest priority DML registry supporting this node, and get its highest-priority
         // registration.  Determine if that registration supports usage as a graph node.
-        for (auto registry : dmlRegistries) 
+        for (auto registry : dmlRegistries)
         {
-            bool allow64BitInputThroughStrides = true;
             if (IsNodeSupportedByDml(node, *registry, kernel_type_str_resolver, supportedDeviceDataTypeMask,
-                                     internalRegInfoMap, allow64BitInputThroughStrides, nodeNameToPartitionMap))
+                                     internalRegInfoMap))
             {
                 *isDmlNode = true;
 
@@ -380,7 +371,7 @@ namespace Dml
     // Creates a partition for a node which is not a DML graph node, and finalizes partitions
     // which are inputs of the new partition.
     std::unique_ptr<GraphPartition> CreateNonGraphNodePartitionAndFinalizeInputs(
-        const onnxruntime::Node& node, 
+        const onnxruntime::Node& node,
         bool isDmlNode,
         std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap
     )
@@ -390,19 +381,19 @@ namespace Dml
         partition->SetIsDmlPartition(isDmlNode);
         partition->AddNodeIndex(node.Index());
 
-        for (uint32_t i = 0; i < node.InputDefs().size(); ++i) 
+        for (uint32_t i = 0; i < node.InputDefs().size(); ++i)
         {
             const auto* arg = node.InputDefs()[i];
             if (arg->Exists())
             {
                 const std::string& argName = arg->Name();
-                        
+
                 if (nodeNameToPartitionMap.find(argName) != nodeNameToPartitionMap.end())
                 {
                     // Finalize the partition which contains an input to a non-DML-graph partition.
-                    // The connections from that partition to other partitions, such as this one, 
-                    // must become outputs of that partition.  As subsequent downstream nodes of 
-                    // the finalized partition are visited, other outputs will subsequently be 
+                    // The connections from that partition to other partitions, such as this one,
+                    // must become outputs of that partition.  As subsequent downstream nodes of
+                    // the finalized partition are visited, other outputs will subsequently be
                     // added to the partition, too.
                     GraphPartition* inputPartition = nodeNameToPartitionMap[argName]->GetRootMergedPartition();
                     inputPartition->SetFinalized();
@@ -421,13 +412,13 @@ namespace Dml
 
     // Get the partitions which are inputs to the specified node and which are not finalized.
     std::vector<GraphPartition*> GetNonFinalizedInputPartitions(
-        const onnxruntime::Node& node, 
+        const onnxruntime::Node& node,
         std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap
     )
     {
         std::vector<GraphPartition*> inputNonFinalPartitions;
 
-        for (uint32_t i = 0; i < node.InputDefs().size(); ++i) 
+        for (uint32_t i = 0; i < node.InputDefs().size(); ++i)
         {
             const auto* arg = node.InputDefs()[i];
             if (arg->Exists())
@@ -451,15 +442,15 @@ namespace Dml
 
         return inputNonFinalPartitions;
     }
-   
+
     // Add graph outputs of the new node to a partition.
     void AddGraphOutputsFromNodeToPartition(
-        const onnxruntime::Node& node, 
+        const onnxruntime::Node& node,
         const std::set<std::string>& graphOutputs,
         GraphPartition* partition
     )
     {
-        for (uint32_t i = 0; i < node.OutputDefs().size(); ++i) 
+        for (uint32_t i = 0; i < node.OutputDefs().size(); ++i)
         {
             const auto* arg = node.OutputDefs()[i];
             if (arg->Exists())
@@ -473,7 +464,7 @@ namespace Dml
     }
 
     std::unique_ptr<GraphPartition> CreateNewPartitionWithFinalizedInputPartitions(
-        const onnxruntime::Node& node, 
+        const onnxruntime::Node& node,
         const std::set<std::string>& graphOutputs,
         std::unordered_map<std::string, GraphPartition*>& nodeNameToPartitionMap
     )
@@ -485,7 +476,7 @@ namespace Dml
 
         // Inputs of the partition are added when partitions are created and extended when
         // nodes are added with inputs which are not inside the partition
-        for (uint32_t i = 0; i < node.InputDefs().size(); ++i) 
+        for (uint32_t i = 0; i < node.InputDefs().size(); ++i)
         {
             const auto* arg = node.InputDefs()[i];
             if (arg->Exists())
@@ -510,11 +501,11 @@ namespace Dml
 
         return partition;
     }
-    
+
     std::unique_ptr<onnxruntime::ComputeCapability> ComputationCapacityFromPartition(
-        GraphPartition* partition, 
-        uint32_t partitionIndex, 
-        const onnxruntime::GraphViewer& graph, 
+        GraphPartition* partition,
+        uint32_t partitionIndex,
+        const onnxruntime::GraphViewer& graph,
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>&& graphNodePropertyMap,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix,
@@ -525,7 +516,7 @@ namespace Dml
         if (partition->IsDmlGraphPartition())
         {
             assert(partition->IsDmlGraphPartition());
-         
+
             // Create a definition for the node.  The name must be unique.
             auto def = std::make_unique<onnxruntime::IndexedSubGraph::MetaDef>();
             def->name = std::string("DmlFusedNode_") + partitionKernelPrefix + std::to_string(partitionIndex);
@@ -539,21 +530,29 @@ namespace Dml
             for (auto nodeIndex : partition->GetNodeIndices())
             {
                 const onnxruntime::Node* node = graph.GetNode(nodeIndex);
-                    
+
 #ifdef PRINT_PARTITON_INFO
                 printf("Partition %u\t%s\n", partitionIndex, GraphDescBuilder::GetUniqueNodeName(*node).c_str());
 #endif
                 partitionNodePropsMap.insert(std::make_pair(
                     GraphDescBuilder::GetUniqueNodeName(*node), std::move(graphNodePropertyMap[node])));
             }
-            
+
 #ifdef PRINT_PARTITON_INFO
             printf("\n");
 #endif
 
-            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
+            // These nodeArgNames will be used while creating DML Graph inside FusedGraphKernel.cpp
+            // Ordering of input/output nodeArgs in below vector will be same as Node::Definitions::input_defs because
+            // ORT is populating these args as it is while creating the FusedNode at Graph::CreateFusedSubGraphNode()
+            // Why we need these names?
+            //      After Partitioning and before reaching to FusedGraphKernel, ORT may modify the input/output nodeArg names
+            //      present in FusedNode (Node::Definitions::input_defs) as part of some transformers like memcopy, or L1/L2/L3 transformers.
+            std::vector<std::string> fusedNodeInputArgOriginalNames = def->inputs;
+            std::vector<std::string> fusedNodeOutputArgOriginalNames = def->outputs;
+            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap, fusedNodeInputArgOriginalNames, fusedNodeOutputArgOriginalNames](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
             {
-                out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap));
+                out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap, fusedNodeInputArgOriginalNames, fusedNodeOutputArgOriginalNames));
 				return Status::OK();
             };
 
@@ -566,7 +565,7 @@ namespace Dml
                 .Provider(onnxruntime::kDmlExecutionProvider);
 
             ORT_THROW_IF_ERROR(registryForPartitionKernels->Register(builder, fused_kernel_func));
-            
+
             subGraph->SetMetaDef(std::move(def));
         }
 
@@ -587,7 +586,7 @@ namespace Dml
 
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
 
-        for (size_t nodeIndex : toplogicalOrder) 
+        for (size_t nodeIndex : toplogicalOrder)
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
             if (node.ContainsSubgraph())
@@ -599,14 +598,14 @@ namespace Dml
         return false;
     }
 
-    // 
+    //
     // A simple graph partitioning algorithm is used:
     //
     // - If a node has any input which is already in a graph, and that graph is not finalized,
     //   then the node and all such input graphs are merged.
     //
-    // - Once a node has an output which cannot be merged with its graph, its graph is marked 
-    //   as final, which disallows its future extensions.  This ensures that no indirect 
+    // - Once a node has an output which cannot be merged with its graph, its graph is marked
+    //   as final, which disallows its future extensions.  This ensures that no indirect
     //   downstream dependencies of the external output node are later merged.
     //
     std::vector<std::unique_ptr<GraphPartition>>
@@ -635,28 +634,28 @@ namespace Dml
         for (const auto* arg : graph.GetInputsIncludingInitializers())
         {
             graphInputs.insert(arg->Name());
-        }        
-        
+        }
+
         // If a model contains an intializer which is not also a graph input, it will not be returned
         // by GetInputsIncludingInitializers above.  Such models would be invalid, however they loaded
-        // in RS5.  For compatibility, this ensures that such models continue to load.  This is 
+        // in RS5.  For compatibility, this ensures that such models continue to load.  This is
         // verified by an ONNX conformance test for Add.
         for (const auto& arg : graph.GetAllInitializedTensors())
         {
             // This adds the initializer to the input set if it didn't already exist.
             graphInputs.insert(arg.first);
         }
-        
+
         for (const auto* arg : graph.GetOutputs())
         {
             graphOutputs.insert(arg->Name());
         }
-        
-        // Check whether this graph is a subgraph, or contains any node with a subgraph. 
+
+        // Check whether this graph is a subgraph, or contains any node with a subgraph.
         bool modelUsesSubgraph = ModelUsesSubgraph(graph);
 
         // Build up partitions while traversing the graph.
-        for (size_t nodeIndex : toplogicalOrder) 
+        for (size_t nodeIndex : toplogicalOrder)
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
 
@@ -666,7 +665,7 @@ namespace Dml
             // Whether the node is implemented through DML and as a graph node, meaning it
             // can generate DML operations through a private interface for use as an MLGraph node.
             bool isDmlGraphNode = false;
-            
+
             // Get the registration properties above and populate nodeNameToPartitionMap.
             GetRegistrationProperties(
                 graph,
@@ -684,9 +683,9 @@ namespace Dml
 
             // Add a unique partition if graph node usage is not supported.
             //
-            // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.  
-            // The partitioning algorithm does not currently consider such inputs.  Transfering shared initializers 
-            // for partitions could also cause problems.  Note, operators with subgraphs are currently not efficient 
+            // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.
+            // The partitioning algorithm does not currently consider such inputs.  Transfering shared initializers
+            // for partitions could also cause problems.  Note, operators with subgraphs are currently not efficient
             // anyhow due to CPU/GPU copies.
             if (modelUsesSubgraph || !isDmlGraphNode)
             {
@@ -698,9 +697,9 @@ namespace Dml
                 partitions.push_back(CreateNonGraphNodePartitionAndFinalizeInputs(node, isDmlNode, nodeNameToPartitionMap));
                 continue;
             }
-            
+
             std::vector<GraphPartition*> inputNonFinalPartitions = GetNonFinalizedInputPartitions(node, nodeNameToPartitionMap);
-                
+
             if (inputNonFinalPartitions.empty())
             {
                 partitions.push_back(CreateNewPartitionWithFinalizedInputPartitions(node, graphOutputs, nodeNameToPartitionMap));
@@ -714,7 +713,7 @@ namespace Dml
                 AddNodeOutputsToPartitionMap(node, firstNonFinalInputPartition, nodeNameToPartitionMap);
 
                 // Add inputs for the new node which span partitions
-                for (uint32_t i = 0; i < node.InputDefs().size(); ++i) 
+                for (uint32_t i = 0; i < node.InputDefs().size(); ++i)
                 {
                     const auto* arg = node.InputDefs()[i];
                     if (arg->Exists())
@@ -724,18 +723,18 @@ namespace Dml
                         // Add the input of the current node into the partition which the node will be merged into.
                         // Skip this if the input is already merged into the same partition or is not finalized,
                         // and so will be subsequently merged below.
-                        if (inputPartition != nodeNameToPartitionMap.end() && 
+                        if (inputPartition != nodeNameToPartitionMap.end() &&
                             inputPartition->second->GetRootMergedPartition() != firstNonFinalInputPartition &&
                             inputPartition->second->GetRootMergedPartition()->IsFinalized())
                         {
-                            // Add this input of the current node as an output of the final partition to which 
-                            // it belongs.  
+                            // Add this input of the current node as an output of the final partition to which
+                            // it belongs.
                             inputPartition->second->GetRootMergedPartition()->AddOutput(arg->Name());
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }
-                        
+
                         if (graphInputs.find(arg->Name()) != graphInputs.end())
-                        { 
+                        {
                             firstNonFinalInputPartition->AddInput(arg->Name());
                         }
                     }
@@ -748,7 +747,7 @@ namespace Dml
                 if (inputNonFinalPartitions.size() > 1)
                 {
                     firstNonFinalInputPartition->Merge(gsl::span<GraphPartition*>(&inputNonFinalPartitions[1], inputNonFinalPartitions.size() - 1));
-                } 
+                }
             }
         }
 
@@ -807,11 +806,11 @@ namespace Dml
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties> graphNodePropertyMap;
         std::vector<std::unique_ptr<GraphPartition>> partitions = BuildPartitions(
             graph,
-            internalRegInfoMap, 
+            internalRegInfoMap,
             registries,
             kernel_type_str_resolver,
             supportedDeviceDataTypeMask,
-            graphNodePropertyMap, 
+            graphNodePropertyMap,
             requiredInitializerMap);
 
         // Create a map between each initialized tensor and the partition(s) it is part of.
@@ -827,7 +826,7 @@ namespace Dml
                 continue;
             }
 
-            // Create a map which will store by name each initializer which should be transferred to the 
+            // Create a map which will store by name each initializer which should be transferred to the
             // partition.  This prevents OnnxRuntime from allocating GPU resources and uploading those initializers,
             // so the partiton's kernel can do so.  In the process, it will pre-process weights while consuming a CPU
             // backed resource, avoiding an extra set of GPU resources in memory.
@@ -863,16 +862,16 @@ namespace Dml
                         onnx::TensorProto partitionTensor;
                         graphTensor.Swap(&partitionTensor);
                         (*transferredInitializerMap)[input] = std::move(partitionTensor);
-                
+
                         const_cast<onnxruntime::InitializedTensorSet&>(graph.GetAllInitializedTensors()).erase(graph.GetAllInitializedTensors().find(input));
                     }
                 }
             }
 
             result.push_back(ComputationCapacityFromPartition(
-                partition.get(), 
-                partitionIndex, 
-                graph, 
+                partition.get(),
+                partitionIndex,
+                graph,
                 std::move(graphNodePropertyMap),
                 registryForPartitionKernels,
                 partitionKernelPrefix,

@@ -17,8 +17,8 @@
 #include "core/common/path_string.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
-#include "core/framework/bfc_arena.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -353,7 +353,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   }
 
   telemetry_ = {};
-  allocator_manager_ = std::make_shared<onnxruntime::AllocatorManager>();
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env)
@@ -492,8 +491,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   }
 
   const std::string& provider_type = p_exec_provider->Type();
-
-  p_exec_provider->RegisterAllocator(allocator_manager_);
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
@@ -940,11 +937,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
+  // only provide NCWH to NHWC layout transformer if supported
+  TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
+                                                    ? layout_transformer::TransformLayoutForEP
+                                                    : nullptr;
+
   // Do partitioning based on execution providers' capabilities.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
-  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph,
-                                                       session_state.GetMutableFuncMgr(),
-                                                       layout_transformer::TransformLayoutForCompilingEP, mode));
+  ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
+                                                       mode));
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
@@ -1151,11 +1152,17 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
                                SessionState& session_state) {
+  // only provide NCWH to NHWC layout transformer if supported
+  TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
+                                                    ? layout_transformer::TransformLayoutForEP
+                                                    : nullptr;
+
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
-                                            layout_transformer::TransformLayoutForCompilingEP,
+                                            transform_layout_fn,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
+
   return Status::OK();
 }
 
@@ -1257,6 +1264,22 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
+    // Ensure all registered EPs have created their allocators and shared them where possible.
+    // Allocator creation may be delayed until IExecutionProvider::RegisterAllocator is called.
+    //
+    // We iterate EPs in reverse order as we are currently using this mechanism to share a CPU or CUDA
+    // allocator between CPU and XNNPACK, or CUDA and TensorRT. The memory config options for the CPU and CUDA EPs are
+    // more comprehensive so we prefer those, and need to call RegisterAllocator for those EPs first so their
+    // allocators are the ones that get shared.
+    {
+      AllocatorManager allocator_manager;
+      std::for_each(std::make_reverse_iterator(execution_providers_.end()),
+                    std::make_reverse_iterator(execution_providers_.begin()),
+                    [&allocator_manager](auto& iter) {
+                      iter->RegisterAllocator(allocator_manager);
+                    });
+    }
+
     // At this time we know all the providers that will be part of this session.
     // Read shared allocators from the environment and update them in the respective providers.
     //
@@ -1269,6 +1292,9 @@ common::Status InferenceSession::Initialize() {
     // since we've to take into account the per-thread cuda allocators.
     // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
     // from IAllocator to keep things clean.
+    //
+    // NOTE: UpdateProvidersWithSharedAllocators is replace-only and will not insert a new allocator into the EP, so
+    // it must be called after RegisterAllocator.
     std::string use_env_allocators = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
                                                                                         "0");
     if (use_env_allocators == "1") {
@@ -1487,7 +1513,6 @@ common::Status InferenceSession::Initialize() {
 // This method should be called from within Initialize() only and before the creation of the session state.
 // This ensures all providers have been registered in the session and the session state is consistent with the providers.
 void InferenceSession::UpdateProvidersWithSharedAllocators() {
-  using namespace std;
   const auto& provider_ids = execution_providers_.GetIds();
   for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
     for (const auto& id : provider_ids) {

@@ -21,7 +21,10 @@
 #include "core/framework/TensorSeq.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+#endif
+
+#ifdef ENABLE_ATEN
+#include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -270,7 +273,7 @@ const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
 static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session_state,
                                                      const std::string& input_name,
                                                      MLValueCopyInfo& copy_info) {
-  std::vector<SessionState::NodeInfo> node_info_vec;
+  InlinedVector<SessionState::NodeInfo> node_info_vec;
 #ifdef ENABLE_TRAINING
   if (session_state.GetInputNodeInfo(input_name, node_info_vec) == Status::OK()) {
 #else
@@ -787,8 +790,9 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
     return true;
   }
 
-#ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" && node.Domain() == kPytorchAtenDomain) {
+#ifdef ENABLE_ATEN
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" &&
+      node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
     ORT_ENFORCE(utils::HasString(attrs.at("operator")));
     std::string op_name = attrs.at("operator").s();
