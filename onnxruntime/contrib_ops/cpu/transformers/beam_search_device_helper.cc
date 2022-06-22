@@ -60,6 +60,7 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
   }
 }
 
+// TODO(wy): Dispatch it to avoid passing multiple functions to interface.
 template <typename T>
 Status ExpandBuffer(void* stream,
                     const OrtValue& input,
@@ -241,23 +242,23 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
-  auto beam_batch_size = logits_shape[0];
+  auto logits_batch_size = logits_shape[0];
 
   // Get logits for the last token:
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
   // When input_length == 1, use logits directly in SoftmaxCPU below so it only need for input_length > 1.
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
 
-  if (input_length > 1 || beam_batch_size == batch_size) {
+  if (input_length > 1 || logits_batch_size == batch_size) {
     const T* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(current_logits, vocab_size);
       gsl::span<T> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size,
                                                       static_cast<gsl::index>(vocab_size));
       gsl::copy(source, target);
-      if (beam_batch_size == batch_beam_size) {
+      if (logits_batch_size == batch_beam_size) {
         current_logits += input_length * vocab_size;
-      } else if (beam_batch_size == batch_size && i % num_beams == num_beams - 1) {
+      } else if (logits_batch_size == batch_size && i % num_beams == num_beams - 1) {
         current_logits += input_length * vocab_size;
       }
     }
@@ -265,7 +266,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("logits", logits);
-  dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
+  if (input_length > 1 || logits_batch_size == batch_size) {
+    dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
+  }
 #endif
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
@@ -274,7 +277,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     SoftmaxCPU<T>(
       batch_beam_size,  // rows
       vocab_size,       // elements per row
-      (input_length == 1 && beam_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
+      (input_length == 1 && logits_batch_size == batch_beam_size) ? logits_data : next_token_logits.data(),
       next_token_scores.data(),
       true,
       thread_pool));
@@ -640,7 +643,7 @@ Status UpdateDecoderFeeds(
   TensorShape input_ids_shape(&dims[0], 2);
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
 
-  // TODO: decouple has_hidden_state with full input_ids
+  // TODO(wy): decouple has_hidden_state with full input_ids
   if (has_hidden_state) {
     gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
   } else {
