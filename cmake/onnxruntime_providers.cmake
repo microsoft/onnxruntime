@@ -1488,7 +1488,13 @@ if (onnxruntime_USE_TVM)
   set_target_properties(onnxruntime_providers_tvm PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_tvm PROPERTIES LINKER_LANGUAGE CXX)
 
-  target_compile_options(onnxruntime_providers_tvm PRIVATE -Wno-error=type-limits)
+  if (WIN32 AND MSVC)
+    # wd4100: identifier' : unreferenced formal parameter
+    # wd4244: conversion from 'int' to 'char', possible loss of data
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4244")
+  else()
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "-Wno-error=type-limits")
+  endif()
   target_compile_definitions(onnxruntime_providers_tvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
 
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
