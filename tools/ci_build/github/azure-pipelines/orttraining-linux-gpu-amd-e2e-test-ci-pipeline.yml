@@ -33,7 +33,6 @@ jobs:
       python tools/ci_build/build.py \
         --config RelWithDebInfo \
         --enable_training \
-        --enable_training_torch_interop \
         --mpi_home /home/ciagent/pkg/openmpi-4.0.5 \
         --use_rocm \
         --rocm_home /opt/rocm \

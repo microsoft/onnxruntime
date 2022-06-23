@@ -49,6 +49,7 @@ jobs:
         python tools/ci_build/build.py \
         --config RelWithDebInfo \
         --enable_training \
+        --enable_training_torch_interop \
         --mpi_home /opt/ompi \
         --use_rocm \
         --rocm_version=5.1.1 \
