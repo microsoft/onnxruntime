@@ -58,8 +58,8 @@ Status CreateTensorProtosFromOrtValues(
 
   saved_tensor_protos.reserve(ordered_tensor_names.size());
 
-  unsigned int64_t total_bytes = 0;
-  constexpr unsigned int64_t PROTOBUF_UPPER_LIMIT = 2 * 1000 * 1000 * 1000;
+  uint64_t total_bytes = 0;
+  constexpr uint64_t PROTOBUF_UPPER_LIMIT = 2 * 1000 * 1000 * 1000;
   for (const auto& tensor_name : ordered_tensor_names) {
     const OrtValue& ort_value = name_to_ort_value.at(tensor_name);
     ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
@@ -68,7 +68,7 @@ Status CreateTensorProtosFromOrtValues(
 
     // Currently large model size not considered, so exception thrown here
     // when protobuf upper limit hit.
-    total_bytes += static_cast<unsigned int64_t>(src_tensor.SizeInBytes());
+    total_bytes += static_cast<uint64_t>(src_tensor.SizeInBytes());
     if (total_bytes >= PROTOBUF_UPPER_LIMIT) {
       ORT_THROW("checkpoint file size hit upper limit.");
     }
