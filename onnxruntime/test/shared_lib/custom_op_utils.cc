@@ -207,6 +207,8 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
   }
 }
 
+#include <iostream>
+
 StandaloneCustomKernel::StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
   info_copy_ = ort.CopyKernelInfo(info);
   ORT_ENFORCE(info_copy_, "Failed to copy kernel info");
@@ -216,11 +218,13 @@ StandaloneCustomKernel::StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKe
                          (const char**)add_type_constraint_names,
                          (const ONNXTensorElementDataType*)add_type_constraint_values,
                          1, nullptr, 0, 2, 1);
+  std::cout << "add op init" << std::endl;
   ORT_ENFORCE(op_add_, "op_add not initialzied");
   InitTopK(ort_);
   ORT_ENFORCE(op_topk_, "op_topk not initialzied");
   InitGru(ort_);
   ORT_ENFORCE(op_gru_, "op_gru not initialzied");
+  std::cout << "all op init" << std::endl;
 }
 
 void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort) {
@@ -484,7 +488,9 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
   const OrtValue* inputs[2] = {input_X, input_Y};
   OrtValue* outputs[1] = {output};
+  std::cout << "call add op" << std::endl;
   ort_.InvokeOp(context, op_add_, inputs, 2, outputs, 1);
+  std::cout << "call add op done" << std::endl;
 #ifndef USE_CUDA
   InvokeTopK(context);
   InvokeGru(context);
