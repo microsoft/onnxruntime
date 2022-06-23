@@ -333,7 +333,7 @@ class TrainingManager(GraphExecutionManager):
             session_options,
             providers,
             provider_options,
-            local_device_rank
+            local_device_rank,
         )
 
     def _reinitialize_graph_builder(self, input_info):

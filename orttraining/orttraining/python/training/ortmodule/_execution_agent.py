@@ -140,7 +140,7 @@ class TrainingAgent(object):
             fw_outputs_device_info,
             bw_fetches_names,
             bw_outputs_device_info,
-            local_rank
+            local_rank,
         )
 
     def run_forward(self, feeds, fetches, state, cache=None):

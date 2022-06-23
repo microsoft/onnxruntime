@@ -125,12 +125,13 @@ class MemoryInfo {
     // Create sessions in the profiler.
     // p_name: session name
     // pid: sessionid
-    // map_type: Initalizer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
+    // map_type: Initializer, static_activation, dynamic_activation. We have this separtion because they are using different memory offsets.
     // group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup". Used for generating customized sessions for a group of tensors
     // Top_k: The steps with the top-k highest memory consumptions are plot. When top_k == 0, we plot all the steps
     // device_t: The type of the device where the tensors are.
-    static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type, const std::string& group_name,
-                             const size_t top_k, const OrtDevice::DeviceType device_t = OrtDevice::GPU);
+    static void CreateEvents(const std::string& p_name, const size_t pid, const MemoryInfo::MapType& map_type,
+                             const std::string& group_name, const size_t top_k,
+                             const OrtDevice::DeviceType device_t = OrtDevice::GPU);
 
     static const std::vector<std::string>& GetEvents() { return events; }
 
@@ -152,12 +153,15 @@ class MemoryInfo {
     MemoryInfoProfile() = default;
 
     static std::string CreateMetadataEvent(const std::string& process_name, size_t process_id);
-    static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size, const std::string& color_name);
+    static std::string CreateMemoryEvent(size_t pid, size_t tid, const std::string& name, size_t offset, size_t size,
+                                         const std::string& color_name);
 
-    static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size, size_t bytes_for_pattern);
+    static std::string CreateSummaryEvent(size_t pid, size_t tid, const AllocationSummary& summary, size_t size,
+                                          size_t bytes_for_pattern);
   };
 
-  static void GenerateTensorMap(const SequentialExecutionPlan* execution_plan, const OrtValueNameIdxMap& value_name_idx_map);
+  static void GenerateTensorMap(const SequentialExecutionPlan* execution_plan,
+                                const OrtValueNameIdxMap& value_name_idx_map);
   static void RecordPatternInfo(const MemoryPatternGroup& mem_patterns, const MapType& type);
 
   static void RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map);
@@ -195,7 +199,8 @@ class MemoryInfo {
 
   static bool InRecordingTensorGroup(const std::string& group_name, const std::string& tensor_name) {
     if (customized_recording_group_.find(group_name) == customized_recording_group_.end()) return false;
-    if (customized_recording_group_.at(group_name).find(tensor_name) == customized_recording_group_.at(group_name).end()) return false;
+    if (customized_recording_group_.at(group_name).find(tensor_name) ==
+        customized_recording_group_.at(group_name).end()) return false;
     return true;
   }
 

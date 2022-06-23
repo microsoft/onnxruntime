@@ -25,7 +25,7 @@ class PartialExecutor : public IExecutor {
       : state_{state},
         cache_{cache},
         partial_graph_index_{partial_graph_index} {
-    ORT_UNUSED_PARAMETER(partial_graph_index_);	
+    ORT_UNUSED_PARAMETER(partial_graph_index_);
   }
 
   common::Status Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,

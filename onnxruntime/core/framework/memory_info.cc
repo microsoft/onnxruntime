@@ -284,7 +284,7 @@ std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSumm
 // Create sessions in the profiler.
 // p_name: session name
 // pid: sessionid
-// map_type: Initalizer, static_activation, dynamic_activation.
+// map_type: Initializer, static_activation, dynamic_activation.
 //     We have this separtion because they are using different memory offsets.
 // group_name: The group_name that is recorded previously using function "AddRecordingTensorGroup".
 //     Used for generating customized sessions for a group of tensors
