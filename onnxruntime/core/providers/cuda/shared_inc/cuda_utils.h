@@ -50,8 +50,15 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 */
 template <typename T, int32_t capacity = 8>
 struct TArray {
-  TArray() : size_(0), data_() {
-  }
+#if defined(USE_ROCM)
+  __host__ __device__ TArray() = default;
+  __host__ __device__ TArray(const TArray&) = default;
+  __host__ __device__ TArray& operator=(const TArray&) = default;
+#else
+  TArray() = default;
+  TArray(const TArray&) = default;
+  TArray& operator=(const TArray&) = default;
+#endif
 
   TArray(int32_t size) : size_(size), data_() {
     ORT_ENFORCE(
@@ -99,8 +106,8 @@ struct TArray {
   static constexpr int32_t Capacity() { return capacity; };
 
  private:
-  int32_t size_;
-  T data_[capacity];
+  int32_t size_ = 0;
+  T data_[capacity] = {};
 };
 
 // Bitmask tensor is uint_32 type.
