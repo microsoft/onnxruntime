@@ -377,10 +377,10 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
     output_args.push_back(arg_ptr.release());
   }
   auto tmp_node_holder = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
-  NodePtr node_holder(tmp_node_holder.release(), ReleaseNode);
+  NodePtr node_ptr(tmp_node_holder.release(), ReleaseNode);
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
-    node_holder->AddAttributeProto(*attr_proto);
+    node_ptr->AddAttributeProto(*attr_proto);
   }
 
   auto kernel_def_builder = KernelDefBuilder::Create();
@@ -388,13 +388,16 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   kernel_def_builder->SetDomain(domain);
   kernel_def_builder->SinceVersion(version);
 
-  OpKernelInfo instant_kernel_info(*node_holder.get(), *kernel_def_builder->Build(), *ep, {}, {}, {});
+  static std::unordered_map<int, OrtValue> kEmptyValueMap;
+  static OrtValueNameIdxMap kEmptyNameMap;
+
+  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def_builder->Build(), *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
-  FuncManager func_mgr;
-  status = kernel_create_info->kernel_create_func(func_mgr, instant_kernel_info, op_kernel);
+  static FuncManager kFuncMgr;
+  status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
-  NodeRepo::AddNode(op_kernel.get(), node_holder);
+  NodeRepo::AddNode(op_kernel.get(), node_ptr);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
 }
