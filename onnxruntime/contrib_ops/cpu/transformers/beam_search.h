@@ -74,9 +74,15 @@ class BeamSearch : public IControlFlowKernel {
   // device helpers for encoder-decoder model like T5
   void SetDeviceHelpers_EncoderDecoder(
       const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<float>& update_decoder_feeds_func,
-      const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<MLFloat16>& update_decoder_feeds_fp16_func) {
+      const BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<MLFloat16>& update_decoder_feeds_fp16_func,
+      const BeamSearchDeviceHelper::ExpandBufferFunc<int32_t>& expand_buffer_int32_func,
+      const BeamSearchDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
+      const BeamSearchDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func) {
     update_decoder_feeds_func_ = update_decoder_feeds_func;
     update_decoder_feeds_fp16_func_ = update_decoder_feeds_fp16_func;
+    expand_buffer_int32_func_ = expand_buffer_int32_func;
+    expand_buffer_float_func_ = expand_buffer_float_func;
+    expand_buffer_float16_func_ = expand_buffer_float16_func;
   }
 
  private:
@@ -105,6 +111,10 @@ class BeamSearch : public IControlFlowKernel {
 
   BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<float> update_decoder_feeds_func_;
   BeamSearchDeviceHelper::UpdateDecoderFeedsFunc<MLFloat16> update_decoder_feeds_fp16_func_;
+
+  BeamSearchDeviceHelper::ExpandBufferFunc<int32_t> expand_buffer_int32_func_;
+  BeamSearchDeviceHelper::ExpandBufferFunc<float> expand_buffer_float_func_;
+  BeamSearchDeviceHelper::ExpandBufferFunc<MLFloat16> expand_buffer_float16_func_;
 
   //------------------------------------------------------------
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.

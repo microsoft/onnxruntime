@@ -4,9 +4,6 @@
 #include "api.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
-#ifdef USE_XNNPACK
-#include "core/providers/xnnpack/xnnpack_provider_factory.h"
-#endif
 
 #include <iostream>
 #include <vector>
@@ -116,7 +113,8 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
 #endif
 #if defined(USE_XNNPACK)
-  (void)OrtSessionOptionsAppendExecutionProvider_Xnnpack(session_options);
+  
+  RETURN_NULLPTR_IF_ERROR(SessionOptionsAppendExecutionProvider, session_options, "XNNPACK", nullptr, nullptr, 0);
 #endif
   return session_options;
 }

@@ -200,14 +200,6 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     beam_search_group.add_argument(
-        "--temperature",
-        type=float,
-        required=False,
-        default=1,
-        help="Softmax temperature for output logits.",
-    )
-
-    beam_search_group.add_argument(
         "--length_penalty",
         type=float,
         required=False,
@@ -305,6 +297,7 @@ def t5_to_onnx(args: argparse.Namespace):
         disable_auto_mixed_precision=False,
         use_int32_inputs=True,
     )
+
     args.encoder_decoder_init_onnx = paths[0]
     args.decoder_onnx = paths[1]
 
@@ -610,7 +603,6 @@ def convert_model(args: argparse.Namespace):
         "min_length",
         "num_beams",
         "num_return_sequences",
-        "temperature",
         "length_penalty",
         "repetition_penalty",
         "vocab_mask",
@@ -668,7 +660,6 @@ def convert_model(args: argparse.Namespace):
     min_length = onnx.helper.make_tensor_value_info("min_length", TensorProto.INT32, [1])
     num_beams = onnx.helper.make_tensor_value_info("num_beams", TensorProto.INT32, [1])
     num_return_sequences = onnx.helper.make_tensor_value_info("num_return_sequences", TensorProto.INT32, [1])
-    temperature = onnx.helper.make_tensor_value_info("temperature", TensorProto.FLOAT, [1])
     length_penalty = onnx.helper.make_tensor_value_info("length_penalty", TensorProto.FLOAT, [1])
     repetition_penalty = onnx.helper.make_tensor_value_info("repetition_penalty", TensorProto.FLOAT, [1])
     vocab_mask = onnx.helper.make_tensor_value_info("vocab_mask", TensorProto.INT32, [vocab_size])
@@ -679,7 +670,6 @@ def convert_model(args: argparse.Namespace):
         min_length,
         num_beams,
         num_return_sequences,
-        temperature,
         length_penalty,
         repetition_penalty,
         vocab_mask,
@@ -790,7 +780,6 @@ def test_torch_performance(
             eos_token_id=eos_token_id,
             pad_token_id=pad_token_id,
             num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids,
@@ -816,11 +805,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         Union[Dict[str, Any], None]: A dictionary with string with metric name, and value can be integer or string.
     """
     assert args.model_type == "gpt2"
-
-    if args.temperature != 1.0:
-        # TODO(tianleiwu): implement temperature in BeamSearch operator.
-        print("Skipping parity test as temperature is not implemented in BeamSearch operator")
-        return None
 
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
@@ -877,7 +861,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
             eos_token_id=eos_token_id,
             pad_token_id=pad_token_id,
             num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids,
@@ -912,7 +895,6 @@ def test_gpt_model(args: argparse.Namespace, use_vocab_mask: bool = False, sente
         "min_length": np.array([args.min_length], dtype=np.int32),
         "num_beams": np.array([args.num_beams], dtype=np.int32),
         "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-        "temperature": np.array([args.temperature], dtype=np.float32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
         "vocab_mask": vocab_mask,
@@ -1003,11 +985,6 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
     """
     assert args.model_type == "t5"
 
-    if args.temperature != 1.0:
-        # TODO(tianleiwu): implement temperature in BeamSearch operator.
-        print("Skipping parity test as temperature is not implemented in BeamSearch operator")
-        return None
-
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
         return None
@@ -1063,7 +1040,6 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
             eos_token_id=eos_token_id,
             pad_token_id=pad_token_id,
             num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
             bad_words_ids=bad_words_ids,
@@ -1099,7 +1075,6 @@ def test_t5_model(args: argparse.Namespace, use_vocab_mask: bool = False, senten
         "min_length": np.array([args.min_length], dtype=np.int32),
         "num_beams": np.array([args.num_beams], dtype=np.int32),
         "num_return_sequences": np.array([args.num_return_sequences], dtype=np.int32),
-        "temperature": np.array([args.temperature], dtype=np.float32),
         "length_penalty": np.array([args.length_penalty], dtype=np.float32),
         "repetition_penalty": np.array([args.repetition_penalty], dtype=np.float32),
         "vocab_mask": vocab_mask,
