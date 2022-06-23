@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# pylint: disable=missing-docstring
+
 import unittest
 
 import numpy as np
@@ -9,6 +11,8 @@ import torch
 
 
 class OrtOpTests(unittest.TestCase):
+    """test cases for supported eager ops"""
+
     def get_device(self):
         return torch_ort.device()
 
@@ -101,16 +105,18 @@ class OrtOpTests(unittest.TestCase):
     def test_max(self):
         cpu_tensor = torch.rand(10, 10)
         ort_tensor = cpu_tensor.to("ort")
-        y = ort_tensor.max()
-        x = cpu_tensor.max()
-        assert torch.allclose(x, y.cpu())
+        ort_min = ort_tensor.max()
+        cpu_min = cpu_tensor.max()
+        assert torch.allclose(cpu_min, ort_min.cpu())
+        assert cpu_min.dim() == ort_min.dim()
 
     def test_min(self):
         cpu_tensor = torch.rand(10, 10)
         ort_tensor = cpu_tensor.to("ort")
-        y = ort_tensor.min()
-        x = cpu_tensor.min()
-        assert torch.allclose(x, y.cpu())
+        ort_min = ort_tensor.min()
+        cpu_min = cpu_tensor.min()
+        assert torch.allclose(cpu_min, ort_min.cpu())
+        assert cpu_min.dim() == ort_min.dim()
 
     def test_equal(self):
         device = self.get_device()
@@ -151,6 +157,24 @@ class OrtOpTests(unittest.TestCase):
         cpu_result = torch.softmax(cpu_tensor, dim=1)
         ort_result = torch.softmax(ort_tensor, dim=1)
         assert torch.allclose(cpu_result, ort_result.cpu())
+
+    def test_addmm(self):
+        device = self.get_device()
+        size = 4
+        ort_tensor = torch.ones([size, size]).to(device)
+        input_bias = torch.ones([size]).to(device)
+        output = torch.addmm(input_bias, ort_tensor, ort_tensor)
+        expected = torch.ones([size, size]) * 5
+        assert torch.equal(output.to("cpu"), expected)
+
+    def test_argmax(self):
+        device = self.get_device()
+        cpu_tensor = torch.rand(3, 5)
+        ort_tensor = cpu_tensor.to(device)
+        cpu_result = torch.argmax(cpu_tensor, dim=1)
+        ort_result = torch.argmax(ort_tensor, dim=1)
+        assert torch.allclose(cpu_result, ort_result.cpu())
+        assert cpu_result.dim() == ort_result.dim()
 
 
 if __name__ == "__main__":

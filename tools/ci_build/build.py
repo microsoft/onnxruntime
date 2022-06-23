@@ -727,7 +727,7 @@ def is_docker():
 def install_python_deps(numpy_version=""):
     dep_packages = ["setuptools", "wheel", "pytest"]
     dep_packages.append("numpy=={}".format(numpy_version) if numpy_version else "numpy>=1.16.6")
-    dep_packages.append("sympy>=1.1")
+    dep_packages.append("sympy>=1.10")
     dep_packages.append("packaging")
     dep_packages.append("cerberus")
     run_subprocess([sys.executable, "-m", "pip", "install"] + dep_packages)
