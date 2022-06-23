@@ -7,6 +7,8 @@
 // DO NOT UNCOMMENT
 //#include "core/session/onnxruntime_c_api.h"
 
+#include <stdbool.h>
+
 ORT_API2_STATUS(LoadCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Outptr_ OrtCheckpointState** checkpoint_state);
 
 ORT_API2_STATUS(SaveCheckpoint, _In_ const ORTCHAR_T* checkpoint_path, _Inout_ OrtTrainingSession* session,
