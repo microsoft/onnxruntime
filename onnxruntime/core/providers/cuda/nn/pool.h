@@ -16,6 +16,10 @@ class Pool : public CudaKernel, public PoolBase {
   Pool(const OpKernelInfo& info) : CudaKernel(info), PoolBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ protected:
+  // mutex for set cudnn stream
+  mutable OrtMutex cudnn_stream_mutex_;
 };
 
 template <typename T>

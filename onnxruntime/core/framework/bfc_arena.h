@@ -203,7 +203,7 @@ class BFCArena : public IAllocator {
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
 
-  BFCArena::Chunk* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure, Stream* stream, bool enable_cross_stream_reusing);
+  void* AllocateRawInternal(size_t num_bytes, bool dump_log_on_failure, Stream* stream, bool enable_cross_stream_reusing, WaitNotificationFn wait_fn);
 
   static const size_t kMinAllocationBits = 8;
   static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
@@ -504,7 +504,7 @@ public:
   //If size is 0, then this function returns either NULL,
   //or a unique pointer value that can later be successfully
   //passed to free(). Whatever, do not dereference that pointer
-  BFCArena::Chunk* AllocOnStream(size_t size, Stream* current_stream_id);
+  void* AllocOnStream(size_t size, Stream* current_stream_id, WaitNotificationFn wait_fn);
 
   void ReleaseStreamBuffers(Stream* stream);
 

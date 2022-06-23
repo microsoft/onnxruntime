@@ -176,6 +176,7 @@ class CudaKernel : public OpKernel {
   // TODO: this is a tempoarary workaround
   // Remove it before we PR this feature.
   mutable OrtMutex stream_mutex_;
+ protected:
   mutable cudaStream_t stream_;
 };
 

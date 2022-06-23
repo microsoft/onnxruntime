@@ -51,6 +51,8 @@ class BiasSoftmax final : public onnxruntime::cuda::CudaKernel {
  private:
   int64_t softmax_axis_;
   int64_t broadcast_axis_;
+  // mutex for set cudnn stream
+  mutable OrtMutex cudnn_stream_mutex_;
 };
 
 }  // namespace cuda

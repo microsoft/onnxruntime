@@ -28,6 +28,8 @@ class MatMul final : public CudaKernel {
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
+  // mutex for set cublas stream
+  mutable OrtMutex cublas_stream_mutex_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

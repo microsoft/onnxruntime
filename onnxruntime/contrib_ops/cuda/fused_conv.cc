@@ -37,6 +37,9 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
   Status ComputeInternal(OpKernelContext* context) const override {
     CUDNN_RETURN_IF_ERROR(status_);
     std::lock_guard<OrtMutex> lock(Base::s_.mutex);
+    CUDNN_CALL_THROW(cudnnSetStream(Base::CudnnHandle(), Stream()));
+    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
       return Status::OK();

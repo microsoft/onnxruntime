@@ -66,6 +66,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
+    CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+    CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
     bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
     bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);

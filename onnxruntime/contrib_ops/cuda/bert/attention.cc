@@ -64,6 +64,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int past_sequence_length = 0;
   Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
 
+  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
+  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+
   cublasHandle_t cublas = CublasHandle();
   constexpr size_t element_size = sizeof(T);
 

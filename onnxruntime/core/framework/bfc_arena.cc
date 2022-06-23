@@ -257,8 +257,7 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
 }
 
 void* BFCArena::Alloc(size_t size) {
-  auto* chunk = AllocateRawInternal(size, false, nullptr, false);
-  return chunk ? chunk->ptr : nullptr;
+  return AllocateRawInternal(size, false, nullptr, false, nullptr);
 }
 
 void* BFCArena::Reserve(size_t size) {
@@ -297,10 +296,11 @@ size_t BFCArena::AllocatedSize(const void* ptr) {
   return c->size;
 }
 
-BFCArena::Chunk* BFCArena::AllocateRawInternal(size_t num_bytes,
+void* BFCArena::AllocateRawInternal(size_t num_bytes,
                                     bool dump_log_on_failure, 
                                     Stream* stream,
-                                    bool enable_cross_stream_reusing) {
+                                    bool enable_cross_stream_reusing,
+                                    WaitNotificationFn wait_fn) {
   if (num_bytes == 0) {
     LOGS_DEFAULT(VERBOSE) << "tried to allocate 0 bytes";
     return nullptr;
@@ -317,15 +317,24 @@ BFCArena::Chunk* BFCArena::AllocateRawInternal(size_t num_bytes,
   // search without dynamic cross stream reusing first
   auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, false);
   // if not found, and dynamic cross stream reusing is enabled, try again
-  if (!chunk && enable_cross_stream_reusing)
+  if (!chunk && enable_cross_stream_reusing) {
     auto* chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, true);
+    if (chunk->stream && stream && chunk->stream != stream) {
+        auto notificaiton = chunk->stream->CreateNotification(1);
+        notificaiton->ActivateAndUpdate();
+        if (wait_fn)
+          wait_fn(*stream, *notificaiton);
+        stream->UpdateStreamClock(chunk->stream, notificaiton->timestamp);
+        // it should be ok to release the notification now, as the wait is already launch to stream.
+    }
+  }
   if (chunk != nullptr) {
     // if it is on default stream (the new allocate chunk), assign to current stream
     if (chunk->stream == nullptr && stream) {
       chunk->stream = stream;
       chunk->stream_timestamp = stream->timestamp;
     }
-    return chunk;
+    return chunk->ptr;
   }
 
   LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
@@ -341,7 +350,7 @@ BFCArena::Chunk* BFCArena::AllocateRawInternal(size_t num_bytes,
         chunk->stream = stream;
         chunk->stream->timestamp = stream->timestamp;
       }
-      return chunk;
+      return chunk->ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Failed to find a free memory block despite calling Extend. rounded_bytes=",
@@ -788,8 +797,8 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
 
 }
 
-BFCArena::Chunk* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream) {
-  return AllocateRawInternal(size, false, current_stream, enable_cross_stream_reusing_);
+void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream, WaitNotificationFn wait_fn) {
+  return AllocateRawInternal(size, false, current_stream, enable_cross_stream_reusing_, wait_fn);
 }
 
 void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {

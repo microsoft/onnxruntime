@@ -186,6 +186,10 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     }
   }
 
+  // set cudnn stream
+  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+
   int64_t input_count = input_shape.Size();
   IAllocatorUniquePtr<float> temp_X;
   if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
@@ -438,6 +442,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
                          gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         cudaStream_t stream,
                          const TensorShape* input_shape_override) {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const TensorShape& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -447,7 +452,6 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
   auto& output_dims = prepare_reduce_metadata.output_dims;
   auto& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
   auto& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
-  cudaStream_t stream = static_cast<cudaStream_t>(cuda_ep.GetComputeStream());
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
     assert(output.Shape().Size() == 0);
@@ -752,12 +756,16 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   }
 #endif
 
+  // set cudnn stream
+  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+
   PrepareReduceMetadata prepare_reduce_metadata;
   ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));
   Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
   return ReduceComputeCore<T, ReduceTensorIndices>(*cuda_ep_, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes,
-                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
+                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction, Stream());
 }
 
 #define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                                \
@@ -811,6 +819,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     }                                                                                                                          \
                                                                                                                                \
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream()));                                 \
+    std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);                                                                       \
+    CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));                                                                 \
                                                                                                                                \
     size_t indices_bytes = 0;                                                                                                  \
     size_t workspace_bytes = 0;                                                                                                \
@@ -855,7 +865,7 @@ template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
 std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, const TensorShape* input_shape_override) {
+                                      bool fast_reduction, cudaStream_t stream, const TensorShape* input_shape_override) {
   PrepareReduceMetadata prepare_reduce_metadata;
   auto status = PrepareForReduce(&input,
                                  keep_dims,
@@ -870,7 +880,7 @@ std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduc
   auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
 
   status = ReduceComputeCore<T, ReduceTensorIndices>(cuda_ep, input, prepare_reduce_metadata, *output, cudnn_reduce_op, axes,
-                                                     calculate_log, calculate_sqt, log_sum_exp, fast_reduction, input_shape_override);
+                                                     calculate_log, calculate_sqt, log_sum_exp, fast_reduction, stream, input_shape_override);
 
   if (!status.IsOK()) {
     ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
@@ -886,21 +896,21 @@ template std::unique_ptr<Tensor> ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_IND
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, const TensorShape* input_shape_override);
+    bool fast_reduction, cudaStream_t stream, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, const TensorShape* input_shape_override);
+    bool fast_reduction, cudaStream_t stream, const TensorShape* input_shape_override);
 
 template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, const TensorShape* input_shape_override);
+    bool fast_reduction, cudaStream_t stream, const TensorShape* input_shape_override);
 
 }  // namespace ReductionOps
 

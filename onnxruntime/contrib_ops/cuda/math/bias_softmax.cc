@@ -67,6 +67,8 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
     // expect thread blocks can fill SM at high occupancy without overflowing registers
     t_disp.Invoke<DispatchBiasSoftmaxForward>(Stream(), Y, X, B, D, N, D, broadcast_size);
   } else {
+    std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
+    CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
     // need to fallback to add kernel + CUDA DNN library softmax call :/
     ORT_RETURN_IF_ERROR((t_disp.InvokeRet<Status, DispatchBiasSoftMaxForwardViaDnnLibrary>(
         Stream(), CudnnHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y)));

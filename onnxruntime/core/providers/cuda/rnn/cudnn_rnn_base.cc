@@ -144,10 +144,18 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   return Status::OK();
 }
 
+//make dst stream wait on src stream
+static void MakeStreamWaitOnAnother(cudaStream_t src, cudaStream_t dst) {
+  cudaEvent_t current_event;
+  CUDA_CALL_THROW(cudaEventCreateWithFlags(&current_event, cudaEventDisableTiming));
+  CUDA_CALL_THROW(cudaEventRecord(current_event, src));
+  CUDA_CALL_THROW(cudaStreamWaitEvent(dst, current_event));
+  CUDA_CALL_THROW(cudaEventDestroy(current_event));
+}
+
 template <typename T>
 Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
-
   // inputs
   const Tensor* X = ctx->Input<Tensor>(RNN_Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
   ORT_ENFORCE(nullptr != X);
@@ -159,6 +167,21 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (rnn_mode_ == CUDNN_LSTM) {
     initial_c = ctx->Input<Tensor>(RNN_Input_Index::initial_c);  // initial cell. [num_directions_, batch_size, hidden_size_]
   }
+
+  // RNN kernel use cudnn to cache some states during construction, 
+  // this result in cudnn operation happened on default stream, 
+  // even cudnnSetStream won't help to put cudnn kernels to correct stream.
+  // I don't know why, it seems like a bug in cudnn.
+  // to workaround it:
+  //  1. we first let default stream wait on the input stream.
+  //  2. all the computation/memcpy within Rnn kernel running on default stream
+  //  3. before exist, let input stream wait on default stream.
+  // I really don't like it, but didn't find a better solution.
+  stream_ = nullptr;
+  cudaStream_t current_stream = static_cast<cudaStream_t>(ctx->GetComputeStream()->handle);
+  //default stream wait on current stream before launch cudnn
+  MakeStreamWaitOnAnother(current_stream, stream_);
+
 
   int64_t seq_length = X->Shape()[0];
   int64_t batch_size = X->Shape()[1];
@@ -324,10 +347,14 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     // Early terminate for this case since Y data is not required, and Y_h is obtained correctly, no need the following code to retrive Y_h from Y data.
     if (nullptr == Y) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->handle)));
       // Mask on output for 0 sequence batches
       if (zero_seq_count > 0) {
         SetZeroSequences(zero_seq_index_cache_size, zero_seq_index_cache, y_data, y_h_data, y_c_data);
       }
+      //current stream wait on default stream to complete cudnn
+      MakeStreamWaitOnAnother(stream_, current_stream);
       return Status::OK();
     }
   }
@@ -382,7 +409,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
                 reinterpret_cast<CudaT*>(y_h_data),
                 output_size);
   }
-
+  //current stream wait on default stream to complete cudnn
+  MakeStreamWaitOnAnother(stream_, current_stream);
   return Status::OK();
 }
 

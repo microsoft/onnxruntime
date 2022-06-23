@@ -57,6 +57,9 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
 
+  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+
   if (N == 1) {
     // when N == 1, we can treat it as spatial batch normalization in training
     // as the mean/variance would be computed from input
@@ -184,6 +187,9 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
   const int64_t C = x_dims[1];
   const auto one = Consts<CudaT>::One;
   const auto zero = Consts<CudaT>::Zero;
+
+  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
 
   if (N == 1) {
     // when N == 1, we can treat it as spatial batch normalization in training

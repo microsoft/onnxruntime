@@ -222,7 +222,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
-        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter)});
+        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), stream});
       } else {
         ORT_RETURN_IF_ERROR(stream ? session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), stream) :
             session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
@@ -655,7 +655,9 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
         if (it != value_to_stream_map.end()) {
           fetches_streams.push_back(device_streams[it->second]); 
         } else {
-          fetches_streams.push_back(nullptr);
+          // for subgraph, it is possible the graph is empty,
+          // the fetches are come from parent graph.
+          fetches_streams.push_back(parent_stream);
         }
         
       }

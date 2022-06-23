@@ -84,6 +84,9 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
 
+  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+
   CudnnTensor data_desc;
   vector<int64_t> new_dims;
   BatchNormHelper::NormalizeDims(x_shape, new_dims);

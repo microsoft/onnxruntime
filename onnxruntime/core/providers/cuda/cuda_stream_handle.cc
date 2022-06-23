@@ -78,8 +78,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
     stream_handle_registry.RegisterCreateStreamFn(kCudaExecutionProvider, [](const IExecutionProvider* provider) {
       ORT_ENFORCE(provider->Type() == kCudaExecutionProvider);
       cudaStream_t stream = nullptr;
-      //Todo: should we use cudaStreamNonBlocking flag
-      CUDA_CALL_THROW(cudaStreamCreate(&stream));
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
       return std::make_unique<CudaStream>(stream, provider, true);
     });
   else

@@ -17,6 +17,10 @@ class Attention final : public CudaKernel, public AttentionBase {
  public:
   Attention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  // mutex for set cublas stream
+  mutable OrtMutex cublas_stream_mutex_;
 };
 
 }  // namespace cuda

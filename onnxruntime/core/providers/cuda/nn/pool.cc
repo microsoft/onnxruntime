@@ -189,6 +189,9 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     strides.push_back(1);
   }
 
+  std::lock_guard<OrtMutex> lock(cudnn_stream_mutex_);
+  CUDNN_CALL_THROW(cudnnSetStream(CudnnHandle(), Stream()));
+
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
     mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING

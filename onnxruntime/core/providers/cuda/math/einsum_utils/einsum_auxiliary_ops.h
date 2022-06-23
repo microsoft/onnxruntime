@@ -21,13 +21,14 @@ namespace EinsumOp {
 // Holds CUDA assets required for CUDA ops that need to be executed as part of the Einsum flow
 struct EinsumCudaAssets {
   explicit EinsumCudaAssets(cublasHandle_t cublas_handle,
-                            CUDAExecutionProvider* cuda_ep) {
-    cublas_handle_ = cublas_handle;
-    cuda_ep_ = cuda_ep;
-  }
+                            CUDAExecutionProvider* cuda_ep,
+                            cudaStream_t cuda_stream) : cublas_handle_(cublas_handle),
+                                                        cuda_ep_ (cuda_ep), 
+                                                        cuda_stream_(cuda_stream) {}
 
   cublasHandle_t cublas_handle_;
   CUDAExecutionProvider* cuda_ep_;
+  cudaStream_t cuda_stream_;
 };
 
 namespace DeviceHelpers {

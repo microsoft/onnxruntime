@@ -77,6 +77,10 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   auto& device_prop = GetDeviceProp();
+
+  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
+  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+
   // broadcast bias if needed and is present
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();

@@ -325,55 +325,54 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   stream1_notification_a->ActivateAndUpdate();
   stream2.UpdateStreamClock(&stream1, stream1_notification_a->timestamp);*/
 
-  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1);
-  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2);
-  a.Free(stream1_chunk_a->ptr);
-  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2);
-  EXPECT_EQ(stream2_chunk_b->stream, &stream2);
+  auto* stream1_chunk_a = a.AllocOnStream(4096, &stream1, nullptr);
+  auto* stream2_chunk_a = a.AllocOnStream(4096, &stream2, nullptr);
+  a.Free(stream1_chunk_a);
+  auto* stream2_chunk_b = a.AllocOnStream(4096, &stream2, nullptr);
   // stream2 can't reuse stream1's chunk
-  EXPECT_NE(stream2_chunk_b->ptr, stream1_chunk_a->ptr);
-  a.Free(stream2_chunk_a->ptr);
-  auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1);
+  EXPECT_NE(stream2_chunk_b, stream1_chunk_a);
+  a.Free(stream2_chunk_a);
+  auto* stream1_chunk_c = a.AllocOnStream(4096, &stream1, nullptr);
   // it should pick the first chunk
-  EXPECT_EQ(stream1_chunk_c->ptr, stream1_chunk_a->ptr);
+  EXPECT_EQ(stream1_chunk_c, stream1_chunk_a);
 
-  auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1);
+  auto* stream1_chunk_d = a.AllocOnStream(4096, &stream1, nullptr);
   // it shouldn't pick stream2_chunk_a's buffer
-  EXPECT_NE(stream1_chunk_d->ptr, stream2_chunk_a->ptr);
-  a.Free(stream2_chunk_b->ptr);
+  EXPECT_NE(stream1_chunk_d, stream2_chunk_a);
+  a.Free(stream2_chunk_b);
   // test clean stream2
   a.ReleaseStreamBuffers(&stream2);
-  auto stream1_chunk_e = a.AllocOnStream(8192, &stream1);
+  auto stream1_chunk_e = a.AllocOnStream(8192, &stream1, nullptr);
   // now it should pick the stream2_chunk_a's buffer
-  EXPECT_EQ(stream1_chunk_e->ptr, stream2_chunk_a->ptr);
-  a.Free(stream1_chunk_c->ptr);
-  a.Free(stream1_chunk_d->ptr);
+  EXPECT_EQ(stream1_chunk_e, stream2_chunk_a);
+  a.Free(stream1_chunk_c);
+  a.Free(stream1_chunk_d);
   // add stream2 to stream 1 depenency
   auto stream1_notification_a = stream1.CreateNotification(1);
   stream1_notification_a->ActivateAndUpdate();
   stream2.UpdateStreamClock(&stream1, stream1_notification_a->timestamp);
-  auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2);
+  auto* stream2_chunk_c = a.AllocOnStream(4096, &stream2, nullptr);
   // it should pick the first chunk
-  EXPECT_EQ(stream2_chunk_c->ptr, stream1_chunk_c->ptr);
-  auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2);
+  EXPECT_EQ(stream2_chunk_c, stream1_chunk_c);
+  auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2, nullptr);
   // it should pick the third slot
-  EXPECT_EQ(stream2_chunk_d->ptr, stream1_chunk_d->ptr);
+  EXPECT_EQ(stream2_chunk_d, stream1_chunk_d);
   //continue allocate on stream1
-  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1);
-  a.Free(stream1_chunk_f->ptr);
-  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2);
-  EXPECT_NE(stream2_chunk_e->ptr, stream1_chunk_f->ptr);
-  a.Free(stream1_chunk_e->ptr);
+  auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1, nullptr);
+  a.Free(stream1_chunk_f);
+  auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2, nullptr);
+  EXPECT_NE(stream2_chunk_e, stream1_chunk_f);
+  a.Free(stream1_chunk_e);
   // test clean stream1
   a.ReleaseStreamBuffers(&stream1);
-  auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2);
+  auto* stream2_chunk_f = a.AllocOnStream(8192, &stream2, nullptr);
   // now it should pick stream1_chunk_e
-  EXPECT_EQ(stream2_chunk_f->ptr, stream1_chunk_e->ptr);
+  EXPECT_EQ(stream2_chunk_f, stream1_chunk_e);
 
   //cleanup
-  a.Free(stream2_chunk_d->ptr);
-  a.Free(stream2_chunk_e->ptr);
-  a.Free(stream2_chunk_f->ptr);
+  a.Free(stream2_chunk_d);
+  a.Free(stream2_chunk_e);
+  a.Free(stream2_chunk_f);
 }
 
 }  // namespace test

@@ -124,6 +124,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const int ldc = helper.Ldc();
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
+
+  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
+  CUBLAS_CALL_THROW(cublasSetStream(CublasHandle(), Stream()));
+
   if (helper.OutputOffsets().size() == 1) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         Base::CublasHandle(),

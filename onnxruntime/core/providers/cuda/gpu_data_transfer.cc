@@ -45,20 +45,23 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
+  // for the sync version of memcpy, launch to cuda default stream
   if (dst_device.Type() == OrtDevice::GPU) {
     if (src_device.Type() == OrtDevice::GPU) {
-      // copying between GPU, this is non-blocking
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, GetStream(kCudaStreamDefault)));
+        CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice));
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
       }
     } else {
       // copy from other CPU memory to GPU, this is blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyHostToDevice));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
       // copying from GPU to CPU memory, this is blocking
       CUDA_RETURN_IF_ERROR(cudaMemcpy(dst_data, src_data, bytes, cudaMemcpyDeviceToHost));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
   } else {
     // copying between cpu memory
     memcpy(dst_data, src_data, bytes);
@@ -71,7 +74,7 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
-  ORT_ENFORCE(stream && stream->handle && stream->provider && stream->provider->Type() == kCudaExecutionProvider);
+  ORT_ENFORCE(stream && stream->provider && stream->provider->Type() == kCudaExecutionProvider);
 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
