@@ -12,6 +12,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "core/util/qmath.h"
 #include "core/quantization/quantization.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -41,7 +42,9 @@ void RunQAttention(const std::vector<float>& input_data,
                    int number_of_heads,
                    bool is_unidirectional = false,
                    bool use_float16 = false,
-                   int input_hidden_size = 0) {
+                   int input_hidden_size = 0,
+                   bool const_weights = false,
+                   SessionOptions* so_ptr = nullptr) {
   input_hidden_size = (input_hidden_size == 0) ? hidden_size : input_hidden_size;
 
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
@@ -68,7 +71,7 @@ void RunQAttention(const std::vector<float>& input_data,
                             QuantizeTestVector<QInput>(input_data, input_quant_params));
     tester.AddInput<QWeight>("weight",
                              weights_dims,
-                             QuantizeTestVector<QWeight>(weights_data, weight_quant_params));
+                             QuantizeTestVector<QWeight>(weights_data, weight_quant_params), const_weights);
   } else {
     bool force_symmetric = false;
     if constexpr (ep == EP::CUDA) {
@@ -81,17 +84,17 @@ void RunQAttention(const std::vector<float>& input_data,
     tester.AddInput<QWeight>(
         "weight",
         weights_dims,
-        QuantizeLinearTestVector<QWeight>(weights_data, weight_quant_params, force_symmetric));
+        QuantizeLinearTestVector<QWeight>(weights_data, weight_quant_params, force_symmetric), const_weights);
   }
   if (use_float16) {
     tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
     tester.AddInput<MLFloat16>("input_scale", {1}, ToFloat16({input_quant_params.scale}));
-    tester.AddInput<MLFloat16>("weight_scale", {1}, ToFloat16({weight_quant_params.scale}));
+    tester.AddInput<MLFloat16>("weight_scale", {1}, ToFloat16({weight_quant_params.scale}), const_weights);
     tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
   } else {
     tester.AddInput<float>("bias", bias_dims, bias_data);
     tester.AddInput<float>("input_scale", {1}, {input_quant_params.scale});
-    tester.AddInput<float>("weight_scale", {1}, {weight_quant_params.scale});
+    tester.AddInput<float>("weight_scale", {1}, {weight_quant_params.scale}, const_weights);
     tester.AddOutput<float>("output", output_dims, output_data);
   }
 
@@ -103,20 +106,23 @@ void RunQAttention(const std::vector<float>& input_data,
   }
 
   tester.AddInput<QInput>("input_zero_point", {1}, {input_quant_params.zero_point});
-  tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_quant_params.zero_point});
+  tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_quant_params.zero_point}, const_weights);
 
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if constexpr (ep == EP::CUDA) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else if constexpr (ep == EP::CPU) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {  // onednn ep
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultDnnlExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+  }
+
+  if (nullptr == so_ptr) {
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", 
+        {kTensorrtExecutionProvider}, nullptr, &execution_providers);
+  } else {
+    tester.Run(*so_ptr, OpTester::ExpectResult::kExpectSuccess, "",
+        {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   }
 }
 
@@ -399,6 +405,53 @@ TEST(QAttentionTest, QAttentionBatch2) {
 
   RunQAttentionAll(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads);
+}
+
+// AVX2/AVX512 CPU has overflow problem with U8S8 matrix multiplication
+// This test is ensure when precision mode is turned on, the graph
+// transformer convert U8S8 to U8U8 if necessary to produce correct
+// result.
+TEST(QAttentionTest, CPU_U8S8_Precision) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      1.39f, 1.37f, 1.42f, 1.47f,
+      1.32f, 1.44f, 1.33f, 1.4f};
+
+  std::vector<float> weight_data = {
+      9.1f, -0.2f, 0.3f, 9.0f, 1.1f, 9.3f, 9.5f, 0.2f, 9.3f, -0.6f, 9.5f, 8.0f,
+      9.5f, 9.1f, 0.4f, 9.6f, 9.0f, 9.0f, 0.4f, 8.8f, 7.9f, 7.1f, -1.3f, 9.7f,
+      9.3f, 9.2f, 4.0f, 9.2f, 9.6f, 9.8f, 9.7f, 0.2f, 8.4f, 8.0f, 1.2f, 8.5f,
+      9.2f, 9.1f, 0.4f, 9.6f, 9.4f, 9.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 9.9f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_index_data = {2L};
+
+  std::vector<float> output_data = {
+      48.5260010f, 20.6529999f, 15.7064486f, 51.1611328f, 48.5260010f, 20.6529999f, 15.6836147f, 51.1308899f};
+
+  // Need to create resulting integer numbers large enough to trigger u8s8 overflow
+  // in AVX2 and AVX512 CPUs. To make sure it's working, turn off precision mode
+  // (below) and make sure this test fail.
+  quantization::Params<uint8_t> input_quant_params(/*scale=*/0.01f, /*zero_point=*/108);
+  quantization::Params<int8_t> weights_quant_params(/*scale=*/0.05f, /*zero_point=*/-73);
+
+  SessionOptions so;
+  so.use_per_session_threads = false;
+  so.session_logid = "QAttention_U8S8_Precision_Test";
+  so.session_log_verbosity_level = 1;
+  so.execution_mode = ORT_SEQUENTIAL;
+  so.graph_optimization_level = TransformerLevel::Level2;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsAvx2PrecisionMode, "1"));
+  constexpr bool const_weights = true;
+  RunQAttention<uint8_t, int8_t, EP::CPU>(
+      input_data, weight_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
+      batch_size, sequence_length, hidden_size, number_of_heads, false, false, 0, const_weights, &so);
 }
 
 //ONEDNN EP only support 2D raw mask
