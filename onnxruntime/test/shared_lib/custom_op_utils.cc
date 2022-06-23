@@ -222,9 +222,10 @@ StandaloneCustomKernel::StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKe
   ORT_ENFORCE(op_add_, "op_add not initialzied");
   InitTopK(ort_);
   ORT_ENFORCE(op_topk_, "op_topk not initialzied");
+  std::cout << "topk op init" << std::endl;
   InitGru(ort_);
   ORT_ENFORCE(op_gru_, "op_gru not initialzied");
-  std::cout << "all op init" << std::endl;
+  std::cout << "gru op init" << std::endl;
 }
 
 void StandaloneCustomKernel::InitTopK(Ort::CustomOpApi ort) {
