@@ -43,30 +43,7 @@ Status SoftMaxComputeHelper(
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-// cudnnSoftmaxForward/Backward doesn't support BFloat16.
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(is_log_softmax)                                               \
-  template <>                                                                                                  \
-  Status SoftMaxComputeHelper<BFloat16, is_log_softmax>(                                                       \
-      cudaStream_t stream,                                                                                     \
-      const BFloat16* X,                                                                                       \
-      const TensorShape& input_shape,                                                                          \
-      BFloat16* Y,                                                                                             \
-      int64_t axis) {                                                                                          \
-    typedef typename ToCudaType<BFloat16>::MappedType CudaT;                                                   \
-    int64_t N = input_shape.SizeToDimension(axis);                                                             \
-    int64_t D = input_shape.SizeFromDimension(axis);                                                           \
-    auto Y_data = reinterpret_cast<CudaT*>(Y);                                                                 \
-    auto X_data = reinterpret_cast<const CudaT*>(X);                                                           \
-    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(                         \
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N)); \
-    return Status::OK();                                                                                       \
-  }
-
-SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
-    SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(false)
-#endif
+SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16)
 
 #define REGISTER_KERNEL_TYPED(T)                                                           \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
@@ -118,8 +95,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);
 
-        template <typename T>
-        Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T>
+Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& input_shape{X->Shape()};
   size_t rank = input_shape.NumDimensions();
@@ -225,9 +202,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(true)
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 SPECIALIZED_COMPUTE(BFloat16)
-#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

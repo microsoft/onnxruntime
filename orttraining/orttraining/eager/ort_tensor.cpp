@@ -69,7 +69,8 @@ int64_t ORTTensorImpl::numel() const {
 }
 
 bool ORTTensorImpl::is_contiguous(at::MemoryFormat memory_format) const {
-  return true;
+  auto& tensor = tensor_.Get<onnxruntime::Tensor>();
+  return tensor.IsContiguous();
 }
 
 int64_t ORTTensorImpl::size(int64_t d) const {
@@ -80,12 +81,13 @@ int64_t ORTTensorImpl::size(int64_t d) const {
 void ORTTensorImpl::cacheSizeMetadata() {
   // TODO: wrap with change generation guard
   auto& tensor = tensor_.Get<onnxruntime::Tensor>();
-  auto shape = tensor.Shape();
-  auto strides = GetStrides(shape.GetDims());
+  const auto& shape = tensor.Shape();
+  const auto dims = shape.GetDims();
+  auto strides = tensor.Strides();
 
   numel_ = shape.Size();
 
-  sizes_and_strides_.set_sizes(shape.GetDimsAsVector());
+  sizes_and_strides_.set_sizes(c10::IntArrayRef(dims.data(), dims.size()));
 
   for (std::size_t i = 0; i < strides.size(); i++) {
     sizes_and_strides_.stride_at_unchecked(i) = strides[i];

@@ -6,11 +6,14 @@
 #include <random>
 #include <type_traits>
 
+#include <gsl/gsl>
+
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/common/type_utils.h"
+#include "core/framework/tensor.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -146,14 +149,26 @@ inline std::vector<T> FillZeros(const std::vector<int64_t>& dims) {
 
 // Returns a vector of `count` values which start at `start` and change by increments of `step`.
 template <typename T>
-inline std::vector<T> ValueRange(
-    size_t count, T start = static_cast<T>(0), T step = static_cast<T>(1)) {
+inline std::vector<T> ValueRange(size_t count, T start = static_cast<T>(0.f), T step = static_cast<T>(1.f)) {
   std::vector<T> result;
   result.reserve(count);
   T curr = start;
   for (size_t i = 0; i < count; ++i) {
     result.emplace_back(curr);
     curr += step;
+  }
+  return result;
+}
+
+template <>
+inline std::vector<MLFloat16> ValueRange<MLFloat16>(size_t count, MLFloat16 start, MLFloat16 step) {
+  std::vector<MLFloat16> result;
+  result.reserve(count);
+  float curr = start.ToFloat();
+  float f_step = step.ToFloat();
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(MLFloat16(curr));
+    curr += f_step;
   }
   return result;
 }

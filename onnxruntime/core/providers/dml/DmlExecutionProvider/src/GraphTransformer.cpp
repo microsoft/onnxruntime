@@ -9,7 +9,7 @@
 #include "GraphPartitioner.h"
 #include "core/providers/dml/OperatorAuthorHelper/Attributes.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
-#include "core/providers/dml/OperatorAuthorHelper/OperatorRegistration.h"
+#include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_utils.h"
 
@@ -89,14 +89,12 @@ namespace Dml
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
 
-            bool allow64BitInputThroughStrides = false;
             if (!IsNodeSupportedByDml(
                 node,
                 *registry,
                 m_providerImpl->GetSupportedDeviceDataTypeMask(),
-                *m_providerImpl->GetInternalRegistrationInfoMap().get(),
-                allow64BitInputThroughStrides,
-                nullptr))
+                *m_providerImpl->GetInternalRegistrationInfoMap().get()
+                ))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -214,7 +212,7 @@ namespace Dml
                 // Change the name of the attribute to its fused node version
                 std::string fusedAttributeName = Dml::FusionHelpers::GetFusedAttributeName(attribute.first);
                 attribute.second.set_name(fusedAttributeName);
-                node.AddAttribute(fusedAttributeName, attribute.second);
+                node.AddAttributeProto(attribute.second);
             }
         }
     }

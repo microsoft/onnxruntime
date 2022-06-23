@@ -20,10 +20,18 @@ using onnxruntime::Status;
 
 // TODO: Temporary, while we bring up the threadpool impl...
 #include "core/platform/threadpool.h"
+#include "onnxruntime_config.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-result"
+// cmake/external/eigen/unsupported/Eigen/CXX11/../../../Eigen/src/Core/arch/NEON/PacketMath.h:1633:9:
+// error: ‘void* memcpy(void*, const void*, size_t)’ copying an object of non-trivial type ‘Eigen::internal::Packet4c’
+// {aka ‘struct Eigen::internal::eigen_packet_wrapper<int, 2>’} from an array of ‘const int8_t’
+// {aka ‘const signed char’} [-Werror=class-memaccess]
+#ifdef HAS_CLASS_MEMACCESS
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #if defined(__GNUC__)
@@ -35,7 +43,7 @@ static std::once_flag default_pool_init;
 Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool.reset(new DefaultThreadPoolType(core_num));
+    default_pool = std::make_unique<DefaultThreadPoolType>(core_num);
   });
   return default_pool.get();
 }
@@ -51,7 +59,7 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
     outfile.open(path, std::ofstream::out | std::ofstream::app);
     if (!outfile.good()) {
       // at least provide some info on the run
-      std::cerr << "failed to open result file '" << ToMBString(path.c_str()) << "'. will dump stats to output.\n";
+      std::cerr << "failed to open result file '" << ToUTF8String(path.c_str()) << "'. will dump stats to output.\n";
       have_file = false;
       f_include_statistics = true;
     }
@@ -139,6 +147,7 @@ Status PerformanceRunner::Run() {
             << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
             // Time between start and end of run. Less than Total time cost when running requests in parallel.
             << "Total inference run time: " << inference_duration.count() << " s\n"
+            << "Number of inferences per second: " << performance_result_.time_costs.size() / inference_duration.count() << " \n"
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
             << std::endl;
@@ -180,7 +189,9 @@ Status PerformanceRunner::RunParallelDuration() {
       count++;
       counter++;
       tpool->Schedule([this, &counter, &m, &cv]() {
-        session_->ThreadSafeRun();
+        auto status = RunOneIteration<false>();
+        if (!status.IsOK())
+          std::cerr << status.ErrorMessage();
         // Simplified version of Eigen::Barrier
         std::lock_guard<OrtMutex> lg(m);
         counter--;
@@ -244,29 +255,28 @@ static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfi
       return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
     }
 
-    ORT_NOT_IMPLEMENTED(ToMBString(file_path), " is not supported");
+    ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
   }
 
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
     return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
   }
 
-  ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
+  ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
 }
 
 static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_device& rd,
                                                   const PerformanceTestConfig& performance_test_config_,
                                                   const TestModelInfo& test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return std::unique_ptr<TestSession>(
-        new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info));
+    return std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
   }
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
     return new TensorflowTestSession(rd, performance_test_config_, test_model_info);
   }
 #endif
-  ORT_NOT_IMPLEMENTED(ToMBString(performance_test_config_.backend), " is not supported");
+  ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
 }
 
 PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
@@ -291,7 +301,7 @@ bool PerformanceRunner::Initialize() {
   if (CompareCString(model_name.c_str(), ORT_TSTR("test_")) == 0) {
     model_name = model_name.substr(5);
   }
-  std::string narrow_model_name = ToMBString(model_name);
+  std::string narrow_model_name = ToUTF8String(model_name);
   performance_result_.model_name = narrow_model_name;
 
   // ownership semantics are a little unexpected here as the test case takes ownership of the model info

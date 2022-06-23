@@ -6,51 +6,75 @@
 import argparse
 import logging
 import pathlib
+import shutil
 import sys
+import tempfile
 
+from c.assemble_c_pod_package import assemble_c_pod_package
+from objectivec.assemble_objc_pod_package import assemble_objc_pod_package
+from package_assembly_utils import PackageVariant, get_ort_version
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent
 REPO_DIR = SCRIPT_PATH.parents[4]
 
-logging.basicConfig(
-    format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
-    level=logging.DEBUG)
+
+logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger(SCRIPT_PATH.stem)
-
-
-def ort_version():
-    with open(REPO_DIR / "VERSION_NUMBER", mode="r") as version_file:
-        return version_file.read().strip()
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Builds an iOS framework and uses it to assemble iOS pod package files.")
+        description="Builds an iOS framework and uses it to assemble iOS pod package files.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
-    parser.add_argument("--build-dir", type=pathlib.Path, default=REPO_DIR / "build" / "ios_framework",
-                        help="The build directory. This will contain the iOS framework build output.")
-    parser.add_argument("--staging-dir", type=pathlib.Path, default=REPO_DIR / "build" / "ios_pod_staging",
-                        help="The staging directory. This will contain the iOS pod package files. "
-                             "The pod package files do not have dependencies on files in the build directory.")
+    parser.add_argument(
+        "--build-dir",
+        type=pathlib.Path,
+        default=REPO_DIR / "build" / "ios_framework",
+        help="The build directory. This will contain the iOS framework build output.",
+    )
+    parser.add_argument(
+        "--staging-dir",
+        type=pathlib.Path,
+        default=REPO_DIR / "build" / "ios_pod_staging",
+        help="The staging directory. This will contain the iOS pod package files. "
+        "The pod package files do not have dependencies on files in the build directory.",
+    )
 
-    parser.add_argument("--pod-version", default=f"{ort_version()}-local",
-                        help="The version string of the pod. The same version is used for all pods.")
+    parser.add_argument(
+        "--pod-version",
+        default=f"{get_ort_version()}-local",
+        help="The version string of the pod. The same version is used for all pods.",
+    )
 
-    parser.add_argument("--test", action="store_true",
-                        help="Run tests on the framework and pod package files.")
+    parser.add_argument(
+        "--variant",
+        choices=PackageVariant.release_variant_names(),
+        default=PackageVariant.Mobile.name,
+        help="Pod package variant.",
+    )
+
+    parser.add_argument("--test", action="store_true", help="Run tests on the framework and pod package files.")
 
     build_framework_group = parser.add_argument_group(
         title="iOS framework build arguments",
-        description="See the corresponding arguments in build_ios_framework.py for details.")
+        description="See the corresponding arguments in build_ios_framework.py for details.",
+    )
 
     build_framework_group.add_argument("--include-ops-by-config")
-    build_framework_group.add_argument("--build-settings-file", required=True,
-                                       help="The positional argument of build_ios_framework.py.")
-    build_framework_group.add_argument("-b", "--build-ios-framework-arg", action="append",
-                                       dest="build_ios_framework_extra_args", default=[],
-                                       help="Pass an argument through to build_ios_framework.py. "
-                                            "This may be specified multiple times.")
+    build_framework_group.add_argument(
+        "--build-settings-file", required=True, help="The positional argument of build_ios_framework.py."
+    )
+    build_framework_group.add_argument(
+        "-b",
+        "--build-ios-framework-arg",
+        action="append",
+        dest="build_ios_framework_extra_args",
+        default=[],
+        help="Pass an argument through to build_ios_framework.py. " "This may be specified multiple times.",
+    )
 
     args = parser.parse_args()
 
@@ -62,8 +86,11 @@ def run(arg_list, cwd=None):
     import shlex
     import subprocess
 
-    log.info("Running subprocess in '{0}'\n  {1}".format(
-        cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list])))
+    log.info(
+        "Running subprocess in '{0}'\n  {1}".format(
+            cwd or os.getcwd(), " ".join([shlex.quote(arg) for arg in arg_list])
+        )
+    )
 
     return subprocess.run(arg_list, check=True, cwd=cwd)
 
@@ -74,57 +101,83 @@ def main():
     build_dir = args.build_dir.resolve()
     staging_dir = args.staging_dir.resolve()
 
+    # build framework
+    package_variant = PackageVariant[args.variant]
+    framework_info_file = build_dir / "framework_info.json"
+
     log.info("Building iOS framework.")
 
-    build_ios_framework_args = \
-        [sys.executable, str(SCRIPT_DIR / "build_ios_framework.py")] + args.build_ios_framework_extra_args
+    build_ios_framework_args = [
+        sys.executable,
+        str(SCRIPT_DIR / "build_ios_framework.py"),
+    ] + args.build_ios_framework_extra_args
 
     if args.include_ops_by_config is not None:
         build_ios_framework_args += ["--include_ops_by_config", args.include_ops_by_config]
 
-    build_ios_framework_args += ["--build_dir", str(build_dir),
-                                 args.build_settings_file]
+    build_ios_framework_args += ["--build_dir", str(build_dir), args.build_settings_file]
 
     run(build_ios_framework_args)
 
     if args.test:
-        test_ios_packages_args = [sys.executable, str(SCRIPT_DIR / "test_ios_packages.py"),
-                                  "--fail_if_cocoapods_missing",
-                                  "--framework_info_file", str(build_dir / "framework_info.json"),
-                                  "--c_framework_dir", str(build_dir / "framework_out")]
+        test_ios_packages_args = [
+            sys.executable,
+            str(SCRIPT_DIR / "test_ios_packages.py"),
+            "--fail_if_cocoapods_missing",
+            "--framework_info_file",
+            str(framework_info_file),
+            "--c_framework_dir",
+            str(build_dir / "framework_out"),
+            "--variant",
+            package_variant.name,
+        ]
 
         run(test_ios_packages_args)
 
-    log.info("Assembling onnxruntime-mobile-c pod.")
+    # assemble pods and then move them to their target locations (staging_dir/<pod_name>)
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=staging_dir) as pod_assembly_dir_name:
+        pod_assembly_dir = pathlib.Path(pod_assembly_dir_name)
 
-    assemble_c_pod_args = [sys.executable, str(SCRIPT_DIR / "c" / "assemble_c_pod_package.py"),
-                           "--staging-dir", str(staging_dir / "onnxruntime-mobile-c"),
-                           "--pod-version", args.pod_version,
-                           "--framework-info-file", str(build_dir / "framework_info.json"),
-                           "--framework-dir", str(build_dir / "framework_out" / "onnxruntime.xcframework"),
-                           "--public-headers-dir", str(build_dir / "framework_out" / "Headers")]
+        log.info("Assembling C/C++ pod.")
 
-    run(assemble_c_pod_args)
+        c_pod_staging_dir = pod_assembly_dir / "c_pod"
+        c_pod_name, c_pod_podspec = assemble_c_pod_package(
+            staging_dir=c_pod_staging_dir,
+            pod_version=args.pod_version,
+            framework_info_file=framework_info_file,
+            framework_dir=build_dir / "framework_out" / "onnxruntime.xcframework",
+            public_headers_dir=build_dir / "framework_out" / "Headers",
+            package_variant=package_variant,
+        )
 
-    if args.test:
-        test_c_pod_args = ["pod", "lib", "lint", "--verbose"]
+        if args.test:
+            test_c_pod_args = ["pod", "lib", "lint", "--verbose"]
 
-        run(test_c_pod_args, cwd=staging_dir / "onnxruntime-mobile-c")
+            run(test_c_pod_args, cwd=c_pod_staging_dir)
 
-    log.info("Assembling onnxruntime-mobile-objc pod.")
+        log.info("Assembling Objective-C pod.")
 
-    assemble_objc_pod_args = [sys.executable, str(SCRIPT_DIR / "objectivec" / "assemble_objc_pod_package.py"),
-                              "--staging-dir", str(staging_dir / "onnxruntime-mobile-objc"),
-                              "--pod-version", args.pod_version,
-                              "--framework-info-file", str(build_dir / "framework_info.json")]
+        objc_pod_staging_dir = pod_assembly_dir / "objc_pod"
+        objc_pod_name, objc_pod_podspec = assemble_objc_pod_package(
+            staging_dir=objc_pod_staging_dir,
+            pod_version=args.pod_version,
+            framework_info_file=framework_info_file,
+            package_variant=package_variant,
+        )
 
-    run(assemble_objc_pod_args)
+        if args.test:
+            test_objc_pod_args = ["pod", "lib", "lint", "--verbose", f"--include-podspecs={c_pod_podspec}"]
 
-    if args.test:
-        c_podspec_file = staging_dir / "onnxruntime-mobile-c" / "onnxruntime-mobile-c.podspec"
-        test_objc_pod_args = ["pod", "lib", "lint", "--verbose", f"--include-podspecs={c_podspec_file}"]
+            run(test_objc_pod_args, cwd=objc_pod_staging_dir)
 
-        run(test_objc_pod_args, cwd=staging_dir / "onnxruntime-mobile-objc")
+        def move_dir(src, dst):
+            if dst.is_dir():
+                shutil.rmtree(dst)
+            shutil.move(src, dst)
+
+        move_dir(c_pod_staging_dir, staging_dir / c_pod_name)
+        move_dir(objc_pod_staging_dir, staging_dir / objc_pod_name)
 
     log.info(f"Successfully assembled iOS pods at '{staging_dir}'.")
 

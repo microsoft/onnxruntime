@@ -23,12 +23,12 @@ DIVGRAD_REGISTER_KERNEL_TYPED(MLFloat16)
 DIVGRAD_REGISTER_KERNEL_TYPED(float)
 DIVGRAD_REGISTER_KERNEL_TYPED(double)
 
-std::vector<int64_t> prepended_dimension_1(const TensorShape& shape, size_t total_rank) {
+TensorShapeVector prepended_dimension_1(const TensorShape& shape, size_t total_rank) {
   size_t input_rank = shape.NumDimensions();
   if (input_rank == total_rank)
-    return shape.GetDimsAsVector();
+    return shape.AsShapeVector();
 
-  std::vector<int64_t> dims(total_rank, 1);
+  TensorShapeVector dims(total_rank, 1);
 
   // https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
   // for property 3 of Multidirectional Broadcasting, we need to prepended with a dimension of length 1.
@@ -95,7 +95,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<CudaT*>(db_data));
 
       if (da_output_tensor) {
-        std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
+        auto a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
         ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_da_data,
             dy_shape,
@@ -124,7 +124,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<CudaT*>(temp_db_data));
 
       if (db_output_tensor) {
-        std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
+        auto b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
         ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
@@ -169,7 +169,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       }
 
       if (db_output_tensor) {
-        std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
+        auto b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
         ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
@@ -205,18 +205,18 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       ImplDivGrad<CudaT>(
           Stream(),
           prepare.output_rank_or_simple_broadcast,
-          &prepare.lhs_padded_strides,
+          prepare.lhs_padded_strides,
           prepare_a_data,
-          &prepare.rhs_padded_strides,
+          prepare.rhs_padded_strides,
           prepare_b_data,
           prepare_dy_data,
           dy_shape.Size(),
-          &prepare.fdm_output_strides,
+          prepare.fdm_output_strides,
           reinterpret_cast<CudaT*>(da_data_ref),
           reinterpret_cast<CudaT*>(db_data_ref));
 
       if (need_reduce_da) {
-        std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
+        auto a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
         ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             da_data_ref,
             dy_shape,
@@ -227,7 +227,7 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       }
 
       if (need_reduce_db) {
-        std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
+        auto b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
         ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             db_data_ref,
             dy_shape,

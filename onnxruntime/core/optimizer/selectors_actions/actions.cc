@@ -18,7 +18,7 @@ namespace {
 // As we can't easily remove a NodeArg from the Node::OutputDefs for the node being removed, we do not check if the
 // node provides graph outputs here. The optimizer must correctly handle nodes producing graph outputs
 // and not attempt to delete one of those nodes unless it has created a new source for the graph output.
-bool CanSafelyRemoveNode(const Node& node_to_remove, const std::unordered_set<const Node*>& removal_set) {
+bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const Node*>& removal_set) {
   bool safe = true;
   for (auto iter = node_to_remove.OutputEdgesBegin(), end = node_to_remove.OutputEdgesEnd(); iter != end; ++iter) {
     if (removal_set.find(&iter->GetNode()) == removal_set.cend()) {
@@ -31,8 +31,10 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const std::unordered_set<co
 }
 
 // remove nodes if it is 'safe' to do so according to the checks in CanSafelyRemoveNode.
-void SafelyRemoveNodes(Graph& graph, const std::vector<Node*>& nodes_to_remove, const Node* ignore_target) {
-  std::unordered_set<const Node*> removal_set(nodes_to_remove.cbegin(), nodes_to_remove.cend());
+void SafelyRemoveNodes(Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
+  InlinedHashSet<const Node*> removal_set;
+  removal_set.reserve(nodes_to_remove.size());
+  removal_set.insert(nodes_to_remove.cbegin(), nodes_to_remove.cend());
 
   for (Node* node : nodes_to_remove) {
     if (node && node != ignore_target && CanSafelyRemoveNode(*node, removal_set)) {
@@ -59,22 +61,22 @@ Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes)
   return node_remover_.Run(graph, selected_nodes);
 }
 
-ReplaceWithNew::ReplaceWithNew(const std::string& domain,
-                               const std::string& op_name,
-                               std::vector<NodeAndMoveInfo>&& value_moves)
-    : domain_{domain}, op_{op_name}, value_moves_{std ::move(value_moves)} {
-}
-
 // adds a replacement node to the graph
 // if provided, `replacement_ptr` is set to the replacement node if successful
 static Status CreateReplacementNode(Graph& graph,
                                     const NodesToOptimize& selected_nodes,
-                                    const std::string& op_type,
-                                    const std::string& domain,
-                                    const std::vector<NodeAndMoveInfo>& value_moves,
+                                    std::string op_type,
+                                    std::string domain,
+                                    NodeAttributes extra_attributes,
+                                    std::vector<NodeAndMoveInfo> value_moves,
                                     bool only_update_dest_definitions,
                                     Node** replacement_ptr) {
   const auto& target = selected_nodes.Target();
+
+  auto replacement_attributes = target.GetAttributes();
+  for (auto& [name, value] : extra_attributes) {
+    replacement_attributes.insert_or_assign(name, std::move(value));
+  }
 
   // create node. we'll populate the input and output defs via moves
   auto& replacement = graph.AddNode(target.Name(),
@@ -82,10 +84,11 @@ static Status CreateReplacementNode(Graph& graph,
                                     target.Description(),
                                     {},  // input defs
                                     {},  // output defs
-                                    &target.GetAttributes(),
+                                    &replacement_attributes,
                                     domain);
 
-  replacement.SetExecutionProviderType(kCpuExecutionProvider);
+  const auto& target_provider = target.GetExecutionProviderType();
+  replacement.SetExecutionProviderType(target_provider.empty() ? kCpuExecutionProvider : target_provider);
 
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, replacement, value_moves, only_update_dest_definitions));
 
@@ -97,20 +100,28 @@ static Status CreateReplacementNode(Graph& graph,
 }
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
-  const auto op_type = OpType(selected_nodes);
-  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, op_type, domain_, value_moves_,
+  const RuntimeState runtime_state{graph, selected_nodes};
+  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
+                                            OpType(runtime_state),
+                                            Domain(runtime_state),
+                                            ExtraAttributes(runtime_state),
+                                            ValueMoves(runtime_state),
                                             /* only_update_dest_definitions */ false, nullptr));
   return node_remover_.Run(graph, selected_nodes);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                                  const RuntimeOptimizationSaveContext& save_context,
+                                  const SatRuntimeOptimizationSaveContext& save_context,
                                   SavedState& saved_state, bool& graph_modified) const {
   // make temporary node, use it to look up kernel def hash, remove temporary node
-  const auto op_type = OpType(selected_nodes);
+  const RuntimeState runtime_state{graph, selected_nodes};
   Node* replacement{};
-  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes, op_type, domain_, value_moves_,
+  ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
+                                            OpType(runtime_state),
+                                            Domain(runtime_state),
+                                            ExtraAttributes(runtime_state),
+                                            ValueMoves(runtime_state),
                                             /* only_update_dest_definitions */ true, &replacement));
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*replacement), "Failed to set node op schema.");

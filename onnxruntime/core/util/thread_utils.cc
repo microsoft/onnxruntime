@@ -1,4 +1,8 @@
-#include "thread_utils.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/util/thread_utils.h"
+
 #include <algorithm>
 
 #ifdef _WIN32
@@ -32,35 +36,29 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   to.custom_create_thread_fn = options.custom_create_thread_fn;
   to.custom_thread_creation_options = options.custom_thread_creation_options;
   to.custom_join_thread_fn = options.custom_join_thread_fn;
+  to.dynamic_block_base_ = options.dynamic_block_base_;
   if (to.custom_create_thread_fn) {
     ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set");
   }
 
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                              options.allow_spinning);
+                                      options.allow_spinning);
 }
 
 std::unique_ptr<ThreadPool>
 CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
-// If openmp is enabled we don't want to create any additional threadpools for sequential execution.
-// However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
-// to be created for parallel execution.
-#ifdef _OPENMP
-  ORT_UNUSED_PARAMETER(env);
-  ORT_UNUSED_PARAMETER(options);
-  if (tpool_type != ThreadPoolType::INTER_OP) {
-    return nullptr;
-  } else {
-    return CreateThreadPoolHelper(env, options);
-  }
-#else
+  // If openmp is enabled we don't want to create any additional threadpools for sequential execution.
+  // However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
+  // to be created for parallel execution.
   ORT_UNUSED_PARAMETER(tpool_type);
   return CreateThreadPoolHelper(env, options);
-#endif
 }
 
 }  // namespace concurrency
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 namespace OrtApis {
 ORT_API_STATUS_IMPL(CreateThreadingOptions, _Outptr_ OrtThreadingOptions** out) {
   *out = new OrtThreadingOptions();

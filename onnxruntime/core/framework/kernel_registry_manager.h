@@ -74,13 +74,13 @@ class KernelRegistryManager {
   /**
    * Search the kernel registries given a kernel def hash.
    */
-  bool SearchKernelRegistriesByHash(uint64_t kernel_def_hash,
+  bool SearchKernelRegistriesByHash(HashValue kernel_def_hash,
                                     const KernelCreateInfo** kernel_create_info) const;
 
-  std::unique_ptr<OpKernel> CreateKernel(const onnxruntime::Node& node,
-                                         const IExecutionProvider& execution_provider,
-                                         const SessionState& session_state,
-                                         const KernelCreateInfo& kernel_create_info) const ORT_MUST_USE_RESULT;
+  Status CreateKernel(const onnxruntime::Node& node,
+                      const IExecutionProvider& execution_provider,
+                      SessionState& session_state,
+                      const KernelCreateInfo& kernel_create_info, std::unique_ptr<OpKernel>& out) const;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelRegistryManager);
 

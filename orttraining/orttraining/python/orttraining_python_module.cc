@@ -2,11 +2,16 @@
 // Licensed under the MIT License.
 
 #include "orttraining/python/orttraining_pybind_common.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/provider_bridge_ort.h"
+
+#ifdef ENABLE_EAGER_MODE
+#include "orttraining/python/orttraining_python_module_eager.h"
+#endif
 
 namespace onnxruntime {
 namespace python {
@@ -129,7 +134,7 @@ bool GetProviderInstanceHash(const std::string& type,
 
 ORTTrainingPythonEnv::ORTTrainingPythonEnv(){
   OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                std::unique_ptr<ISink>{new CLogSink{}},
+                                                std::make_unique<CLogSink>(),
                                                 Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                 &SessionObjectInitializer::default_logger_id),
                                             ort_env_));
@@ -207,6 +212,32 @@ Environment& GetTrainingORTEnv() {
   }
   return ort_training_env->GetORTEnv();
 }
+
+#ifdef ENABLE_EAGER_MODE
+using namespace torch_ort::eager;
+static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
+
+void InitializeBackendsManager() {
+  auto initialize = [&]() {
+    static bool initialized = false;
+    if (initialized) {
+      return;
+    }
+    // Initialization of the module
+    auto& env = onnxruntime::python::GetTrainingORTEnv();
+    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env.GetLoggingManager()->DefaultLogger());
+    initialized = true;
+  };
+  initialize();
+}
+
+ORTBackendsManager& GetORTBackendsManager() {
+  if (!ort_backends_manager_instance) {
+    InitializeBackendsManager();
+  }
+  return *ort_backends_manager_instance;
+}
+#endif
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsMap& original_provider_options_map,
@@ -325,6 +356,9 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
     ort_training_env = nullptr;
+#ifdef ENABLE_EAGER_MODE
+    ort_backends_manager_instance = nullptr;
+#endif
   }));
 }
 

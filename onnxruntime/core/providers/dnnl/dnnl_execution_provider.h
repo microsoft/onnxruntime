@@ -34,7 +34,7 @@ class DNNLExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
-  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
@@ -46,6 +46,8 @@ class DNNLExecutionProvider : public IExecutionProvider {
   // dump subgraphs to onnx format for debugging purpose
   bool dump_subgraphs_ = false;
   bool debug_log_ = false;
+  //enable fusion by default
+  bool enable_fusion_ = true;
 };
 
 }  // namespace onnxruntime

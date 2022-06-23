@@ -39,7 +39,7 @@ class ExecutionProviders {
     exec_provider_options_[provider_id] = p_exec_provider->GetProviderOptions();
 
     exec_provider_ids_.push_back(provider_id);
-    exec_providers_.push_back(std::move(p_exec_provider));
+    exec_providers_.push_back(p_exec_provider);
     return Status::OK();
   }
 
@@ -68,6 +68,10 @@ class ExecutionProviders {
   bool Empty() const { return exec_providers_.empty(); }
 
   size_t NumProviders() const { return exec_providers_.size(); }
+
+  using iterator = typename std::vector<std::shared_ptr<IExecutionProvider>>::iterator;
+  iterator begin() noexcept { return exec_providers_.begin(); }
+  iterator end() noexcept { return exec_providers_.end(); }
 
   using const_iterator = typename std::vector<std::shared_ptr<IExecutionProvider>>::const_iterator;
   const_iterator begin() const noexcept { return exec_providers_.cbegin(); }

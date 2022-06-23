@@ -87,15 +87,46 @@ QDQReplaceWithNew MatMulIntToFloatReplacer() {
       MoveAndAppend(dq2, ArgType::kInput, 2, ArgType::kInput),
       MoveAll(target, ArgType::kOutput)};
 
-  return QDQReplaceWithNew(kMSDomain, std::move(moves), "MatMulIntegerToFloat");
+  return QDQReplaceWithNew(kMSDomain, "MatMulIntegerToFloat", std::move(moves));
 }
 
 struct SetOptionalZeroPoint {
   static void UpdateNodes(Graph&, const NodesToOptimize& selected_nodes);
 
  private:
-  static const ONNX_NAMESPACE::TensorProto optional_zero_point_int8_;
-  static const ONNX_NAMESPACE::TensorProto optional_zero_point_uint8_;
+  // We assume this function won't fail
+  static const ONNX_NAMESPACE::TensorProto init_optional_zero_point_int8() {
+    // guid as arbitrary name to provide a unique value
+    const char* const name = "init_optional_zero_point_int8_b33fd0fa-cd7b-4b10-ae5a-df64cabfe1f8";
+    std::array<uint8_t, 1> a{0};
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_name(name);
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    tensor_proto.set_raw_data(a.data(), sizeof(int8_t));
+
+    return tensor_proto;
+  };
+
+  // We assume this function won't fail
+  static const ONNX_NAMESPACE::TensorProto init_optional_zero_point_uint8() {
+    // guid as arbitrary name to provide a unique value
+    const char* const name = "init_optional_zero_point_uint8_b33f88f7-c464-43e3-8692-97ac832bb14a";
+    std::array<uint8_t, 1> a{0};
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_name(name);
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    tensor_proto.set_raw_data(a.data(), sizeof(uint8_t));
+
+    return tensor_proto;
+  };
+  static ONNX_NAMESPACE::TensorProto GetOptionalZeroPointInt8() {
+    static ONNX_NAMESPACE::TensorProto proto = init_optional_zero_point_int8();
+    return proto;
+  }
+  static ONNX_NAMESPACE::TensorProto GetOptionalZeroPointUint8() {
+    static ONNX_NAMESPACE::TensorProto proto = init_optional_zero_point_uint8();
+    return proto;
+  }
 };
 
 void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& selected_nodes) {
@@ -126,8 +157,8 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
     }
 
     const ONNX_NAMESPACE::TensorProto& zp_tensor_proto = is_default_zp_signed
-                                                             ? optional_zero_point_int8_
-                                                             : optional_zero_point_uint8_;
+                                                             ? GetOptionalZeroPointInt8()
+                                                             : GetOptionalZeroPointUint8();
 
     const ONNX_NAMESPACE::TensorProto* dummy_zp_tensor_proto;
     if (!graph.GetInitializedTensor(zp_tensor_proto.name(), dummy_zp_tensor_proto)) {
@@ -143,26 +174,6 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
   }
 }
 
-const ONNX_NAMESPACE::TensorProto SetOptionalZeroPoint::optional_zero_point_int8_ = []() {
-  const char* const name = "b33fd0fa-cd7b-4b10-ae5a-df64cabfe1f8";  // guid as arbitrary name to provide a unique value
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.set_name(name);
-  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-  tensor_proto.set_raw_data(std::vector<int8_t>{0}.data(), sizeof(int8_t));
-
-  return tensor_proto;
-}();
-
-const ONNX_NAMESPACE::TensorProto SetOptionalZeroPoint::optional_zero_point_uint8_ = []() {
-  const char* const name = "b33f88f7-c464-43e3-8692-97ac832bb14a";  // guid as arbitrary name to provide a unique value
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.set_name(name);
-  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-  tensor_proto.set_raw_data(std::vector<uint8_t>{0}.data(), sizeof(uint8_t));
-
-  return tensor_proto;
-}();
-
 }  // namespace
 
 Status QDQReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
@@ -172,7 +183,7 @@ Status QDQReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_node
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                                     const RuntimeOptimizationSaveContext& save_context,
+                                     const SatRuntimeOptimizationSaveContext& save_context,
                                      SavedState& saved_state, bool& graph_modified) const {
   SetOptionalZeroPoint::UpdateNodes(graph, selected_nodes);
   graph_modified = true;
@@ -180,16 +191,16 @@ Status QDQReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& select
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(const std::string& domain)
-    : ReplaceWithQLinear(domain, UnaryMoves()) {
+UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(std::string domain)
+    : ReplaceWithQLinear(std::move(domain), UnaryMoves()) {
 }
 
-BinaryReplaceWithQLinear::BinaryReplaceWithQLinear(const std::string& domain)
-    : ReplaceWithQLinear(domain, BinaryMoves()) {
+BinaryReplaceWithQLinear::BinaryReplaceWithQLinear(std::string domain)
+    : ReplaceWithQLinear(std::move(domain), BinaryMoves()) {
 }
 
-VariadicReplaceWithQLinear::VariadicReplaceWithQLinear(const std::string& domain)
-    : ReplaceWithQLinear(domain, VariadicMoves()) {
+VariadicReplaceWithQLinear::VariadicReplaceWithQLinear(std::string domain)
+    : ReplaceWithQLinear(std::move(domain), VariadicMoves()) {
 }
 
 ConvReplaceWithQLinear::ConvReplaceWithQLinear()
@@ -211,6 +222,68 @@ Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& select
     return qlinear_matmul_replacer_.Run(graph, selected_nodes);
   }
 }
+
+static std::vector<NodeAndMoveInfo> GetGemmMoveInfo(bool does_q_node_exist) {
+  NTO::NodeLocation dq_A{NTO::NodeType::kInput, 0};
+  NTO::NodeLocation dq_B{NTO::NodeType::kInput, 1};
+  NTO::NodeLocation dq_bias{NTO::NodeType::kInput, 2};
+  NTO::NodeLocation target{NTO::NodeType::kTarget, 0};
+  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
+
+  std::vector<NodeAndMoveInfo> moves{
+      MoveAll(dq_A, ArgType::kInput),                                            // append all inputs from DQ of A
+      MoveAll(dq_B, ArgType::kInput),                                            // append all inputs from DQ of B
+      MoveAndAppend(dq_bias, ArgType::kInput, 0, ArgType::kInput, true, true)};  // (optional) append bias
+
+  if (does_q_node_exist) {
+    moves.push_back(MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput));  // append scale (input 1) from Q
+    moves.push_back(MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput));  // append zp (input 2) from Q
+    moves.push_back(MoveAll(q, ArgType::kOutput));                           // and use the outputs from Q
+  } else {
+    moves.push_back(MoveAll(target, ArgType::kOutput));
+  }
+
+  return moves;
+}
+
+GemmReplaceWithQuant::GemmReplaceWithQuant()
+    : qgemm_with_float_as_output_replacer_(kMSDomain, "QGemm", GetGemmMoveInfo(false)),
+      qgemm_with_8bits_as_output_replacer_(kMSDomain, "QGemm", GetGemmMoveInfo(true)) {
+}
+
+Status GemmReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  RemoveAttrBeta(selected_nodes);
+  bool is_output_float = selected_nodes.num_outputs == 0;
+  if (is_output_float) {
+    return qgemm_with_float_as_output_replacer_.Run(graph, selected_nodes);
+  }
+
+  return qgemm_with_8bits_as_output_replacer_.Run(graph, selected_nodes);
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+Status GemmReplaceWithQuant::RunForSave(Graph& graph,
+                                        const NodesToOptimize& selected_nodes,
+                                        const SatRuntimeOptimizationSaveContext& save_context,
+                                        SavedState& saved_state,
+                                        bool& graph_modified) const {
+  RemoveAttrBeta(selected_nodes);
+  bool is_output_float = selected_nodes.num_outputs == 0;
+  if (is_output_float) {
+    return qgemm_with_float_as_output_replacer_.RunForSave(graph,
+                                                           selected_nodes,
+                                                           save_context,
+                                                           saved_state,
+                                                           graph_modified);
+  }
+
+  return qgemm_with_8bits_as_output_replacer_.RunForSave(graph,
+                                                         selected_nodes,
+                                                         save_context,
+                                                         saved_state,
+                                                         graph_modified);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace QDQ
 }  // namespace onnxruntime

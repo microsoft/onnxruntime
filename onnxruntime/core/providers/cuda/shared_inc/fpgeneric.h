@@ -15,6 +15,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 
+using namespace onnxruntime;
 using namespace onnxruntime::cuda;
 
 // Generalize library calls to be use in template functions
@@ -112,31 +113,22 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
-                                       cublasOperation_t transa,
-                                       cublasOperation_t transb,
-                                       int m, int n, int k,
-                                       const nv_bfloat16* alpha,
-                                       const nv_bfloat16* A, int lda,
-                                       const nv_bfloat16* B, int ldb,
-                                       const nv_bfloat16* beta,
-                                       nv_bfloat16* C, int ldc,
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+                                       int n, int k, const BFloat16* alpha, const BFloat16* A, int lda,
+                                       const BFloat16* B, int ldb, const BFloat16* beta, BFloat16* C, int ldc,
                                        const cudaDeviceProp& /*prop*/) {
-  float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
-  float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
+  float h_a = alpha->ToFloat();
+  float h_b = beta->ToFloat();
 
   // accumulating in FP32
-  return cublasGemmEx(handle,
-                      transa,
-                      transb,
-                      m, n, k,
-                      &h_a,
-                      A, CUDA_R_16BF, lda,
-                      B, CUDA_R_16BF, ldb,
-                      &h_b,
-                      C, CUDA_R_16BF, ldc,
-                      CUBLAS_COMPUTE_32F,
-                      CUBLAS_GEMM_DEFAULT);
+  return cublasGemmEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, B, CUDA_R_16BF, ldb, &h_b, C,
+                      CUDA_R_16BF, ldc, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
+}
+#else
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int, int,
+                                       const BFloat16*, const BFloat16*, int, const BFloat16*, int, const BFloat16*,
+                                       BFloat16*, int, const cudaDeviceProp&) {
+  return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 #endif
 
@@ -238,33 +230,24 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
-                                              cublasOperation_t transa,
-                                              cublasOperation_t transb,
-                                              int m, int n, int k,
-                                              const nv_bfloat16* alpha,
-                                              const nv_bfloat16* Aarray[], int lda,
-                                              const nv_bfloat16* Barray[], int ldb,
-                                              const nv_bfloat16* beta,
-                                              nv_bfloat16* Carray[], int ldc,
-                                              int batch_count,
+inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb,
+                                              int m, int n, int k, const BFloat16* alpha, const BFloat16* Aarray[],
+                                              int lda, const BFloat16* Barray[], int ldb, const BFloat16* beta,
+                                              BFloat16* Carray[], int ldc, int batch_count,
                                               const cudaDeviceProp& /*prop*/) {
-  float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
-  float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
+  float h_a = alpha->ToFloat();
+  float h_b = beta->ToFloat();
 
   // accumulating in FP32
-  return cublasGemmBatchedEx(handle,
-                             transa,
-                             transb,
-                             m, n, k,
-                             &h_a,
-                             (const void**)Aarray, CUDA_R_16BF, lda,
-                             (const void**)Barray, CUDA_R_16BF, ldb,
-                             &h_b,
-                             (void**)Carray, CUDA_R_16BF, ldc,
-                             batch_count,
-                             CUDA_R_32F,
-                             CUBLAS_GEMM_DEFAULT);
+  return cublasGemmBatchedEx(handle, transa, transb, m, n, k, &h_a, (const void**)Aarray, CUDA_R_16BF, lda,
+                             (const void**)Barray, CUDA_R_16BF, ldb, &h_b, (void**)Carray, CUDA_R_16BF, ldc,
+                             batch_count, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+}
+#else
+inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int, int,
+                                              const BFloat16*, const BFloat16*[], int, const BFloat16*[], int,
+                                              const BFloat16*, BFloat16*[], int, int, const cudaDeviceProp&) {
+  return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 #endif
 
@@ -429,35 +412,26 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
-                                                     cublasOperation_t transa,
-                                                     cublasOperation_t transb,
-                                                     int m, int n, int k,
-                                                     const nv_bfloat16* alpha,
-                                                     const nv_bfloat16* A, int lda,
-                                                     long long int strideA,
-                                                     const nv_bfloat16* B, int ldb,
-                                                     long long int strideB,
-                                                     const nv_bfloat16* beta,
-                                                     nv_bfloat16* C, int ldc,
-                                                     long long int strideC,
-                                                     int batch_count,
+inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle, cublasOperation_t transa,
+                                                     cublasOperation_t transb, int m, int n, int k,
+                                                     const BFloat16* alpha, const BFloat16* A, int lda,
+                                                     long long int strideA, const BFloat16* B, int ldb,
+                                                     long long int strideB, const BFloat16* beta, BFloat16* C, int ldc,
+                                                     long long int strideC, int batch_count,
                                                      const cudaDeviceProp& /*prop*/) {
-  float h_a = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(alpha)).ToFloat();
-  float h_b = onnxruntime::BFloat16(*reinterpret_cast<const uint16_t*>(beta)).ToFloat();
+  float h_a = alpha->ToFloat();
+  float h_b = beta->ToFloat();
   // accumulating in FP32
-  return cublasGemmStridedBatchedEx(handle,
-                                    transa,
-                                    transb,
-                                    m, n, k,
-                                    &h_a,
-                                    A, CUDA_R_16BF, lda, strideA,
-                                    B, CUDA_R_16BF, ldb, strideB,
-                                    &h_b,
-                                    C, CUDA_R_16BF, ldc, strideC,
-                                    batch_count,
-                                    CUDA_R_32F,
+  return cublasGemmStridedBatchedEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, strideA, B, CUDA_R_16BF,
+                                    ldb, strideB, &h_b, C, CUDA_R_16BF, ldc, strideC, batch_count, CUDA_R_32F,
                                     CUBLAS_GEMM_DEFAULT);
+}
+#else
+inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int,
+                                                     int, const BFloat16*, const BFloat16*, int, long long int,
+                                                     const BFloat16*, int, long long int, const BFloat16*, BFloat16*,
+                                                     int, long long int, int, const cudaDeviceProp&) {
+  return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 #endif
 
@@ -482,7 +456,4 @@ inline cublasStatus_t cublasCopyHelper(cudaStream_t, cublasHandle_t handle, int 
 }
 
 cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const half* x, int incx, half* y, int incy);
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const nv_bfloat16* x, int incx, nv_bfloat16* y, int incy);
-#endif
+cublasStatus_t cublasCopyHelper(cudaStream_t stream, cublasHandle_t handle, int n, const BFloat16* x, int incx, BFloat16* y, int incy);

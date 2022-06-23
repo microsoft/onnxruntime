@@ -11,12 +11,12 @@ namespace test {
 TEST(RoIPoolTest, MaxRoiPool) {
   OpTester test("MaxRoiPool");
 
-  const int64_t pooled_height = 1, pooled_width = 1;
+  constexpr int64_t pooled_height = 1, pooled_width = 1;
   test.AddAttribute("pooled_shape", std::vector<int64_t>{pooled_height, pooled_width});
 
-  const int H = 6, W = 6;
-  const int image_size = H * W;
-  const int input_channels = 3;
+  constexpr int H = 6, W = 6;
+  constexpr int image_size = H * W;
+  constexpr int input_channels = 3;
   std::vector<float> input;
   for (int i = 0; i < input_channels * image_size; i++)
     input.push_back(1.0f * i / 10);

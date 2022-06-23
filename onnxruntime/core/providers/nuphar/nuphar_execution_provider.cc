@@ -29,7 +29,7 @@ thread_local std::unique_ptr<std::unordered_map<std::string, int64_t>> NupharExe
 thread_local int NupharExecutionProvider::per_model_fused_count_ = 0;
 
 static std::string GetCurrentHostTargetString() {
-#if USE_TVM_WITH_LLVM
+#if USE_NUPHAR_TVM_WITH_LLVM
   // auto detect from CPU ID
   const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   if (cpu_id_info.HasAVX512f()) {
@@ -42,7 +42,7 @@ static std::string GetCurrentHostTargetString() {
   return llvm_target_str;
 #else
   return stackvm_target_str;
-#endif  // USE_TVM_WITH_LLVM
+#endif  // USE_NUPHAR_TVM_WITH_LLVM
 }
 
 NupharExecutionProvider::NupharExecutionProvider(const NupharExecutionProviderInfo& info)

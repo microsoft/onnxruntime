@@ -55,7 +55,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   int head_size = hidden_size / num_heads_;
 
-  std::vector<int64_t> output_shape(3);
+  TensorShapeVector output_shape(3);
   output_shape[0] = shape[0];
   output_shape[1] = shape[1];
   output_shape[2] = static_cast<int64_t>(hidden_size);

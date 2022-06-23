@@ -8,6 +8,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
@@ -329,6 +330,9 @@ struct TensorCheck<BFloat16> {
 
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+    threshold = 0.05f;  // expect at least 95% close
+#endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
         EXPECT_TRUE(std::isnan(f_expected[i])) << "Expected NaN. i:" << i << ", provider_type: " << provider_type;
@@ -547,10 +551,10 @@ void OpTester::AddShapeToTensorData(NodeArg& node_arg, gsl::span<const int64_t> 
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, const std::vector<int64_t>& dims) {
+static std::unique_ptr<SparseTensor> MakeSparseTensor(MLDataType data_type, const gsl::span<const int64_t>& dims) {
   TensorShape shape{dims};
   auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-  auto p_tensor = std::make_unique<SparseTensor>(data_type, shape, allocator);
+  auto p_tensor = std::make_unique<SparseTensor>(data_type, shape, std::move(allocator));
   return p_tensor;
 }
 
@@ -560,7 +564,7 @@ void OpTester::CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst) {
 }
 
 NodeArg OpTester::MakeSparseNodeArg(int32_t dtype, const char* name,
-                                    const std::vector<int64_t>& dims, const std::vector<std::string>* dim_params) {
+                                    const gsl::span<const int64_t>& dims, const std::vector<std::string>* dim_params) {
   std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
   TSparseTensorProto type_proto(dtype, add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
   NodeArg node_arg(name, &type_proto.proto);
@@ -582,7 +586,7 @@ void OpTester::AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg,
 void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
                                       MLDataType data_type,
                                       const char* name,
-                                      const std::vector<int64_t>& dims,
+                                      gsl::span<const int64_t> dims,
                                       gsl::span<const gsl::byte> values,
                                       gsl::span<const int64_t> indices,
                                       const CheckParams& check_params,
@@ -603,7 +607,7 @@ void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
 
 void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
                                          const char* name,
-                                         const std::vector<int64_t>& dims,
+                                         gsl::span<const int64_t> dims,
                                          gsl::span<const std::string> values,
                                          gsl::span<const int64_t> indices,
                                          const std::vector<std::string>* dim_params) {
@@ -626,7 +630,7 @@ void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
 void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
                                       MLDataType data_type,
                                       const char* name,
-                                      const std::vector<int64_t>& dims,
+                                      gsl::span<const int64_t> dims,
                                       gsl::span<const gsl::byte> values,
                                       gsl::span<const int64_t> inner_indices,
                                       gsl::span<const int64_t> outer_indices,
@@ -650,7 +654,7 @@ void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
 
 void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
                                          const char* name,
-                                         const std::vector<int64_t>& dims,
+                                         gsl::span<const int64_t> dims,
                                          gsl::span<const std::string> values,
                                          gsl::span<const int64_t> inner_indices,
                                          gsl::span<const int64_t> outer_indices,
@@ -706,7 +710,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
 
 std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
     const std::unordered_map<std::string, int>& extra_domain_to_version,
-    bool allow_released_onnx_opset_only) {
+    const ModelOptions& model_options) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
@@ -736,7 +740,8 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   auto p_model = std::make_unique<onnxruntime::Model>(
       "test", false, ModelMetaData(), PathString(), custom_schema_registries_,
       domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-      DefaultLoggingManager().DefaultLogger(), allow_released_onnx_opset_only);
+      DefaultLoggingManager().DefaultLogger(),
+      model_options);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
@@ -853,9 +858,9 @@ std::vector<OrtValue> OpTester::ExecuteModel(
             if (add_shape_to_tensor_data_) {
               auto out_shape_proto = expected_data.def_.Shape();
               EXPECT_TRUE(out_shape_proto != nullptr);
-              const auto& tensor_shape =
+              const auto tensor_shape =
                   utils::GetTensorShapeFromTensorShapeProto(*out_shape_proto);
-              const auto& inferred_dims = tensor_shape.GetDims();
+              const auto inferred_dims = tensor_shape.GetDims();
               const auto& expected_shape =
                   expected_data.data_.Get<Tensor>().Shape();
               EXPECT_TRUE(inferred_dims.size() ==
@@ -949,7 +954,11 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    auto p_model = !cache_enabled ? BuildGraph({}, allow_released_onnx_opset_only) : cached_model_;
+    const bool strict_shape_type_inference = so.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "1") == "1";
+    const ModelOptions model_options(allow_released_onnx_opset_only,
+                                     strict_shape_type_inference);
+    auto p_model = !cache_enabled ? BuildGraph({}, model_options) : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
@@ -991,6 +1000,12 @@ void OpTester::Run(
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
+#ifdef USE_TENSORRT
+    // only run trt ep to reduce test time
+    static const std::string all_provider_types[] = {
+        kTensorrtExecutionProvider,
+    };
+#else
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
@@ -1004,7 +1019,10 @@ void OpTester::Run(
         kNnapiExecutionProvider,
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
+        kSnpeExecutionProvider,
+        kXnnpackExecutionProvider,
     };
+#endif
 
     bool has_run = false;
 
@@ -1096,6 +1114,11 @@ void OpTester::Run(
           execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
+        else if (provider_type == onnxruntime::kSnpeExecutionProvider)
+          execution_provider = DefaultSnpeExecutionProvider();
+        else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
+          execution_provider = DefaultXnnpackExecutionProvider();
+
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -1112,9 +1135,11 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
+              // provider_type == onnxruntime::kTvmExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||
-              provider_type == onnxruntime::kDnnlExecutionProvider)
+              provider_type == onnxruntime::kDnnlExecutionProvider ||
+              provider_type == onnxruntime::kSnpeExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
@@ -1164,8 +1189,14 @@ void OpTester::Run(
         cur_provider = "not set";
       }
 
+#ifdef USE_TENSORRT
+      // We are allowing tests to be run with only TensorRT EP, but TensorRT EP may not support all tests and may be in excluded providers list.
+      // So, no registered EPs were able to run the model is okay for this situation.
+      ORT_UNUSED_PARAMETER(has_run);
+#else
       EXPECT_TRUE(has_run)
           << "No registered execution providers were able to run the model.";
+#endif
     }
   }
   ORT_CATCH(const std::exception& ex) {

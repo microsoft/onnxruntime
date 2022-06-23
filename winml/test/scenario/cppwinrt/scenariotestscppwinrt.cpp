@@ -136,7 +136,10 @@ static void Scenario1LoadBindEvalDefault() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"model.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
   // create a session on the default device
-  LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::Default));
+  auto device = LearningModelDevice(LearningModelDeviceKind::Default);
+  LearningModelSession session(model, device);
+  LearningModelSession session2(model, device);
+  LearningModelSession session3(model, device);
   // create a binding set
   LearningModelBinding binding(session);
   // bind the input and the output buffers by name
@@ -259,6 +262,14 @@ static void Scenario6BindWithProperties() {
     auto bitmapPixelFormatProperty = wf::PropertyValue::CreateInt32(intFromBitmapPixelFormat);
     // insert it in the property set
     propertySet.Insert(L"BitmapPixelFormat", bitmapPixelFormatProperty);
+
+    // make a LearningModelPixelRange
+    LearningModelPixelRange pixelRange = LearningModelPixelRange::ZeroTo255;
+    // translate it to an int so it can be used as a PropertyValue;
+    int intFromLearningModelPixelRange = static_cast<int>(pixelRange);
+    auto pixelRangeProperty = wf::PropertyValue::CreateInt32(intFromLearningModelPixelRange);
+    // insert it in the property set
+    propertySet.Insert(L"PixelRange", pixelRangeProperty);
 
     // bind with properties
     WINML_EXPECT_NO_THROW(binding.Bind(input.Name(), imageValue, propertySet));

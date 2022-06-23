@@ -5,9 +5,9 @@
 
 #include "gsl/gsl"
 
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -173,7 +173,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto output_dimensions = input_shape.GetDimsAsVector();
+  auto output_dimensions = input_shape.AsShapeVector();
 
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
@@ -197,7 +197,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
           copy_data<T>(src, dst, count);
         });
 
-    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+    input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
   }
 
   return Status::OK();

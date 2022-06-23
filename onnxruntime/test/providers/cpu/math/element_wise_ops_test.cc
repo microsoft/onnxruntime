@@ -14,11 +14,44 @@ namespace test {
 std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) {
   std::vector<MLFloat16> output;
   std::transform(input.begin(), input.end(), std::back_inserter(output),
-                 [](float fl) {
-                   return MLFloat16(math::floatToHalf(fl));
-                 });
+                 [](float fl) { return MLFloat16(math::floatToHalf(fl)); });
   return output;
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
+                 const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& rhs_dim,
+                 const std::initializer_list<float>& rhs_values, const std::vector<int64_t>& out_dim,
+                 const std::initializer_list<float>& out_values) {
+  {
+    OpTester tester(op_name, 14);
+    tester.AddInput<MLFloat16>("A", lhs_dim, MakeMLFloat16(lhs_values));
+    tester.AddInput<MLFloat16>("B", rhs_dim, MakeMLFloat16(rhs_values));
+    tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+
+  {
+    OpTester tester(op_name, 14);
+    tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
+    tester.AddInput<BFloat16>("B", rhs_dim, MakeBFloat16(rhs_values));
+    tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+#endif
 
 TEST(MathOpTest, DimWithZeroHandling) {
   auto run = [](OpTester& tester) {
@@ -89,23 +122,22 @@ TEST(MathOpTest, Add_int64) {
 TEST(MathOpTest, Add_float) {
   OpTester test("Add");
   std::vector<int64_t> dims{3, 3};
-  test.AddInput<float>("A", dims,
-                       {1.0f, 2.0f, -1.0f,
-                        0.0f, 1.5f, -100.0f,
-                        -5.4f, 9.3f, -10000.0f});
-  test.AddInput<float>("B", dims,
-                       {-1.0f, 4.4f, 432.3f,
-                        0.0f, 3.5f, 64.0f,
-                        -5.4f, 9.3f, 10000.0f});
-  test.AddOutput<float>("C", dims,
-                        {0.0f, 6.4f, 431.3f,
-                         0.0f, 5.0f, -36.0f,
-                         -10.8f, 18.6f, 0.0f});
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, -1.0f, 0.0f, 1.5f, -100.0f, -5.4f, 9.3f, -10000.0f};
+  std::initializer_list<float> rhs_values{-1.0f, 4.4f, 432.3f, 0.0f, 3.5f, 64.0f, -5.4f, 9.3f, 10000.0f};
+  std::initializer_list<float> out_values{0.0f, 6.4f, 431.3f, 0.0f, 5.0f, -36.0f, -10.8f, 18.6f, 0.0f};
+  test.AddInput<float>("A", dims, lhs_values);
+  test.AddInput<float>("B", dims, rhs_values);
+  test.AddOutput<float>("C", dims, out_values);
 
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_GPU_GP16) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch for FP16
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy mismatch for FP16
 #else
   test.Run();
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  TestFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
 
@@ -131,58 +163,61 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
   OpTester test("Add");
 
   std::vector<int64_t> dims{3, 3};
-  test.AddInput<float>("A", dims,
-                       {1.0f, 2.0f, 3.0f,
-                        4.0f, 5.0f, 6.0f,
-                        7.0f, 8.0f, 9.0f});
-  test.AddInput<float>("B", {3, 1},
-                       {3.0f,
-                        2.0f,
-                        1.0f});
-  test.AddOutput<float>("C", dims,
-                        {4.0f, 5.0f, 6.0f,
-                         6.0f, 7.0f, 8.0f,
-                         8.0f, 9.0f, 10.0f});
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::initializer_list<float> rhs_values{3.0f, 2.0f, 1.0f};
+  std::initializer_list<float> out_values{4.0f, 5.0f, 6.0f, 6.0f, 7.0f, 8.0f, 8.0f, 9.0f, 10.0f};
+  test.AddInput<float>("A", dims, lhs_values);
+  test.AddInput<float>("B", {3, 1}, rhs_values);
+  test.AddOutput<float>("C", dims, out_values);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  TestFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
   OpTester test("Add");
-
-  test.AddInput<float>("A", {3, 1},
-                       {3.0f,
-                        2.0f,
-                        1.0f});
-  test.AddInput<float>("B", {3},
-                       {1.0f, 2.0f, 3.0f});
-  test.AddOutput<float>("C", {3, 3},
-                        {4.0f, 5.0f, 6.0f,
-                         3.0f, 4.0f, 5.0f,
-                         2.0f, 3.0f, 4.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
+  std::initializer_list<float> lhs_values{3.0f, 2.0f, 1.0f};
+  std::initializer_list<float> rhs_values{1.0f, 2.0f, 3.0f};
+  std::initializer_list<float> out_values{4.0f, 5.0f, 6.0f, 3.0f, 4.0f, 5.0f, 2.0f, 3.0f, 4.0f};
+  test.AddInput<float>("A", {3, 1}, lhs_values);
+  test.AddInput<float>("B", {3}, rhs_values);
+  test.AddOutput<float>("C", {3, 3}, out_values);
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || \
+    defined(OPENVINO_CONFIG_VAD_M)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider,
+            kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  TestFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
 #endif
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
   OpTester test("Add");
-
-  test.AddInput<float>("A", {3},
-                       {1.0f, 2.0f, 3.0f});
-  test.AddInput<float>("B", {3, 1},
-                       {3.0f,
-                        2.0f,
-                        1.0f});
-  test.AddOutput<float>("C", {3, 3},
-                        {4.0f, 5.0f, 6.0f,
-                         3.0f, 4.0f, 5.0f,
-                         2.0f, 3.0f, 4.0f});
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, 3.0f};
+  std::initializer_list<float> rhs_values{3.0f, 2.0f, 1.0f};
+  std::initializer_list<float> out_values{4.0f, 5.0f, 6.0f, 3.0f, 4.0f, 5.0f, 2.0f, 3.0f, 4.0f};
+  test.AddInput<float>("A", {3}, lhs_values);
+  test.AddInput<float>("B", {3, 1}, rhs_values);
+  test.AddOutput<float>("C", {3, 3}, out_values);
 #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider,
+            kOpenVINOExecutionProvider});  // OpenVINO: disabled temporarily due to accurarcy issues
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: got C with shape [3, 1]
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  TestFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
 #endif
 }
 
@@ -364,22 +399,21 @@ TEST(MathOpTest, Sub_int64) {
 TEST(MathOpTest, Sub) {
   OpTester test("Sub");
   std::vector<int64_t> dims{3, 3};
-  test.AddInput<float>("A", dims,
-                       {1.0f, 2.0f, -1.0f,
-                        0.0f, 1.5f, -100.0f,
-                        -5.4f, 9.3f, -10000.0f});
-  test.AddInput<float>("B", dims,
-                       {-1.0f, 4.4f, 432.3f,
-                        0.0f, 3.5f, 64.0f,
-                        -5.4f, 9.3f, 10000.0f});
-  test.AddOutput<float>("C", dims,
-                        {2.0f, -2.4f, -433.3f,
-                         0.0f, -2.0f, -164.0f,
-                         0.0f, 0.0f, -20000.0f});
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, -1.0f, 0.0f, 1.5f, -100.0f, -5.4f, 9.3f, -10000.0f};
+  std::initializer_list<float> rhs_values{-1.0f, 4.4f, 432.3f, 0.0f, 3.5f, 64.0f, -5.4f, 9.3f, 10000.0f};
+  std::initializer_list<float> out_values{2.0f, -2.4f, -433.3f, 0.0f, -2.0f, -164.0f, 0.0f, 0.0f, -20000.0f};
+  test.AddInput<float>("A", dims, lhs_values);
+  test.AddInput<float>("B", dims, rhs_values);
+  test.AddOutput<float>("C", dims, out_values);
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kOpenVINOExecutionProvider});  // OpenVINO EP: Disabled due to accuracy mismatch for FP16
 #else
   test.Run();
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  TestFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
 
@@ -422,23 +456,22 @@ TEST(MathOpTest, Mul_int64) {
 TEST(MathOpTest, Mul) {
   OpTester test("Mul");
   std::vector<int64_t> dims{3, 3};
-  test.AddInput<float>("A", dims,
-                       {1.0f, 2.0f, -1.0f,
-                        0.0f, 1.5f, -100.0f, -5.4f,
-                        9.30f, -10000.0f});
-  test.AddInput<float>("B", dims,
-                       {-1.0f, 4.4f, 432.3f,
-                        0.0f, 3.5f, 64.0f, -5.4f,
-                        9.30f, 10000.0f});
-  test.AddOutput<float>("C", dims,
-                        {-1.0f, 8.8f, -432.3f,
-                         0.0f, 5.25f, -6400.0f,
-                         29.16f, 86.49f, -100000000.0f});
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, -1.0f, 0.0f, 1.5f, -100.0f, -5.0f, 9.30f, -10000.0f};
+  std::initializer_list<float> rhs_values{-1.0f, 4.4f, 432.3f, 0.0f, 3.5f, 64.0f, -5.4f, 9.0f, 10000.0f};
+  std::initializer_list<float> out_values{-1.0f, 8.8f, -432.3f, 0.0f, 5.25f, -6400.0f, 27.0f, 83.7f, -100000000.0f};
+  test.AddInput<float>("A", dims, lhs_values);
+  test.AddInput<float>("B", dims, rhs_values);
+  test.AddOutput<float>("C", dims, out_values);
 
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy issues for MYRIAD FP16
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to accuracy issues for MYRIAD FP16
 #else
   test.Run();
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  TestFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
 
@@ -463,19 +496,21 @@ TEST(MathOpTest, Div_int64) {
 TEST(MathOpTest, Div) {
   OpTester test("Div");
   std::vector<int64_t> dims{2, 3};
-  test.AddInput<float>("A", dims,
-                       {1000.0f, 1.0f, 6.0f,
-                        0.0f, -10.0f, -1.0f});
-  test.AddInput<float>("B", dims,
-                       {1000.0f, 2.0f, 3.0f,
-                        1.0f, -1.0f, 4.0f});
-  test.AddOutput<float>("C", dims,
-                        {1.0f, 0.5f, 2.0f,
-                         0.0f, 10.0f, -0.25f});
+  std::initializer_list<float> lhs_values{1000.0f, 1.0f, 6.0f, 0.0f, -10.0f, -1.0f};
+  std::initializer_list<float> rhs_values{1000.0f, 2.0f, 3.0f, 1.0f, -1.0f, 4.0f};
+  std::initializer_list<float> out_values{1.0f, 0.5f, 2.0f, 0.0f, 10.0f, -0.25f};
+  test.AddInput<float>("A", dims, lhs_values);
+  test.AddInput<float>("B", dims, rhs_values);
+  test.AddOutput<float>("C", dims, out_values);
 #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO EP: Hardware limitation
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kOpenVINOExecutionProvider});  // OpenVINO EP: Hardware limitation
 #else
   test.Run();
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  TestFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
 
@@ -1070,7 +1105,7 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   OpTester test{"Sum", 8};
 
-  const auto dims = shape.GetDimsAsVector();
+  const auto dims = GetShapeVector(shape);
   const std::vector<element_type> input_data(shape.Size(), 1);
 
   for (size_t i = 0; i < num_inputs; ++i) {
@@ -1571,7 +1606,6 @@ TEST(MathOpTest, Xor) {
   test.AddOutput<bool>("C", dims, {false, true, true, false});
   test.Run();
 }
-
 
 TEST(MathOpTest, Xor_Issue8880) {
   OpTester test("Xor");
@@ -2247,7 +2281,7 @@ TEST(MathOpTest, ErfMoreData) {
   test.Run();
 }
 
-const int ModOp_ver = 10;
+constexpr int ModOp_ver = 10;
 
 TEST(ModOpTest, Fmod_float_mixed_sign) {
   OpTester test("Mod", ModOp_ver);

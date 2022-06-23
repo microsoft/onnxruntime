@@ -228,26 +228,18 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
 namespace {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define ALL_IEEE_FLOAT_DATA_TYPES MLFloat16, float, double, BFloat16
-#else
-#define ALL_IEEE_FLOAT_DATA_TYPES MLFloat16, float, double
-#endif
+using SumOp = VariadicElementwiseOp<variadic_elementwise_ops::Sum, MLFloat16, float, double, BFloat16>;
 
-using SumOp = VariadicElementwiseOp<
-    variadic_elementwise_ops::Sum,
-    ALL_IEEE_FLOAT_DATA_TYPES>;
+using MinOp = VariadicElementwiseOp<variadic_elementwise_ops::Min, uint32_t, uint64_t, int32_t, int64_t, MLFloat16,
+                                    float, double, BFloat16>;
 
-using MinOp = VariadicElementwiseOp<
-    variadic_elementwise_ops::Min,
-    uint32_t, uint64_t, int32_t, int64_t, ALL_IEEE_FLOAT_DATA_TYPES>;
+using MaxOp = VariadicElementwiseOp<variadic_elementwise_ops::Max, uint32_t, uint64_t, int32_t, int64_t, MLFloat16,
+                                    float, double, BFloat16>;
 
-using MaxOp = VariadicElementwiseOp<
-    variadic_elementwise_ops::Max,
-    uint32_t, uint64_t, int32_t, int64_t, ALL_IEEE_FLOAT_DATA_TYPES>;
-
-const DeleteOnUnloadPtr<std::vector<MLDataType>> k_uzilhfd_datatypes = new std::vector<MLDataType>(BuildKernelDefConstraints<uint32_t, uint64_t, int32_t, int64_t, ALL_IEEE_FLOAT_DATA_TYPES>());
-const DeleteOnUnloadPtr<std::vector<MLDataType>> k_hfd_datatypes = new std::vector<MLDataType>(BuildKernelDefConstraints<ALL_IEEE_FLOAT_DATA_TYPES>());
+const DeleteOnUnloadPtr<std::vector<MLDataType>> k_uzilhfd_datatypes = new std::vector<MLDataType>(
+    BuildKernelDefConstraints<uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>());
+const DeleteOnUnloadPtr<std::vector<MLDataType>> k_hfd_datatypes =
+    new std::vector<MLDataType>(BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>());
 
 }  // namespace
 

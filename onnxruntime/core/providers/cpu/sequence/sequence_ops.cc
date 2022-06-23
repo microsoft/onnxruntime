@@ -4,10 +4,10 @@
 #include "core/providers/cpu/sequence/sequence_ops.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -69,7 +69,7 @@ static int64_t GetSeqIdx(const Tensor& idx_tensor) {
   return seq_idx;
 }
 
-bool ValidateSeqIdx(int64_t input_seq_idx, int64_t seq_size) {
+constexpr bool ValidateSeqIdx(int64_t input_seq_idx, int64_t seq_size) {
   bool retval = false;
   if (input_seq_idx < 0) {
     retval = input_seq_idx <= -1 && input_seq_idx >= -seq_size;
@@ -506,7 +506,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto output_dimensions = input_shape.GetDimsAsVector();
+  auto output_dimensions = input_shape.AsShapeVector();
   std::vector<Tensor> tensors;
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
@@ -536,11 +536,11 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
           copy_data<T>(src, dst, count);
         });
 
-    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+    input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
 
     // if keep_dims = 0, reshape the tensor by dropping the dimension corresponding to 'axis'
     if (use_keep_dims && keepdims_ == 0) {
-      std::vector<int64_t> new_dims;
+      TensorShapeVector new_dims;
       new_dims.reserve(output_dimensions.size() - 1);
       for (int64_t idx = 0, end = static_cast<int64_t>(output_dimensions.size()); idx < end; ++idx) {
         if (idx != axis) {

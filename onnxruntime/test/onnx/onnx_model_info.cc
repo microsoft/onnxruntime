@@ -55,7 +55,7 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
   (void)Env::Default().FileClose(model_fd);
   {
     const RE2::Anchor re2_anchor = RE2::UNANCHORED;
-    const std::string model_url_string = ToMBString(model_url);
+    const std::string model_url_string = ToUTF8String(model_url);
     re2::StringPiece text(model_url_string);
     re2::StringPiece submatch;
     re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip

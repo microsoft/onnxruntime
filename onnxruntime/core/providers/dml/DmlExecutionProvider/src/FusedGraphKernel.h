@@ -8,7 +8,9 @@ namespace Dml
 {
     onnxruntime::OpKernel* CreateFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info, 
-        const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
-        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap
+        const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
+        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+        const gsl::span<const std::string> fusedNodeOutputArgOriginalNames
     );
 } // namespace Dml

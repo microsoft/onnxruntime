@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include "core/common/inlined_containers.h"
 #include "core/codegen/common/common.h"
 #include "core/graph/graph.h"
 #include "core/providers/nuphar/common/analysis/analysis.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace nuphar {
@@ -31,9 +33,9 @@ class OutputAliasAnalysis : public NupharAnalysis {
   // a map from an output alias to its input
   std::map<NodeKey, const onnxruntime::NodeArg*> alias_use_defs_;
 
-  void Traverse(const std::vector<const Node*>& nodes,
-                const std::set<std::string>& graph_inputs,
-                const std::set<std::string>& graph_outputs);
+  void Traverse(gsl::span<const Node* const> nodes,
+                const InlinedHashSet<std::string_view>& graph_inputs,
+                const InlinedHashSet<std::string_view>& graph_outputs);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OutputAliasAnalysis);

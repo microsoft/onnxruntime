@@ -2,6 +2,8 @@
 /script/
 /test/
 
+/dist/**/*.report.html
+
 /types/**/*.d.ts
 !/types/lib/**/*.d.ts
 

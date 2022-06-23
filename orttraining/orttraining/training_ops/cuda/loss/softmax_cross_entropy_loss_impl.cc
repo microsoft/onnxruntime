@@ -28,7 +28,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create())                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
-          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                      \
       Class<T, Tin>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
@@ -40,7 +40,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),   \
       Class<T, Tin>);
 
 template <typename T, typename Tin>
@@ -92,7 +92,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
   }
 
   OrtValue transpose_output;
-  std::vector<int64_t> new_shape;
+  TensorShapeVector new_shape;
   std::vector<size_t> permutations;
   AllocatorPtr alloc;
   const OpKernelInfo& info = OpKernel::Info();
@@ -220,7 +220,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   T* d_logit_data = d_logit->template MutableData<T>();
   const T* weight_data = nullptr;
   OrtValue transpose_output;
-  std::vector<int64_t> new_shape;
+  TensorShapeVector new_shape;
   std::vector<size_t> permutations;
   AllocatorPtr alloc;
   const OpKernelInfo& info = OpKernel::Info();
@@ -308,22 +308,26 @@ INSTANTIATE_VERSIONED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kO
 INSTANTIATE_VERSIONED_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, MLFloat16, int64_t, kOnnxDomain, 12, 12)
 INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, float, int64_t, kOnnxDomain, 13)
 INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, MLFloat16, int64_t, kOnnxDomain, 13)
+INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLoss, BFloat16, int64_t, kOnnxDomain, 13)
 INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, float, int64_t, kMSDomain, 1)
 INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, MLFloat16, int64_t, kMSDomain, 1)
+INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, BFloat16, int64_t, kMSDomain, 1)
 
 #define REGISTER_KERNEL_INTERNAL_TYPED(OpName, ClassName, T, Tin, CpuInputIndex)                      \
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(OpName, kMSDomain, 1, T, Tin, kCudaExecutionProvider,             \
                                     (*KernelDefBuilder::Create())                                     \
                                         .InputMemoryType(OrtMemTypeCPUInput, CpuInputIndex)           \
                                         .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-                                        .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>())    \
+                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())    \
                                         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
                                     ClassName<T, Tin>);
 
 REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternal, SoftmaxCrossEntropyLoss, float, int64_t, 3)
 REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternal, SoftmaxCrossEntropyLoss, MLFloat16, int64_t, 3)
+REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternal, SoftmaxCrossEntropyLoss, BFloat16, int64_t, 3)
 REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternalGrad, SoftmaxCrossEntropyLossGrad, float, int64_t, 4)
 REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternalGrad, SoftmaxCrossEntropyLossGrad, MLFloat16, int64_t, 4)
+REGISTER_KERNEL_INTERNAL_TYPED(SoftmaxCrossEntropyLossInternalGrad, SoftmaxCrossEntropyLossGrad, BFloat16, int64_t, 4)
 
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -10,6 +10,7 @@ namespace AI {
 namespace MachineLearning {
 namespace Adapter {
 
+ORT_API(void, ReleaseThreadPool, OrtThreadPool*);
 ORT_API(void, ReleaseModel, OrtModel*);
 ORT_API(void, ReleaseExecutionProvider, OrtExecutionProvider*);
 
@@ -24,6 +25,7 @@ ORT_API_STATUS(CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ 
 ORT_API_STATUS(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
 ORT_API_STATUS(ModelGetAuthor, _In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetName, _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len);
+ORT_API_STATUS(ModelSetName, _In_ const OrtModel* model, _In_ const char* name);
 ORT_API_STATUS(ModelGetDomain, _In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetDescription, _In_ const OrtModel* model, _Out_ const char** const description, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetVersion, _In_ const OrtModel* model, _Out_ int64_t* version);
@@ -43,7 +45,7 @@ ORT_API_STATUS(SaveModel, _In_ const OrtModel* in, _In_ const wchar_t* const fil
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProviderEx_DML, _In_ OrtSessionOptions* options, _In_ ID3D12Device* d3d_device, _In_ ID3D12CommandQueue* cmd_queue, bool metacommands_enabled);
 
 // OrtSession methods
-ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session);
+ORT_API_STATUS(CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session);
 
 //Do not release provider... as there is no release method available
 ORT_API_STATUS(SessionGetExecutionProvider, _In_ OrtSession* session, _In_ size_t index, _Out_ OrtExecutionProvider** provider);
@@ -132,6 +134,12 @@ ORT_API_STATUS(JoinModels,
                size_t num_linkages,
                bool promote_unlinked_outputs,
                _In_ const char* const join_node_prefix);
+
+ORT_API_STATUS(CreateThreadPool,
+               ThreadPoolType type,
+               OrtThreadPoolOptions* params,
+               _Outptr_ OrtThreadPool** out);
+
 // maps and sequences???
 //ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
 

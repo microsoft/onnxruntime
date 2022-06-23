@@ -106,6 +106,7 @@ void SoftmaxCrossEntropyLossImpl(
 INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(float, float, int32_t)
 INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(float, float, int64_t)
 INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(half, float, int64_t)
+INSTANTIATE_IMPL_SoftMaxEntropyLossImpl(BFloat16, float, int64_t)
 
 template <typename T, typename TAcc, typename Tin>
 __global__ void _WeightedSoftmaxCrossEntropyLossGrad(
@@ -221,6 +222,7 @@ void SoftmaxCrossEntropyLossGradImpl(
 INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(float, float, int32_t)
 INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(float, float, int64_t)
 INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(half, float, int64_t)
+INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(BFloat16, float, int64_t)
 
 #define INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(T, Tin) \
   template void ComputeWeightsSoftmaxCrossEntropyImpl(                 \
@@ -235,6 +237,7 @@ INSTANTIATE_IMPL_SoftMaxEntropyLossGradImpl(half, float, int64_t)
 INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(float, int32_t)
 INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(float, int64_t)
 INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(half, int64_t)
+INSTANTIATE_IMPL_ComputeWeightsSoftmaxCrossEntropyImpl(BFloat16, int64_t)
 
 }  // namespace cuda
 }  // namespace onnxruntime

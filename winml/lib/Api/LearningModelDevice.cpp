@@ -25,6 +25,7 @@ WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
   m_deviceKind = deviceKind;
+  telemetry_helper.SetLearningModelDeviceKind(static_cast<int>(deviceKind));
   m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
   if (m_isCpuDevice) {
     assert(m_deviceCache->GetD3D12Device() == nullptr);
@@ -111,6 +112,39 @@ bool LearningModelDevice::MetacommandsEnabled() {
 STDMETHODIMP_(boolean)
 LearningModelDevice::SharedHandleInitialized() {
   return m_deviceCache->SharedHandleInitialized();
+}
+
+STDMETHODIMP
+LearningModelDevice::GetThreadPool(_winml::IThreading** thread_pool) {
+  m_threadPool.copy_to(thread_pool);
+  return S_OK;
+}
+
+STDMETHODIMP
+LearningModelDevice::CacheThreadPool(_winml::IThreading* thread_pool) {
+  m_threadPool.copy_from(thread_pool);
+  return S_OK;
+}
+
+uint32_t LearningModelDevice::NumberOfIntraOpThreads() {
+  if (IsCpuDevice()) {
+    return std::thread::hardware_concurrency();
+  } else {
+    // GPU sessions should not rely on intra op threads.
+    // Creating a large thread pool is unnecessary and wasteful, and can cause
+    // thread competition in the process.
+    return 1;
+  }
+}
+
+bool LearningModelDevice::AllowSpinning() {
+  if (IsCpuDevice()) {
+    return true;
+  } else {
+    // GPU sessions should not run operators on cpu threads.
+    // CPU threads created should not spin, as it will drain cpu resources unnecessarily.
+    return false;
+  }
 }
 
 }  // namespace WINMLP 

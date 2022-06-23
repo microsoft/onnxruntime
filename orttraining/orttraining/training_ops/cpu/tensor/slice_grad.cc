@@ -28,10 +28,10 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
   Tensor& output = *context->Output(0, data_shape);
   memset(output.MutableDataRaw(), 0, output.SizeInBytes());
   // Initialize the starts & ends to the actual tensor shape
-  std::vector<int64_t> input_starts;
-  std::vector<int64_t> input_ends;
-  std::vector<int64_t> input_axes;
-  std::vector<int64_t> input_steps;
+  TensorShapeVector input_starts;
+  TensorShapeVector input_ends;
+  TensorShapeVector input_axes;
+  TensorShapeVector input_steps;
   ORT_RETURN_IF_ERROR(FillVectorsFromInput(*context->Input<Tensor>(2), *context->Input<Tensor>(3),
                                            context->Input<Tensor>(4), context->Input<Tensor>(5),
                                            input_starts, input_ends, input_axes, input_steps));
@@ -56,10 +56,10 @@ Status SliceGrad::Compute(OpKernelContext* context) const {
 template <typename T>
 Status SliceGrad::ComputeImpl(OpKernelContext* ctx,
                               Tensor& output_grad_tensor,
-                              const std::vector<int64_t>& output_dims,
-                              std::vector<int64_t>* flattened_output_dims,
-                              const std::vector<int64_t>& starts,
-                              const std::vector<int64_t>& steps) const {
+                              const gsl::span<const int64_t>& output_dims,
+                              TensorShapeVector* flattened_output_dims,
+                              const gsl::span<const int64_t>& starts,
+                              const gsl::span<const int64_t>& steps) const {
   TensorShape output_shape(output_dims);
   // output tensor's size is 0, nothing to fill - return
   if (output_shape.Size() == 0)
@@ -86,7 +86,7 @@ Status SliceGrad::ComputeImpl(OpKernelContext* ctx,
   if (flattened_output_dims) {
     // if we have flattened output dims we need to also flatten the input dims.
     // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
-    std::vector<int64_t> flattened_input_dims(output_grad_tensor.Shape().GetDimsAsVector());
+    TensorShapeVector flattened_input_dims(output_grad_tensor.Shape().AsShapeVector());
     flattened_input_dims.resize(flattened_output_dims->size());
     flattened_input_dims.back() = flattened_output_dims->back();
     TensorShape input_shape(std::move(flattened_input_dims));

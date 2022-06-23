@@ -101,12 +101,6 @@ int main(int argc, char** argv) {
   //TODO: Fix the C API issue
   ort_env.reset();  //If we don't do this, it will crash
 
-#ifndef _OPENMP
-  const int expexted_custom_calls = (thread_pool_size - 1) << 1;
-  ORT_ENFORCE(custom_creation_hook_called == expexted_custom_calls, "custom thread creation function was not called as expected");
-  ORT_ENFORCE(custom_join_hook_called == expexted_custom_calls, "custom thread join function was not called as expected");
-#endif
-
 #ifndef USE_ONNXRUNTIME_DLL
   //make memory leak checker happy
   ::google::protobuf::ShutdownProtobufLibrary();

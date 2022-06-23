@@ -59,30 +59,29 @@ struct OrtEnv {
   /**
    * Registers an allocator for sharing between multiple sessions.
    * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
-  */
+   */
   onnxruntime::common::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
 
   /**
    * Creates and registers an allocator for sharing between multiple sessions.
    * Return an error if an allocator with the same OrtMemoryInfo is already registered.
-  */
+   */
   onnxruntime::common::Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
                                                          const OrtArenaCfg* arena_cfg = nullptr);
 
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
-  */
+   */
   onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
+  OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
+  ~OrtEnv();
 
  private:
-  static OrtEnv* p_instance_;
+  static std::unique_ptr<OrtEnv> p_instance_;
   static onnxruntime::OrtMutex m_;
   static int ref_count_;
 
   std::unique_ptr<onnxruntime::Environment> value_;
-
-  OrtEnv(std::unique_ptr<onnxruntime::Environment> value1);
-  ~OrtEnv();
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);
 };

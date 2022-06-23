@@ -5,6 +5,8 @@
 
 #include "core/providers/rocm/rocm_common.h"
 
+using namespace onnxruntime;
+
 // Generalize library calls to be use in template functions
 
 // gemm
@@ -62,6 +64,33 @@ inline rocblas_status rocblasGemmHelper(rocblas_handle handle,
                          &h_b,
                          C, rocblas_datatype_f16_r, ldc,
                          C, rocblas_datatype_f16_r, ldc,
+                         rocblas_datatype_f32_r,
+                         rocblas_gemm_algo_standard, 0, 0);
+}
+
+inline rocblas_status rocblasGemmHelper(rocblas_handle handle, 
+                                        rocblas_operation transa, 
+                                        rocblas_operation transb, 
+                                        int m, int n, int k, 
+                                        const BFloat16* alpha, 
+                                        const BFloat16* A, int lda,
+                                        const BFloat16* B, int ldb, 
+                                        const BFloat16* beta, 
+                                        BFloat16* C, int ldc) {
+  float h_a = alpha->ToFloat();
+  float h_b = beta->ToFloat();
+
+  // accumulating in FP32
+  return rocblas_gemm_ex(handle, 
+                         transa, 
+                         transb,
+                         m, n, k, 
+                         &h_a, 
+                         A, rocblas_datatype_bf16_r, lda, 
+                         B, rocblas_datatype_bf16_r, ldb, 
+                         &h_b, 
+                         C, rocblas_datatype_bf16_r, ldc,
+                         C, rocblas_datatype_bf16_r, ldc, 
                          rocblas_datatype_f32_r,
                          rocblas_gemm_algo_standard, 0, 0);
 }
@@ -126,6 +155,35 @@ inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle,
                                  (void**)Carray, rocblas_datatype_f16_r, ldc,
                                  (void**)Carray, rocblas_datatype_f16_r, ldc,
                                  batchCount,
+                                 rocblas_datatype_f32_r,
+                                 rocblas_gemm_algo_standard, 0, 0);
+}
+
+inline rocblas_status rocblasGemmBatchedHelper(rocblas_handle handle, 
+                                               rocblas_operation transa, 
+                                               rocblas_operation transb,
+                                               int m, int n, int k, 
+                                               const BFloat16* alpha, 
+                                               const BFloat16* Aarray[], int lda, 
+                                               const BFloat16* Barray[], int ldb, 
+                                               const BFloat16* beta,
+                                               BFloat16* Carray[], int ldc, 
+                                               int batch_count) {
+  float h_a = alpha->ToFloat();
+  float h_b = beta->ToFloat();
+
+  // accumulating in FP32
+  return rocblas_gemm_batched_ex(handle, 
+                                 transa, 
+                                 transb, 
+                                 m, n, k, 
+                                 &h_a, 
+                                 (const void**)Aarray, rocblas_datatype_bf16_r, lda,
+                                 (const void**)Barray, rocblas_datatype_bf16_r, ldb, 
+                                 &h_b, 
+                                 (void**)Carray, rocblas_datatype_bf16_r, ldc,
+                                 (void**)Carray, rocblas_datatype_bf16_r, ldc,
+                                 batch_count, 
                                  rocblas_datatype_f32_r,
                                  rocblas_gemm_algo_standard, 0, 0);
 }
@@ -205,6 +263,37 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          rocblas_gemm_algo_standard, 0, 0);
 }
 
+inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle, 
+                                                      rocblas_operation transa,
+                                                      rocblas_operation transb, 
+                                                      int m, int n, int k,
+                                                      const BFloat16* alpha, 
+                                                      const BFloat16* A, int lda,
+                                                      long long int strideA, 
+                                                      const BFloat16* B, int ldb,
+                                                      long long int strideB, 
+                                                      const BFloat16* beta, 
+                                                      BFloat16* C, int ldc,
+                                                      long long int strideC, 
+                                                      int batch_count) {
+  float h_a = alpha->ToFloat();
+  float h_b = beta->ToFloat();
+  // accumulating in FP32
+  return rocblas_gemm_strided_batched_ex(handle, 
+                                         transa, 
+                                         transb, 
+                                         m, n, k, 
+                                         &h_a, 
+                                         A, rocblas_datatype_bf16_r, lda, strideA, 
+                                         B, rocblas_datatype_bf16_r, ldb, strideB, 
+                                         &h_b, 
+                                         C, rocblas_datatype_bf16_r, ldc, strideC,
+                                         C, rocblas_datatype_bf16_r, ldc, strideC,
+                                         batch_count, 
+                                         rocblas_datatype_f32_r,
+                                         rocblas_gemm_algo_standard, 0, 0);
+}
+
 // transpose using geam
 inline rocblas_status rocblasTransposeHelper(hipStream_t /*stream*/, rocblas_handle handle, rocblas_operation  transa, rocblas_operation  transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
   return rocblas_sgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
@@ -222,3 +311,4 @@ inline rocblas_status rocblasCopyHelper(hipStream_t /*stream*/, rocblas_handle h
   return rocblas_dcopy(handle, n, x, incx, y, incy);
 }
 rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle handle, int n, const half* x, int incx, half* y, int incy);
+rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle handle, int n, const BFloat16* x, int incx, BFloat16* y, int incy);

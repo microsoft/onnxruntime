@@ -30,7 +30,7 @@ class ExpandDims final : public OpKernel {
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     const TensorShape& X_shape = X->Shape();
 
-    std::vector<int64_t> expanded_shape(X_shape.GetDimsAsVector());
+    TensorShapeVector expanded_shape(X_shape.AsShapeVector());
     int64_t X_NumDims = X_shape.Size();
     ORT_ENFORCE(axis <= X_NumDims && axis >= -X_NumDims,
                 "Axis must be within range [", -X_NumDims, ", ", X_NumDims, "].", " Axis is ", axis);

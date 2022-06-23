@@ -1,0 +1,5 @@
+{
+    "name": "onnxruntime-mobile-c",
+    "summary": "ONNX Runtime Mobile C/C++ Pod",
+    "description": "A pod for the ONNX Runtime Mobile C/C++ library. This library supports a reduced set of opsets, ops, and types and only supports ORT format models in order to reduce binary size."
+}

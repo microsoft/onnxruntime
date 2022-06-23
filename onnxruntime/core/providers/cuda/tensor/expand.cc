@@ -5,18 +5,16 @@
 #include "expand_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 
-using std::vector;
-
 namespace onnxruntime {
 namespace cuda {
 
 // Logically expanded y could just be a view of x.
-static void CalcEffectiveDims(vector<int64_t>& x_dims, vector<int64_t>& y_dims) {
-  vector<int64_t> x_reverse;
-  vector<int64_t> y_reverse;
+static void CalcEffectiveDims(TensorShapeVector& x_dims, TensorShapeVector& y_dims) {
+  TensorShapeVector x_reverse;
+  TensorShapeVector y_reverse;
 
-  int xi = gsl::narrow_cast<int>(x_dims.size()) - 1;
-  for (int yi = gsl::narrow_cast<int>(y_dims.size()) - 1; yi >= 0; --yi, --xi) {
+  int64_t xi = gsl::narrow_cast<int64_t>(x_dims.size()) - 1;
+  for (int64_t yi = gsl::narrow_cast<int64_t>(y_dims.size()) - 1; yi >= 0; --yi, --xi) {
     int64_t xdim = (xi >= 0) ? x_dims[xi] : 1;
     int64_t ydim = y_dims[yi];
     if (xdim == ydim || xdim == 1) {
@@ -36,7 +34,7 @@ static void CalcEffectiveDims(vector<int64_t>& x_dims, vector<int64_t>& y_dims) 
   x_dims.push_back(1);
   y_dims.push_back(1);
   // compact the dims, remove (x=1, y=1), merge (x=1, y1*y2...)
-  for (int i = gsl::narrow_cast<int>(y_reverse.size()) - 1; i >= 0; --i) {
+  for (int64_t i = gsl::narrow_cast<int64_t>(y_reverse.size()) - 1; i >= 0; --i) {
     if (x_reverse[i] == 1) {
       if (y_reverse[i] == 1) {
         continue;
@@ -65,7 +63,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
 
   // new shape to be expanded to
   const auto* p_shape = input_shape_tensor.template Data<int64_t>();
-  std::vector<int64_t> output_dims{p_shape, p_shape + input_shape_tensor.Shape().Size()};
+  TensorShapeVector output_dims{p_shape, p_shape + input_shape_tensor.Shape().Size()};
   TensorShape output_shape(output_dims);
 
   ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), input_data_tensor.Shape(), output_dims, output_shape));
@@ -74,8 +72,8 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  output_dims = output_shape.GetDimsAsVector();
-  auto input_dims = input_data_tensor.Shape().GetDimsAsVector();
+  output_dims = output_shape.AsShapeVector();
+  auto input_dims = input_data_tensor.Shape().AsShapeVector();
 
   CalcEffectiveDims(input_dims, output_dims);
   int rank = gsl::narrow_cast<int>(output_dims.size());

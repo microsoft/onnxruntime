@@ -21,10 +21,12 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
                             const logging::Logger& logger) {
   for (const auto* node_arg : node.InputDefs()) {
     const auto& input_name(node_arg->Name());
-    if (!Contains(initializers, input_name))
+    const auto initializer_it = initializers.find(input_name);
+    if (initializer_it == initializers.end()) {
       continue;
+    }
 
-    const auto& tensor = *initializers.at(input_name);
+    const auto& tensor = *initializer_it->second;
     if (tensor.has_data_location() &&
         tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
       LOGS(logger, VERBOSE) << "Initializer [" << input_name

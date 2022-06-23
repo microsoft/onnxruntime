@@ -89,7 +89,7 @@ class RocmKernel : public OpKernel {
       }
     }
 
-    RocmAsyncBuffer(const RocmKernel* op_kernel, const std::vector<T>& vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
+    RocmAsyncBuffer(const RocmKernel* op_kernel, gsl::span<const T> vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 

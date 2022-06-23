@@ -71,7 +71,7 @@ jobs:
     - task: NodeTool@0
       condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
       inputs:
-        versionSpec: '14.x'
+        versionSpec: '16.x'
 
     - task: BatchScript@1
       displayName: 'setup env'

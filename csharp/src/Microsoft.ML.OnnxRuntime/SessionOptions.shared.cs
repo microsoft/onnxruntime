@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Collections.Generic;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -64,6 +65,28 @@ namespace Microsoft.ML.OnnxRuntime
             SessionOptions options = new SessionOptions();
             options.AppendExecutionProvider_CUDA(deviceId);
             return options;
+        }
+
+        /// <summary>
+        /// A helper method to construct a SessionOptions object for CUDA execution provider.
+        /// Use only if CUDA is installed and you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cudaProviderOptions">CUDA EP provider options</param>
+        /// <returns>A SessionsOptions() object configured for execution on provider options</returns>
+        public static SessionOptions MakeSessionOptionWithCudaProvider(OrtCUDAProviderOptions cudaProviderOptions)
+        {
+            CheckCudaExecutionProviderDLLs();
+            SessionOptions options = new SessionOptions();
+            try
+            {
+                options.AppendExecutionProvider_CUDA(cudaProviderOptions);
+                return options;
+            }
+            catch (Exception)
+            {
+                options.Dispose();
+                throw;
+            }
         }
 
         /// <summary>
@@ -128,6 +151,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// A helper method to construct a SessionOptions object for TVM execution.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
+        /// <returns>A SessionsOptions() object configured for execution with TVM</returns>
+        public static SessionOptions MakeSessionOptionWithTvmProvider(String settings = "")
+        {
+            SessionOptions options = new SessionOptions();
+            options.AppendExecutionProvider_Tvm(settings);
+
+            return options;
+        }
+
+        /// <summary>
         /// A helper method to construct a SessionOptions object for ROCM execution.
         /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -174,6 +211,20 @@ namespace Microsoft.ML.OnnxRuntime
             throw new NotSupportedException("The CUDA Execution Provider is not supported in this build");
 #else
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(handle, deviceId));
+#endif
+        }
+
+        /// <summary>
+        /// Append a CUDA EP instance (based on specified configuration) to the SessionOptions instance.
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="cudaProviderOptions">CUDA EP provider options</param>
+        public void AppendExecutionProvider_CUDA(OrtCUDAProviderOptions cudaProviderOptions)
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The CUDA Execution Provider is not supported in this build");
+#else
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_CUDA_V2(handle, cudaProviderOptions.Handle));
 #endif
         }
 
@@ -231,7 +282,7 @@ namespace Microsoft.ML.OnnxRuntime
 #if __MOBILE__
             throw new NotSupportedException("The TensorRT Execution Provider is not supported in this build");
 #else
-            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(handle, trtProviderOptions.Handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT_V2(handle, trtProviderOptions.Handle));
 #endif
         }
 
@@ -286,7 +337,18 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, (uint)coremlFlags));
 #else
-            throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
+#if __ENABLE_COREML__
+            // only attempt if this is OSX
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, (uint)coremlFlags));
+            }
+            else
+#endif
+            {
+                throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
+            }
 #endif
         }
 
@@ -306,9 +368,60 @@ namespace Microsoft.ML.OnnxRuntime
             }
 #endif
         }
-#endregion //ExecutionProviderAppends
 
-#region Public Methods
+        /// <summary>
+        /// Use only if you have the onnxruntime package specific to this Execution Provider.
+        /// </summary>
+        /// <param name="settings">string with TVM specific settings</param>
+        public void AppendExecutionProvider_Tvm(string settings = "")
+        {
+#if __MOBILE__
+            throw new NotSupportedException("The TVM Execution Provider is not supported in this build");
+#else
+            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
+            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tvm(handle, pinnedSettingsName.Pointer));
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Append SNPE or XNNPACK execution provider
+        /// </summary>
+        /// <param name="providerName">Execution provider to add. 'SNPE' or 'XNNPACK' are currently supported.</param>
+        /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
+        public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
+        {
+            if (providerName != "SNPE" && providerName != "XNNPACK")
+            {
+                throw new NotSupportedException(
+                    "Only SNPE and XNNPACK execution providers can be enabled by this method.");
+            }
+
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                string[] ep = { providerName }; // put in array so we can use ConvertNamesToUtf8 for everything
+                var epArray = NativeOnnxValueHelper.ConvertNamesToUtf8(ep, n => n, cleanupList);
+
+                if (providerOptions == null)
+                {
+                    providerOptions = new Dictionary<string, string>();
+                }
+                
+                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
+                    providerOptions.Keys.ToArray(), n => n, cleanupList);
+
+                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
+                    providerOptions.Values.ToArray(), n => n, cleanupList);
+                
+                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider(
+                    handle, epArray[0], keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+            }
+        }
+        #endregion //ExecutionProviderAppends
+
+        #region Public Methods
         /// <summary>
         /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
@@ -672,11 +785,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
-        #endregion
+#endregion
 
-        #region Private Methods
+#region Private Methods
 
-#if! __MOBILE__
+#if !__MOBILE__
         // Declared, but called only if OS = Windows.
         [DllImport("kernel32.dll")]
         private static extern IntPtr LoadLibrary(string dllToLoad);

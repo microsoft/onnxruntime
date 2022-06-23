@@ -22,7 +22,7 @@ namespace Dml
             {
                 ORT_THROW_IF_FAILED(device->CreateCommandAllocator(
                     commandListType,
-                    IID_PPV_ARGS(&info.allocator)));
+                    IID_GRAPHICS_PPV_ARGS(info.allocator.ReleaseAndGetAddressOf())));
 
                 info.completionEvent = initialEvent;
             }

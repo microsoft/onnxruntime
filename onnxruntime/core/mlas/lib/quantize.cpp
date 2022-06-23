@@ -165,7 +165,7 @@ Return Value:
 
 --*/
 {
-    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::lowest();
     constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
 
     auto ScaleVector = MlasBroadcastFloat32x4(Scale);
@@ -248,7 +248,7 @@ MlasQuantizeLinear<int8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.QuantizeLinearS8Kernel(
+    GetMlasPlatform().QuantizeLinearS8Kernel(
 #else
     MlasQuantizeLinearS8Kernel(
 #endif
@@ -267,7 +267,7 @@ MlasQuantizeLinear<uint8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.QuantizeLinearU8Kernel(
+    GetMlasPlatform().QuantizeLinearU8Kernel(
 #else
     MlasQuantizeLinearU8Kernel(
 #endif
@@ -275,6 +275,38 @@ MlasQuantizeLinear<uint8_t>(
 }
 
 #else
+
+#if defined(MLAS_TARGET_POWER)
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<int8_t>(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearS8Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<uint8_t>(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearU8Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+#endif
 
 //
 // QuantizeLinear implementation using the C++ runtime.
@@ -315,7 +347,7 @@ Return Value:
 
 --*/
 {
-    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::min();
+    constexpr int32_t MinimumValue = std::numeric_limits<OutputType>::lowest();
     constexpr int32_t MaximumValue = std::numeric_limits<OutputType>::max();
 
     for (size_t n = 0; n < N; n++) {
@@ -327,6 +359,7 @@ Return Value:
     }
 }
 
+#if !defined(MLAS_TARGET_POWER)
 template
 void
 MLASCALL
@@ -350,19 +383,22 @@ MlasQuantizeLinear<uint8_t>(
     );
 #endif
 
+#endif
+
 #if defined(MLAS_SSE2_INTRINSICS)
 
+template <typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -370,8 +406,8 @@ MlasRequantizeOutput(
     )
 {
     const __m128 PerMatrixScaleVector = PerColumnScale ? _mm_setzero_ps() : _mm_load1_ps(Scale);
-    const __m128 MinimumValueVector = _mm_set1_ps(float(0 - ZeroPoint));
-    const __m128 MaximumValueVector = _mm_set1_ps(float(255 - ZeroPoint));
+    const __m128 MinimumValueVector = _mm_set1_ps(float(std::numeric_limits<OutputType>::lowest() - ZeroPoint));
+    const __m128 MaximumValueVector = _mm_set1_ps(float(std::numeric_limits<OutputType>::max() - ZeroPoint));
     const __m128i ZeroPointVector = _mm_set1_epi32(ZeroPoint);
 
     if (nullptr != Bias) {
@@ -467,10 +503,23 @@ MlasRequantizeOutput(
             IntegerVector2 = _mm_add_epi32(IntegerVector2, ZeroPointVector);
             IntegerVector3 = _mm_add_epi32(IntegerVector3, ZeroPointVector);
 
-            __m128i WordVector0 = _mm_packus_epi16(IntegerVector0, IntegerVector1);
-            __m128i WordVector1 = _mm_packus_epi16(IntegerVector2, IntegerVector3);
+            __m128i WordVector0;
+            __m128i WordVector1;
+            __m128i ByteVector;
 
-            __m128i ByteVector = _mm_packus_epi16(WordVector0, WordVector1);
+            if (std::is_signed<OutputType>::value) {
+
+                WordVector0 = _mm_packs_epi32(IntegerVector0, IntegerVector1);
+                WordVector1 = _mm_packs_epi32(IntegerVector2, IntegerVector3);
+                ByteVector = _mm_packs_epi16(WordVector0, WordVector1);
+
+            } else {
+
+                WordVector0 = _mm_packus_epi16(IntegerVector0, IntegerVector1);
+                WordVector1 = _mm_packus_epi16(IntegerVector2, IntegerVector3);
+                ByteVector = _mm_packus_epi16(WordVector0, WordVector1);
+
+            }
 
             _mm_storeu_si128((__m128i*)RowOutput, ByteVector);
             RowOutput += 16;
@@ -541,8 +590,17 @@ MlasRequantizeOutput(
             IntegerVector = _mm_cvtps_epi32(FloatVector);
             IntegerVector = _mm_add_epi32(IntegerVector, ZeroPointVector);
 
-            IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
-            IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
+            if (std::is_signed<OutputType>::value) {
+
+                IntegerVector = _mm_packs_epi32(IntegerVector, IntegerVector);
+                IntegerVector = _mm_packs_epi16(IntegerVector, IntegerVector);
+
+            } else {
+
+                IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
+                IntegerVector = _mm_packus_epi16(IntegerVector, IntegerVector);
+
+            }
 
             uint32_t OutputValue = uint32_t(_mm_cvtsi128_si32(IntegerVector));
 
@@ -570,17 +628,18 @@ MlasRequantizeOutput(
 
 #elif defined(MLAS_NEON64_INTRINSICS)
 
+template<typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -686,7 +745,7 @@ MlasRequantizeOutput(
 
             //
             // Pack the integers with saturation to 16-bit values and shift by
-            // the zero point, then pack the integers again to unsigned bytes.
+            // the zero point, then pack the integers again to bytes.
             //
 
             int16x8x2_t WordVector;
@@ -697,7 +756,13 @@ MlasRequantizeOutput(
             WordVector.val[0] = vqaddq_s16(WordVector.val[0], ZeroPointVector);
             WordVector.val[1] = vqaddq_s16(WordVector.val[1], ZeroPointVector);
 
-            vst1q_u8(RowOutput, vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+            if (std::is_signed<OutputType>::value) {
+                vst1q_s8(reinterpret_cast<int8_t*>(RowOutput),
+                         vqmovn_high_s16(vqmovn_s16(WordVector.val[0]), WordVector.val[1]));
+            } else {
+                vst1q_u8(reinterpret_cast<uint8_t*>(RowOutput),
+                         vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+            }
             RowOutput += 16;
 
             n -= 16;
@@ -775,7 +840,13 @@ MlasRequantizeOutput(
             int16x8_t WordVector = vcombine_s16(vqmovn_s32(IntegerVector), vdup_n_s16(0));
             WordVector = vqaddq_s16(WordVector, ZeroPointVector);
 
-            uint8x16_t ByteVector = vcombine_u8(vqmovun_s16(WordVector), vdup_n_u8(0));
+            uint8x16_t ByteVector;
+
+            if (std::is_signed<OutputType>::value) {
+                ByteVector = vcombine_u8(vreinterpret_u8_s8(vqmovn_s16(WordVector)), vdup_n_u8(0));
+            } else {
+                ByteVector = vcombine_u8(vqmovun_s16(WordVector), vdup_n_u8(0));
+            }
 
             if (n >= 4) {
 
@@ -787,7 +858,7 @@ MlasRequantizeOutput(
 
             } else {
 
-                vst1q_lane_u8(RowOutput, ByteVector, 0);
+                vst1q_lane_u8(reinterpret_cast<uint8_t*>(RowOutput), ByteVector, 0);
                 RowOutput += 1;
 
                 n -= 1;
@@ -800,19 +871,212 @@ MlasRequantizeOutput(
     }
 }
 
-#else
+#elif defined(MLAS_TARGET_POWER)
 
+template <typename OutputType>
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     size_t InputLeadingDimension,
-    uint8_t* Output,
+    OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint,
+    OutputType ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    )
+{
+    float PerMatrixScaleValue = PerColumnScale ? 0.0f : *Scale;
+    float MinimumValue = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
+    float MaximumValue = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
+
+    auto PerMatrixScaleVector = vec_splats(PerMatrixScaleValue);
+    auto MinimumVector = vec_splats(MinimumValue);
+    auto MaximumVector = vec_splats(MaximumValue);
+    auto ZeroPointVector = vec_splats(int32_t(ZeroPoint));
+
+    // Workaround to avoid 'variable set but not used' message
+    MLAS_UNREFERENCED_PARAMETER(PerMatrixScaleVector);
+
+    if (nullptr != Bias) {
+        Bias += StartN;
+    }
+    if (PerColumnScale) {
+        Scale += StartN;
+    }
+
+    Input += StartM * InputLeadingDimension + StartN;
+    Output += StartM * OutputLeadingDimension + StartN;
+
+    //
+    // Step through each row of the output matrix.
+    //
+
+    while (CountM-- > 0) {
+
+        const int32_t* bias = Bias;
+        const float* scale = PerColumnScale ? Scale : nullptr;
+        size_t n = CountN;
+
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
+
+        // Process 16 cols at a time
+
+        while (n >= 16) {
+
+            auto IntegerVector0 = vec_xl(0, &RowInput[0]);
+            auto IntegerVector1 = vec_xl(0, &RowInput[4]);
+            auto IntegerVector2 = vec_xl(0, &RowInput[8]);
+            auto IntegerVector3 = vec_xl(0, &RowInput[12]);
+            RowInput += 16;
+
+            if (bias != nullptr) {
+                IntegerVector0 = vec_add(IntegerVector0, vec_xl(0, &bias[0]));
+                IntegerVector1 = vec_add(IntegerVector1, vec_xl(0, &bias[4]));
+                IntegerVector2 = vec_add(IntegerVector2, vec_xl(0, &bias[8]));
+                IntegerVector3 = vec_add(IntegerVector3, vec_xl(0, &bias[12]));
+                bias += 16;
+            }
+
+            auto FloatVector0 = vec_ctf(IntegerVector0, 0);
+            auto FloatVector1 = vec_ctf(IntegerVector1, 0);
+            auto FloatVector2 = vec_ctf(IntegerVector2, 0);
+            auto FloatVector3 = vec_ctf(IntegerVector3, 0);
+
+            if (scale != nullptr) {
+                FloatVector0 = vec_mul(FloatVector0, vec_xl(0, &scale[0]));
+                FloatVector1 = vec_mul(FloatVector1, vec_xl(0, &scale[4]));
+                FloatVector2 = vec_mul(FloatVector2, vec_xl(0, &scale[8]));
+                FloatVector3 = vec_mul(FloatVector3, vec_xl(0, &scale[12]));
+                scale += 16;
+            } else {
+                FloatVector0 = vec_mul(FloatVector0, PerMatrixScaleVector);
+                FloatVector1 = vec_mul(FloatVector1, PerMatrixScaleVector);
+                FloatVector2 = vec_mul(FloatVector2, PerMatrixScaleVector);
+                FloatVector3 = vec_mul(FloatVector3, PerMatrixScaleVector);
+            }
+
+            FloatVector0 = vec_max(FloatVector0, MinimumVector);
+            FloatVector1 = vec_max(FloatVector1, MinimumVector);
+            FloatVector2 = vec_max(FloatVector2, MinimumVector);
+            FloatVector3 = vec_max(FloatVector3, MinimumVector);
+
+            FloatVector0 = vec_min(FloatVector0, MaximumVector);
+            FloatVector1 = vec_min(FloatVector1, MaximumVector);
+            FloatVector2 = vec_min(FloatVector2, MaximumVector);
+            FloatVector3 = vec_min(FloatVector3, MaximumVector);
+
+            FloatVector0 = vec_round(FloatVector0);
+            FloatVector1 = vec_round(FloatVector1);
+            FloatVector2 = vec_round(FloatVector2);
+            FloatVector3 = vec_round(FloatVector3);
+
+            auto IntegerOutVector0 = vec_signed(FloatVector0);
+            auto IntegerOutVector1 = vec_signed(FloatVector1);
+            auto IntegerOutVector2 = vec_signed(FloatVector2);
+            auto IntegerOutVector3 = vec_signed(FloatVector3);
+
+            IntegerOutVector0 = vec_add(IntegerOutVector0, ZeroPointVector);
+            IntegerOutVector1 = vec_add(IntegerOutVector1, ZeroPointVector);
+            IntegerOutVector2 = vec_add(IntegerOutVector2, ZeroPointVector);
+            IntegerOutVector3 = vec_add(IntegerOutVector3, ZeroPointVector);
+
+            auto ShortVector0 = vec_pack(IntegerOutVector0, IntegerOutVector1);
+            auto ShortVector1 = vec_pack(IntegerOutVector2, IntegerOutVector3);
+            auto CharVector = vec_pack(ShortVector0, ShortVector1);
+
+            vec_xst(CharVector, 0, (int8_t *) RowOutput);
+            RowOutput += 16;
+            n -= 16;
+        }
+
+        while (n >= 4) {
+            int8_t OutputBuffer[16];
+
+            auto IntegerVector = vec_xl(0, &RowInput[0]);
+            RowInput += 4;
+
+            if (bias != nullptr) {
+                IntegerVector = vec_add(IntegerVector, vec_xl(0, &bias[0]));
+                bias += 4;
+            }
+
+            auto FloatVector = vec_ctf(IntegerVector, 0);
+
+            if (scale != nullptr) {
+                FloatVector = vec_mul(FloatVector, vec_xl(0, scale));
+                scale += 4;
+            } else {
+                FloatVector = vec_mul(FloatVector, PerMatrixScaleVector);
+            }
+
+            FloatVector = vec_max(FloatVector, MinimumVector);
+            FloatVector = vec_min(FloatVector, MaximumVector);
+            FloatVector = vec_round(FloatVector);
+
+            auto IntegerOutVector = vec_signed(FloatVector);
+            IntegerOutVector = vec_add(IntegerOutVector, ZeroPointVector);
+
+            auto ShortVector = vec_pack(IntegerOutVector, vec_splats((int32_t) 0));
+            auto CharVector = vec_pack(ShortVector, vec_splats((int16_t) 0));
+
+            vec_xst(CharVector, 0, OutputBuffer);
+            memcpy(RowOutput, OutputBuffer, 4);
+
+            RowOutput += 4;
+            n -= 4;
+        }
+
+        while (n > 0) {
+            auto IntegerValue = RowInput[0];
+            RowInput += 1;
+
+            if (bias != nullptr) {
+                IntegerValue += bias[0];
+                bias += 1;
+            }
+
+            float FloatValue = float(IntegerValue);
+            float ScaleValue = PerColumnScale ? *scale++ : PerMatrixScaleValue;
+
+            FloatValue *= ScaleValue;
+            FloatValue = std::max(FloatValue, MinimumValue);
+            FloatValue = std::min(FloatValue, MaximumValue);
+
+            IntegerValue = int32_t(MlasBitsOfFp32(FloatValue + MLAS_ROUNDING_BIAS_MAGIC)) -
+                MLAS_ROUNDING_BIAS_MAGIC_BITS;
+
+            *RowOutput++ = OutputType(IntegerValue + ZeroPoint);
+
+            n -= 1;
+        }
+
+        // Next Row
+        Input += InputLeadingDimension;
+        Output += OutputLeadingDimension;
+    }
+}
+
+#else
+
+template <typename OutputType>
+void
+MLASCALL
+MlasRequantizeOutput(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    OutputType* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -820,8 +1084,8 @@ MlasRequantizeOutput(
     )
 {
     const float PerMatrixScaleValue = PerColumnScale ? 0.0f : *Scale;
-    const float MinimumValue = float(0 - ZeroPoint);
-    const float MaximumValue = float(255 - ZeroPoint);
+    const float MinimumValue = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
+    const float MaximumValue = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
 
     if (nullptr != Bias) {
         Bias += StartN;
@@ -872,7 +1136,7 @@ MlasRequantizeOutput(
             IntegerValue = int32_t(MlasBitsOfFp32(FloatValue + MLAS_ROUNDING_BIAS_MAGIC)) -
                 MLAS_ROUNDING_BIAS_MAGIC_BITS;
 
-            *RowOutput++ = uint8_t(IntegerValue + ZeroPoint);
+            *RowOutput++ = OutputType(IntegerValue + ZeroPoint);
 
             n -= 1;
         }
@@ -884,6 +1148,42 @@ MlasRequantizeOutput(
 }
 
 #endif
+
+template
+void
+MLASCALL
+MlasRequantizeOutput<int8_t>(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    int8_t* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    int8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    );
+
+template
+void
+MLASCALL
+MlasRequantizeOutput<uint8_t>(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    uint8_t* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    );
 
 void
 MLASCALL
@@ -916,7 +1216,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
+    GetMlasPlatform().ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #else
     MlasReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #endif

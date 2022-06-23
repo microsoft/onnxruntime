@@ -202,18 +202,24 @@ void GradientOpTester::Run(
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
           if (!st.IsOK()) {
-            auto* node_func = node.GetFunctionBody();
-            if (!node_func) {
+            if (!node.CanBeInlined()) {
               valid = false;
             } else {
-              for (auto& sub_node : node_func->Body().Nodes()) {
-                if (sub_node.OpType() != "Constant") {
-                  auto sub_reg = execution_provider->GetKernelRegistry();
-                  const KernelCreateInfo* sub_kci;
-                  st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
-                  if (!st.IsOK()) {
-                    valid = false;
-                    break;
+              // TODO: hanlde the nested function case.
+              std::unique_ptr<Function> node_func;
+              st = node.GetInstantiateFunctionBody(node_func);
+              if (!st.IsOK()) {
+                valid = false;
+              } else {
+                for (auto& sub_node : node_func->Body().Nodes()) {
+                  if (sub_node.OpType() != "Constant") {
+                    auto sub_reg = execution_provider->GetKernelRegistry();
+                    const KernelCreateInfo* sub_kci;
+                    st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
+                    if (!st.IsOK()) {
+                      valid = false;
+                      break;
+                    }
                   }
                 }
               }
@@ -270,7 +276,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, O
     if (output_index_to_use_as_loss == static_cast<int>(i)) {
       values[data_index_of_output] = 1.0;  //set only one value to one to construct jacobian matrix
     }
-    AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.GetDims(), values.data(), values.size(), true);
+    AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.AsShapeVector(), values.data(), values.size(), true);
   }
 
   for (size_t i = 0; i < gradient_data.size(); ++i) {

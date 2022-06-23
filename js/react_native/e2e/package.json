@@ -1,0 +1,21 @@
+{
+  "name": "onnxruntime-reactnative-example",
+  "description": "Example app for onnxruntime-reactnative",
+  "version": "0.5.0",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "start": "react-native start"
+  },
+  "dependencies": {
+    "react": "^17.0.2",
+    "react-native": "^0.67.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.17.0",
+    "@babel/runtime": "^7.17.0",
+    "babel-plugin-module-resolver": "^4.0.0",
+    "metro-react-native-babel-preset": "^0.67.0"
+  }
+}

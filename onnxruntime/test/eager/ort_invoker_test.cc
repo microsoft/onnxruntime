@@ -39,7 +39,7 @@ TEST(InvokerTest, Basic) {
   ASSERT_STATUS_OK(kernel_invoker.Invoke("Add", {A, B}, result, nullptr));
   const Tensor& C = result.back().Get<Tensor>();
   auto& c_shape = C.Shape();
-  EXPECT_EQ(c_shape.GetDimsAsVector(), dims_mul_x);
+  EXPECT_EQ(c_shape.GetDims(), gsl::make_span(dims_mul_x));
 
   std::vector<float> expected_result = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
   auto* c_data = C.Data<float>();
@@ -87,8 +87,9 @@ class TestKernel final : public OpKernel {
   }
 };
 
-OpKernel* CreateTestKernel(const OpKernelInfo& info) {
-  return new TestKernel(info);
+Status CreateTestKernel(FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<TestKernel>(info);
+  return Status::OK();
 }
 
 TEST(InvokerTest, CustomOp) {

@@ -6,8 +6,8 @@
 // Include event mechanism shared by CPU and GPU implementations.
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #include "orttraining/training_ops/cpu/controlflow/wait.h"
-#include "core/providers/cuda/nvtx_profile.h" 
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 
 namespace onnxruntime {
 namespace cuda {

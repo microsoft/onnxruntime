@@ -121,7 +121,7 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
     int64_t input_count = static_cast<int64_t>(X->Size());
-    std::vector<const Tensor*> input_tensors;
+    InlinedTensorsVector input_tensors;
     for (int64_t i = 0; i < input_count; ++i) {
       input_tensors.push_back(&X->Get(i));
     }
@@ -149,7 +149,7 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
             output + (initial_output_offset + cur_out_offset) * element_bytes,
             input + cur_in_offset * element_bytes, input_axis_pitch * element_bytes,
-            cudaMemcpyHostToDevice, Stream()));
+            cudaMemcpyDeviceToDevice, Stream()));
         cur_out_offset += p.output_axis_pitch;
         cur_in_offset += input_axis_pitch;
       }

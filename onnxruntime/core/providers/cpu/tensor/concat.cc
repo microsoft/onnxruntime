@@ -5,8 +5,8 @@
 
 #include "core/framework/element_type_lists.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/copy.h"
 #include "core/providers/common.h"
-#include "core/providers/cpu/tensor/copy.h"
 #include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
@@ -54,19 +54,19 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
 // this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
-                                     const std::vector<const Tensor*>& input_tensors,
+                                     const InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
   int input_count = static_cast<int>(input_tensors.size());
 
   // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
 
-  std::vector<int64_t> reference_dims;
+  TensorShapeVector reference_dims;
   size_t reference_rank = 0;
 
   int reference_tensor_index = 0;
 
-  std::vector<int64_t> input_tensor_sizes;
+  InlinedVector<int64_t, Prepare::kExpectedNumberOfInputs> input_tensor_sizes;
   input_tensor_sizes.reserve(input_count);
 
   bool all_inputs_are_empty = true;
@@ -81,7 +81,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     const auto& shape = input->Shape();
     const auto num_elements = shape.Size();
     if (num_elements > 0) {
-      reference_dims = shape.GetDimsAsVector();
+      reference_dims = shape.AsShapeVector();
       reference_rank = reference_dims.size();
       reference_tensor_index = index;
       input_tensor_sizes.push_back(num_elements);
@@ -97,7 +97,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     // No shape/rank validations will be done (as all inputs are empty).
     // But the rest of the execution flow (filling in the Prepare instance - p)
     // can use this info.
-    reference_dims = input_tensors[0]->Shape().GetDimsAsVector();
+    reference_dims = input_tensors[0]->Shape().AsShapeVector();
     reference_rank = reference_dims.size();
   }
 
@@ -164,7 +164,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   }
 
   // Calculate the shape of the output tensor
-  std::vector<int64_t> output_dims = reference_dims;
+  auto output_dims = reference_dims;
 
   if (!is_stack_) {  // 'Concat' mode
     // While concatenating, the rank of the output is the same as the input rank(s)
@@ -233,16 +233,17 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 }
 
 namespace {
-std::vector<int64_t> StridesForStack(const std::vector<int64_t>& full_strides, uint64_t axis) {
+TensorShapeVector StridesForStack(const TensorShapeVector& full_strides, uint64_t axis) {
   // if we are stacking, skip the dimension that will be stacked along in the output strides
   // (the striding for that dimension is handled by the initial_output_offset)
-  auto num_dims = full_strides.size();
+  const auto num_dims = full_strides.size();
 
-  std::vector<int64_t> strides(num_dims - 1);
+  TensorShapeVector strides;
+  strides.reserve(num_dims - 1);
 
   for (size_t i = 0; i < num_dims - 1; i++) {
     auto read_i = (i >= axis) ? i + 1 : i;
-    strides[i] = full_strides[read_i];
+    strides.push_back(full_strides[read_i]);
   }
   return strides;
 }
@@ -291,7 +292,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
-  std::vector<const Tensor*> input_tensors;
+  InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));

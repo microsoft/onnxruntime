@@ -23,7 +23,7 @@ Status ConcatTraining::Compute(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
-  std::vector<const Tensor*> input_tensors;
+  InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));

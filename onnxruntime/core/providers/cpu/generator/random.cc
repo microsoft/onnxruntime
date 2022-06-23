@@ -29,8 +29,8 @@ limitations under the License.
 
 #include "core/common/eigen_common_wrapper.h"
 #include "core/common/safeint.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math_cpuonly.h"
 
 using namespace ONNX_NAMESPACE;

@@ -77,7 +77,9 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   max_reduction_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1] = min_reduction_dst_mem;
 
   //compute min first since max_reduction needs min dst as post op arg
+  // compute x min
   sp.AddPrimitive(min_reduction_prim, min_reduction_args);
+  // compute y scale f32
   sp.AddPrimitive(max_reduction_prim, max_reduction_args);
 
 
@@ -100,6 +102,8 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   auto y_zero_point_dst_mem = dnnl::memory(y_zero_point_pd.dst_desc(), eng);
   std::unordered_map<int, dnnl::memory> y_zero_point_args = {{DNNL_ARG_SRC_0, min_reduction_dst_mem}, {DNNL_ARG_SRC_1, y_scale_mem}, {DNNL_ARG_DST, y_zero_point_dst_mem}};
 
+  //y zero point f32
+  //np.clip(round((0 - x_min) / Y_Scale), 0, 255)
   sp.AddPrimitive(y_zero_point_prim, y_zero_point_args);
 
 
@@ -121,6 +125,9 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   auto y_mem = dnnl::memory(y_pd.dst_desc(), eng);
   std::unordered_map<int, dnnl::memory> y_args = {{DNNL_ARG_SRC_0, x_memory}, {DNNL_ARG_SRC_1, y_scale_mem}, {DNNL_ARG_DST, y_mem}};
   y_args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1] = y_zero_point_dst_mem;
+  
+  // x/y -> round() -> + y_zp -> clip 0,255
+  // quantized output tensor f32
   sp.AddPrimitive(y_prim, y_args);
 
 
@@ -128,6 +135,8 @@ void DnnlDynamicQuantizeLinear::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlN
   sp.SetMemory(node.Output(OUT_Y_SCALE), y_scale_mem, false, true);
 
   //data type change for y_zp and set memory
+  //data type change is needed for onnxruntime spec
+  //zp for onednn is currently in s32, any downstream node might need to convert from u8 to s32 
   auto y_zero_point_dst_md_uint8 = ChangeMemoryDescDataType(y_zero_point_dst_mem.get_desc(), dnnl::memory::data_type::u8);
   auto y_zero_point_dst_mem_uint8 = dnnl::memory(y_zero_point_dst_md_uint8, eng);
   sp.AddPrimitive(dnnl::reorder(y_zero_point_dst_mem, y_zero_point_dst_mem_uint8), {{DNNL_ARG_FROM, y_zero_point_dst_mem}, {DNNL_ARG_TO, y_zero_point_dst_mem_uint8}});
@@ -171,6 +180,8 @@ void DnnlDynamicQuantizeLinear::WriteZeroToMem(dnnl::memory& mem) {
     dnnl::stream s{mem.get_engine()};
     //mem now contains all zero
     dnnl::reorder(cpu_memory, mem).execute(s, cpu_memory, mem);
+    //wait for reorder to complete
+    s.wait();
   }
 }
 

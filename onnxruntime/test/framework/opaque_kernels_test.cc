@@ -291,9 +291,9 @@ TEST_F(OpaqueTypeTests, RunModel) {
   EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 8, 9).IsOK());
   // Register our kernels here
   auto ctor_def = ConstructSparseTensorDef();
-  EXPECT_TRUE(registry->RegisterCustomKernel(ctor_def, [](const OpKernelInfo& info) { return new ConstructSparseTensor(info); }).IsOK());
+  EXPECT_TRUE(registry->RegisterCustomKernel(ctor_def, [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<ConstructSparseTensor>(info); return Status::OK(); }).IsOK());
   auto shape_def = ConstructFetchSparseShape();
-  EXPECT_TRUE(registry->RegisterCustomKernel(shape_def, [](const OpKernelInfo& info) { return new FetchSparseTensorShape(info); }).IsOK());
+  EXPECT_TRUE(registry->RegisterCustomKernel(shape_def, [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<FetchSparseTensorShape>(info); return Status::OK(); }).IsOK());
 
   IOnnxRuntimeOpSchemaRegistryList custom_schema_registries_ = {registry->GetOpschemaRegistry()};
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMLDomain, 8}};

@@ -5,12 +5,29 @@
 
 set -e
 set -x
+
+while getopts b:t:d parameter
+do case "${parameter}"
+in
+b) BUILD_DIR="${OPTARG}";;
+t) THRESHOLD_SIZE="${OPTARG}";;
+d) INCLUDE_DEBUG_INFO=1;;
+esac
+done
+
+if [[ -z "${BUILD_DIR}" ]]; then
+    echo "Build directory must be specified with -b."
+    exit 1
+fi
+
+CHECK_THRESHOLD_SIZE_ARGS=${THRESHOLD_SIZE:+"--threshold ${THRESHOLD_SIZE}"}
+BUILD_WITH_DEBUG_INFO_ARGS=${INCLUDE_DEBUG_INFO:+"--cmake_extra_defines ADD_DEBUG_INFO_TO_MINIMAL_BUILD=ON"}
+
 export PATH=/opt/python/cp37-cp37m/bin:$PATH
 
-BUILD_DIR=${1:?"usage: $0 <build directory>"}
-
 # Create an empty file to be used with build --include_ops_by_config, which will include no operators at all
-echo -n > /home/onnxruntimedev/.test_data/include_no_operators.config
+mkdir -p ${BUILD_DIR}
+echo -n > ${BUILD_DIR}/include_no_operators.config
 
 # Run a baseline minimal build of ORT Android arm64-v8a
 # Generate binary size as ${BUILD_DIR}/MinSizeRel/binary_size_data.txt
@@ -29,13 +46,11 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_java \
     --disable_ml_ops \
     --disable_exceptions \
-    --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config
+    --include_ops_by_config ${BUILD_DIR}/include_no_operators.config \
+    ${BUILD_WITH_DEBUG_INFO_ARGS}
 
-# set current size limit to BINARY_SIZE_LIMIT_IN_BYTES.
-BINARY_SIZE_LIMIT_IN_BYTES=1306224
-echo "The current preset binary size limit is $BINARY_SIZE_LIMIT_IN_BYTES"
 python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \
-    --threshold=$BINARY_SIZE_LIMIT_IN_BYTES \
+    ${CHECK_THRESHOLD_SIZE_ARGS} \
     ${BUILD_DIR}/MinSizeRel/libonnxruntime.so
 
 echo "The content of binary_size_data.txt"

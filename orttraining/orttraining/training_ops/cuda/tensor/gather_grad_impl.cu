@@ -565,9 +565,7 @@ void GatherGradImpl(
 
 SPECIALIZED_WITH_IDX(float)
 SPECIALIZED_WITH_IDX(half)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_WITH_IDX(nv_bfloat16)
-#endif
+SPECIALIZED_WITH_IDX(BFloat16)
 
 #undef SPECIALIZED_WITH_IDX
 #undef SPECIALIZED
