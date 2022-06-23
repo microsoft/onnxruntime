@@ -59,7 +59,8 @@ struct Optimizer {
   Optimizer(const std::string& optim_path_or_bytes,
             const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters,
             const onnxruntime::SessionOptions& session_options,
-            const Environment& env);
+            const Environment& env,
+            const std::vector<std::shared_ptr<IExecutionProvider>>& providers);
 
   Status Step();
 

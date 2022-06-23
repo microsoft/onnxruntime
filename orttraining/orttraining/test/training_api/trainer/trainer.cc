@@ -25,6 +25,7 @@ struct TestRunnerParameters {
   std::string optimizer_training_graph_path;
   std::string checkpoint_to_load_path;
   std::string model_name;
+  std::string synthetic_input_type;
 
   // Data configs.
   std::string train_data_dir;
@@ -74,6 +75,8 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
         cxxopts::value<std::string>()->default_value(""))
       ("model_name", "The name of the model.",
         cxxopts::value<std::string>()->default_value("model_test"))
+      ("synthetic_input_type", "Input type can be 'dummy'(input, target) or 'attention'(input_id, attention, target)",
+        cxxopts::value<std::string>()->default_value("attention"))
 
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
         cxxopts::value<std::string>()->default_value("bert_data/128/books_wiki_en_corpus/train"))
@@ -102,6 +105,7 @@ bool ParseArguments(int argc, char* argv[], TestRunnerParameters& params) {
     } else {
       params.model_evaluation_graph_path = eval_path;
     }
+    params.synthetic_input_type = flags["synthetic_input_type"].as<std::string>();
 
     params.optimizer_training_graph_path = flags["optimizer_training_graph_path"].as<std::string>();
     params.checkpoint_to_load_path = flags["checkpoint_to_load_path"].as<std::string>();
@@ -142,7 +146,7 @@ void InitSyntheticDataLoader(
     onnxruntime::training::test::training_api::SyntheticDataLoader& data_loader,
     const TestRunnerParameters& params,
     int64_t num_of_batches_per_epoch) {
-  bool sample_model = false;
+  bool sample_model = params.synthetic_input_type == "dummy" ? true : false;
   if (sample_model) {
     std::vector<int64_t> input1_shape{params.train_batch_size, 784};
     std::vector<int64_t> target_shape{params.train_batch_size};
@@ -172,7 +176,7 @@ int RunTraining(const TestRunnerParameters& params) {
 
   // Create Env
   OrtEnv* env;
-  // TODO: enable global threadpool
+  // TODO(askhade): enable global threadpool
   OrtThreadingOptions* threading_options = nullptr;
   ORT_RETURN_ON_ERROR(g_ort_api->CreateThreadingOptions(&threading_options));
   ORT_RETURN_ON_ERROR(g_ort_api->CreateEnvWithGlobalThreadPools(
@@ -194,13 +198,11 @@ int RunTraining(const TestRunnerParameters& params) {
 #endif
 
   OrtTrainingSession* session;
-  ORT_RETURN_ON_ERROR(g_ort_api->CreateTrainingSession(env, soptions, checkpoint_state, &session));
-
-  // Initialize Training Session
   bool do_eval = params.model_evaluation_graph_path.has_value();
-  ORT_RETURN_ON_ERROR(g_ort_api->InitializeTrainingSession(session, params.model_training_graph_path.c_str(),
-                                                           do_eval ? params.model_evaluation_graph_path.value().c_str() : nullptr,
-                                                           params.optimizer_training_graph_path.size() > 0 ? params.optimizer_training_graph_path.c_str() : nullptr));
+  ORT_RETURN_ON_ERROR(g_ort_api->CreateTrainingSession(env, soptions, checkpoint_state,
+                                                       params.model_training_graph_path.c_str(), do_eval ? params.model_evaluation_graph_path.value().c_str() : nullptr,
+                                                       params.optimizer_training_graph_path.size() > 0 ? params.optimizer_training_graph_path.c_str() : nullptr,
+                                                       &session));
 
   size_t train_mode_output_count, eval_mode_output_count = 0;
   ORT_RETURN_ON_ERROR(g_ort_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
@@ -218,7 +220,7 @@ int RunTraining(const TestRunnerParameters& params) {
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
   InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
 
-  // TODO: Add C API for LRScheduler
+  // TODO(baiju): Add C API for LRScheduler
   //int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
   //int64_t warmup_step_count = total_step_count / 3;
   //Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
@@ -252,8 +254,9 @@ int RunTraining(const TestRunnerParameters& params) {
       train_step_range.End();
 #endif
 
-      float loss = onnxruntime::training::api::utils::GetValue<float>(*fetches[0]);
-      std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
+      float* loss;
+      ORT_RETURN_ON_ERROR(g_ort_api->GetTensorMutableData(fetches[0], (void**)&loss));
+      std::cout << "Batch # : " << batch_idx << " Loss: " << loss[0] << std::endl;
 
       if ((batch_idx + 1) % params.gradient_accumulation_steps == 0) {
         // Gradient accumulation steps completed.
@@ -298,7 +301,7 @@ int RunTraining(const TestRunnerParameters& params) {
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
         ORT_RETURN_ON_ERROR(g_ort_api->SaveCheckpoint(ckpt_file.c_str(), session, true));
 
-        // TODO: enable adding more properties to checkpoint
+        // TODO(baiju): enable adding more properties to checkpoint
         // state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
       }
       batch_idx++;
