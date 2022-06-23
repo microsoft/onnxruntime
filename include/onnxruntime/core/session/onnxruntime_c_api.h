@@ -3381,6 +3381,8 @@ struct OrtApi {
   * \param[in] number of contraints
   * \param[in] attributes used to initialize the operator
   * \param[in] number of the attributes
+  * \param[in] number of inputs
+  * \param[in] number of outputs
   * \param[out] operator that has been created
   * 
   * \since Version 1.12.
@@ -3395,8 +3397,8 @@ struct OrtApi {
                   _In_opt_ int type_constraint_count,
                   _In_opt_ const OrtOpAttr* const* attr_values,
                   _In_opt_ int attr_count,
-                  _In_opt_ int input_count,
-                  _In_opt_ int output_count,
+                  _In_ int input_count,
+                  _In_ int output_count,
                   _Outptr_ OrtOp** ort_op);
 
   /** \brief: Invoke the operator created by OrtApi::CreateOp

@@ -28,11 +28,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _In_ const char*,
                     _In_ const char*,
                     _In_ int,
-                    _In_ const char**,
-                    _In_ const ONNXTensorElementDataType*,
-                    _In_ int,
-                    _In_ const OrtOpAttr* const*,
-                    _In_ int,
+                    _In_opt_ const char**,
+                    _In_opt_ const ONNXTensorElementDataType*,
+                    _In_opt_ int,
+                    _In_opt_ const OrtOpAttr* const*,
+                    _In_opt_ int,
                     _In_ int,
                     _In_ int,
                     _Out_ OrtOp**) {
@@ -89,7 +89,6 @@ using StandAloneNodesMap = InlinedHashMap<const onnxruntime::OpKernel*, NodePtr>
 
 class NodeRepo {
  private:
-
   NodeRepo() = default;
   ~NodeRepo() = default;
 
@@ -99,11 +98,14 @@ class NodeRepo {
   static StandAloneNodesMap kNodeMap;
 
  public:
-  static void AddNode(const onnxruntime::OpKernel* kernel, NodePtr& node_ptr) {
+  static onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr& node_ptr) {
     std::lock_guard<std::mutex> guard(kMtx);
     auto iter = kNodeMap.find(kernel);
-    ORT_ENFORCE(iter == kNodeMap.end(), "kernel already mapped to existing node");
+    if (iter != kNodeMap.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
+    }
     kNodeMap.insert({kernel, std::move(node_ptr)});
+    return Status::OK();
   }
 
   static onnxruntime::Status ValidateNode(const onnxruntime::OpKernel* kernel,
@@ -111,7 +113,9 @@ class NodeRepo {
                                           const int& output_count) {
     std::lock_guard<std::mutex> guard(kMtx);
     auto iter = kNodeMap.find(kernel);
-    ORT_ENFORCE(iter != kNodeMap.end(), "matching node is missing");
+    if (iter == kNodeMap.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "matching node is missing");
+    }
     auto* node = iter->second.get();
     auto& input_defs = node->MutableInputDefs();
     auto& output_defs = node->MutableOutputDefs();
@@ -397,7 +401,8 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   static FuncManager kFuncMgr;
   status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
-  NodeRepo::AddNode(op_kernel.get(), node_ptr);
+  status = NodeRepo::AddNode(op_kernel.get(), node_ptr);
+  ORT_RETURN_IF_ERROR(status);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
 }
@@ -452,14 +457,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
-                    int version,
+                    _In_ int version,
                     _In_opt_ const char** type_constraint_names,
                     _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                    int type_constraint_count,
+                    _In_opt_ int type_constraint_count,
                     _In_opt_ const OrtOpAttr* const* attr_values,
-                    int attr_count,
-                    int input_count,
-                    int output_count,
+                    _In_opt_ int attr_count,
+                    _In_ int input_count,
+                    _In_ int output_count,
                     _Outptr_ OrtOp** ort_op) {
   API_IMPL_BEGIN
   auto status = onnxruntime::standalone::CreateOp(info,
