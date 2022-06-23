@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ort_value.h"
 #include "core/session/ort_apis.h"
@@ -40,12 +41,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTrainingSession, _In_ const OrtEnv* env, _In_
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         options == nullptr ? ProvidersType() : CreateProviders(options->provider_factories),
         chkpt_state->module_checkpoint_state.named_parameters,
-        onnxruntime::training::api::ModelIdentifiers{
-            train_model_path,
-            eval_model_path ? std::optional<std::string>{eval_model_path}
+        onnxruntime::training::api::ModelIdentifiers(
+            onnxruntime::ToUTF8String(train_model_path),
+            eval_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(eval_model_path))
                             : std::nullopt,
-            optimizer_model_path ? std::optional<std::string>{optimizer_model_path}
-                                 : std::nullopt});
+            optimizer_model_path ? std::optional<std::string>(onnxruntime::ToUTF8String(optimizer_model_path))
+                                 : std::nullopt));
 
     *out = reinterpret_cast<OrtTrainingSession*>(train_sess.release());
   }
