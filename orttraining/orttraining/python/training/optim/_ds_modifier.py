@@ -144,8 +144,11 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             import deepspeed
 
             if LooseVersion(deepspeed.__version__) >= LooseVersion("0.5.7"):
-                target.fp16_groups = target.bit16_groups
-            for i in range(len(target.fp16_groups)):
+                fp16_groups = target.bit16_groups
+            else:
+                fp16_groups = target.fp16_groups
+
+            for i in range(len(fp16_groups)):
                 grad_data = [grad.data for grad in target.averaged_gradients[i] if grad is not None]
                 if check_overflow_for_grads(grad_data):
                     return True
