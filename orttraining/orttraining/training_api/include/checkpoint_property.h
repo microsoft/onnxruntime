@@ -102,7 +102,7 @@ struct PropertyBag {
     }
   }
 
-  int Size() const {
+  size_t Size() const {
     return named_properties.size();
   }
 
