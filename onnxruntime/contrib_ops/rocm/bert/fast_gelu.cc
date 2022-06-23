@@ -55,12 +55,12 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   if (!LaunchFastGeluKernel<HipT>(Stream(),
-                                   static_cast<int>(input_length),
-                                   static_cast<int>(bias_length),
-                                   reinterpret_cast<const HipT*>(input->template Data<T>()),
-                                   (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
-                                   reinterpret_cast<HipT*>(output->template MutableData<T>()),
-                                   use_half2_)) {
+                                  static_cast<int>(input_length),
+                                  static_cast<int>(bias_length),
+                                  reinterpret_cast<const HipT*>(input->template Data<T>()),
+                                  (nullptr != bias) ? reinterpret_cast<const HipT*>(bias->template Data<T>()) : nullptr,
+                                  reinterpret_cast<HipT*>(output->template MutableData<T>()),
+                                  use_half2_)) {
     HIP_CALL(hipGetLastError());
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
@@ -68,6 +68,6 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  //namespace rocm
+}  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

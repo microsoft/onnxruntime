@@ -61,7 +61,7 @@ __global__ void FastGeluKernel(int input_length, int bias_length, const T* input
 
 template <typename T, unsigned TPB, int ILP>
 __global__ void FastGeluKernelVec(int input_length, int bias_length, const T* input, const T* bias,
-                                      T* output) {
+                                  T* output) {
   using VecT = aligned_vector<T, ILP>;
   const T a = T(0.5f);
   const T b = T(0.7978845608028654f);
@@ -133,7 +133,7 @@ bool LaunchFastGeluKernel(hipStream_t stream, int input_length, int bias_length,
                                              input, bias, output);
         }
       } else {
-        if (0 == (input_length % 8) && (input_length >= 3145728)) { // 3145728=8*128*3072
+        if (0 == (input_length % 8) && (input_length >= 3145728)) {  // 3145728=8*128*3072
           const int grid_size = (input_length / 8 + block_size - 1) / block_size;
           hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernelVec<half, block_size, 8>), dim3(grid_size),
                                              dim3(block_size), 0, stream, input_length, bias_length,
