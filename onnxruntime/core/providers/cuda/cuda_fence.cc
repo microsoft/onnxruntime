@@ -21,26 +21,11 @@ CUDAFence::~CUDAFence() {
 }
 
 void CUDAFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int async_queue_id) {
-  if (provider_type == onnxruntime::kCudaExecutionProvider) {
-    // sync in GPU, the call is non-blocking on CPU
-    CUDA_CALL_THROW(cudaStreamWaitEvent(data_transfer_->GetStream(async_queue_id), write_event_, 0));
-  } else {
-    // sync on CPU for all other providers, this is blocking
-    CUDA_CALL_THROW(cudaEventSynchronize(write_event_));
-  }
+  
 }
 
 void CUDAFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) {
-  if (provider_type == onnxruntime::kCudaExecutionProvider) {
-    // sync in GPU, the call is non-blocking on CPU
-    cudaStream_t stream = data_transfer_->GetStream(queue_id);
-    CUDA_CALL_THROW(cudaStreamWaitEvent(stream, read_event_, 0));
-    CUDA_CALL_THROW(cudaStreamWaitEvent(stream, write_event_, 0));
-  } else {
-    // sync on CPU for all other providers, this is blocking
-    CUDA_CALL_THROW(cudaEventSynchronize(read_event_));
-    CUDA_CALL_THROW(cudaEventSynchronize(write_event_));
-  }
+  
 }
 
 bool CUDAFence::CanRelease() {
@@ -49,15 +34,11 @@ bool CUDAFence::CanRelease() {
 }
 
 void CUDAFence::AfterUsedAsInput(int queue_id) {
-  // update read fence
-  cudaStream_t stream = data_transfer_->GetStream(queue_id);
-  CUDA_CALL_THROW(cudaEventRecord(read_event_, stream));
+  
 }
 
 void CUDAFence::AfterUsedAsOutput(int queue_id) {
-  // update write fence
-  cudaStream_t stream = data_transfer_->GetStream(queue_id);
-  CUDA_CALL_THROW(cudaEventRecord(write_event_, stream));
+  
 }
 
 }  // namespace onnxruntime

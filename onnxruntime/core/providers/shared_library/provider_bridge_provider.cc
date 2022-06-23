@@ -318,8 +318,8 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
-  return g_host->CreateGPUDataTransfer(stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
+  return g_host->CreateGPUDataTransfer();
 }
 #endif
 

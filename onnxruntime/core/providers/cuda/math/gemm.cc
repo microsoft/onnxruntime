@@ -104,7 +104,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           N, M, 1,
           /*alpha*/ &one,
           b_data, N,
-          GetConstOnes<CudaT>(M), 1,
+          GetConstOnes<CudaT>(M, GetCudaStreamFromContext(ctx)), 1,
           /*beta*/ &zero,
           out_data, N, device_prop));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
@@ -115,7 +115,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           CUBLAS_OP_N,
           N, M, 1,
           /*alpha*/ &one,
-          GetConstOnes<CudaT>(N), N,
+          GetConstOnes<CudaT>(N, GetCudaStreamFromContext(ctx)), N,
           b_data, 1,
           /*beta*/ &zero,
           out_data, N, device_prop));

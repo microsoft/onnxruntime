@@ -85,7 +85,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
-      GetConstOnes<CudaT>(m), 1,
+      GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.

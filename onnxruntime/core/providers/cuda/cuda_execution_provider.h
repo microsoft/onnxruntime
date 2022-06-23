@@ -18,8 +18,6 @@
 
 namespace onnxruntime {
 
-void CUDART_CB cudaStreamCallback(cudaStream_t /*stream*/, cudaError_t /*status*/, void* userData);
-
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
@@ -41,7 +39,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status SetComputeStream(void* stream) override;
 
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+  void* GetComputeStream() const override { 
+    ORT_THROW("Cuda GetComputeStream Invoke Not Expected."); 
+  }
 
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
@@ -52,11 +52,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   template <typename T>
-  const T* GetConstOnes(size_t count) {
-    return GetPerThreadContext().template GetConstOnes<T>(count);
+  const T* GetConstOnes(size_t count, cudaStream_t stream) {
+    return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
-  void AddDeferredReleaseCPUPtr(void* p);
+  void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream);
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
@@ -109,15 +109,22 @@ class CUDAExecutionProvider : public IExecutionProvider {
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;
+  // only used when set user external stream or cuda graph
   cudaStream_t stream_ = nullptr;
   bool use_ep_level_unified_stream_ = false;
 
-  struct DeferredReleaseCPUPtrs {
-    bool recorded = false;
-    std::vector<void*> cpu_ptrs;
+  // because within a single iteration GPU kernels may executed on multiple streams,
+  // we can't use an unified event to guard the deferred cpu ptrs.
+  // change the design to each cpu ptr has an event,
+  // cuda EP check the event status and release ptrs in the RunStart.
+  // Ideally there should be a worker thread that keep query those events and release
+  // once the event is done, but we don't want to pay the cost of additional thread.
+  struct DeferredReleaseCPUPtr {
+    void* cpu_ptr;
+    cudaEvent_t kernel_complete_event;
   };
 
-  std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
+  std::vector<DeferredReleaseCPUPtr> deferred_release_cpu_ptrs;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
   class PerThreadContext final {
@@ -134,32 +141,28 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return cudnn_handle_;
     }
 
-    cudaEvent_t& GetCurrentDeferredReleaseEvent() {
-      return current_deferred_release_event_;
-    }
-
     template <typename T>
-    const T* GetConstOnes(size_t count) {
+    const T* GetConstOnes(size_t count, cudaStream_t stream) {
       if (std::is_same<T, float>::value) {
         if (!constant_ones_float_) {
           constant_ones_float_ = cuda::CreateConstantOnes<float>();
         }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
           constant_ones_double_ = cuda::CreateConstantOnes<double>();
         }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
           constant_ones_half_ = cuda::CreateConstantOnes<half>();
         }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
       } else if (std::is_same<T, BFloat16>::value) {
         if (!constant_ones_bfloat16_) {
           constant_ones_bfloat16_ = cuda::CreateConstantOnes<BFloat16>();
         }
-        return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }
@@ -179,14 +182,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 #endif
 
    private:
-    cudaStream_t stream_ = nullptr;
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
-
-    // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
-    // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
-    // so the ownership is passed to deferred_release_cpu_ptr_
-    cudaEvent_t current_deferred_release_event_ = nullptr;
 
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;

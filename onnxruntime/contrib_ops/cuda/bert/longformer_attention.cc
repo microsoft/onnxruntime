@@ -118,7 +118,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
-      GetConstOnes<CudaT>(m), 1,
+      GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
@@ -151,10 +151,11 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto global_gemm_buffer = GetScratchBuffer<T>(max_num_global > 0 ? qkv_size : 0);
 
   if (max_num_global > 0) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
         reinterpret_cast<const CudaT*>(global_bias->template Data<T>()), n,
-        GetConstOnes<CudaT>(m), 1,
+        GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
         &zero, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
 
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -200,7 +201,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   // Defer release of pinnned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
-  this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
+  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), GetCudaStreamFromContext(context));
 
   return Status::OK();
 }

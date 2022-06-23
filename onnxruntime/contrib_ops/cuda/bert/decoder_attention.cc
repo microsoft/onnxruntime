@@ -262,7 +262,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
-      GetConstOnes<CudaT>(m), 1,
+      GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
       &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop));
   // matmul: (h2, h1)*(h1, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -286,7 +286,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m), 1,
+          GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -305,7 +305,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m), 1,
+          GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -328,7 +328,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->template Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m), 1,
+          GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(

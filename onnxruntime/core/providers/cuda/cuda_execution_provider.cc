@@ -117,7 +117,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kCudaStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -128,7 +127,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kCudaStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -171,7 +169,6 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
                                                           ArenaExtendStrategy arena_extend_strategy, CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
                                                           OrtArenaCfg* default_memory_arena_cfg) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
-  stream_ = stream;
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
@@ -183,7 +180,9 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  cuda_graph_.SetStream(stream_);
+  cuda_graph_.SetStream(stream);
+#else
+  ORT_UNUSED_PARAMETER(stream);
 #endif
 }
 
@@ -273,17 +272,15 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
   {
     std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    auto it = deferred_release_cpu_ptr_.begin();
-    while (it != deferred_release_cpu_ptr_.end()) {
-      auto& e = it->first;
-      auto& v = it->second;
-      if (v.recorded)
-        CUDA_CALL_THROW(cudaEventSynchronize(e));
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
+    if (!deferred_release_cpu_ptrs.empty()) {
+      // iterate from the end
+      
+      for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
+        CUDA_CALL_THROW(cudaEventSynchronize(deferred_release_cpu_ptrs[i].kernel_complete_event));
+        cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
+        CUDA_CALL_THROW(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
+        deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
       }
-      CUDA_CALL_THROW(cudaEventDestroy(e));
-      it = deferred_release_cpu_ptr_.erase(it);
     }
   }
 
@@ -324,7 +321,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<cudaStream_t>(GetComputeStream()), info_.gpu_mem_limit,
+      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit,
                                                    info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
     } else {
       context = context_state_.retired_context_pool.back();
@@ -377,17 +374,14 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
-  // when not running in InferenceSession (e.g. Test)
-  // it's OK to not remember the deferred release ptr
-  // as the actual memory will be cleaned in arena allocator dtor
-  auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  if (current_deferred_release_event) {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
-    ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
-    iter->second.cpu_ptrs.push_back(p);
-  }
+void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) {
+  // TODO: event reusing?
+  cudaEvent_t kernel_complete_event;
+  CUDA_CALL_THROW(cudaEventCreate(&kernel_complete_event, cudaEventDisableTiming));
+  CUDA_CALL_THROW(cudaEventRecord(kernel_complete_event, stream));
+  // the push_back is not thread safe
+  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+  deferred_release_cpu_ptrs.push_back({p, kernel_complete_event});
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
@@ -396,31 +390,24 @@ Status CUDAExecutionProvider::OnRunStart() {
   auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
   // check if cudaEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    // note that cudaEventQuery returns cudaSucess before first cudaEventRecord
-    if (v.recorded && cudaSuccess == cudaEventQuery(e)) {
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
+  {
+    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    if (!deferred_release_cpu_ptrs.empty()) {
+      // iterate from the end
+      for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
+        if (cudaSuccess == cudaEventQuery(deferred_release_cpu_ptrs[i].kernel_complete_event)) {
+          cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
+          CUDA_RETURN_IF_ERROR(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
+          deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
+        }
       }
-      cudaEvent_t expired_event = it->first;
-      it = deferred_release_cpu_ptr_.erase(it);
-      CUDA_RETURN_IF_ERROR(cudaEventDestroy(expired_event));
-    } else {
-      ++it;
     }
   }
-
-  auto& current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
-  deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
-
-  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
+  //create per thread context cache
+  auto& per_thread_context_cache = GetPerThreadContext();
+  if (IsGraphCaptureEnabled() && per_thread_context_cache.IsGraphCaptureAllowed() && !per_thread_context_cache.IsGraphCaptured()) {
     LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-    GetPerThreadContext().CaptureBegin();
+    per_thread_context_cache.CaptureBegin();
   }
   return Status::OK();
 }
@@ -436,13 +423,9 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
     }
   }
-  // record deferred release event on default stream, and release per_thread_context
-  // TODO: clean the DeferredReleaseEvent related codes
-  /*auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
-  */
-  if (sync_stream) {
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+
+  if (sync_stream && use_ep_level_unified_stream_) {
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream_)));
   }
 
   // If cuda graph is enabled, the per thread context will not be released
@@ -451,22 +434,12 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   if (!IsGraphCaptureEnabled()) {
     ReleasePerThreadContext();
   }
-  /*std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;*/
 
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::SetComputeStream(void* stream) {
-  if (stream != stream_) {
-    if (stream_) {
-      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
-    }
-
-    external_stream_ = true;
-    stream_ = static_cast<cudaStream_t>(stream);
-  }
-  return Status::OK();
+  ORT_THROW("Cuda SetComputeStream Invoke Not Expected.");
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
@@ -2384,7 +2357,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<cudaStream_t>(GetComputeStream()), info_.do_copy_in_default_stream);
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

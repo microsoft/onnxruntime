@@ -5,32 +5,10 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_common.h"
 
-// use default stream for copy for now, to avoid racing in BFC arena as in issue #4829
-// note this may cause some models to run slower if there are ops running on CPU
-// so we leave it as optional, in case user need the previous behavior
-// a full fix to BFC arena is being looked at, and once it's in, we can revert this change
 namespace onnxruntime {
-GPUDataTransfer::GPUDataTransfer(cudaStream_t stream, bool do_copy_in_default_stream) {
-  // create streams, default is nullptr
-  do_copy_in_default_stream_ = do_copy_in_default_stream;
-  streams_[kCudaStreamDefault] = stream;
-  if (do_copy_in_default_stream) {
-    streams_[kCudaStreamCopyIn] = stream;
-    streams_[kCudaStreamCopyOut] = stream;
-  } else {
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyIn], cudaStreamNonBlocking));
-    CUDA_CALL_THROW(cudaStreamCreateWithFlags(&streams_[kCudaStreamCopyOut], cudaStreamNonBlocking));
-  }
-}
+GPUDataTransfer::GPUDataTransfer() {}
 
-GPUDataTransfer::~GPUDataTransfer() {
-  if (!do_copy_in_default_stream_ && streams_[kCudaStreamCopyIn] != nullptr) {
-    CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyIn]));
-  }
-  if (!do_copy_in_default_stream_ && streams_[kCudaStreamCopyOut] != nullptr) {
-    CUDA_CALL(cudaStreamDestroy(streams_[kCudaStreamCopyOut]));
-  }
-}
+GPUDataTransfer::~GPUDataTransfer() {}
 
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   return src_device.Type() == OrtDevice::GPU || src_device.MemType() == OrtDevice::MemType::CUDA_PINNED ||

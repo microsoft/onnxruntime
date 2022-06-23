@@ -74,8 +74,8 @@ class CudaKernel : public OpKernel {
     return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(void* p) const {
-    provider_->AddDeferredReleaseCPUPtr(p);
+  inline void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) const {
+    provider_->AddDeferredReleaseCPUPtr(p, stream);
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
@@ -122,7 +122,7 @@ class CudaKernel : public OpKernel {
       if (cpu_pinned_copy_) {
         gpu_copy_ = op_kernel_->GetScratchBuffer<T>(count_);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice, op_kernel_->Stream()));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release());
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), op_kernel_->Stream());
       }
       return Status::OK();
     }
@@ -160,8 +160,8 @@ class CudaKernel : public OpKernel {
 
  protected:
   template <typename T>
-  inline const T* GetConstOnes(size_t count) const {
-    return provider_->template GetConstOnes<T>(count);
+  inline const T* GetConstOnes(size_t count, cudaStream_t stream) const {
+    return provider_->template GetConstOnes<T>(count, stream);
   }
 
   inline Status CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -169,6 +169,11 @@ class CudaKernel : public OpKernel {
   }
 
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
+
+  static cudaStream_t GetCudaStreamFromContext(OpKernelContext* context) {
+    auto* stream = context->GetComputeStream();
+    return stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
+  }
 
  private:
   CUDAExecutionProvider* provider_;

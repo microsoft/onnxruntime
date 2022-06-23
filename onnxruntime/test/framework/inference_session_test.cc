@@ -359,8 +359,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                                                   shape,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
-    cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
-    st = GetProviderInfo_CUDA().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get());
+    st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
 #ifdef USE_ROCM
     hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
