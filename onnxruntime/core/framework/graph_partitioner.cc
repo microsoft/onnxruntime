@@ -61,28 +61,6 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .Provider(provider_type);
 }
 
-/// <summary>
-/// Validate all the layout sensitive nodes which were transformed for current EP are indeed taken by current EP.
-/// If not, then we have a bug. If a node with domain kMSNHWC is left in the graph at this point then
-/// graph.Resolve will fail.
-/// Since layout transformation is only enabled for compile based EPs, just checking that graph does not contain
-/// a node with kMSNHWC domain is enough. This is because after compile all the nodes which the EP claims are fused
-/// into 1 and removed from the graph.
-/// </summary>
-/// <param name="graph">Graph to validate</param>
-/// <returns></returns>
-static Status ValidateGraphPartitioning(const Graph& graph) {
-  for (const auto& node : graph.Nodes()) {
-    if (node.Domain() == kMSInternalNHWCDomain) {
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "Graph contains an invalid node: " + node.Name() + " Op Type: " + node.OpType() +
-                        " with domain: " + kMSInternalNHWCDomain + ". These are temporary nodes added during layout transformations " +
-                        " and are not expected to remain in the graph post partitioning. This is a bug in layout transformer.");
-    }
-  }
-  return Status::OK();
-}
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 /// <summary>
@@ -98,7 +76,8 @@ static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
   // none of the nodes have already been assigned. If a node is assigned, simply return.
   for (auto node_index : capability.nodes) {
     const auto* node = graph.GetNode(node_index);
-    if ((nullptr == node) || (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
+    if ((nullptr == node) ||
+        (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
       return;
     }
   }
@@ -111,12 +90,22 @@ static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr, IExecutionProvider& current_ep,
-                                 GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities,
+static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr,
+                                 IExecutionProvider& current_ep, GraphPartitioner::Mode mode,
+                                 std::vector<std::unique_ptr<ComputeCapability>>& capabilities,
                                  TransformLayoutFunction transform_layout) {
+  const auto& ep_type = current_ep.Type();
+
+  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !transform_layout) {
+    LOGS_DEFAULT(WARNING) << ep_type << " cannot be used with this model due to its ONNX opset not being supported by "
+                                        "the layout transformer.";
+    return Status::OK();
+  }
+
   {
     GraphViewer graph_viewer(graph);
-    capabilities = current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()));
+    capabilities = current_ep.GetCapability(graph_viewer,
+                                            kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -129,20 +118,50 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
       if (!capability || !capability->sub_graph) {
         continue;
       }
-      AssignNodes(graph, *capability->sub_graph, current_ep.Type());
+
+      AssignNodes(graph, *capability->sub_graph, ep_type);
     }
+
+    const NodeIndex first_new_node = graph.MaxNodeIndex();
 
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
     ORT_RETURN_IF_ERROR(transform_layout(graph, modified, current_ep));
 
     // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
-    // which are reconstructed to update domain or completly new nodes which are necessary for layout transformation.
+    // which are reconstructed to update domain or completely new nodes which are necessary for layout transformation.
     // Therefore, we re-run GetCapability so that these new nodes can be processed by this EP.
     if (modified) {
+      const NodeIndex end_node = graph.MaxNodeIndex();
+
       capabilities.clear();
       GraphViewer graph_viewer(graph);
-      capabilities = current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()));
+      capabilities = current_ep.GetCapability(graph_viewer,
+                                              kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
+
+      // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
+      InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
+      for (const auto& capability : capabilities) {
+        for (auto node_index : capability->sub_graph->nodes) {
+          if (node_index >= first_new_node) {
+            new_nodes_in_capabilities.insert(node_index);
+          }
+        }
+      }
+
+      for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
+        const Node* node = graph.GetNode(idx);
+        if (node != nullptr && node->Domain() == kMSInternalNHWCDomain) {
+          if (new_nodes_in_capabilities.count(node->Index()) == 0) {
+            return ORT_MAKE_STATUS(
+                ONNXRUNTIME, FAIL,
+                "Node '", node->Name(), "' OpType:", node->OpType(), " with domain:", kMSInternalNHWCDomain,
+                " was inserted using the NHWC format as requested by ", ep_type, ", but was not selected",
+                " by that EP. This means the graph is now invalid as there will not be an EP able to run the node."
+                " This could be a bug in layout transformer, or in the GetCapability implementation of the EP.");
+          }
+        }
+      }
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -224,7 +243,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // Here we temporary keep the function body for DML fusion
         // Need to remove it after migrate DML to the Compile-based approach.
         // TODO2: Nuphar is out of maintain, keep it with old API temporarily.
-        // We want to deprecate Nuphar soon.
+        // We want to remove Nuphar soon.
         if (fusion_style == IExecutionProvider::FusionStyle::Function ||
             provider_type == kDmlExecutionProvider ||
             provider_type == kNupharExecutionProvider) {
@@ -344,17 +363,17 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
   if (!nodes_to_compile.empty()) {
     std::vector<NodeComputeInfo> node_compute_funcs;
-    // !!! The Function style fusion will be deprecated soon.
+    // !!! The Function style fusion is deprecated.
     if (fusion_style == IExecutionProvider::FusionStyle::Function) {
       // TODO: Nuphar is out of maintain. Use the old api temporarily.
-      // We want to deprecate it soon.
+      // We want to remove it soon.
       // Create a Function based node where the fused nodes have a new Graph instance.
       static std::once_flag legacy_compile_method_warning_flag;
       std::call_once(
           legacy_compile_method_warning_flag, [](std::string_view ep_type) {
-            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Funciton style Compile API, "
-                                  << " which will be deprecated soon, please migrate to the new Compile API based on "
-                                  << " FilteredGraphViewer. ";
+            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
+                                     "which is deprecated and will be removed soon. Please migrate to the new Compile "
+                                     "API based on FilteredGraphViewer.";
           },
           type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
@@ -410,10 +429,11 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         // used by SessionState
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, metadef, type);
-        ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                                                             return FunctionKernel::Create(func_mgr, info, out);
-                                                           }));
+        ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
+            builder,
+            [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+              return FunctionKernel::Create(func_mgr, info, out);
+            }));
 
         // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
         graph.FinalizeFuseSubGraph(indexed_sub_graph, *node);
@@ -434,8 +454,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
       graph.FinalizeFuseSubGraph(indexed_sub_graph, *node);
     }
-
-    ORT_RETURN_IF_ERROR(ValidateGraphPartitioning(graph));
   }
 
   // if this is the main graph call Resolve to put the Graph back into a guaranteed good state
@@ -612,8 +630,6 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
     graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
   }
-
-  ORT_RETURN_IF_ERROR(ValidateGraphPartitioning(graph));
 
   return Status::OK();
 }

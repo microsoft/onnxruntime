@@ -1,7 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <memory>
 #include <assert.h>
-#include "logits_processor.h"
-#include "dump_tensor.h"
 #include "core/common/safeint.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
+#include "contrib_ops/cpu/transformers/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -102,7 +106,8 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     std::unordered_set<int32_t> blocked_word_ids;
     for (int j = 0; j <= static_cast<int>(sequence.length()) - ngram_size_; j++) {
       // Here we use naive algorithm for matching. The complexity is O(batch_beam_size * ngram_size * sequence_length)
-      // TODO: build N-Gram index (hash table with prefix of length NGram - 1 as key, and list of last word of NGram as value) for fast matching.
+      // TODO(tianleiwu): build N-Gram index (hash table with prefix of length NGram - 1 as key,
+      //                  and list of last word of NGram as value) for fast matching.
       if (ngram_size_ == 1 || prefix == sequence.subspan(j, prefix_length)) {
         blocked_word_ids.insert(sequence[static_cast<gsl::index>(j) + prefix_length]);
       }
@@ -119,7 +124,8 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
 }
 
 template <typename T>
-VocabMaskLogitsProcessor<T>::VocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask) : vocab_mask_(vocab_mask) {
+VocabMaskLogitsProcessor<T>::VocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask)
+    : vocab_mask_(vocab_mask) {
 }
 
 template <typename T>
@@ -145,8 +151,10 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 }
 
 template <typename T>
-PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask, int batch_size)
-    : prefix_vocab_mask_(prefix_vocab_mask), batch_size_(batch_size) {
+PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask,
+                                                                  int batch_size)
+    : prefix_vocab_mask_(prefix_vocab_mask),
+      batch_size_(batch_size) {
 }
 
 template <typename T>
@@ -159,7 +167,7 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   assert(num_beams * batch_size_ == next_token_scores.batch_beam_size);
 
   // Process prefix vocabulary mask and set tokens with mask value 0 to -inf.
-  // prefix_vocab_mask shape (batch_szie, vocab_size).
+  // prefix_vocab_mask shape (batch_size, vocab_size).
   T* p = next_token_scores.scores.data();
   for (int i = 0; i < batch_size_; i++) {
     size_t prefix_vocab_mask_offset = SafeInt<size_t>(i) * next_token_scores.vocab_size;
@@ -181,7 +189,8 @@ void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   processor_list_.clear();
 
   if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
-    repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(parameters.repetition_penalty);
+    repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(
+        parameters.repetition_penalty);
     processor_list_.push_back(repetition_penalty_processor_.get());
   }
 
@@ -196,12 +205,14 @@ void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   }
 
   if (!parameters.prefix_vocab_mask.empty()) {
-    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask, parameters.batch_size);
+    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask,
+                                                                                           parameters.batch_size);
     processor_list_.push_back(prefix_vocab_mask_processor_.get());
   }
 
   if (parameters.min_length > 0) {
-    min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length, parameters.eos_token_id);
+    min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length,
+                                                                              parameters.eos_token_id);
     processor_list_.push_back(min_length_processor_.get());
   }
 

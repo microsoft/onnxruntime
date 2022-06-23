@@ -71,12 +71,15 @@ function(bundle_static_library bundled_target_name)
     add_dependencies(bundling_target ${target_name})
   endforeach()
 
-  add_library(${bundled_target_name} STATIC IMPORTED)
+  add_library(${bundled_target_name} STATIC IMPORTED GLOBAL)
+  set_target_properties(${bundled_target_name}
+    PROPERTIES
+      IMPORTED_LOCATION ${bundled_target_full_name})
   foreach(target_name IN ITEMS ${ARGN})
-    set_target_properties(${bundled_target_name}
-      PROPERTIES
-        IMPORTED_LOCATION ${bundled_target_full_name}
-        INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:${target_name},INTERFACE_INCLUDE_DIRECTORIES>)
+    set_property(TARGET ${bundled_target_name} APPEND
+      PROPERTY INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:${target_name},INTERFACE_INCLUDE_DIRECTORIES>)
+    set_property(TARGET ${bundled_target_name} APPEND
+      PROPERTY INTERFACE_COMPILE_DEFINITIONS $<TARGET_PROPERTY:${target_name},INTERFACE_COMPILE_DEFINITIONS>)
   endforeach()
   add_dependencies(${bundled_target_name} bundling_target)
 endfunction()
@@ -105,6 +108,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_mlas
       onnxruntime_optimizer
       onnxruntime_providers
+      ${PROVIDERS_XNNPACK}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -168,10 +172,14 @@ else()
     onnxruntime_mlas
     onnxruntime_optimizer
     onnxruntime_providers
+    ${PROVIDERS_XNNPACK}
     onnxruntime_session
     onnxruntime_util
     re2::re2
   )
+  if (onnxruntime_USE_XNNPACK)
+    target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
+  endif()
 
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)

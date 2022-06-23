@@ -21,16 +21,12 @@
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
-
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
-
 #include "orttraining/python/orttraining_pybind_common.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
-PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
 
 namespace onnxruntime {
@@ -118,7 +114,6 @@ struct TrainingParameters {
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill;
-  bool allow_layer_norm_mod_precision = false;
 
   // graph dumping
   std::string model_after_graph_transforms_path;
@@ -294,7 +289,6 @@ TrainingConfigurationResult ConfigureSessionForTraining(
   config.graph_transformer_config.propagate_cast_ops_config.strategy = parameters.propagate_cast_ops_strategy;
   config.graph_transformer_config.propagate_cast_ops_config.level = parameters.propagate_cast_ops_level;
   config.graph_transformer_config.propagate_cast_ops_config.allow = parameters.propagate_cast_ops_allow;
-  config.graph_transformer_config.allow_layer_norm_mod_precision = parameters.allow_layer_norm_mod_precision;
 
   if (!parameters.model_after_graph_transforms_path.empty()) {
     config.model_after_graph_transforms_path = ToPathString(parameters.model_after_graph_transforms_path);
@@ -359,112 +353,6 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 }
 
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
-  py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
-      .def(py::init<>())
-      .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
-        v->push_back(ortvalue);
-      })
-      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-        v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-      })
-      .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
-      .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
-      .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def("__iter__", [](const std::vector<OrtValue>& v) {
-        return py::make_iterator(v.cbegin(), v.cend());
-       }, py::keep_alive<0, 1>())
-      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
-        return v.at(idx);
-      })
-      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
-         std::vector<int64_t> indices;
-         for (size_t i = 0; i < v->size(); ++i) {
-           if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
-             indices.push_back(static_cast<int64_t>(i));
-           }
-         }
-         return indices;
-      }, "Returns the indices of every boolean tensor in this vector of OrtValue. "
-         "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
-         "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
-         "to get a boolean tensor.")
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      })
-      .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
-        return GetTensorProtoType(v->at(idx));
-      }, "Returns an integer equal to the ONNX proto type of the tensor at position i. "
-         "This integer is one type defined by ONNX TensorProto_DataType "
-         "(such as onnx.TensorProto.FLOAT)."
-          "Raises an exception in any other case.")
-      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
-
-        if (v.size() == 0)
-          return py::list();
-
-        py::list list_dlpacks;
-        PyObject* obj;
-
-        py::gil_scoped_acquire acquire;
-
-        if (to_tensor.is_none()) {
-          DLManagedTensor* dlmanaged_tensor;
-
-          for (auto it : v) {
-            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-            py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-            list_dlpacks.append(capsule);
-          }
-        } else {
-          DLManagedTensor* dlmanaged_tensor;
-          PyObject* capsule = NULL;
-          PyObject* handle = to_tensor.ptr();
-
-          for (auto it : v) {
-            // A new instance of dlpack needs to be created. The object which consumes it
-            // is responsible for its deletion.
-            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-            if (capsule == NULL) {
-              capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
-              if (capsule == NULL)
-                throw std::runtime_error("Unexpected error: empty capsule returned.");
-            } else {
-              // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
-              PyCapsule_SetName(capsule, "dltensor");
-              PyCapsule_SetPointer(capsule, dlmanaged_tensor);
-            }
-            obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-            if (obj == NULL)
-              throw std::runtime_error("to_tensor returned a null pointer. This is usually caused by an error during the conversion.");
-            list_dlpacks.append(obj);
-            Py_DECREF(obj);
-          }
-          if (capsule != NULL) {
-            // This test is never wrong because v is not empty if the execution goes through that path.
-            // If not present, Guardian detects a potential failure.
-            Py_DECREF(capsule);
-          }
-        }
-        return list_dlpacks;
-       },
-       R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
-a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
-consuming the DLPack structure or return a list of capsule if this function is None.
-
-:param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
-    a new tensor which becomes the new owner of the data. This function takes one python object and
-    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`,
-    if None, the method returns a capsule for every new DLPack structure.
-:return: a list containing the new tensors or a the new capsules if *to_tensor* is None
-
-This method is used to replace `tuple(torch._C._from_dlpack(ov.to_dlpack()) for ov in ort_values)`
-by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. This loop
-is difficult to parallelize as it goes through the GIL many times.
-It creates many tensors acquiring ownership of existing OrtValue.
-This method saves one object creation and an C++ allocation
-for every transfered tensor.
-)pbdoc");
-
   py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
       .def("insert", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name, OrtValue& value) {
@@ -548,8 +436,7 @@ for every transfered tensor.
       .def_readwrite("model_with_training_graph_path", &TrainingParameters::model_with_training_graph_path)
       .def_readwrite("enable_adasum", &TrainingParameters::enable_adasum)
       .def_readwrite("propagate_cast_ops_level", &TrainingParameters::propagate_cast_ops_level)
-      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingParameters::allow_layer_norm_mod_precision);
+      .def_readwrite("propagate_cast_ops_allow", &TrainingParameters::propagate_cast_ops_allow);
 
 #if defined(USE_MPI)
   m.def("get_mpi_context_local_rank", []() -> int { return MPIContext::GetInstance().GetLocalRank(); });
@@ -558,16 +445,6 @@ for every transfered tensor.
   m.def("get_mpi_context_world_size", []() -> int { return MPIContext::GetInstance().GetWorldSize(); });
 #endif
 
-  m.def("register_aten_op_executor",
-        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
-          ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
-          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
-          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
-        });
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
@@ -787,7 +664,6 @@ for every transfered tensor.
       .def_readwrite("gelu_recompute", &TrainingGraphTransformerConfiguration::gelu_recompute)
       .def_readwrite("transformer_layer_recompute", &TrainingGraphTransformerConfiguration::transformer_layer_recompute)
       .def_readwrite("number_recompute_layers", &TrainingGraphTransformerConfiguration::number_recompute_layers)
-      .def_readwrite("allow_layer_norm_mod_precision", &TrainingGraphTransformerConfiguration::allow_layer_norm_mod_precision)
       .def_readwrite("propagate_cast_ops_config", &TrainingGraphTransformerConfiguration::GraphTransformerConfiguration::propagate_cast_ops_config);
 
   py::class_<OrtModuleGraphBuilderConfiguration> module_graph_builder_config(

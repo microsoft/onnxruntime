@@ -9,13 +9,17 @@ from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValu
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
 
-class ExecutionAgentOutput(object):
+class ExecutionAgentOutput:  # pylint: disable=R0903
+    "Wraps an OrtValue and adds an ID."
+
     def __init__(self, ortvalues, run_id=None):
+        if isinstance(ortvalues, list):
+            raise TypeError("ortvalues must be of type 'OrtValueVector'.")
         self.ortvalues = ortvalues
         self.run_id = run_id
 
 
-class InferenceAgent(object):
+class InferenceAgent:
     """
     This is the main class used to run an ORTModule model inferencing.
     """
@@ -69,7 +73,11 @@ class InferenceAgent(object):
         """
 
         self._inference_session.run_with_iobinding(iobinding, run_options)
-        ortvalues = iobinding.get_outputs()
+        # iobinding.get_outputs() wraps every C OrtValue into Python OrtValue
+        # but ExecutionAgentOutput only accepts OrtValueVector.
+        ortvalues = iobinding._iobinding.get_outputs()  # pylint: disable=W0212
+        if not isinstance(ortvalues, C.OrtValueVector):
+            raise TypeError("ortvalues must be an instance of type 'OrtValueVector'.")
         return ExecutionAgentOutput(ortvalues)
 
 

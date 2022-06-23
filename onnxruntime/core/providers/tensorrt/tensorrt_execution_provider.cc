@@ -248,6 +248,12 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   return std::unique_lock<OrtMutex>(singleton);
 }
 
+#ifdef ORT_TENSORRT_PLACEHOLDER_BUILDER
+// instantiate global unused builder object which keeps the TRT kernel library in memory
+// so that subsequent builders avoid the expensive load / unload process.
+auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(GetTensorrtLogger()));
+#endif
+
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
@@ -283,6 +289,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       engine_decryption_lib_path_ = info.engine_decryption_lib_path;
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
+    context_memory_sharing_enable_ = info.context_memory_sharing_enable;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -367,6 +374,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     if (!force_sequential_engine_build_env.empty()) {
       force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
     }
+
+    const std::string context_memory_sharing_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kContextMemorySharingEnable);
+    if (!context_memory_sharing_enable_env.empty()) {
+      context_memory_sharing_enable_ = (std::stoi(context_memory_sharing_enable_env) == 0 ? false : true);
+    }
   }
 
   // Validate setting
@@ -430,7 +442,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_cache_path: " << cache_path_
                         << ", trt_engine_decryption_enable: " << engine_decryption_enable_
                         << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
-                        << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_;
+                        << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
+                        << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -447,50 +460,73 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
   }
 }
 
-void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
-  // Try to get a CUDA allocator from allocator manager first
-  // Used to allocate CUDA device memory
-  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
-  if (nullptr == allocator_) {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
-    allocator_ = CreateAllocator(default_memory_info);
-    allocator_manager->InsertAllocator(allocator_);
+void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
+  OrtDevice::DeviceId short_device_id = gsl::narrow<OrtDevice::DeviceId>(device_id_);
+  OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
+  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+
+  // setup CUDA allocator
+  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+  if (!allocator_) {
+    // use shared allocator if available
+    allocator_ = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
+
+    if (!allocator_) {
+      AllocatorCreationInfo default_memory_info(
+          [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+      allocator_ = CreateAllocator(default_memory_info);
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(allocator_);
+    }
+
+    InsertAllocator(allocator_);
   }
-  TryInsertAllocator(allocator_);
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
-  if (nullptr == cuda_pinned_alloc) {
-    AllocatorCreationInfo pinned_allocator_info(
-        [](OrtDevice::DeviceId device_id) {
-          return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
-        },
-        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-    cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
-    allocator_manager->InsertAllocator(cuda_pinned_alloc);
-  }
-  TryInsertAllocator(cuda_pinned_alloc);
+  auto cuda_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  if (!cuda_pinned_alloc) {
+    cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
-  auto cuda_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
-  if (nullptr == cuda_cpu_alloc) {
-    // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
-    // This will be refactored/removed when allocator and execution provider are decoupled.
-    // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
-    // CPUAllocator is OrtMemTypeDefault for CPU EP
-    AllocatorCreationInfo cpu_memory_info(
-        [](int device_id) {
-          return std::make_unique<CPUAllocator>(
-              OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                            OrtMemTypeCPUInput));
-        },
-        DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
-    cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
-    allocator_manager->InsertAllocator(cuda_cpu_alloc);
+    if (!cuda_pinned_alloc) {
+      AllocatorCreationInfo pinned_allocator_info(
+          [](OrtDevice::DeviceId device_id) {
+            return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+          },
+          pinned_device.Id());
+
+      cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
+      allocator_manager.InsertAllocator(cuda_pinned_alloc);
+    }
+
+    InsertAllocator(cuda_pinned_alloc);
   }
-  TryInsertAllocator(cuda_cpu_alloc);
+
+  auto cuda_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  if (!cuda_cpu_alloc) {
+    cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
+
+    if (!cuda_cpu_alloc) {
+      // TODO: this is actually used for the cuda kernels which explicitly ask for inputs from CPU.
+      // This will be refactored/removed when allocator and execution provider are decoupled.
+      // Need to move the OrtMemoryType out of Allocator, that's one thing blocking us to share it with CPU EP
+      // CPUAllocator is OrtMemTypeDefault for CPU EP
+      AllocatorCreationInfo cpu_memory_info(
+          [](int device_id) {
+            return std::make_unique<CPUAllocator>(
+                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
+                              OrtMemTypeCPUInput));
+          },
+          cpu_device.Id());
+
+      cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
+      allocator_manager.InsertAllocator(cuda_cpu_alloc);
+    }
+
+    InsertAllocator(cuda_cpu_alloc);
+  }
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -1170,7 +1206,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       if (trt_engine != nullptr) {
         // Build context
-        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        if (context_memory_sharing_enable_) {
+          size_t mem_size = trt_engine->getDeviceMemorySize();
+          if (mem_size > max_ctx_mem_size_) {
+            max_ctx_mem_size_ = mem_size;
+            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
+          }
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+        } else {
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        }
         if (trt_context == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
@@ -1216,7 +1261,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           update_engine_cache = true;
 
         // Build context
-        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        if (context_memory_sharing_enable_) {
+          size_t mem_size = trt_engine->getDeviceMemorySize();
+          if (mem_size > max_ctx_mem_size_) {
+            max_ctx_mem_size_ = mem_size;
+            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
+          }
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+        } else {
+          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        }
         if (trt_context == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
@@ -1267,8 +1321,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
-            runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_,
-            update_engine_cache};
+            runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
+            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, update_engine_cache};
       *state = p.release();
       return 0;
     };
@@ -1327,6 +1381,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
       auto alloc = trt_state->scratch_allocator;
+      auto context_memory = trt_state->context_memory;
+      auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
@@ -1513,8 +1569,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         trt_engine = trt_state->engine->get();
 
         // Build context
-        *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
-            trt_state->engine->get()->createExecutionContext());
+        if (trt_state->context_memory_sharing_enable) {
+          *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+        } else {
+          *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+              trt_state->engine->get()->createExecutionContext());
+        }
         if (trt_state->context == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
@@ -1565,7 +1626,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             for (int j = 0, end = nb_dims; j < end; ++j) {
               dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
-            trt_context->setBindingDimensions(binding_index, dimensions);
+            const bool status = trt_context->setBindingDimensions(binding_index, dimensions);
+            if (!status) {
+              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                                  "TensorRT EP cannot set the dynamic dimensions of a binding"));
+            }
           }
         }
 
@@ -1804,6 +1869,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
                                    "TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.");
           }
         }
+      }
+
+      // Set execution context memory
+      if (trt_state->context_memory_sharing_enable) {
+        size_t mem_size = trt_engine->getDeviceMemorySize();
+        if (mem_size > *max_context_mem_size_ptr) {
+          *max_context_mem_size_ptr = mem_size;
+          *context_memory = IAllocator::MakeUniquePtr<void>(alloc, *max_context_mem_size_ptr);
+        }
+        trt_context->setDeviceMemory((*context_memory).get());
       }
 
       // Run TRT inference
