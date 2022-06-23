@@ -791,6 +791,55 @@ std::unique_ptr<ReleasePlan> ParallelExecutionPlan::GenerateReleasePlan() const 
   return release_plan;
 }
 
+static bool SameShape(const ONNX_NAMESPACE::TensorShapeProto& shape1,
+                      const ONNX_NAMESPACE::TensorShapeProto& shape2) {
+  namespace on = ONNX_NAMESPACE;
+  int rank1 = shape1.dim_size();
+  if (shape2.dim_size() != rank1) return false;
+  for (int i = 0; i < rank1; i++) {
+    const auto& val1 = shape1.dim(i);
+    const auto& val2 = shape2.dim(i);
+    if (utils::HasDimValue(val1) && utils::HasDimValue(val2) &&
+        (val1.dim_value() == val2.dim_value()))
+      continue;  // same known dimension
+    if (utils::HasDimParam(val1) && utils::HasDimParam(val2)) {
+      const auto& val1_param = val1.dim_param();
+      if (val1_param == val2.dim_param() && !val1_param.empty())
+        continue;  // same unknown dimension
+    }
+    return false;
+  }
+  return true;
+}
+
+static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
+  const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
+  MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
+  const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
+  ORT_ENFORCE(nullptr != tensor_type_base);
+  MLDataType elt_type = tensor_type_base->GetElementType();
+  return elt_type->Size();
+}
+
+static bool SameSize(const onnx::TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1,
+                     const onnx::TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
+  const auto& ptype1 = arg1.Type();
+  const auto& ptype2 = arg2.Type();
+  auto type1_size = GetElementSize(ptype1);
+  auto type2_size = GetElementSize(ptype2);
+  bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+  bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
+  return !(is_type1_string || is_type2_string) && (type1_size == type2_size) && SameShape(shape1, shape2);
+}
+
+bool SameSize(const ISequentialPlannerContext& context, const onnxruntime::NodeArg& arg1, const onnxruntime::NodeArg& arg2) {
+  if ((!arg1.Exists()) || (!arg2.Exists())) return false;
+  auto p_shape1 = context.GetShape(arg1);
+  auto p_shape2 = context.GetShape(arg2);
+  if ((nullptr == p_shape1) || (nullptr == p_shape2)) return false;
+  return SameSize(*p_shape1, arg1, *p_shape2, arg2);
+}
+
 void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& context) {
   InlinedHashMap<NodeIndex, int> dependents;
   for (const auto& it : impl_->dependence_graph_) {
@@ -828,6 +877,8 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
   // for each node, dependents_map keeps all its dependent upstream nodes that are sure to be completed ahead
   std::map<NodeIndex, std::set<NodeIndex>> dependents_map;
 
+  std::map<OrtValueIndex, std::set<OrtValueIndex>> input_output_map;
+
   std::set<OrtValueIndex> reused;
 
   const auto& graph_viewer = impl_->session_state_.GetGraphViewer();
@@ -861,6 +912,13 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
       bool found_reusable = false;
       const auto& alias_map = ci.kernel_def->Alias();
       auto input_args = node->InputDefs();
+      for (auto* input_arg : input_args) {
+        OrtValueIndex input_idx_global{};
+        if (value_map.GetIdx(input_arg->Name(), input_idx_global).IsOK()) {
+          input_output_map[input_idx_global].insert(output_idx_global);
+        }
+      }
+
       for (auto& pair : alias_map) {
         if (pair.second == output_arg_num) {
           // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for reshape)
@@ -868,8 +926,10 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
             auto p_input_arg = input_args[pair.first];
             if (p_input_arg->Exists()) {
               OrtValueIndex reusable_input{};
-              if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK()) {
-                LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
+              if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() && 
+                  allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
+                // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
+                std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                 allocation_plan[output_idx_global].reused_buffer = reusable_input;
                 impl_->value_consumer_map_[reusable_input].insert(impl_->value_consumer_map_[output_idx_global].begin(),
@@ -889,15 +949,21 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
 
       const auto& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
       if (variadic_alias_offsets.has_value()) {
+
         int input_offset = variadic_alias_offsets->first;
         int output_offset = variadic_alias_offsets->second;
         int alias_input_index = output_arg_num - output_offset + input_offset;
+
         if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
           auto p_input_arg = input_args[alias_input_index];
+
           if (p_input_arg->Exists()) {
             OrtValueIndex reusable_input{};
-            if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK()) {
-              LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
+            if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
+                allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
+
+              // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
+              std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
               allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
               allocation_plan[output_idx_global].reused_buffer = reusable_input;
               impl_->value_consumer_map_[reusable_input].insert(impl_->value_consumer_map_[output_idx_global].begin(),
@@ -916,19 +982,17 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
             auto p_input_arg = input_args[pair.first];
             if (p_input_arg->Exists()) {
               OrtValueIndex input_arg_index{};
-              if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK()) {
-                if (impl_->value_consumer_map_[input_arg_index].size() == 1) {
-                  auto* input_shape = context.GetShape(*p_input_arg);
-                  auto* output_shape = context.GetShape(*p_output_arg);
-                  if (input_shape && output_shape && input_shape->ByteSizeLong() == output_shape->ByteSizeLong() && *input_shape == *output_shape) {
-                    LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
-                    allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
-                    allocation_plan[output_idx_global].reused_buffer = input_arg_index;
-                    impl_->value_consumer_map_[input_arg_index].insert(impl_->value_consumer_map_[output_idx_global].begin(),
-                                                                       impl_->value_consumer_map_[output_idx_global].end());
-                    reused.insert(input_arg_index);
-                    break;
-                  }
+              if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
+                  allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
+
+                if (impl_->value_consumer_map_[input_arg_index].size() == 1 && SameSize(context, *p_input_arg, *p_output_arg)) {
+                  LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
+                  std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
+                  allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+                  allocation_plan[output_idx_global].reused_buffer = input_arg_index;
+                  impl_->value_consumer_map_[input_arg_index].insert(impl_->value_consumer_map_[output_idx_global].begin(),
+                                                                     impl_->value_consumer_map_[output_idx_global].end());
+                  reused.insert(input_arg_index);
                 }
               }
             }
@@ -982,8 +1046,18 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
             continue;
           }
 
+          // skip if it is a pair of input and output
+          if (input_output_map[output_idx_global].find(downstream_value) != input_output_map[output_idx_global].end()) {
+            node_iter = next(node_iter);
+            continue;
+          }
+
           const auto* downstream_shape = context.GetShape(*downstream_arg);
-          if (!(*downstream_shape == *shape)) {
+          //if (!(*downstream_shape == *shape)) {
+          //  node_iter = next(node_iter);
+          //  continue;
+          //}
+          if (!SameSize(*downstream_shape, *downstream_arg, *shape, *node_output)) {
             node_iter = next(node_iter);
             continue;
           }
@@ -1003,7 +1077,8 @@ void ParallelExecutionPlan::GenerateReusePlan(const ISequentialPlannerContext& c
             }
           }
           if (all_covered) {
-            LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
+            //LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
+            std::cout << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
             allocation_plan[downstream_value].alloc_kind = AllocKind::kReuse;
             allocation_plan[downstream_value].reused_buffer = output_idx_global;
             get_reused = true;

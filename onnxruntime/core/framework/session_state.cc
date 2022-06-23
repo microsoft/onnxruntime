@@ -1531,7 +1531,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, para_context, tmp_para_exec_plan_wrapper));
   tmp_para_exec_plan_wrapper.release();
-  //p_para_exec_plan_->GenerateReusePlan(para_context);
+  p_para_exec_plan_->GenerateReusePlan(para_context);
   LOGS(logger_, INFO) << "p_para_exec_plan initialized";
 
   // Record the allocation plan
