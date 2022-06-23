@@ -664,6 +664,12 @@ class InferenceSession {
   std::basic_string<ORTCHAR_T> thread_pool_name_;
   std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
 
+  // This option allows to decrease CPU usage between infrequent
+  // requests and forces any TP threads spinning stop immediately when the last of
+  // concurrent ExecuteGraph() call returns.
+  // Spinning is restarted on the next Run()
+  bool force_spinning_stop_between_runs_ = false;
+
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
