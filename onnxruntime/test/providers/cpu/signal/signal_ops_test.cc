@@ -44,7 +44,7 @@ static void TestRadix2DFTFloat(bool onesided) {
   output_shape[1] = onesided ? (1 + (shape[1] >> 1)) : shape[1];
 
   vector<float> input = {1, 2, 3, 4, 5, 6, 7, 8};
-  vector<float> expected_output = {36.000f, 0.000f, -4.000f, 9.65685f,  -4.000f, 4.000f,  -4.000f, 1.65685f,
+  vector<float> expected_output = {36.000f, 0.000f, -4.000f, 9.65685f, -4.000f, 4.000f, -4.000f, 1.65685f,
                                    -4.000f, 0.000f, -4.000f, -1.65685f, -4.000f, -4.000f, -4.000f, -9.65685f};
 
   if (onesided) {
@@ -89,10 +89,7 @@ static void TestDFTInvertible(bool complex) {
     void AddNodes(Graph& graph, vector<NodeArg*>& graph_inputs, vector<NodeArg*>& graph_outputs,
                   vector<std::function<void(Node& node)>>& add_attribute_funcs) override {
       // Create an intermediate output
-      vector<NodeArg*> intermediate_outputs = graph_outputs;
-      ONNX_NAMESPACE::TypeProto type_info = *intermediate_outputs[0]->TypeAsProto();  // copy
-      NodeArg& dft_output = graph.GetOrCreateNodeArg("dft_output", &type_info);
-      intermediate_outputs[0] = &dft_output;
+      vector<NodeArg*> intermediate_outputs{&graph.GetOrCreateNodeArg("dft_output", graph_outputs[0]->TypeAsProto())};
 
       // call base implementation to add the DFT node.
       OpTester::AddNodes(graph, graph_inputs, intermediate_outputs, add_attribute_funcs);
