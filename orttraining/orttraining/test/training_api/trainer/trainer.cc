@@ -53,9 +53,9 @@ void EnforceCheck(bool run_ret, std::string err_msg) {
     if (onnx_status != NULL) {                                   \
       auto code = g_ort_api->GetErrorCode(onnx_status);          \
       const char* msg = g_ort_api->GetErrorMessage(onnx_status); \
-      g_ort_api->ReleaseStatus(onnx_status);                     \
       printf("Run failed with error code :%d\n", code);          \
       printf("Error message :%s\n", msg);                        \
+      g_ort_api->ReleaseStatus(onnx_status);                     \
       return -1;                                                 \
     }                                                            \
   } while (0);
@@ -221,9 +221,9 @@ int RunTraining(const TestRunnerParameters& params) {
   InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
 
   // TODO(baiju): Add C API for LRScheduler
-  //int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
-  //int64_t warmup_step_count = total_step_count / 3;
-  //Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
+  // int64_t total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
+  // int64_t warmup_step_count = total_step_count / 3;
+  // Ort::OrtLinearLRScheduler scheduler = Ort::OrtLinearLRScheduler(optimizer, warmup_step_count, total_step_count);
 
   std::cout << "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;
@@ -273,7 +273,7 @@ int RunTraining(const TestRunnerParameters& params) {
 #endif
 
         // Update learning rate.
-        //EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
+        // EnforceCheck(scheduler.Step(), "Failed during shceduler.Step()");
 
 #if defined(USE_CUDA) && defined(ENABLE_NVTX_PROFILE)
         onnxruntime::profile::NvtxRangeCreator resetgrad_range(
