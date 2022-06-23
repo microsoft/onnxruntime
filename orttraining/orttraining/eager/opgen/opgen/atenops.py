@@ -124,8 +124,8 @@ hand_implemented = {
     "aten::softshrink": Shrink("self", bias="lambd", lambd="lambd"),  # yes, bias is set to 'lambd'
     "aten::hardshrink": Shrink("self", bias=0, lambd="lambd"),
     "aten::gelu": Gelu("self"),
-    "aten::max": ReduceMax("self", keepdims=1),
-    "aten::min": ReduceMin("self", keepdims=1),
+    "aten::max": ReduceMax("self", keepdims=0),
+    "aten::min": ReduceMin("self", keepdims=0),
     "aten::_cat": Concat("tensors", "dim"),
     "aten::fill_.Scalar": ConstantOfShape("self", value="value"),
     "aten::ne.Scalar": MakeTorchFallback(),
@@ -137,8 +137,10 @@ hand_implemented = {
     "aten::masked_select": MakeTorchFallback(),
     "aten::_local_scalar_dense": MakeTorchFallback(),
     "aten::gt.Scalar_out": MakeTorchFallback(),
+    "aten::lt.Scalar_out": MakeTorchFallback(),
     "aten::equal": MakeTorchFallback(),
     "aten::_softmax": Softmax("self", axis="dim"),
+    "aten::argmax.out": SignatureOnly(),
 }
 
 # Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439
