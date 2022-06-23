@@ -58,8 +58,7 @@ jobs:
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          # Test ORT with the latest ONNX release.
-         export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
-         sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
+         sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
          #Do not explicitly specify numpy version as this is not a packaging pipeline, any version should be ok
          sed -i "/^numpy/d" $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt

@@ -208,7 +208,8 @@ class GraphViewer {
   // if we're limiting the view to an IndexedSubGraph we need to create a few pieces of infrastructure that would
   // usually come from the full graph
   const IndexedSubGraph* filter_info_{nullptr};
-  std::unordered_set<NodeIndex> filtered_node_indices_;
+  using FilteredNodeSet = InlinedHashSet<NodeIndex>;
+  FilteredNodeSet filtered_node_indices_;
   std::vector<const NodeArg*> filtered_node_inputs_;
   std::vector<const NodeArg*> filtered_node_inputs_including_initializers_;
   std::vector<const NodeArg*> filtered_node_outputs_;

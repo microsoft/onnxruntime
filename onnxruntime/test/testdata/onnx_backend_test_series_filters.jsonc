@@ -4,6 +4,8 @@
     //
     // Tests that are failing temporarily and should be fixed
     "current_failing_tests": [
+        "^test_(blackmanwindow|dft|hammingwindow|hannwindow|melweightmatrix|stft).*", // https://github.com/microsoft/onnxruntime/pull/11778
+        "^test_sequence_map.*", // https://github.com/microsoft/onnxruntime/pull/11731
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_batchnorm_epsilon_old",
