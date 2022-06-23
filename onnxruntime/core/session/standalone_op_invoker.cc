@@ -388,11 +388,14 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   kernel_def_builder->SetDomain(domain);
   kernel_def_builder->SinceVersion(version);
 
-  OpKernelInfo instant_kernel_info(*node_holder.get(), *kernel_def_builder->Build(), *ep, {}, {}, {});
+  static std::unordered_map<int, OrtValue> kEmptyValueMap;
+  static OrtValueNameIdxMap kEmptyNameMap;
+
+  OpKernelInfo standalone_kernel_info(*node_holder.get(), *kernel_def_builder->Build(), *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
-  FuncManager func_mgr;
-  status = kernel_create_info->kernel_create_func(func_mgr, instant_kernel_info, op_kernel);
+  static FuncManager kFuncMgr;
+  status = kernel_create_info->kernel_create_func(kFuncMgr, standalone_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
   NodeRepo::AddNode(op_kernel.get(), node_holder);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
