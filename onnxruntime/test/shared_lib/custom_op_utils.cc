@@ -474,17 +474,6 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
     }
   }
 
-  bool failed = false;
-  const OrtValue* invalid_inputs[] = {(OrtValue*)X, (OrtValue*)W, (OrtValue*)nullptr};
-  //the call supposed to fail because of growed inputs
-  ORT_TRY {
-    ort_.InvokeOp(context, op_conv, invalid_inputs, 3, outputs, 1);
-  }
-  ORT_CATCH (const Ort::Exception& e) {
-    failed = e.GetOrtErrorCode() == ORT_INVALID_ARGUMENT;
-  }
-
-  ORT_ENFORCE(failed, "invalid input did not trigger exception");
   ort_.ReleaseOp(op_conv);
 }
 
