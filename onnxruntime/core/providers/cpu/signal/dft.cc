@@ -113,7 +113,8 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
   std::complex<T>* Y_data;
   if (is_onesided) {
     if (temp_output.size() != dft_length) {
-      temp_output = InlinedVector<std::complex<T>>(dft_length);
+      temp_output.clear();
+      temp_output.resize(dft_length);
     }
     Y_data = temp_output.data();
   } else {
@@ -125,7 +126,8 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
 
   // Create vandermonde matrix V ordered with the bit-reversed permutation
   if (V.size() != dft_length) {
-    V = InlinedVector<std::complex<T>>(dft_length);  // e^(i *2*pi / N * k)
+    V.clear();
+    V.resize(dft_length);
     for (size_t i = 0; i < dft_length; i++) {
       size_t bit_reversed_index = bit_reverse(i, significant_bits);
       V[bit_reversed_index] = compute_exponential(i, angular_velocity);
@@ -153,6 +155,14 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
         auto odd_index = k + j + midpoint;
         std::complex<T>* even = (Y_data + even_index * Y_data_stride);
         std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
+        if (is_onesided) {
+          if (even > &temp_output[temp_output.size() - 1]) {
+            ORT_THROW("even is out of range");
+          }
+          if (odd > &temp_output[temp_output.size() - 1]) {
+            ORT_THROW("odd is out of range");
+          }
+        }
         std::complex<T> first = *even + (V[first_idx] * *odd);
         std::complex<T> second = *even + (V[second_idx] * *odd);
         *even = first;
