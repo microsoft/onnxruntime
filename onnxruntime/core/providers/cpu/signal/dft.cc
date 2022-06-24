@@ -155,14 +155,6 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
         auto odd_index = k + j + midpoint;
         std::complex<T>* even = (Y_data + even_index * Y_data_stride);
         std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
-        if (is_onesided) {
-          if (even > &temp_output[temp_output.size() - 1]) {
-            ORT_THROW("even is out of range");
-          }
-          if (odd > &temp_output[temp_output.size() - 1]) {
-            ORT_THROW("odd is out of range");
-          }
-        }
         std::complex<T> first = *even + (V[first_idx] * *odd);
         std::complex<T> second = *even + (V[second_idx] * *odd);
         *even = first;
