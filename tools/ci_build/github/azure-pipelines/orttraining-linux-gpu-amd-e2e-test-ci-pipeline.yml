@@ -71,7 +71,6 @@ jobs:
      python orttraining/tools/ci_test/run_convergence_test.py \
        --binary_dir build/RelWithDebInfo \
        --model_root training_e2e_test_data/models \
-       --training_data_root training_e2e_test_data/data \
-       --gpu_sku MI100_32G
+       --training_data_root training_e2e_test_data/data
     displayName: 'Run C++ BERT-L convergence test'
     condition: succeededOrFailed() # ensure all tests are run
