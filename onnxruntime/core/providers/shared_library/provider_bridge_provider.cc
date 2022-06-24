@@ -39,6 +39,7 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
+#include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
@@ -576,6 +577,16 @@ namespace contrib {
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
+
+Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimizerBase::Prepare& prepare) const {
+  return g_host_cpu.contrib__AdamWOptimizerBase__PrepareForCompute(this, ctx, reinterpret_cast<contrib__AdamWOptimizerBase__Prepare&>(prepare));
+}
+
+Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_of_values,
+                                           const TensorSeq* values, TensorSeq* updated_values) const {
+  return g_host_cpu.contrib__AdamWOptimizerBase__GenerateOutputs(this, ctx, number_of_values, values, updated_values);
+}
+
 }  // namespace contrib
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
