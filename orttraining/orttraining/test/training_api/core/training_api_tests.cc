@@ -48,7 +48,7 @@ void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
 }
 
 TEST(TrainingApiTest, ModuleTrainStep) {
-  auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
 
   CheckpointState state;
   auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
@@ -59,7 +59,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
                                         *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-
+  ORT_ENFORCE(model->GetTrainModeOutputCount() == 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
@@ -76,6 +76,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
     ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
+    ORT_ENFORCE(fetches.size() == 1);
     bias_grad = bias_param->Gradient();
 
     if (step > 1) {
@@ -103,7 +104,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(TrainingApiTest, OptimStep) {
-  auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
   CheckpointState state;
@@ -182,7 +183,7 @@ void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 
 void TestLRSchduler(const std::string& test_file_name, float initial_lr, int64_t total_step_count,
                     int64_t warmup_step_count) {
   /// Load model and optimizer graph, create Module, Optimizer and LRScheduler instances.
-  auto model_uri = MODEL_FOLDER "gradient_graph.onnx";
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
 
   CheckpointState state;

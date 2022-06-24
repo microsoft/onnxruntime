@@ -109,11 +109,11 @@ def build_gradient_graph(accessor, user_args_requiring_grad, user_args_not_requi
 def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_names):
     """Builds gradient accumulation nodes on top of a training model.
 
-    Adds an InPlaceAccumulator node for every gradient so that the gradients
-    are accumulated in a gradient buffer (which is an input to InPlaceAccumulator).
+    Adds an InPlaceAccumulatorV2 node for every gradient so that the gradients
+    are accumulated in a gradient buffer (which is an input to InPlaceAccumulatorV2).
 
     For example, if there is a gradient in the graph called fc1.weight_grad,
-    an InPlaceAccumulator will be added for that gradient whose input will
+    an InPlaceAccumulatorV2 will be added for that gradient whose input will
     be a graph input (fc1.weight_grad.accumulation.buffer) and the newly
     computed gradient (fc1.weight_grad).
 
@@ -122,7 +122,7 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
         Ʌ         v                         v
         |         |_________________________|
         |                      |
-        |               InPlaceAccumulator
+        |               InPlaceAccumulatorV2
         |                      |
         |                      v
         |______________________|
@@ -154,7 +154,7 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
 
         # Gradient accumulation node
         acc_node = onnx.helper.make_node(
-            "InPlaceAccumulator",
+            "InPlaceAccumulatorV2",
             [grad_accumulation_buffer_name, grad_name, lazy_reset_grad_input_name],
             [grad_accumulation_output_name],
             name=f"GradientAccumulator{idx}",
@@ -168,9 +168,10 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
         grad_accumulation_buffer_input.name = grad_accumulation_buffer_name
         graph_inputs.append(grad_accumulation_buffer_input)
 
-        # accumulated gradient is also a graph output
-        grad_accumulation_output = copy.deepcopy(graph_output)
-        grad_accumulation_output.name = grad_accumulation_output_name
+        # accumulated gradient update flag is also a graph output
+        grad_accumulation_output = onnx.helper.make_tensor_value_info(
+            grad_accumulation_output_name, onnx.TensorProto.BOOL, [1]
+            )
         graph_outputs.append(grad_accumulation_output)
 
     lazy_reset_grad_input = onnx.helper.make_tensor_value_info(lazy_reset_grad_input_name, onnx.TensorProto.BOOL, [1])
