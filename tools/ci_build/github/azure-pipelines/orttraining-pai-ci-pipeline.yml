@@ -339,7 +339,6 @@ jobs:
         python orttraining/orttraining/test/python/orttraining_ortmodule_tests.py \
           --mnist /mnist \
           --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-          --transformers_cache /hf_models_cache/huggingface/transformers \
-          --gpu_sku MI100_32G
+          --transformers_cache /hf_models_cache/huggingface/transformers
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
