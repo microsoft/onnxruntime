@@ -113,7 +113,6 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
   std::complex<T>* Y_data;
   if (is_onesided) {
     if (temp_output.size() != dft_length) {
-      temp_output.clear();
       temp_output.resize(dft_length);
     }
     Y_data = temp_output.data();
@@ -126,7 +125,6 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
 
   // Create vandermonde matrix V ordered with the bit-reversed permutation
   if (V.size() != dft_length) {
-    V.clear();
     V.resize(dft_length);
     for (size_t i = 0; i < dft_length; i++) {
       size_t bit_reversed_index = bit_reverse(i, significant_bits);
@@ -172,8 +170,9 @@ static Status fft_radix2(OpKernelContext* /*ctx*/, const Tensor* X, Tensor* Y, s
   }
 
   if (is_onesided) {
+    const size_t output_size = (dft_length >> 1) + 1;
     auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
-    for (size_t i = 0; i < dft_length; i++) {
+    for (size_t i = 0; i < output_size; i++) {
       *(destination + Y_stride * i) = *(Y_data + i * Y_data_stride);
     }
   }
