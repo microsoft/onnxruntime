@@ -912,12 +912,18 @@ class OnnxModel:
             # Save model to external data, which is needed for model size > 2GB
             output_dir = Path(output_path).parent
             output_dir.mkdir(parents=True, exist_ok=True)
-            location = Path(output_path + ".data").name if all_tensors_to_one_file else None
+            external_data_path = output_path + ".data"
+            location = Path(external_data_path).name if all_tensors_to_one_file else None
+
+            if os.path.exists(output_path):
+                logger.info(f"Delete the existed onnx file: {output_path}")
+                os.remove(output_path)
 
             if all_tensors_to_one_file:
-                if os.path.exists(output_path + ".data"):
+                if os.path.exists(external_data_path):
                     # Delete the external data file. Otherwise, data will be appended to existing file.
-                    os.remove(output_path + ".data")
+                    logger.info(f"Delete the existed external data file: {external_data_path}")
+                    os.remove(external_data_path)
             else:
                 if os.listdir(output_dir):
                     raise RuntimeError(f"Output directory ({output_dir}) for external data is not empty.")
