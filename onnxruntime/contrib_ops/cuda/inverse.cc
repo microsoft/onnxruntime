@@ -21,6 +21,9 @@ class Inverse final : public ::onnxruntime::cuda::CudaKernel {
 
   template <typename T>
   struct ComputeImpl;
+
+  // mutex for set cudnn stream
+  mutable OrtMutex cublas_stream_mutex_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -148,6 +151,9 @@ Status Inverse::ComputeInternal(OpKernelContext* ctx) const {
   if (num_dim > 2) {
     num_batches = static_cast<size_t>(input_shape.SizeToDimension(num_dim - 2));
   }
+
+  std::lock_guard<OrtMutex> lock(cublas_stream_mutex_);
+  CUBLAS_CALL_THROW(cublasSetStream(Base::CublasHandle(), Stream()));
 
   IAllocatorUniquePtr<int> info = GetScratchBuffer<int>(num_batches);
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(info.get(), 0, num_batches * sizeof(int), Stream()));
