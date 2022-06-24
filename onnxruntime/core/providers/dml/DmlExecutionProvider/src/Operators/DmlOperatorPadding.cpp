@@ -97,8 +97,8 @@ public:
 
 void CALLBACK QueryPad(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
-    // At the time of writing this, DML_PADDING1_OPERATOR_DESC doesn't support negative element for 
-    // padding count i.e. StartPadding and EndPadding can't contain negative elements.
+    // DML_PADDING1_OPERATOR_DESC doesn't support negative padding counts i.e. StartPadding and EndPadding 
+    // can't contain negative elements. 
     // For opset < 11, 
     //      if attribute 'pads' contains negative element, fall back to CPU
     // opset >= 11
