@@ -91,7 +91,6 @@ struct IBeamSearchParameters {
   int max_length;
   int num_beams;
   int num_return_sequences;
-  float temperature;
   float length_penalty;
   float repetition_penalty;
   int batch_size;       // deduce from first dimension of input_ids

@@ -205,7 +205,7 @@ class IExecutionProvider {
   };
 
   // Fusion approach that is suppported
-  // !!! The "Function" FusionStyle will be deprecated soon.
+  // !!! The "Function" FusionStyle is deprecated.
   // !!! If your EP is using this fusion style, please migrate it to "FilteredGraphViewer" style.
   enum class FusionStyle {
     // The node fusion will create an onnxruntime::Function based Node that contains a completely new Graph instance
@@ -223,14 +223,14 @@ class IExecutionProvider {
 
   virtual FusionStyle GetFusionStyle() const {
     // All the ORT build in EP has migrate to FilteredGraphViewer style except Nuphar.
-    // For newer EPs, please avoid use Function style as it will be deprecated soon.
+    // For newer EPs, please avoid use Function style as it is deprecated.
     return FusionStyle::FilteredGraphViewer;
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /**
-  * !!!! This API will be deprecated soon. If your execution provider overrides this API
+  * !!!! This API is deprecated. If your execution provider overrides this API
   * !!!! Please migrate it to the "Compile" API with FusedNodeAndGraph type.
   Given a list of fused_node, return create_state/compute/release_state func for each node.
   */

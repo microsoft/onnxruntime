@@ -48,7 +48,7 @@ class ModelBuilder {
   // Add an NNAPI operation (operator)
   common::Status AddOperation(int op, const std::vector<uint32_t>& input_indices,
                               const std::vector<std::string>& output_names,
-                              const std::vector<android::nn::wrapper::OperandType>& types);
+                              const std::vector<android::nn::wrapper::OperandType>& output_types);
 
   // Find if the given node_unit has a fuseable activation (Relu/Relu1/Relu6)
   // For now we only support node_unit with a single output
@@ -105,6 +105,8 @@ class ModelBuilder {
   GetFusedActivations() const { return fused_activations_; }
 
   const InitializedTensorSet& GetInitializerTensors() const;
+
+  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name) const;
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 

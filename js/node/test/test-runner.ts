@@ -5,7 +5,7 @@ import * as fs from 'fs-extra';
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
-import {assertTensorEqual, loadTensorFromFile, shouldSkipModel} from './test-utils';
+import {assertTensorEqual, atol, loadTensorFromFile, rtol, shouldSkipModel} from './test-utils';
 
 export function run(testDataFolder: string): void {
   const models = fs.readdirSync(testDataFolder);
@@ -98,7 +98,7 @@ export function run(testDataFolder: string): void {
 
               let j = 0;
               for (const name of session.outputNames) {
-                assertTensorEqual(outputs[name], expectedOutputs[j++]!);
+                assertTensorEqual(outputs[name], expectedOutputs[j++]!, atol(model), rtol(model));
               }
             } else {
               throw new TypeError('session is null');

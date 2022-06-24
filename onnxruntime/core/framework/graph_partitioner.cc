@@ -96,6 +96,12 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                                  TransformLayoutFunction transform_layout) {
   const auto& ep_type = current_ep.Type();
 
+  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !transform_layout) {
+    LOGS_DEFAULT(WARNING) << ep_type << " cannot be used with this model due to its ONNX opset not being supported by "
+                                        "the layout transformer.";
+    return Status::OK();
+  }
+
   {
     GraphViewer graph_viewer(graph);
     capabilities = current_ep.GetCapability(graph_viewer,
@@ -237,7 +243,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // Here we temporary keep the function body for DML fusion
         // Need to remove it after migrate DML to the Compile-based approach.
         // TODO2: Nuphar is out of maintain, keep it with old API temporarily.
-        // We want to deprecate Nuphar soon.
+        // We want to remove Nuphar soon.
         if (fusion_style == IExecutionProvider::FusionStyle::Function ||
             provider_type == kDmlExecutionProvider ||
             provider_type == kNupharExecutionProvider) {
@@ -357,17 +363,17 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
   if (!nodes_to_compile.empty()) {
     std::vector<NodeComputeInfo> node_compute_funcs;
-    // !!! The Function style fusion will be deprecated soon.
+    // !!! The Function style fusion is deprecated.
     if (fusion_style == IExecutionProvider::FusionStyle::Function) {
       // TODO: Nuphar is out of maintain. Use the old api temporarily.
-      // We want to deprecate it soon.
+      // We want to remove it soon.
       // Create a Function based node where the fused nodes have a new Graph instance.
       static std::once_flag legacy_compile_method_warning_flag;
       std::call_once(
           legacy_compile_method_warning_flag, [](std::string_view ep_type) {
-            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Funciton style Compile API, "
-                                  << " which will be deprecated soon, please migrate to the new Compile API based on "
-                                  << " FilteredGraphViewer. ";
+            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
+                                     "which is deprecated and will be removed soon. Please migrate to the new Compile "
+                                     "API based on FilteredGraphViewer.";
           },
           type);
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
