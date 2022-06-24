@@ -2091,6 +2091,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTensorForStringTensor) {
   SessionOptions so;
 
+  so.session_log_severity_level = 0;
   so.session_logid = "InferenceSessionTests.ModelThatTriggersAllocationPlannerBug";
 
   InferenceSession session_object{so, GetEnvironment()};
