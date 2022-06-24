@@ -21,4 +21,5 @@ struct CudaStream : Stream {
 };
 
 void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_registry, cudaStream_t external_stream, bool use_existing_stream);
+void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
 }

@@ -9,6 +9,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
 #include "ortmemoryinfo.h"
+#include "core/framework/stream_handles.h"
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -43,6 +44,9 @@ constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 
 
 constexpr size_t kAllocAlignment = 256;
+
+class IAllocator;
+std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator> allocator, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 // forward declaration
 class SessionState;
@@ -137,7 +141,8 @@ class IAllocator {
   */
   template <typename T>
   static IAllocatorUniquePtr<T> MakeUniquePtr(std::shared_ptr<IAllocator> allocator, size_t count_or_bytes,
-                                              bool use_reserve = false) {
+                                              bool use_reserve = false,
+                                              Stream* stream = nullptr, WaitNotificationFn wait_fn = nullptr) {
     if (allocator == nullptr) return nullptr;
     // for now limit to fundamental types. we could support others, but to do so either we or the caller
     // needs to call the dtor for the objects, for buffers allocated on device we don't have destructor
@@ -155,13 +160,13 @@ class IAllocator {
       }
     }
 
+    std::function<void*(size_t)> alloc_fn = GetAllocationFn(allocator, use_reserve, stream, wait_fn);
+
     // allocate
-    T* p = static_cast<T*>(use_reserve ? allocator->Reserve(alloc_size) : allocator->Alloc(alloc_size));
+    T* p = static_cast<T*>(alloc_fn(alloc_size));
     return IAllocatorUniquePtr<T>{
         p,
-        [allocator = std::move(allocator)](T* ptr) {  // capture 'allocator' by value so it's always valid
-          allocator->Free(ptr);
-        }};
+        [allocator](T* p) { allocator->Free(p); }};
   }
 
  private:

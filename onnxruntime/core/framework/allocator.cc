@@ -14,6 +14,8 @@
 #include <mimalloc.h>
 #endif
 
+#include "core/framework/bfc_arena.h"
+
 namespace onnxruntime {
 
 // private helper for calculation so SafeInt usage doesn't bleed into the public allocator.h header
@@ -108,6 +110,21 @@ void* CPUAllocator::Alloc(size_t size) {
 
 void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
+}
+
+std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator> alloc, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+  if (use_reserve)
+    return [alloc](size_t size) { return alloc->Reserve(size); };
+  return [alloc, stream, wait_fn](size_t size) { 
+    if (alloc->Info().alloc_type == OrtArenaAllocator) {
+      BFCArena* arena_ptr = static_cast<BFCArena*>(alloc.get());
+      auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();
+      if (stream_aware_alloc) {
+        return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
+      }
+    }
+    return alloc->Alloc(size);
+  };
 }
 }  // namespace onnxruntime
 

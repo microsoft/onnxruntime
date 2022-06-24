@@ -192,7 +192,8 @@ Status GptSubgraph::CreateInitialFeeds(
     std::vector<OrtValue>& feeds,
     const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
     const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-    IAllocatorUniquePtr<char>& buffer) {
+    IAllocatorUniquePtr<char>& buffer,
+    Stream* ort_stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
@@ -228,7 +229,7 @@ Status GptSubgraph::CreateInitialFeeds(
   OrtValue expanded_attention_mask;
   ORT_RETURN_IF_ERROR(create_inputs_func(&input_ids, num_beams, pad_token_id, sequence_lengths, cpu_alloactor, expanded_input_ids, expanded_position_ids, expanded_attention_mask));
 
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider, expanded_input_ids, expanded_position_ids, expanded_attention_mask, feeds, buffer));
+  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider, expanded_input_ids, expanded_position_ids, expanded_attention_mask, feeds, buffer, ort_stream));
 
   // The remaing inputs are past state.
   for (int i = 3; i < num_subgraph_inputs; ++i) {

@@ -129,7 +129,8 @@ Status AddToFeeds(const IExecutionProvider* /*execution_provider*/,
                   OrtValue& position_ids,
                   OrtValue& attention_mask,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& /*buffer*/) {
+                  IAllocatorUniquePtr<char>& /*buffer*/,
+                  Stream* /*stream*/) {
   feeds.push_back(input_ids);
   feeds.push_back(position_ids);
   feeds.push_back(attention_mask);

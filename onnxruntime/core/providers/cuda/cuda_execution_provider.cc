@@ -176,9 +176,6 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
-  // CUDA malloc/free is expensive so always use an arena
-  allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
-
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   cuda_graph_.SetStream(stream);
 #else
@@ -359,14 +356,19 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
 }
 
 AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
-  // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
-  // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
-    return GetPerThreadContext().GetAllocator();
-  } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    auto cuda_alloc = IExecutionProvider::GetAllocator(id, mem_type);
+    if (!cuda_alloc) {
+      // this means the program invoke GetAllocator before RegsiterAllocators,
+      // which only happnens in some UTs. 
+      // here is a hack to return another allocator instance. 
+      // need to fix this in the future.
+      return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                                            info_.external_allocator_info, info_.default_memory_arena_cfg);
+    }
   }
+  
+  return IExecutionProvider::GetAllocator(id, mem_type);
 }
 
 Status CUDAExecutionProvider::Sync() const {
@@ -2449,8 +2451,12 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
   // Used to allocate CUDA device memory
   auto cuda_alloc = allocator_manager->GetAllocator(info_.device_id, OrtMemTypeDefault);
   if (nullptr == cuda_alloc) {
-    cuda_alloc = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                     info_.external_allocator_info, info_.default_memory_arena_cfg);
+    // default allocator not registered to 
+    cuda_alloc = IExecutionProvider::GetAllocator(info_.device_id, OrtMemTypeDefault);
+    if (!cuda_alloc) {
+      cuda_alloc = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                                       info_.external_allocator_info, info_.default_memory_arena_cfg);
+    }
     allocator_manager->InsertAllocator(cuda_alloc);
   }
   TryInsertAllocator(std::move(cuda_alloc));

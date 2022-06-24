@@ -30,7 +30,8 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
                   OrtValue& position_ids,
                   OrtValue& attention_mask,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& buffer);
+                  IAllocatorUniquePtr<char>& buffer,
+                  Stream* ort_stream);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,

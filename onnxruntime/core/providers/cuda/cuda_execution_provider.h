@@ -58,12 +58,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream);
 
+  //GPU scratch buffer need to be allocated on stream
   template <typename T>
-  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
+  IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
     if (count_or_bytes == 0)
       return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
   }
 
   template <typename T>
@@ -168,10 +168,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
       }
     }
 
-    AllocatorPtr GetAllocator() const {
-      return allocator_;
-    }
-
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   bool IsGraphCaptureAllowed() const;
   void CaptureBegin();
@@ -189,8 +185,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
     std::unique_ptr<cuda::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
-
-    AllocatorPtr allocator_;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_

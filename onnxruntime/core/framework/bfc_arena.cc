@@ -243,6 +243,9 @@ BFCArena::ChunkHandle BFCArena::AllocateChunk() {
 
 void BFCArena::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
+  //clean the stream / timestamp when deallocate chunk
+  c->stream = nullptr;
+  c->stream_timestamp = 0;
   c->next = free_chunks_list_;
   free_chunks_list_ = h;
 }
@@ -330,9 +333,10 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   }
   if (chunk != nullptr) {
     // if it is on default stream (the new allocate chunk), assign to current stream
-    if (chunk->stream == nullptr && stream) {
+    if (chunk->stream == nullptr) {
       chunk->stream = stream;
-      chunk->stream_timestamp = stream->timestamp;
+      if (stream)
+        chunk->stream_timestamp = stream->timestamp;
     }
     return chunk->ptr;
   }
@@ -826,6 +830,8 @@ void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
       Chunk* c = ChunkFromHandle(h);
       // if c is in use, can't coalesce
       if (!c->in_use()) {
+        // remove C from free first
+        RemoveFreeChunkFromBin(h);
         ChunkHandle h_next = c->next;
         Chunk* c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
         // merge untill next chunk is different stream

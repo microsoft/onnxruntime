@@ -91,7 +91,8 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
                   OrtValue& position_ids,
                   OrtValue& attention_mask,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& buffer) {
+                  IAllocatorUniquePtr<char>& buffer,
+                  Stream* ort_stream) {
   // Copy tensors to GPU, then add to feeds
   const CUDAExecutionProvider* provider = reinterpret_cast<const CUDAExecutionProvider*>(execution_provider);
   const TensorShape& shape = input_ids.Get<Tensor>().Shape();
@@ -111,7 +112,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   memcpy(pinned_data + 2 * sizeof(int32_t) * elements, attention_mask.Get<Tensor>().Data<int32_t>(), sizeof(int32_t) * elements);
 
   if (!buffer) {
-    buffer = provider->GetScratchBuffer<char>(bytes);
+    buffer = provider->GetScratchBuffer<char>(bytes, ort_stream, WaitCudaNotificationOnDevice);
   }
 
   char* gpu_data = buffer.get();

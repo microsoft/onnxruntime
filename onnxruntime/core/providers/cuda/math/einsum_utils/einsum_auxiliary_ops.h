@@ -22,13 +22,17 @@ namespace EinsumOp {
 struct EinsumCudaAssets {
   explicit EinsumCudaAssets(cublasHandle_t cublas_handle,
                             CUDAExecutionProvider* cuda_ep,
-                            cudaStream_t cuda_stream) : cublas_handle_(cublas_handle),
+                            Stream* ort_stream) : cublas_handle_(cublas_handle),
                                                         cuda_ep_ (cuda_ep), 
-                                                        cuda_stream_(cuda_stream) {}
+                                                        ort_stream_(ort_stream) {}
+
+  cudaStream_t GetCudaStream() {
+    return ort_stream_ ? static_cast<cudaStream_t>(ort_stream_->handle) : nullptr;
+  }
 
   cublasHandle_t cublas_handle_;
   CUDAExecutionProvider* cuda_ep_;
-  cudaStream_t cuda_stream_;
+  Stream* ort_stream_;
 };
 
 namespace DeviceHelpers {

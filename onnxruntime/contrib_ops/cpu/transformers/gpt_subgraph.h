@@ -55,7 +55,8 @@ struct GptSubgraph {
       std::vector<OrtValue>& feeds,
       const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
       const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-      IAllocatorUniquePtr<char>& buffer);
+      IAllocatorUniquePtr<char>& buffer,
+      Stream* ort_stream);
 
   FeedsFetchesManager* GetFeedsFetchesManager() const { return feeds_fetches_manager_.get(); }
 

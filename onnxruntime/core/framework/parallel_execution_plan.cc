@@ -74,7 +74,7 @@ class DeviceStreamColloectionImpl {
         for (auto& alloc : allocators) {
           if (alloc->Info().alloc_type == OrtArenaAllocator) {
             auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-            auto* stream_aware_alloc = static_cast<StreamAwareArena*>(arena_alloc);
+            auto* stream_aware_alloc = arena_alloc->AsStreamAwareAreana();
             if (stream_aware_alloc) {
               stream_aware_alloc->ReleaseStreamBuffers(stream.get());
             }

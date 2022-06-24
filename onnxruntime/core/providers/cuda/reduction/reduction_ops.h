@@ -19,7 +19,7 @@ template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_RED
 std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, cudaStream_t stream, const TensorShape* input_shape_override = nullptr);
+                                      bool fast_reduction, Stream* stream, const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps
 
@@ -230,7 +230,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
                          gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
-                         cudaStream_t stream,
+                         Stream* ort_stream,
                          const TensorShape* input_shape_override = nullptr);
 
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so

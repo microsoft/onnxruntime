@@ -8,6 +8,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/platform/ort_mutex.h"
+#include "core/providers/cuda/cuda_stream_handle.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -32,9 +33,9 @@ class CudaKernel : public OpKernel {
     std::lock_guard<OrtMutex> lock(stream_mutex_);
 
     if (p_op_kernel_context->GetComputeStream()) {
-      stream_ = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->handle);
+      stream_ = p_op_kernel_context->GetComputeStream();
     } else {
-      stream_ = static_cast<cudaStream_t>(provider_->GetComputeStream());
+      ORT_THROW("Stream not set on a cuda kernel, not expected.");
     }
 
     auto s = ComputeInternal(p_op_kernel_context);
@@ -62,7 +63,7 @@ class CudaKernel : public OpKernel {
 
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
-    return provider_->GetScratchBuffer<T>(count_or_bytes);
+    return provider_->GetScratchBuffer<T>(count_or_bytes, stream_, WaitCudaNotificationOnDevice);
   }
 
   // Different from GetScratchBuffer which use IAllocator::Alloc() to allocate memory,
@@ -81,10 +82,10 @@ class CudaKernel : public OpKernel {
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
 
   inline cudaStream_t Stream() const { 
-    return stream_;
+    return stream_ ? static_cast<cudaStream_t>(stream_->handle) : nullptr;
   }
 
-  void SetStream(cudaStream_t stream) {
+  void SetStream(onnxruntime::Stream* stream) {
     stream_ = stream;
   }
 
@@ -182,7 +183,7 @@ class CudaKernel : public OpKernel {
   // Remove it before we PR this feature.
   mutable OrtMutex stream_mutex_;
  protected:
-  mutable cudaStream_t stream_;
+  mutable onnxruntime::Stream* stream_{nullptr};
 };
 
 }  // namespace cuda

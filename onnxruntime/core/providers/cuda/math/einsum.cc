@@ -31,7 +31,7 @@ Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const T
   cublasHandle_t cublas_handle = cuda_ep_->PerThreadCublasHandle();
   auto* stream = context->GetComputeStream();
   ORT_RETURN_IF(!stream);
-  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_, static_cast<cudaStream_t>(stream->handle));
+  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_, context->GetComputeStream());
 
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,

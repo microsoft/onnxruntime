@@ -40,7 +40,7 @@ Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
     const OpKernelInfo& info = OpKernel::Info();
     Transpose transpose_kernel = cuda::Transpose(info);
     if (stream)
-      transpose_kernel.SetStream(static_cast<cudaStream_t>(stream->handle));
+      transpose_kernel.SetStream(stream);
     return cuda::Transpose::DoTranspose(transpose_kernel, permutations, input, output);
   };
 
