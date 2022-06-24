@@ -176,7 +176,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
 
   void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
                          int64_t& pad_head, int64_t& pad_tail) const {
-    // TODO (#9740) ORT 1.13 will correct the logic by switching them to meet ONNX spec
+    // TODO(jcwchen): #9740 ORT 1.13 will correct the logic by switching them to meet ONNX spec
     LOGS_DEFAULT(WARNING) << "The pad result for SAME_UPPER and SAME_LOWER will be corrected in next ORT 1.13 release.";
     if (pad_type == AutoPadType::SAME_UPPER) {  // pad more on head when total_pad is odd.
       pad_head = total_pad - total_pad / 2;
