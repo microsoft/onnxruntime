@@ -115,22 +115,22 @@ stages:
           workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build onnxruntime (in container)'
 
-      - script: |-
-          python3 orttraining/tools/ci_test/download_azure_blob_archive.py \
-            --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
-            --target_dir $(Build.SourcesDirectory)/training_e2e_test_data \
-            --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-        displayName: 'Download onnxruntime_training_data.zip data'
+      # - script: |-
+      #     python3 orttraining/tools/ci_test/download_azure_blob_archive.py \
+      #       --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
+      #       --target_dir $(Build.SourcesDirectory)/training_e2e_test_data \
+      #       --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
+      #   displayName: 'Download onnxruntime_training_data.zip data'
 
-      - script: |-
-          echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
-          video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
-          echo "Found video_gid=$video_gid; attempting to set as pipeline variable"
-          echo "##vso[task.setvariable variable=video]$video_gid"
-          render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
-          echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
-          echo "##vso[task.setvariable variable=render]$render_gid"
-        displayName: 'Find video and render gid to be mapped into container'
+      # - script: |-
+      #     echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
+      #     video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
+      #     echo "Found video_gid=$video_gid; attempting to set as pipeline variable"
+      #     echo "##vso[task.setvariable variable=video]$video_gid"
+      #     render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
+      #     echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
+      #     echo "##vso[task.setvariable variable=render]$render_gid"
+      #   displayName: 'Find video and render gid to be mapped into container'
 
       # - script: |-
       #     echo "video=$video"

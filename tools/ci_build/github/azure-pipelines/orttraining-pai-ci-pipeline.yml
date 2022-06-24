@@ -289,8 +289,8 @@ jobs:
     inputs:
       script: |-
         python orttraining/tools/ci_test/run_batch_size_test.py \
-            --binary_dir build/RelWithDebInfo \
-            --model_root training_e2e_test_data/models \
+          --binary_dir build/RelWithDebInfo \
+          --model_root training_e2e_test_data/models \
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L batch size test'
     retryCountOnTaskFailure: 1
@@ -319,3 +319,27 @@ jobs:
     displayName: 'Run C++ BERT-L convergence test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+    displayName: 'Mount MNIST'
+    condition: succeededOrFailed()
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
+    displayName: 'Mount bert-data'
+    condition: succeededOrFailed()
+
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+    displayName: 'Mount hf-models-cache'
+    condition: succeededOrFailed()
+
+  - task: CmdLine@2
+    inputs:
+      script: |-
+        export PYTHONPATH=$PWD
+        python orttraining/orttraining/test/python/orttraining_ortmodule_tests.py \
+          --mnist /mnist \
+          --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
+          --transformers_cache /hf_models_cache/huggingface/transformers \
+          --gpu_sku MI100_32G
+    displayName: 'Run orttraining_ortmodule_tests.py'
+    condition: succeededOrFailed()
