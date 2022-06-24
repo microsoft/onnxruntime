@@ -37,12 +37,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  Status SetComputeStream(void* stream) override;
-
-  void* GetComputeStream() const override { 
-    ORT_THROW("Cuda GetComputeStream Invoke Not Expected."); 
-  }
-
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
   }

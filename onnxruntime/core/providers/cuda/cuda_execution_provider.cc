@@ -440,10 +440,6 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   return Status::OK();
 }
 
-Status CUDAExecutionProvider::SetComputeStream(void* stream) {
-  ORT_THROW("Cuda SetComputeStream Invoke Not Expected.");
-}
-
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_cuda_graph;

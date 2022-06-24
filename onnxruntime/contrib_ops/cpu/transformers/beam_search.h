@@ -20,7 +20,7 @@ using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 class BeamSearch : public IControlFlowKernel {
  public:
   BeamSearch(const OpKernelInfo& info)
-      : IControlFlowKernel(info), feeds_fetches_manager_(nullptr), cuda_stream_(nullptr), dumper_(nullptr) {
+      : IControlFlowKernel(info), feeds_fetches_manager_(nullptr), dumper_(nullptr) {
     Init(info);
   }
 
@@ -33,7 +33,6 @@ class BeamSearch : public IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
  protected:
-  void SetComputeStream(void* stream) { cuda_stream_ = stream; }
   void SetConsoleDumper(IConsoleDumper* dumper) { dumper_ = dumper; }
 
   void SetDeviceHelpers(
@@ -84,8 +83,6 @@ class BeamSearch : public IControlFlowKernel {
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<GptSubgraph> gpt_subgraph_;
   FeedsFetchesManager* feeds_fetches_manager_;
-
-  void* cuda_stream_;
 
   IConsoleDumper* dumper_;
 

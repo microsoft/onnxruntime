@@ -519,21 +519,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
-  if (provider_type == onnxruntime::kCudaExecutionProvider) {
-    // Parallel execution mode does not support the CUDA EP
-    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      /*LOGS(*session_logger_, WARNING)
-          << "Parallel execution mode does not support the CUDA Execution Provider. "
-          << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
-      session_options_.execution_mode = ExecutionMode::ORT_SEQUENTIAL;*/
-    }
-
-    auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
-    if (trt_ep) {
-      ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
-    }
-  }
-
   VLOGS(*session_logger_, 1) << "Adding execution provider of type: " << provider_type;
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
   if (p_data_xfr) {

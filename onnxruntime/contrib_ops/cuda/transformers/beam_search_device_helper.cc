@@ -100,7 +100,8 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   const int64_t elements = shape[0] * shape[1];
 
   AllocatorPtr pinned_allocator = provider->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  cudaStream_t stream = static_cast<cudaStream_t>(provider->GetComputeStream());
+  ORT_ENFORCE(ort_stream);
+  cudaStream_t stream = static_cast<cudaStream_t>(ort_stream->handle);
 
   size_t bytes = (sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t)) * elements;
   auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, bytes);

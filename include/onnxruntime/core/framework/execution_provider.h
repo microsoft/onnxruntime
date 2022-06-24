@@ -190,9 +190,6 @@ class IExecutionProvider {
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
-  virtual common::Status SetComputeStream(void*) { return Status::OK(); }
-  virtual void* GetComputeStream() const { return nullptr; }
-
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
   // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager

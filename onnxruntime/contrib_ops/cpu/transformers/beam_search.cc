@@ -296,10 +296,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   BeamSearchParameters parameters = parameters_;  // make a copy since we will update the parameters based on inputs later
-
+  void* cuda_stream = ctx->GetComputeStream() ? ctx->GetComputeStream()->handle : nullptr;
   // Subgraph has constraint that the output is either float or float16
   if (!gpt_subgraph_->IsOutputFloat16()) {
-    BeamSearchImpl<float> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
+    BeamSearchImpl<float> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, cuda_stream, dumper_, parameters,
                                create_inputs_func_ ? create_inputs_func_ : BeamSearchCpuDeviceHelper::CreateInputs,
                                add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
                                topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
@@ -311,7 +311,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
     return impl.Execute(*feeds_fetches_manager_);
   } else {
-    BeamSearchImpl<MLFloat16> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
+    BeamSearchImpl<MLFloat16> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, cuda_stream, dumper_, parameters,
                                    create_inputs_func_ ? create_inputs_func_ : BeamSearchCpuDeviceHelper::CreateInputs,
                                    add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
                                    topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
