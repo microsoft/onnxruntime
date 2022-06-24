@@ -66,7 +66,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
   ORT_THROW_IF_ERROR(train_sess_->Initialize());
 
   // Extract model input and output names
-  utils::GetGraphInputOutputNames(train_sess_, train_input_names_, train_output_names_);
+  std::vector<std::string> train_input_names, train_output_names;
+  utils::GetGraphInputOutputNames(train_sess_, train_input_names, train_output_names);
 
   // Reorder the extracted input names in the following order:
   // user inputs, weights, gradients, reset_grad
@@ -74,7 +75,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
   std::string param_name;
 
   std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
-  for (const auto& input_name : train_input_names_) {
+  for (const auto& input_name : train_input_names) {
     auto it = named_parameters_.find(input_name);
     if (it != named_parameters_.end()) {
       param_input_names.emplace_back(input_name);
@@ -95,17 +96,11 @@ Module::Module(const std::string& train_model_path_or_bytes,
   train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
 
-  std::vector<std::string> user_output_names, param_output_names;
-  for (const auto& output_name : train_output_names_) {
-    if (utils::GetParamNameFromGradient(output_name, param_name)) {
-      param_output_names.emplace_back(output_name);
-    } else {
-      user_output_names.emplace_back(output_name);
+  for (const auto& output_name : train_output_names) {
+    if (!utils::GetParamNameFromGradient(output_name, param_name)) {
+      train_output_names_.emplace_back(output_name);
     }
   }
-  train_output_names_ = user_output_names;
-  train_output_names_.insert(train_output_names_.end(), param_output_names.begin(), param_output_names.end());
-  train_user_output_size_ = user_output_names.size();
 
   // Loop each parameter, allocate it's memory based on user specified device.
   auto& train_sess_state = train_sess_->GetSessionState();
@@ -192,7 +187,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
 }
 
 size_t Module::GetTrainModeOutputCount() const noexcept {
-  return train_user_output_size_;
+  return train_output_names_.size();
 }
 
 size_t Module::GetEvalModeOutputCount() const noexcept {
@@ -221,9 +216,7 @@ Status Module::TrainStep(const std::vector<OrtValue>& inputs, std::vector<OrtVal
   utils::WrapInOrtValue<bool>(!accumulate_gradient_, &reset_grad_input);
   feeds.push_back(reset_grad_input);
 
-  outputs.resize(train_output_names_.size());
   auto status = train_sess_->Run(RunOptions(), train_input_names_, feeds, train_output_names_, &outputs);
-  outputs.erase(outputs.begin()+train_user_output_size_, outputs.end());
   ORT_THROW_IF_ERROR(status);
 
   // Reset the flag after every step. In case the ResetGrad was called before running

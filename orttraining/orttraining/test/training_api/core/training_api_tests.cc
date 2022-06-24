@@ -59,7 +59,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
   auto model = std::make_unique<Module>(model_uri, state.module_checkpoint_state.named_parameters, session_option,
                                         *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-
+  ORT_ENFORCE(model->GetTrainModeOutputCount() == 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   CreateInputOrtValue<int32_t>(std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
@@ -76,6 +76,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
     std::vector<OrtValue>& inputs = *it;
     std::vector<OrtValue> fetches;
     ORT_ENFORCE(model->TrainStep(inputs, fetches).IsOK());
+    ORT_ENFORCE(fetches.size() == 1);
     bias_grad = bias_param->Gradient();
 
     if (step > 1) {

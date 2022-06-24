@@ -311,7 +311,9 @@ int RunTraining(const TestRunnerParameters& params) {
         g_ort_api->ReleaseValue(inputs[i]);
       }
 
-      // TODO(askhade): release output values. Needs changes from Aishwarya's PR.
+      for (size_t i = 0; i < fetches.size(); i++) {
+        g_ort_api->ReleaseValue(fetches[i]);
+      }
     }
 
     data_loader.ResetIterateIndex();

@@ -96,7 +96,6 @@ struct Module {
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
   std::vector<std::string> train_input_names_;
   std::vector<std::string> train_output_names_;
-  size_t train_user_output_size_;
   std::vector<std::string> eval_input_names_;
   std::vector<std::string> eval_output_names_;
   std::vector<OrtValue> weights_;
