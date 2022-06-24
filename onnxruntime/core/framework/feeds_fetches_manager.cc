@@ -8,9 +8,9 @@
 #include "core/framework/utils.h"
 
 namespace onnxruntime {
-common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(const std::vector<std::string>& names,
+common::Status FeedsFetchesInfo::MapNamesToMLValueIdxs(gsl::span<const std::string> names,
                                                        const OrtValueNameIdxMap& ort_value_name_idx_map,
-                                                       std::vector<int>& ort_value_idxs) {
+                                                       InlinedVector<int>& ort_value_idxs) {
   auto status = Status::OK();
 
   ort_value_idxs.reserve(names.size());
@@ -40,8 +40,8 @@ Status FeedsFetchesInfo::SetMLValueIdxs(const OrtValueNameIdxMap& ort_value_name
   return status;
 }
 
-Status FeedsFetchesManager::Create(const std::vector<std::string>& feed_names,
-                                   const std::vector<std::string>& output_names,
+Status FeedsFetchesManager::Create(gsl::span<const std::string> feed_names,
+                                   gsl::span<const std::string> output_names,
                                    const OrtValueNameIdxMap& ort_value_name_idx_map,
                                    std::unique_ptr<FeedsFetchesManager>& feed_fetch_manager) {
   FeedsFetchesInfo info{feed_names, output_names, ort_value_name_idx_map};

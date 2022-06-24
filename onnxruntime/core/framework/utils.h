@@ -82,18 +82,18 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 // Finalize the feed and fetch copy info using session_state and the device and location information from the feeds
 // and fetches that will be used in graph execution.
 void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
-                               const std::vector<OrtDevice>& feed_locations,
-                               const std::vector<const OrtMemoryInfo*>& fetch_alloc_info);
+                               gsl::span<const OrtDevice> feed_locations,
+                               gsl::span<const OrtMemoryInfo* const> fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                             bool only_execute_path_to_fetches = false);
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache,
                                    int32_t partial_graph_index);
