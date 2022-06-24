@@ -132,7 +132,6 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
-
 namespace cuda {
 template <>
 void Impl_Cast(
@@ -548,6 +547,7 @@ void GetOuterScopeNodeArgNames(const Graph* graph, std::unordered_set<std::strin
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  //std::unordered_map<size_t, NodeIndex>& node_index = node_index_map;
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
   for (const auto& index : graph_nodes_index.first) {
@@ -609,8 +609,38 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     // be also added to the subgraph's output list
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+
         const auto& node_idx = it->GetNode().Index();
-        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+
+        std::cout << node->Name() << std::endl;
+        std::cout << it->GetNode().Name() << std::endl;
+        std::cout << (it->GetNode()).ImplicitInputDefs().size() << std::endl;
+        std::cout << (it->GetNode()).InputDefs().size() << std::endl;
+        std::cout << it->GetDstArgIndex() << std::endl;
+
+        
+        const onnxruntime::NodeArg* output;
+        /*
+        if (it->GetNode().OpType() == "Loop" || it->GetNode().OpType() == "If"){
+          output = node->OutputDefs()[0];
+          std::cout << "========" << std::endl;
+          std::cout << output->Name() << std::endl;
+          std::cout << "========" << std::endl;
+        } else {
+          output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        }
+        */
+
+        if (it->GetDstArgIndex() < it->GetNode().InputDefs().size()) {
+          output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        } else {
+          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex()];
+        }
+        
+
+
+
+        //const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);
           if (iter != fused_inputs.end()) {
@@ -761,15 +791,24 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // If node output is also parent graph output, the  output will be added to the
         // subgraph's output list
         std::vector<std::string> subgraph_output_names;
-        std::vector<size_t> exclude_node_list; 
+        //std::vector<size_t> exclude_node_list;
+        //size_t original_graph_node_index = 0;
+        //std::vector<size_t> new_node_index;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
-
+          
+          
+          /*
           if (node->OpType() == "If" || node->OpType() == "Loop") {
-            exclude_node_list.push_back(index);
+            exclude_node_list.push_back(original_graph_node_index);    
+            original_graph_node_index += 1;
             continue;
           }
-          
+
+          new_node_index.push_back(original_graph_node_index);
+          original_graph_node_index += 1;
+          */
+
           std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
@@ -804,10 +843,13 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         }
 
+        /*
         if (group.first.size() == exclude_node_list.size()) {
           SubGraphCollection_t empty_nodes_list_output;
           return empty_nodes_list_output;
         }
+        */
+        
 
         CheckAndResolveGraph(&graph_build, &graph.GetGraph()); 
 
@@ -868,6 +910,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           // Dump TensorRT subgraph for debugging
           std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
           model_proto->SerializeToOstream(dump);
+          dump.flush();
         //}
 
         // Get supported node list recursively
@@ -882,19 +925,18 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
+        //std::unordered_map<size_t, NodeIndex> new_node_index_map;
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
-            auto index = subgraph_node_index[next_nodes_list[i].first[j]];
-            auto shift = 0;
-            for (auto exclude_index : exclude_node_list) {
-              if (index >= exclude_index) {
-                shift += 1;
-              }
-            }
-            index = index + shift;
-            next_nodes_list[i].first[j] = group.first[index];
-            //next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
+            
+            
+            //auto new_index = subgraph_node_index[next_nodes_list[i].first[j]];
+            //auto old_index = new_node_index[new_index];
+            //next_nodes_list[i].first[j] = group.first[old_index];
+            
+
+            next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
@@ -933,6 +975,10 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
             input_to_nodes_map[input].insert(node_name);
           }
           for (const auto& output : meta_def->outputs()) {
+
+            if (output == "1671") {
+              std::cout << "!!!!" << std::endl;
+            }
             node_to_outputs_map[node_name].insert(output);
           }
         }
@@ -957,9 +1003,18 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
         input_to_nodes_map[input->Name()].insert(node_name);
       }
 
+      for (const auto& input : node->ImplicitInputDefs()) {
+        input_to_nodes_map[input->Name()].insert(node_name);
+      }
+
       for (const auto& output : node->OutputDefs()) {
         node_to_outputs_map[node_name].insert(output->Name());
       }
+      /*
+      if (node->OpType() == "If" || node->OpType() == "Loop") {
+        std::cout << "!!!!" << std::endl;
+      }
+      */
     }
 
     // Create adjacency list
@@ -1030,7 +1085,19 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
+  std::vector<size_t> new_nodes_vector;
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+    if (node->OpType() == "If" || node->OpType() == "Loop") {
+            continue;
+    }
+    new_nodes_vector.push_back(index);
+  }
+
+  //SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
+  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{new_nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {

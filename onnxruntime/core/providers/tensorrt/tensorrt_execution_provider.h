@@ -180,10 +180,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
-  /**Get IndexedSubGraph based on node list of the subgraph*/
+  /**Get IndexedSubGraph based on node list of the subgraph*/  
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
                                                const GraphViewer& graph) const;
-
+  std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
+                                               const GraphViewer& graph, std::unordered_map<size_t, NodeIndex>& node_index_map) const;
   /**
   Get TensorRT supported node lists by calling Onnx-TensorRT parser recursively. Since each time the parser
   can only detect first unsupported node failure, it needs to wait for Onnxruntime to partition the graph
@@ -193,8 +194,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   */
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const GraphViewer& graph, bool* early_termination) const;
+  SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
+                                        const GraphViewer& graph, bool* early_termination, std::unordered_map<size_t, NodeIndex>& node_index_map) const;
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
+  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, std::unordered_map<size_t, NodeIndex>& node_index_map, bool remove_cycles = true) const;
 
   /** 
   Get a unique_lock object to control the concurrency behavior. 
