@@ -51,11 +51,22 @@ Status FeedsFetchesManager::Create(gsl::span<const std::string> feed_names,
   return Status::OK();
 }
 
+Status FeedsFetchesManager::Create(gsl::span<const std::string_view> feed_names,
+                                   gsl::span<const std::string> output_names,
+                                   const OrtValueNameIdxMap& ort_value_name_idx_map,
+                                   std::optional<FeedsFetchesManager>& feed_fetch_manager) {
+  FeedsFetchesInfo info{feed_names, output_names, ort_value_name_idx_map};
+
+  feed_fetch_manager.emplace(std::move(info));
+
+  return Status::OK();
+}
+
 FeedsFetchesManager::FeedsFetchesManager(FeedsFetchesInfo&& info)
-    : feeds_fetches_info_{info} {
+    : feeds_fetches_info_(std::move(info)) {
   // init with default values
-  feeds_device_copy_info_.resize(info.feed_names.size());
-  fetches_device_copy_info_.resize(info.output_names.size());
+  feeds_device_copy_info_.resize(feeds_fetches_info_.feed_names.size());
+  fetches_device_copy_info_.resize(feeds_fetches_info_.output_names.size());
 }
 
 void FeedsFetchesManager::SetDeviceCopyChecks(DeviceCopyCheck input_copy_needed, DeviceCopyCheck output_copy_needed) {

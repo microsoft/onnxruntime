@@ -251,7 +251,7 @@ static bool HaveCpuExecutionProvidersOnly(const ExecutionProviders& execution_pr
 
 static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map,
                                                    const SequentialExecutionPlan& plan,
-                                                   const std::string& name) {
+                                                   std::string_view name) {
   int idx = -1;
   auto status = map.GetIdx(name, idx);
   ORT_THROW_IF_ERROR(status);
@@ -261,7 +261,7 @@ static const OrtMemoryInfo& FindMemoryInfoForValue(const OrtValueNameIdxMap& map
 }
 
 const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
-                                            const std::string& name) {
+                                            std::string_view name) {
   const auto* exec_plan_ptr = session_state.GetExecutionPlan();
   ORT_ENFORCE(exec_plan_ptr);
 
@@ -559,16 +559,22 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
-  std::unique_ptr<IExecutor> p_exec;
+  // avoid memory allocations
+  std::optional<SequentialExecutor> seq_executor;
+  std::optional<ParallelExecutor> par_executor;
+  IExecutor* p_exec = nullptr;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
-    p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
+    seq_executor.emplace(terminate_flag, only_execute_path_to_fetches);
+    p_exec = &seq_executor.value();
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
+      seq_executor.emplace(terminate_flag, only_execute_path_to_fetches);
+      p_exec = &seq_executor.value();
     } else {
-      p_exec = std::make_unique<ParallelExecutor>(session_state, terminate_flag);
+      par_executor.emplace(session_state, terminate_flag);
+      p_exec = &par_executor.value();
     }
   }
 

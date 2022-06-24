@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 #include "core/common/inlined_containers_fwd.h"
 
 #ifndef SHARED_PROVIDER
@@ -43,6 +44,19 @@ struct FeedsFetchesInfo {
     ORT_THROW_IF_ERROR(SetMLValueIdxs(ort_value_name_idx_map));
   }
 
+  FeedsFetchesInfo(gsl::span<const std::string_view> feed_names_in,
+                   gsl::span<const std::string> output_names_in,
+                   const OrtValueNameIdxMap& ort_value_name_idx_map)
+      : feed_names(),
+        output_names() {
+    feed_names.reserve(feed_names_in.size());
+    feed_names.assign(feed_names_in.begin(), feed_names_in.end());
+    output_names.reserve(output_names_in.size());
+    output_names.assign(output_names_in.begin(), output_names_in.end());
+    ORT_THROW_IF_ERROR(SetMLValueIdxs(ort_value_name_idx_map));
+  }
+
+
   static Status MapNamesToMLValueIdxs(gsl::span<const std::string> names,
                                       const OrtValueNameIdxMap& ort_value_name_idx_map,
                                       InlinedVector<int>& ort_value_idxs);
@@ -67,6 +81,10 @@ class FeedsFetchesManager {
   static Status Create(gsl::span<const std::string> feed_names, gsl::span<const std::string> output_names,
                        const OrtValueNameIdxMap& ort_value_name_idx_map,
                        std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
+
+  static Status Create(gsl::span<const std::string_view> feed_names, gsl::span<const std::string> output_names,
+                       const OrtValueNameIdxMap& ort_value_name_idx_map,
+                       std::optional<FeedsFetchesManager>& feeds_fetches_manager);
 
   FeedsFetchesManager(FeedsFetchesInfo&& info);
 

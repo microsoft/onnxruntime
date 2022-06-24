@@ -454,7 +454,8 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
     std::vector<OrtValue> results;
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(),
+      EmptySpan<OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     // output buffer should not be the same as the initializer in SessionState
     const auto& initializers = session.GetSessionState().GetInitializedTensors();
@@ -491,7 +492,7 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     auto ml_type = DataTypeImpl::GetType<SparseTensor>();
     results[0].Init(p_tensor.release(), ml_type, ml_type->GetDeleteFunc());
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(), AsSpan<std::string>({"values"}), &results, nullptr));
 
     ASSERT_TRUE(results[0].IsAllocated());
     ASSERT_TRUE(results[0].IsSparseTensor());

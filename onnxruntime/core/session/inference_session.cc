@@ -2044,10 +2044,10 @@ common::Status InferenceSession::Run(const NameMLValMap& feeds, gsl::span<const 
 
 common::Status InferenceSession::Run(const RunOptions& run_options, const NameMLValMap& feeds_map,
                                      gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches) {
-  std::vector<std::string> feed_names;
-  std::vector<OrtValue> feeds;
+  InlinedVector<std::string> feed_names;
+  InlinedVector<OrtValue> feeds;
 
-  auto num_feeds = feeds_map.size();
+  const auto num_feeds = feeds_map.size();
   feed_names.reserve(num_feeds);
   feeds.reserve(num_feeds);
 
