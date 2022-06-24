@@ -154,7 +154,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
         Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
                              execution_providers.Get(cpu_ep_type)->GetAllocator(0, OrtMemTypeDefault), cpu_value,
                              tensor.Strides());
-        dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>());
+        ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }
       optional<float> rel;
       optional<float> abs;
