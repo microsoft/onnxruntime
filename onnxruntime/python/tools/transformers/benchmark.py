@@ -116,7 +116,6 @@ def run_migraphx(
         for num_inputs in input_counts:
             if num_inputs > len(all_input_names):
                 break
-            config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
 
             input_names = all_input_names[:num_inputs]
             args.model_type = MODELS[model_name][3]
