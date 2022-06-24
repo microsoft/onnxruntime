@@ -121,9 +121,7 @@ def run_migraphx(
             input_names = all_input_names[:num_inputs]
             args.model_type = MODELS[model_name][3]
             fusion_options = FusionOptions.parse(args)
-            is_valid_onnx_model = True
-            vocab_size = 0
-            max_sequence_length = 0
+            
             if "pt" in model_source:
                 with torch.no_grad():
                     (
