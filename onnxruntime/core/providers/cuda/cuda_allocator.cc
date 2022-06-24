@@ -4,7 +4,6 @@
 #include "cuda_allocator.h"
 #include "cuda_common.h"
 #include "core/framework/allocatormgr.h"
-#include "cuda_fence.h"
 #include "gpu_data_transfer.h"
 
 namespace onnxruntime {
@@ -94,11 +93,6 @@ void* CUDAExternalAllocator::Reserve(size_t size) {
   return p;
 }
 
-FencePtr CUDAAllocator::CreateFence(const SessionState* session_state) {
-  //return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
-  return nullptr;
-}
-
 void* CUDAPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
@@ -109,10 +103,6 @@ void* CUDAPinnedAllocator::Alloc(size_t size) {
 
 void CUDAPinnedAllocator::Free(void* p) {
   CUDA_CALL_THROW(cudaFreeHost(p));
-}
-
-FencePtr CUDAPinnedAllocator::CreateFence(const SessionState* session_state) {
-  return std::make_shared<CUDAFence>(GetGPUDataTransfer(session_state));
 }
 
 }  // namespace onnxruntime

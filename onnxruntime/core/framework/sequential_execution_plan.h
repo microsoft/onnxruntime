@@ -32,9 +32,6 @@ struct AllocPlanPerValue {
   // reused_buffer is valid only if alloc_kind == kReuse. It indicates
   // which OrtValue's buffer must be reused for this OrtValue.
   OrtValueIndex reused_buffer{0};
-  // if the value is used in async kernel, a fence object would be created
-  // note the fence object would be shared between MLValues reusing the same buffer
-  bool create_fence_if_async{false};
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE) 
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
@@ -112,9 +109,6 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // Execution_plan: represents the nodes in the sequential order to be executed
   std::vector<NodeExecutionPlan> execution_plan;
 
-  // Records whether a given node has fence on its input or output, key is node index.
-  std::vector<bool> node_has_fence;
-
   // to_be_freed: vector elements represent indices of ml-values to be freed (as described above)
   std::vector<OrtValueIndex> to_be_freed;
 
@@ -132,11 +126,6 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
       if (locations.find(alloc_plan.location) == locations.end()) locations.insert(alloc_plan.location);
     }
     return locations;
-  }
-
-  // Whether a given node needs fence check or not.
-  bool NodeHasFence(onnxruntime::NodeIndex node_index) const {
-    return node_has_fence[node_index];
   }
 };
 

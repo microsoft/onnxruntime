@@ -4,6 +4,7 @@
 namespace onnxruntime {
 
 extern ProviderHost* g_host;
+using ProviderType = const std::string&;
 
 struct CPUIDInfo final {
   static const CPUIDInfo& GetCPUIDInfo() { return g_host->CPUIDInfo__GetCPUIDInfo(); }

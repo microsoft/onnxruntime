@@ -30,6 +30,7 @@ struct ProviderHost;
 struct ProviderHostCPU;
 
 class PhiloxGenerator;
+using ProviderType = const std::string&;
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {

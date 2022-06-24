@@ -202,13 +202,6 @@ Status IExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index ", ort_value_idx);
   }
 
-  // If fence is available, check whether async read has completed or not.
-  Fence_t fence = GetMLValue(ort_value_idx).Fence();
-  if (fence && !fence->CanRelease()) {
-    // Async data reading is not done yet, defer mem release until Session.run() end.
-    return Status::OK();
-  }
-
   all_values_[ort_value_idx] = OrtValue();
   return Status::OK();
 }
@@ -478,9 +471,8 @@ const DataTransferManager& ExecutionFrame::GetDataTransferManager() const {
 
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index,
                                                           MLDataType element_type, const OrtMemoryInfo& location,
-                                                          const TensorShape& shape, bool create_fence) {
-  return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape,
-                                                  create_fence);
+                                                          const TensorShape& shape) {
+  return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape);
 }
 
 Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
@@ -495,7 +487,7 @@ Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
 Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index,
                                                                 MLDataType element_type,
                                                                 const OrtMemoryInfo& location,
-                                                                const TensorShape& shape, bool create_fence) {
+                                                                const TensorShape& shape) {
   if (ort_value_index == NodeIndexInfo::kInvalidEntry) {
     return Status(ONNXRUNTIME, FAIL, "Trying to allocate memory for unused optional inputs/outputs");
   }
@@ -514,16 +506,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
   // Lazily get the allocator only if needed.
   AllocatorPtr alloc = nullptr;
-
-  // create fence if needed
-  if (create_fence) {
-    ORT_ENFORCE(ort_value.Fence() == nullptr);
-    alloc = GetAllocator(location);
-    FencePtr f = alloc->CreateFence(&session_state_);
-    // it is OK to have fence been nullptr if the execution provider has no async execution,
-    // and allocator::CreateFence returns nullptr
-    ort_value.SetFence(f);
-  }
 
   // if we have pre-calculated memory pattern, and the ort_value is not output mlvalue
   // try to allocated on pre-allocated big chunk.
@@ -603,7 +585,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
                                                               MLDataType element_type, const OrtMemoryInfo& location,
-                                                              const TensorShape& shape, bool create_fence) {
+                                                              const TensorShape& shape) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
   auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
@@ -634,15 +616,6 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
   void* reuse_buffer = reuse_tensor->MutableDataRaw();
 
-  // create fence on reused ort_value if needed
-  // TODO: differentiate reuse and alias, by add AllocKind::kAlias?
-  if (create_fence && ort_value_reuse.Fence() == nullptr) {
-    FencePtr f = GetAllocator(location)->CreateFence(&session_state_);
-    ort_value_reuse.SetFence(f);
-  }
-
-  // reused OrtValue share the same fence
-  ort_value.ShareFenceWith(ort_value_reuse);
   return AllocateTensorWithPreAllocateBufferHelper(ort_value, reuse_buffer, element_type, location, shape);
 }
 
@@ -670,17 +643,10 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
-                                   const TensorShape& shape, bool create_fence,
+                                   const TensorShape& shape,
                                    const SessionState& session_state) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();
   SparseTensor::InitOrtValue(element_type, shape, std::move(allocator), mlvalue);
-
-  // create fence if needed
-  if (create_fence) {
-    ORT_ENFORCE(mlvalue.Fence() == nullptr);
-    FencePtr f = allocator->CreateFence(&session_state);
-    mlvalue.SetFence(f);
-  }
 
   return Status::OK();
 }
@@ -750,7 +716,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       case AllocKind::kAllocateOutput:
       case AllocKind::kAllocate: {
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorSelfOwnBuffer(ort_value, ort_value_index, ml_data_type, alloc_info,
-                                                               *shape, per_alloc_plan.create_fence_if_async));
+                                                               *shape));
         break;
       }
       case AllocKind::kReuse: {
@@ -759,7 +725,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
         ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
 
         ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape));
         break;
       }
       case AllocKind::kShare: {
@@ -784,7 +750,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else if (ml_type->IsSparseTensorType()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
-                                *shape, per_alloc_plan.create_fence_if_async, session_state_);
+                                *shape, session_state_);
 #else
     // Model load should have failed so this should be unreachable
     ORT_THROW("SparseTensor is not supported in this build.");

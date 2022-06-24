@@ -79,22 +79,9 @@ struct OrtValue {
     return type_;
   }
 
-  onnxruntime::Fence_t Fence() const {
-    return fence_.get();
-  }
-
-  void SetFence(onnxruntime::FencePtr fence) {
-    fence_ = fence;
-  }
-
-  void ShareFenceWith(OrtValue& v) {
-    fence_ = v.fence_;
-  }
-
  private:
   std::shared_ptr<void> data_;
   onnxruntime::MLDataType type_{nullptr};
-  onnxruntime::FencePtr fence_;
 };
 
 template <>

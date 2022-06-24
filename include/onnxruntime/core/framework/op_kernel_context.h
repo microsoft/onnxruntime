@@ -139,30 +139,6 @@ class OpKernelContext {
   Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
-  Return the fence of current node's input.
-  @param index The index of the input.
-  @returns Point to the Fence of the input OrtValue.
-  It is null if the input OrtValue doesn't have fence or the input is optional.
-  */
-  virtual Fence_t InputFence(int index) const;
-
-  /**
-  Return the fence of current node's implicit input.
-  @param index The index of the implicit input.
-  @returns Point to the Fence of the implicit input OrtValue.
-  It is null if the input OrtValue doesn't have fence or the input is optional.
-  */
-  virtual Fence_t ImplicitInputFence(int index) const;
-
-  /**
-  Return the fence of current node's output identifed by index.
-  @param index The index of the output.
-  @returns Point to the Fence of the output OrtValue.
-  It is null if the output OrtValue doesn't have fence or the output is optional.
-  */
-  virtual Fence_t OutputFence(int index) const;
-
-  /**
   Return the device id that current kernel runs on.
   */
   virtual int GetDeviceId() const {

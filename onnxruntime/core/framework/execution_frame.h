@@ -142,12 +142,10 @@ class ExecutionFrame final : public IExecutionFrame {
   // Fix the unit tests so they set an execution plan that results in these methods being called by
   // GetOrCreateNodeOutputMLValue instead
   Status AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                            const OrtMemoryInfo& location, const TensorShape& shape,
-                                            bool create_fence = false);
+                                            const OrtMemoryInfo& location, const TensorShape& shape);
 
   Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
-                                                const OrtMemoryInfo& location, const TensorShape& shape,
-                                                bool create_fence = false);
+                                                const OrtMemoryInfo& location, const TensorShape& shape);
 
   // thread-safe
   Status GeneratePatterns(MemoryPatternGroup* out) const;
@@ -197,8 +195,7 @@ class ExecutionFrame final : public IExecutionFrame {
   common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
 
   Status AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_value, int ort_value_index, MLDataType element_type,
-                                                  const OrtMemoryInfo& location, const TensorShape& shape,
-                                                  bool create_fence);
+                                                  const OrtMemoryInfo& location, const TensorShape& shape);
 
   Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type,
                                                    const OrtMemoryInfo& location, const TensorShape& shape);

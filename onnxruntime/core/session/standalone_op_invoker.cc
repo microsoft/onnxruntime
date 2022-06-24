@@ -134,26 +134,6 @@ class StandAloneKernelContext : public OpKernelContext {
     return Status::OK();
   }
 
-  Fence_t InputFence(int index) const override {
-    if (index >= input_count_) {
-      return nullptr;
-    } else {
-      return input_values_[index]->Fence();
-    }
-  }
-
-  Fence_t ImplicitInputFence(int) const override {
-    return nullptr;
-  }
-
-  Fence_t OutputFence(int index) const override {
-    if (index >= output_count_) {
-      return nullptr;
-    } else {
-      return output_values_[index]->Fence();
-    }
-  }
-
   int GetDeviceId() const override {
     return 0;
   }

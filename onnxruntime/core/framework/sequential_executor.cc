@@ -265,38 +265,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       sync_time_begin = session_state.Profiler().Start();
     }
 
-    // sync before compute
-    int queue_id = p_op_kernel->KernelDef().ExecQueueId();
-    if (seq_exec_plan.NodeHasFence(node_index)) {
-      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-        Fence_t fence = op_kernel_context.InputFence(input_index);
-        if (fence) {
-          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-            execution_provider_type = kCpuExecutionProvider;
-          }
-          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
-        }
-      }
-
-      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-        if (fence) {
-          auto execution_provider_type = p_op_kernel->Node().GetExecutionProviderType();
-          if (OrtMemTypeCPUInput == p_op_kernel->KernelDef().InputMemoryType(input_index)) {
-            execution_provider_type = kCpuExecutionProvider;
-          }
-          fence->BeforeUsingAsInput(execution_provider_type, queue_id);
-        }
-      }
-
-      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-        Fence_t fence = op_kernel_context.OutputFence(output_index);
-        if (fence) {
-          fence->BeforeUsingAsOutput(p_op_kernel->Node().GetExecutionProviderType(), queue_id);
-        }
-      }
-    }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
     dump_context.program_counter = program_counter++;
     utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
@@ -405,29 +373,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       sync_time_begin = session_state.Profiler().Start();
     }
 
-    // sync after compute for outputs
-    if (seq_exec_plan.NodeHasFence(node_index)) {
-      for (int input_index = 0; input_index < op_kernel_context.InputCount(); ++input_index) {
-        Fence_t fence = op_kernel_context.InputFence(input_index);
-        if (fence) {
-          fence->AfterUsedAsInput(queue_id);
-        }
-      }
-
-      for (int input_index = 0; input_index < op_kernel_context.ImplicitInputCount(); ++input_index) {
-        Fence_t fence = op_kernel_context.ImplicitInputFence(input_index);
-        if (fence) {
-          fence->AfterUsedAsInput(queue_id);
-        }
-      }
-
-      for (int output_index = 0; output_index < op_kernel_context.OutputCount(); ++output_index) {
-        Fence_t fence = op_kernel_context.OutputFence(output_index);
-        if (fence) {
-          fence->AfterUsedAsOutput(queue_id);
-        }
-      }
-    }
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     LARGE_INTEGER kernel_stop;
     QueryPerformanceCounter(&kernel_stop);

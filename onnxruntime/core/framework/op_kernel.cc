@@ -123,33 +123,6 @@ MLDataType OpKernelContext::OutputType(int index) const {
   return p_ml_value ? p_ml_value->Type() : nullptr;
 }
 
-Fence_t OpKernelContext::InputFence(int index) const {
-  if (index >= InputCount())
-    return nullptr;
-
-  int input_index = GetInputArgIndex(index);
-  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
-  return p_ml_value ? p_ml_value->Fence() : nullptr;
-}
-
-Fence_t OpKernelContext::ImplicitInputFence(int index) const {
-  if (index >= ImplicitInputCount())
-    return nullptr;
-
-  int input_index = GetImplicitInputArgIndex(index);
-  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_index);
-  return p_ml_value ? p_ml_value->Fence() : nullptr;
-}
-
-Fence_t OpKernelContext::OutputFence(int index) const {
-  if (index >= OutputCount())
-    return nullptr;
-
-  auto output_arg_index = GetOutputArgIndex(index);
-  const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index);
-  return p_ml_value ? p_ml_value->Fence() : nullptr;
-}
-
 OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {
   auto output_arg_index = GetOutputArgIndex(index);
   OrtValue* value = nullptr;

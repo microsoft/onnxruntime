@@ -4,7 +4,6 @@
 #pragma once
 
 #include "core/common/common.h"
-#include "core/framework/fence.h"
 #include "core/framework/allocator_stats.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "ortdevice.h"
@@ -78,11 +77,6 @@ class IAllocator {
 
   // Each implementation of IAllocator can override and provide their own implementation
   virtual void GetStats(AllocatorStats* /*stats*/) { return; }
-
-  /**
-     optional CreateFence interface, as provider like DML has its own fence
-  */
-  virtual FencePtr CreateFence(const SessionState* /*unused*/) { return nullptr; }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
