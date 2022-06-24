@@ -3,16 +3,19 @@
 
 #pragma once
 
-#include <vulkan/vulkan.h>
+#include "vulkan_common.h"
 
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 
 namespace onnxruntime {
 class VulkanExecutionProvider : public IExecutionProvider {
-  VulkanExecutionProvider()
-      : IExecutionProvider{onnxruntime::kVulkanExecutionProvider} {
-  }
+  VulkanExecutionProvider();
+  ~VulkanExecutionProvider();
+
+ private:
+  VkInstance vulkan_instance;
+  VkPhysicalDevice vulkan_physical_device;
 };
 
 }  // namespace onnxruntime
