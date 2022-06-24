@@ -349,13 +349,15 @@ class InferenceSession {
    *                              copy/checks.
    * @param cache Contains node arg name to OrtValue map stashed from previous run
    *              for frontier tensors
+   * @param partial_graph_index Index of the partial graph to run.
    */
   common::Status PartialRun(onnxruntime::RunOptions& run_options,
                             const std::vector<OrtValue>& feeds,
                             std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state,
                             FeedsFetchesManager& feeds_fetches_manager,
-                            const OrtValueCachePtr& cache);
+                            const OrtValueCachePtr& cache,
+                            int32_t partial_graph_index);
 #endif
 
   /**
