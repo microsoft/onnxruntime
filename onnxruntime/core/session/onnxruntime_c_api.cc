@@ -2527,6 +2527,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::CreateOp,
     &OrtApis::InvokeOp,
     &OrtApis::ReleaseOp,
+    &OrtApis::SessionOptionsAppendExecutionProvider_SNPE,
 #ifdef ENABLE_TRAINING_ON_DEVICE
     // Experimental for on-device training. Always keep at the bottom.
     &OrtApis::LoadCheckpoint,
