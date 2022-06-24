@@ -9,6 +9,20 @@
 
 namespace onnxruntime {
 namespace contrib {
+template <typename T>
+void getBroadcastSpanFunc(ProcessBroadcastSpanFuncs& funcs) {
+  ProcessBroadcastSpanFuncs add_funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
+      }};
+  funcs = std::move(add_funcs);
+}
 ONNX_OPERATOR_KERNEL_EX(
     InPlaceAccumulator,
     kMSDomain,
@@ -28,33 +42,17 @@ Status InPlaceAccumulator<T>::Compute(OpKernelContext* context) const {
   if (do_update_tensor) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
-#ifdef ENABLE_TRAINING_ON_DEVICE
-      // This is temporary fix till we potentially redesign inplaceaccumulator op
-      // to fit lazy reset grad functionality
-      const Tensor* new_gradient = context->Input<Tensor>(1);
-      const void* updated_data = new_gradient->template Data<T>();
-      memcpy(output_data, updated_data, new_gradient->SizeInBytes());
-#else
       const void* input_data = gradient_buffer->template Data<T>();
       if (output_data != input_data) {
         memcpy(output_data, input_data, gradient_buffer->SizeInBytes());
       }
-#endif
       return Status::OK();
     }
   }
 
-  //Copy from Add CPU kernel
-  ProcessBroadcastSpanFuncs funcs{
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() + per_iter_bh.EigenInput1<T>().array();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>().array() + per_iter_bh.ScalarInput1<T>();
-      },
-      [](BroadcastHelper& per_iter_bh) {
-        per_iter_bh.OutputEigen<T>() = per_iter_bh.EigenInput0<T>() + per_iter_bh.EigenInput1<T>();
-      }};
+  // Copy from Add CPU kernel
+  ProcessBroadcastSpanFuncs funcs;
+  getBroadcastSpanFunc<T>(funcs);
 
   UntypedBroadcastTwo(*context, funcs);
 
@@ -80,6 +78,55 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2", DataTypeImpl::AllTensorTypes()),
     ZeroGradient<float>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    InPlaceAccumulatorV2,
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .Alias(0, 1)  // accumulate tensors in-place
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    InPlaceAccumulatorV2<float>);
+
+template <typename T>
+Status InPlaceAccumulatorV2<T>::Compute(OpKernelContext* context) const {
+  Tensor* accumulation_buffer = const_cast<Tensor*>(context->Input<Tensor>(0));
+  const Tensor* new_value = context->Input<Tensor>(1);
+  const Tensor* overwrite_tensor = context->Input<Tensor>(2);
+
+  void* accumulation_buffer_data = accumulation_buffer->template MutableData<T>();
+  const bool overwrite = overwrite_tensor != nullptr ? *(overwrite_tensor->template Data<bool>()) : false;
+
+  if (overwrite) {
+    const void* updated_data = new_value->template Data<T>();
+    memcpy(accumulation_buffer_data, updated_data, new_value->SizeInBytes());
+  } else {
+    // Copy from Add CPU kernel
+    ProcessBroadcastSpanFuncs funcs;
+    getBroadcastSpanFunc<T>(funcs);
+
+    InputBroadcaster input_broadcaster(*accumulation_buffer, *new_value);
+    OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(), *accumulation_buffer);
+    BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, nullptr);
+
+    BroadcastLooper(broadcast_helper, funcs);
+  }
+
+  Tensor* updated_output = context->Output(0, {1});
+  bool* updated_output_ptr = updated_output->template MutableData<bool>();
+  *updated_output_ptr = true;
+
+  Tensor* accumulated_value_out = context->Output(1, new_value->Shape());
+  if (nullptr != accumulated_value_out) {
+    void* output_data = accumulated_value_out->template MutableData<T>();
+    if (output_data != accumulation_buffer_data) {
+      memcpy(output_data, accumulation_buffer_data, new_value->SizeInBytes());
+    }
+  }
+
+  return Status::OK();
+}
 
 }  // namespace contrib
 }  // namespace onnxruntime
