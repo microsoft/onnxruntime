@@ -186,10 +186,49 @@ class OrtOpTests(unittest.TestCase):
         device = self.get_device()
         cpu_tensor = torch.rand(3, 5)
         ort_tensor = cpu_tensor.to(device)
-        cpu_result = torch.argmax(cpu_tensor, dim=1)
-        ort_result = torch.argmax(ort_tensor, dim=1)
+        cpu_out_tensor = torch.tensor([], dtype=torch.long)
+        ort_out_tensor = torch.tensor([], dtype=torch.long, device=device)
+        cpu_result = torch.argmax(cpu_tensor, dim=1, out=cpu_out_tensor)
+        ort_result = torch.argmax(ort_tensor, dim=1, out=ort_out_tensor)
+        # assert torch.equal(cpu_out_tensor.to(device), ort_out_tensor)
+        assert torch.equal(cpu_result, ort_result.cpu())
+        # assert torch.allclose(cpu_out_tensor, ort_out_tensor.cpu)
         assert torch.allclose(cpu_result, ort_result.cpu())
         assert cpu_result.dim() == ort_result.dim()
+
+    def test_eq(self):
+        device = self.get_device()
+        cpu_a = torch.Tensor([1.0, 1.5])
+        ort_a = cpu_a.to(device)
+        cpu_b = torch.Tensor([1.0, 1.5])
+        ort_b = cpu_b.to(device)
+        cpu_out_tensor = torch.tensor([], dtype=torch.bool)
+        ort_out_tensor = cpu_out_tensor.to(device)
+        cpu_a_b_eq_result = torch.eq(cpu_a, cpu_b, out=cpu_out_tensor)
+        ort_a_b_eq_result = torch.eq(ort_a, ort_b, out=ort_out_tensor)
+        assert torch.equal(cpu_a_b_eq_result.to(device), ort_a_b_eq_result)
+        # print(cpu_out_tensor)
+        # print(ort_out_tensor)
+        # print(cpu_a_b_eq_result)
+        # print(ort_a_b_eq_result)
+        # assert torch.equal(cpu_out_tensor.to(device), ort_out_tensor)
+        # assert torch.allclose(cpu_a_b_eq_result, ort_a_b_eq_result.cpu)
+        # assert torch.allclose(cpu_out_tensor, ort_out_tensor.to("cpu"))
+        cpu_c = torch.Tensor([1.0, 1.0])
+        ort_c = cpu_c.to(device)
+        cpu_c_eq_result = torch.eq(cpu_c, int(1))
+        ort_c_eq_result = torch.eq(ort_c, int(1))
+        assert torch.equal(cpu_c_eq_result.to(device), ort_c_eq_result)
+
+
+"""     def test_fill(self):
+        device = self.get_device()
+        cpu_a = torch.Tensor([1.0, 1.5])
+        ort_a = cpu_a.to(device)
+        cpu_a.fill_(3.2)
+        print(cpu_a)
+        ort_a.fill_(3.2)
+        print(ort_a) """
 
 
 if __name__ == "__main__":

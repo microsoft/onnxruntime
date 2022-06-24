@@ -219,6 +219,9 @@ class ORTGen:
         # return at::native::call_fallback_fn<
         #  &at::native::cpu_fallback,
         #  ATEN_OP(eq_Tensor)>::call(self, other);
+        writer.write('std::cout << "')
+        writer.write(cpp_func.identifier.value)
+        writer.writeline(' - Fell back to cpu!\\n";')
         writer.writeline("return native::call_fallback_fn<")
         writer.push_indent()
         writer.writeline("&native::cpu_fallback,")

@@ -543,6 +543,8 @@ at::Tensor& add__Tensor(
     !IsSupportedType(alpha, {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16}) ||
     !IsSupportedType(other, {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16}) ||
     !IsSupportedType(self, {at::kDouble, at::kLong, at::kHalf, at::kShort, at::kInt, at::kByte, at::kFloat, at::kBFloat16})) {
+
+    std::cout << "add__Tensor - Fell back to cpu!\n";
     return at::native::call_fallback_fn<
       &at::native::cpu_fallback,
       ATEN_OP(add__Tensor)>::call(self, other, alpha);
@@ -645,6 +647,8 @@ at::Tensor& out) {
 
   if (
     !IsSupportedType(self, {at::kLong, at::kShort, at::kHalf, at::kBFloat16, at::kFloat, at::kByte, at::kInt, at::kDouble})) {
+
+    std::cout << "argmax_out - Fell back to cpu!\n";
     return at::native::call_fallback_fn<
     &at::native::cpu_fallback,
     ATEN_OP(argmax_out)>::call(self, dim, keepdim, out);
@@ -693,6 +697,8 @@ bool equal(
       {at::kFloat, at::kBFloat16, at::kHalf, at::kDouble, at::kLong, at::kByte, at::kInt, at::kShort, at::kBool};
     !IsSupportedType(self, supportedTypes) ||
     !IsSupportedType(other, supportedTypes)) {
+
+    std::cout << "equal - Fell back to cpu!\n";
     return at::native::call_fallback_fn<
       &at::native::cpu_fallback,
       ATEN_OP(equal)>::call(self, other);
@@ -744,6 +750,103 @@ bool equal(
   auto* ort_tensor = ort_outputs_0_ReduceMin[0].GetMutable<onnxruntime::Tensor>();
   // the first (and only) value of the tensor will be 0 for false else true
   return *(ort_tensor->Data<int>()) != 0;
+}
+
+// aten::eq.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& eq_Tensor_out(
+  const at::Tensor& self,
+  const at::Tensor& other,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, other, out);
+
+  if (
+    !IsSupportedType(self, {at::kLong,at::kDouble,at::kBool,at::kBFloat16,at::kHalf,at::kByte,at::kShort,at::kFloat,at::kInt}) ||
+    !IsSupportedType(other, {at::kLong,at::kDouble,at::kBool,at::kBFloat16,at::kHalf,at::kByte,at::kShort,at::kFloat,at::kInt})) {
+
+    std::cout << "eq_Tensor_out - Fell back to cpu!\n";
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(eq_Tensor_out)>::call(self, other, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+  auto ort_input_other = create_ort_value(invoker, other);
+
+  std::vector<OrtValue> ort_outputs_0_Equal(1);
+
+  auto status = invoker.Invoke("Equal", {
+    std::move(ort_input_self),
+    std::move(ort_input_other),
+  }, ort_outputs_0_Equal, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  // generator also needs to do this to handle the out param!
+  at::TensorOptions tensor_options = out.options();
+  out = aten_tensor_from_ort(
+    std::move(ort_outputs_0_Equal[0]),
+    tensor_options);
+  return out;
+}
+
+// aten::eq.Scalar_out(Tensor self, Scalar other, *, Tensor(a!) out) -> Tensor(a!)
+at::Tensor& eq_Scalar_out(
+  const at::Tensor& self,
+  const at::Scalar& other,
+  // *,
+  at::Tensor& out) {
+  ORT_LOG_FN(self, other, out);
+
+  if (
+    !IsSupportedType(self, {at::kLong}) ||
+    !IsSupportedType(self, {at::kLong,at::kShort,at::kDouble,at::kInt,at::kFloat,at::kBool,at::kHalf,at::kBFloat16,at::kByte})) {
+
+    std::cout << "eq_Scalar_out - Fell back to cpu!\n";
+    return at::native::call_fallback_fn<
+      &at::native::cpu_fallback,
+      ATEN_OP(eq_Scalar_out)>::call(self, other, out);
+  }
+  auto& invoker = GetORTInvoker(self.device());
+
+  auto ort_input_self = create_ort_value(invoker, self);
+
+  NodeAttributes attrs(1);
+  attrs["value"] = create_ort_attribute(
+    "value", other, true);
+
+  std::vector<OrtValue> ort_outputs_0_ConstantOfShape(1);
+
+  auto status = invoker.Invoke("ConstantOfShape", {
+    std::move(ort_input_self),
+  }, ort_outputs_0_ConstantOfShape, &attrs);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  //auto ort_input_self = create_ort_value(invoker, self);
+
+  std::vector<OrtValue> ort_outputs_1_Equal(1);
+
+  status = invoker.Invoke("Equal", {
+    std::move(ort_input_self),
+    std::move(ort_outputs_0_ConstantOfShape[0]),
+  }, ort_outputs_1_Equal, nullptr);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+      "ORT return failure status:" + status.ErrorMessage());
+
+  // generator also needs to do this to handle the out param!
+  at::TensorOptions tensor_options = out.options();
+  out = aten_tensor_from_ort(
+    std::move(ort_outputs_1_Equal[0]),
+    tensor_options);
+  return out;
 }
 
 } // namespace aten
