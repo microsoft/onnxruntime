@@ -351,7 +351,7 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
 
                 ort_out = ort_model(x)
                 pt_out = pt_model(x)
-                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
+                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=1e-3, atol=1e-6)
             else:
                 with pytest.raises(_fallback.ORTModuleTorchModelException) as ex_info:
                     ort_model = ORTModule(pt_model)
