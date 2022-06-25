@@ -19,7 +19,7 @@ jobs:
   container:
     image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm5.1.1
     endpoint: onnxruntimecibuildenvironmentforamd
-    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
+    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
 
   steps:
   - checkout: self
