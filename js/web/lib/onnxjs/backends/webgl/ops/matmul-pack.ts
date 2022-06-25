@@ -8,7 +8,7 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {getCoordsDataType, getGlChannels} from '../utils';
 
-import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 import {getBiasForMatmul} from './matmul';
 
 const createPackedMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
@@ -41,7 +41,7 @@ const createPackedMatmulProgramInfo =
       const coordsDataType = getCoordsDataType(outputShape.length);
       const outRank = outputShape.length;
       const allGlChannels = getGlChannels();
-      const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
+      const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes);
 
       const getBiasForMatmulSnippet =
           hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, true)}` : '';
