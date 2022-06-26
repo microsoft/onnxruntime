@@ -10,7 +10,11 @@
 
 namespace py = pybind11;
 
+#ifdef NDEBUG
+#define HIP_ASSERT(x) x
+#else
 #define HIP_ASSERT(x) (assert((x)==hipSuccess))
+#endif
 
 class DeviceArray {
  public:
