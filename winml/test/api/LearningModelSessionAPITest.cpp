@@ -1115,16 +1115,6 @@ static void ModelBuilding_ConstantMatmul() {
 
 static void ModelBuilding_DiscreteFourierTransform() {
 #if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-  std::vector<float> legacy_real_input =
-  {
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-  };
-
-  std::vector<std::complex<float>> legacy_real_expected_axis_0_two_sided = {
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-  };
-  DiscreteFourierTransform(legacy_real_input, {1, 8}, legacy_real_expected_axis_0_two_sided, 1, 8, false /*onesided*/);
-
   std::vector<float> real_input =
   {
       1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
