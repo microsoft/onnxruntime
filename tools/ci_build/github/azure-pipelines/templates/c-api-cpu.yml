@@ -475,7 +475,7 @@ jobs:
       DoEsrp: ${{ parameters.DoEsrp }}
 
   - task: MSBuild@1
-    displayName: Update projects.assets.json will combined list of all target frameworks
+    displayName: Update projects.assets.json with combined list of all target frameworks
     inputs:
       solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
       platform: 'Any CPU'
